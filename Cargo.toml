@@ -1,21 +1,45 @@
 [package]
 name = "ic-memory"
-edition = { workspace = true }
-rust-version = { workspace = true }
-version = { workspace = true }
-license = { workspace = true }
+edition = "2024"
+rust-version = "1.91.0"
+version = "0.0.1"
+license = "MIT"
+authors = ["borovan <84897664+borovan@users.noreply.github.com>"]
 description = "Persistent allocation-governance infrastructure for Internet Computer stable memory"
 readme = "README.md"
 documentation = "https://docs.rs/ic-memory"
-homepage = { workspace = true }
-repository = { workspace = true }
-keywords = { workspace = true }
-categories = { workspace = true }
+homepage = "https://github.com/dragginzgame/ic-memory"
+repository = "https://github.com/dragginzgame/ic-memory"
+keywords = ["internet-computer", "stable-memory", "canister", "icp", "abi"]
+categories = ["wasm", "data-structures"]
 publish = true
 
 [dependencies]
-serde = { workspace = true, features = ["alloc", "derive"] }
-thiserror = { workspace = true }
+serde = { version = "1.0", default-features = false, features = ["alloc", "derive"] }
+thiserror = "2.0"
 
-[lints]
-workspace = true
+[lints.clippy]
+all = { level = "warn", priority = -1 }
+pedantic = { level = "warn", priority = -1 }
+nursery = { level = "warn", priority = -1 }
+
+missing_const_for_fn = "warn"
+must_use_candidate = "warn"
+redundant_clone = "warn"
+semicolon_if_nothing_returned = "warn"
+uninlined_format_args = "warn"
+use_self = "warn"
+
+doc_markdown = "allow"
+empty_line_after_doc_comments = "allow"
+enum_variant_names = "allow"
+missing_errors_doc = "allow"
+missing_panics_doc = "allow"
+module_inception = "allow"
+module_name_repetitions = "allow"
+needless_pass_by_value = "allow"
+option_if_let_else = "allow"
+significant_drop_tightening = "allow"
+struct_field_names = "allow"
+used_underscore_binding = "allow"
+wildcard_imports = "allow"

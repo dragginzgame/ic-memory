@@ -1,0 +1,30 @@
+# Rust build output
+target/
+
+# Library crates generally do not commit Cargo.lock.
+Cargo.lock
+
+# Local editor and OS metadata
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*~
+
+# Local environment files
+.env
+.env.*
+!.env.example
+
+# Local IDE folders
+.idea/
+.vscode/
+
+# Local coverage/profiling output
+coverage/
+tarpaulin-report.html
+*.profraw
+
+# Rust/package scratch files
+*.rs.bk
+*.rlib
