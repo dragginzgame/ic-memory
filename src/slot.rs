@@ -15,6 +15,42 @@ pub const MEMORY_MANAGER_MAX_ID: u8 = 254;
 /// `MemoryManager` unallocated-bucket sentinel. This is not a usable slot.
 pub const MEMORY_MANAGER_INVALID_ID: u8 = u8::MAX;
 
+/// Stable-key namespace prefix reserved for `ic-memory` allocation-governance infrastructure.
+pub const IC_MEMORY_STABLE_KEY_PREFIX: &str = "ic_memory.";
+
+/// Diagnostic owner label for `ic-memory` allocation-governance infrastructure.
+pub const IC_MEMORY_AUTHORITY_OWNER: &str = "ic-memory";
+
+/// Diagnostic purpose for the `ic-memory` allocation-governance authority range.
+pub const IC_MEMORY_AUTHORITY_PURPOSE: &str = "ic-memory allocation-governance authority";
+
+/// Stable key of the allocation ledger when backed by the current MemoryManager substrate.
+pub const IC_MEMORY_LEDGER_STABLE_KEY: &str = "ic_memory.ledger.v1";
+
+/// Diagnostic label of the allocation ledger when backed by the current MemoryManager substrate.
+pub const IC_MEMORY_LEDGER_LABEL: &str = "MemoryLayoutLedger";
+
+/// MemoryManager ID used by the allocation ledger in the current MemoryManager substrate.
+pub const MEMORY_MANAGER_LEDGER_ID: u8 = MEMORY_MANAGER_MIN_ID;
+
+/// Last MemoryManager ID reserved for `ic-memory` governance in the current substrate.
+pub const MEMORY_MANAGER_GOVERNANCE_MAX_ID: u8 = 9;
+
+/// Return true when `stable_key` belongs to the `ic-memory` namespace.
+#[must_use]
+pub fn is_ic_memory_stable_key(stable_key: &str) -> bool {
+    stable_key.starts_with(IC_MEMORY_STABLE_KEY_PREFIX)
+}
+
+/// MemoryManager range reserved for `ic-memory` governance in the current substrate.
+#[must_use]
+pub const fn memory_manager_governance_range() -> MemoryManagerIdRange {
+    MemoryManagerIdRange {
+        start: MEMORY_MANAGER_MIN_ID,
+        end: MEMORY_MANAGER_GOVERNANCE_MAX_ID,
+    }
+}
+
 ///
 /// AllocationSlot
 ///
@@ -288,6 +324,17 @@ mod tests {
         assert!(range.contains(MEMORY_MANAGER_MIN_ID));
         assert!(range.contains(MEMORY_MANAGER_MAX_ID));
         assert!(!range.contains(MEMORY_MANAGER_INVALID_ID));
+    }
+
+    #[test]
+    fn memory_manager_governance_range_is_owned_by_ic_memory() {
+        let range = memory_manager_governance_range();
+
+        assert_eq!(range.start(), MEMORY_MANAGER_MIN_ID);
+        assert_eq!(MEMORY_MANAGER_LEDGER_ID, range.start());
+        assert!(range.contains(MEMORY_MANAGER_LEDGER_ID));
+        assert!(is_ic_memory_stable_key(IC_MEMORY_LEDGER_STABLE_KEY));
+        assert_eq!(IC_MEMORY_AUTHORITY_OWNER, "ic-memory");
     }
 
     #[test]
