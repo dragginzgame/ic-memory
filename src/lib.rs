@@ -2,13 +2,26 @@
 #![deny(rustdoc::broken_intra_doc_links)]
 #![doc = include_str!("../README.md")]
 
-//! Persistent allocation-governance primitives for Internet Computer stable
-//! memory.
+//! Stable-memory allocation-governance primitives for Internet Computer
+//! canister upgrades.
 //!
-//! The crate models durable ownership as `stable_key -> allocation_slot
-//! forever`. It intentionally does not own framework namespaces, controller
-//! authorization, endpoint lifecycle, schema migrations, or Canic-specific
-//! memory ID policy.
+//! `ic-memory` prevents stable-memory slot drift: a logical stable key must keep
+//! owning the same physical allocation slot across upgrades. The crate records
+//! and validates durable ownership as `stable_key -> allocation_slot forever`.
+//!
+//! This crate owns allocation invariants, not framework policy. Namespace
+//! rules, range ownership, controller authorization, endpoint lifecycle, schema
+//! migrations, and application validation belong to the framework or
+//! application.
+//!
+//! Use these primitives before opening stable-memory handles. Integrations
+//! should recover the historical ledger, validate current declarations, commit a
+//! new generation, and only then publish a validated allocation session that can
+//! open slots through a storage substrate.
+//!
+//! The APIs are generic over storage substrates. `ic-stable-structures`
+//! `MemoryManager` IDs are supported as durable slot descriptors, but this crate
+//! is not a replacement for `ic-stable-structures` and is not Canic-specific.
 
 pub mod bootstrap;
 pub mod declaration;
