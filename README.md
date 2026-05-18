@@ -14,6 +14,11 @@ parsing, allocation-slot descriptors, declaration snapshot sealing, ledger data
 shapes, policy traits, substrate traits, protected generation commit mechanics,
 diagnostics, and validated allocation sessions.
 
+Decoded durable ledgers and public DTO structs are untrusted until validated.
+Recovery and commit paths use strict committed-ledger validation before a ledger
+can become authoritative.
+The non-negotiable invariants are recorded in [SAFETY.md](SAFETY.md).
+
 Framework-specific rules belong in adapter crates. Namespace ownership,
 controller authorization, endpoint dispatch, install/upgrade lifecycle, schema
 migration, and application policy are not generic `ic-memory` responsibilities.
@@ -58,12 +63,12 @@ use ic_memory::{
 let mut declarations = DeclarationCollector::default();
 let declaration = AllocationDeclaration::new(
     "app.orders.primary.v1",
-    ic_memory::AllocationSlotDescriptor::memory_manager(100),
-    Some("orders"),
+    ic_memory::AllocationSlotDescriptor::memory_manager(100).expect("usable slot"),
+    Some("orders".to_string()),
     SchemaMetadata::default(),
 )
 .expect("valid allocation declaration");
-declarations.push(declaration).expect("unique declaration");
+declarations.push(declaration);
 
 let snapshot = declarations.seal().expect("valid declaration snapshot");
 ```
@@ -71,3 +76,7 @@ let snapshot = declarations.seal().expect("valid declaration snapshot");
 Opening a stable-memory handle is deliberately a separate phase. Frameworks
 collect declarations, validate them against policy and historical ledger state,
 publish a validated allocation session, and only then open substrate slots.
+
+The protected physical checksum detects torn writes and accidental corruption.
+It is not a cryptographic integrity mechanism and must not be treated as
+adversarial tamper resistance.

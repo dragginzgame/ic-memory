@@ -8,7 +8,7 @@ const FNV_PRIME: u64 = 0x0000_0100_0000_01b3;
 /// ProtectedGenerationSlot
 ///
 /// One physical generation slot that can participate in protected recovery.
-pub trait ProtectedGenerationSlot {
+pub trait ProtectedGenerationSlot: Eq {
     /// Generation encoded by this slot.
     fn generation(&self) -> u64;
 
@@ -106,6 +106,14 @@ pub fn select_authoritative_slot<'slot, T: ProtectedGenerationSlot>(
         });
 
     match (slot0, slot1) {
+        (Some(left), Some(right))
+            if left.record.generation() == right.record.generation()
+                && left.record != right.record =>
+        {
+            Err(CommitRecoveryError::AmbiguousGeneration {
+                generation: left.record.generation(),
+            })
+        }
         (Some(left), Some(right)) if right.record.generation() > left.record.generation() => {
             Ok(right)
         }
@@ -170,6 +178,10 @@ impl ProtectedGenerationSlot for CommittedGenerationBytes {
 /// Writers stage a complete generation record into the inactive slot. Readers
 /// recover by selecting the highest-generation valid slot. A torn or partial
 /// write cannot become authoritative unless its marker and checksum validate.
+///
+/// The checksum is for torn-write and accidental-corruption detection only. It
+/// is not a cryptographic hash and does not provide adversarial tamper
+/// resistance.
 #[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
 pub struct DualCommitStore {
     /// First physical commit slot.
@@ -206,10 +218,49 @@ impl DualCommitStore {
         &mut self,
         payload: Vec<u8>,
     ) -> Result<&CommittedGenerationBytes, CommitRecoveryError> {
-        let next_generation = self
-            .authoritative()
-            .map_or(0, |record| record.generation.saturating_add(1));
-        let next = CommittedGenerationBytes::new(next_generation, payload);
+        let next_generation =
+            match self.authoritative() {
+                Ok(record) => record.generation.checked_add(1).ok_or(
+                    CommitRecoveryError::GenerationOverflow {
+                        generation: record.generation,
+                    },
+                )?,
+                Err(CommitRecoveryError::NoValidGeneration) if self.is_uninitialized() => 0,
+                Err(err) => return Err(err),
+            };
+
+        self.commit_payload_at_generation(next_generation, payload)
+    }
+
+    /// Commit `payload` as an explicitly numbered physical generation.
+    ///
+    /// This is the preferred API for logical ledger commits: the physical slot
+    /// generation is taken from the logical ledger generation and checked
+    /// against the recovered physical predecessor.
+    pub fn commit_payload_at_generation(
+        &mut self,
+        generation: u64,
+        payload: Vec<u8>,
+    ) -> Result<&CommittedGenerationBytes, CommitRecoveryError> {
+        match self.authoritative() {
+            Ok(record) => {
+                let expected = record.generation.checked_add(1).ok_or(
+                    CommitRecoveryError::GenerationOverflow {
+                        generation: record.generation,
+                    },
+                )?;
+                if generation != expected {
+                    return Err(CommitRecoveryError::UnexpectedGeneration {
+                        expected,
+                        actual: generation,
+                    });
+                }
+            }
+            Err(CommitRecoveryError::NoValidGeneration) if self.is_uninitialized() => {}
+            Err(err) => return Err(err),
+        }
+
+        let next = CommittedGenerationBytes::new(generation, payload);
 
         if self.inactive_slot_index() == CommitSlotIndex::Slot0 {
             self.slot0 = Some(next);
@@ -321,6 +372,26 @@ pub enum CommitRecoveryError {
     /// No committed slot passed marker and checksum validation.
     #[error("no valid committed ledger generation")]
     NoValidGeneration,
+    /// Both physical slots validated at the same generation but contained different bytes.
+    #[error("ambiguous committed ledger generation {generation}")]
+    AmbiguousGeneration {
+        /// Ambiguous physical generation.
+        generation: u64,
+    },
+    /// Physical generation advancement would overflow.
+    #[error("committed ledger generation {generation} cannot be advanced without overflow")]
+    GenerationOverflow {
+        /// Last valid physical generation.
+        generation: u64,
+    },
+    /// Caller attempted to commit a physical generation other than the next generation.
+    #[error("expected committed ledger generation {expected}, got {actual}")]
+    UnexpectedGeneration {
+        /// Expected next physical generation.
+        expected: u64,
+        /// Actual requested physical generation.
+        actual: u64,
+    },
 }
 
 fn generation_checksum(generation: &CommittedGenerationBytes) -> u64 {
@@ -407,6 +478,54 @@ mod tests {
     }
 
     #[test]
+    fn same_generation_identical_slots_recover_deterministically() {
+        let committed = CommittedGenerationBytes::new(7, payload(1));
+        let store = DualCommitStore {
+            slot0: Some(committed.clone()),
+            slot1: Some(committed),
+        };
+
+        let authoritative = store.authoritative_slot().expect("authoritative");
+
+        assert_eq!(authoritative.index, CommitSlotIndex::Slot0);
+        assert_eq!(authoritative.record.generation, 7);
+    }
+
+    #[test]
+    fn same_generation_divergent_slots_fail_closed() {
+        let store = DualCommitStore {
+            slot0: Some(CommittedGenerationBytes::new(7, payload(1))),
+            slot1: Some(CommittedGenerationBytes::new(7, payload(2))),
+        };
+
+        let err = store.authoritative().expect_err("ambiguous generation");
+
+        assert_eq!(
+            err,
+            CommitRecoveryError::AmbiguousGeneration { generation: 7 }
+        );
+    }
+
+    #[test]
+    fn physical_generation_overflow_fails_closed() {
+        let mut store = DualCommitStore {
+            slot0: Some(CommittedGenerationBytes::new(u64::MAX, payload(1))),
+            slot1: None,
+        };
+
+        let err = store
+            .commit_payload(payload(2))
+            .expect_err("overflow must fail");
+
+        assert_eq!(
+            err,
+            CommitRecoveryError::GenerationOverflow {
+                generation: u64::MAX
+            }
+        );
+    }
+
+    #[test]
     fn diagnostic_reports_authoritative_generation_and_corrupt_slots() {
         let mut store = DualCommitStore::default();
         store.commit_payload(payload(1)).expect("first commit");
@@ -437,6 +556,7 @@ mod tests {
 
     #[test]
     fn diagnostic_builds_from_any_dual_protected_store() {
+        #[derive(Eq, PartialEq)]
         struct TestSlot {
             generation: u64,
             valid: bool,

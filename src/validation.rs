@@ -158,7 +158,7 @@ mod tests {
             _key: &StableKey,
             slot: &AllocationSlotDescriptor,
         ) -> Result<(), Self::Error> {
-            if slot == &AllocationSlotDescriptor::memory_manager(255) {
+            if slot == &AllocationSlotDescriptor::memory_manager_unchecked(255) {
                 return Err("bad slot");
             }
             Ok(())
@@ -188,7 +188,7 @@ mod tests {
     fn declaration(key: &str, id: u8) -> AllocationDeclaration {
         AllocationDeclaration::new(
             key,
-            AllocationSlotDescriptor::memory_manager(id),
+            AllocationSlotDescriptor::memory_manager(id).expect("usable slot"),
             None,
             SchemaMetadata::default(),
         )

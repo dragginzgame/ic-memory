@@ -99,7 +99,7 @@ mod tests {
     fn diagnostic_export_copies_ledger_records() {
         let declaration = AllocationDeclaration::new(
             "app.users.v1",
-            AllocationSlotDescriptor::memory_manager(100),
+            AllocationSlotDescriptor::memory_manager(100).expect("usable slot"),
             None,
             SchemaMetadata::default(),
         )
@@ -124,15 +124,17 @@ mod tests {
             },
         };
 
-        let export =
-            DiagnosticExport::from_ledger(&ledger, AllocationSlotDescriptor::memory_manager(0));
+        let export = DiagnosticExport::from_ledger(
+            &ledger,
+            AllocationSlotDescriptor::memory_manager(0).expect("usable slot"),
+        );
 
         assert_eq!(export.current_generation, 3);
         assert_eq!(export.records.len(), 1);
         assert_eq!(export.generations.len(), 1);
         assert_eq!(
             export.ledger_anchor,
-            AllocationSlotDescriptor::memory_manager(0)
+            AllocationSlotDescriptor::memory_manager(0).expect("usable slot")
         );
         assert_eq!(export.commit_recovery, None);
     }
@@ -162,7 +164,7 @@ mod tests {
 
         let export = DiagnosticExport::from_ledger_with_commit_recovery(
             &ledger,
-            AllocationSlotDescriptor::memory_manager(0),
+            AllocationSlotDescriptor::memory_manager(0).expect("usable slot"),
             Some(commit_recovery),
         );
 
@@ -194,7 +196,7 @@ mod tests {
 
         let export = DiagnosticExport::from_ledger_with_commit_recovery(
             &ledger,
-            AllocationSlotDescriptor::memory_manager(0),
+            AllocationSlotDescriptor::memory_manager(0).expect("usable slot"),
             Some(commit_recovery),
         );
 

@@ -1,3 +1,7 @@
+#![forbid(unsafe_code)]
+#![deny(rustdoc::broken_intra_doc_links)]
+#![doc = include_str!("../README.md")]
+
 //! Persistent allocation-governance primitives for Internet Computer stable
 //! memory.
 //!
@@ -32,7 +36,7 @@ pub use generation::{GenerationCommit, GenerationMutation, StagedGeneration};
 pub use key::{StableKey, StableKeyError};
 pub use ledger::{
     AllocationHistory, AllocationLedger, AllocationRecord, AllocationReservationError,
-    AllocationRetirement, AllocationRetirementError, AllocationState,
+    AllocationRetirement, AllocationRetirementError, AllocationStageError, AllocationState,
     CURRENT_LEDGER_SCHEMA_VERSION, CURRENT_PHYSICAL_FORMAT_ID, GenerationRecord, LedgerCodec,
     LedgerCommitError, LedgerCommitStore, LedgerCompatibility, LedgerCompatibilityError,
     LedgerIntegrityError, SchemaMetadataRecord,

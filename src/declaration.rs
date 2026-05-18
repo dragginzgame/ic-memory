@@ -6,6 +6,8 @@ use crate::{
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeSet;
 
+const DIAGNOSTIC_STRING_MAX_BYTES: usize = 256;
+
 ///
 /// AllocationDeclaration
 ///
@@ -31,6 +33,7 @@ impl AllocationDeclaration {
         schema: SchemaMetadata,
     ) -> Result<Self, DeclarationSnapshotError> {
         let stable_key = StableKey::parse(stable_key).map_err(DeclarationSnapshotError::Key)?;
+        validate_label(label.as_deref())?;
         schema
             .validate()
             .map_err(DeclarationSnapshotError::SchemaMetadata)?;
@@ -79,6 +82,13 @@ pub struct DeclarationSnapshot {
 impl DeclarationSnapshot {
     /// Create and validate a declaration snapshot.
     pub fn new(declarations: Vec<AllocationDeclaration>) -> Result<Self, DeclarationSnapshotError> {
+        for declaration in &declarations {
+            validate_label(declaration.label.as_deref())?;
+            declaration
+                .schema
+                .validate()
+                .map_err(DeclarationSnapshotError::SchemaMetadata)?;
+        }
         reject_duplicates(&declarations)?;
         Ok(Self {
             declarations,
@@ -87,21 +97,25 @@ impl DeclarationSnapshot {
     }
 
     /// Attach an optional runtime fingerprint.
-    #[must_use]
-    pub fn with_runtime_fingerprint(mut self, fingerprint: impl Into<String>) -> Self {
-        self.runtime_fingerprint = Some(fingerprint.into());
-        self
+    pub fn with_runtime_fingerprint(
+        mut self,
+        fingerprint: impl Into<String>,
+    ) -> Result<Self, DeclarationSnapshotError> {
+        let fingerprint = fingerprint.into();
+        validate_runtime_fingerprint(Some(&fingerprint))?;
+        self.runtime_fingerprint = Some(fingerprint);
+        Ok(self)
     }
 
     /// Return true when the snapshot has no declarations.
     #[must_use]
-    pub const fn is_empty(&self) -> bool {
+    pub fn is_empty(&self) -> bool {
         self.declarations.is_empty()
     }
 
     /// Return the number of declarations in the snapshot.
     #[must_use]
-    pub const fn len(&self) -> usize {
+    pub fn len(&self) -> usize {
         self.declarations.len()
     }
 
@@ -140,6 +154,70 @@ pub enum DeclarationSnapshotError {
     /// An allocation slot appeared more than once in one snapshot.
     #[error("allocation slot '{0:?}' is declared more than once")]
     DuplicateSlot(AllocationSlotDescriptor),
+    /// Present declaration labels must be non-empty.
+    #[error("allocation declaration label must not be empty when present")]
+    EmptyLabel,
+    /// Declaration labels must stay bounded for durable ledger storage.
+    #[error("allocation declaration label must be at most 256 bytes")]
+    LabelTooLong,
+    /// Declaration labels must not require Unicode normalization.
+    #[error("allocation declaration label must be ASCII")]
+    NonAsciiLabel,
+    /// Declaration labels must be printable metadata.
+    #[error("allocation declaration label must not contain ASCII control characters")]
+    ControlCharacterLabel,
+    /// Present runtime fingerprints must be non-empty.
+    #[error("runtime_fingerprint must not be empty when present")]
+    EmptyRuntimeFingerprint,
+    /// Runtime fingerprints must stay bounded for durable ledger storage.
+    #[error("runtime_fingerprint must be at most 256 bytes")]
+    RuntimeFingerprintTooLong,
+    /// Runtime fingerprints must not require Unicode normalization.
+    #[error("runtime_fingerprint must be ASCII")]
+    NonAsciiRuntimeFingerprint,
+    /// Runtime fingerprints must be printable metadata.
+    #[error("runtime_fingerprint must not contain ASCII control characters")]
+    ControlCharacterRuntimeFingerprint,
+}
+
+fn validate_label(label: Option<&str>) -> Result<(), DeclarationSnapshotError> {
+    let Some(label) = label else {
+        return Ok(());
+    };
+    if label.is_empty() {
+        return Err(DeclarationSnapshotError::EmptyLabel);
+    }
+    if label.len() > DIAGNOSTIC_STRING_MAX_BYTES {
+        return Err(DeclarationSnapshotError::LabelTooLong);
+    }
+    if !label.is_ascii() {
+        return Err(DeclarationSnapshotError::NonAsciiLabel);
+    }
+    if label.bytes().any(|byte| byte.is_ascii_control()) {
+        return Err(DeclarationSnapshotError::ControlCharacterLabel);
+    }
+    Ok(())
+}
+
+pub(crate) fn validate_runtime_fingerprint(
+    fingerprint: Option<&str>,
+) -> Result<(), DeclarationSnapshotError> {
+    let Some(fingerprint) = fingerprint else {
+        return Ok(());
+    };
+    if fingerprint.is_empty() {
+        return Err(DeclarationSnapshotError::EmptyRuntimeFingerprint);
+    }
+    if fingerprint.len() > DIAGNOSTIC_STRING_MAX_BYTES {
+        return Err(DeclarationSnapshotError::RuntimeFingerprintTooLong);
+    }
+    if !fingerprint.is_ascii() {
+        return Err(DeclarationSnapshotError::NonAsciiRuntimeFingerprint);
+    }
+    if fingerprint.bytes().any(|byte| byte.is_ascii_control()) {
+        return Err(DeclarationSnapshotError::ControlCharacterRuntimeFingerprint);
+    }
+    Ok(())
 }
 
 fn reject_duplicates(
@@ -172,11 +250,36 @@ mod tests {
     fn declaration(key: &str, id: u8) -> AllocationDeclaration {
         AllocationDeclaration::new(
             key,
-            AllocationSlotDescriptor::memory_manager(id),
+            AllocationSlotDescriptor::memory_manager(id).expect("usable slot"),
             None,
             SchemaMetadata::default(),
         )
         .expect("declaration")
+    }
+
+    #[test]
+    fn declaration_rejects_unbounded_label_metadata() {
+        let err = AllocationDeclaration::new(
+            "app.users.v1",
+            AllocationSlotDescriptor::memory_manager(100).expect("usable slot"),
+            Some("x".repeat(257)),
+            SchemaMetadata::default(),
+        )
+        .expect_err("label too long");
+
+        assert_eq!(err, DeclarationSnapshotError::LabelTooLong);
+    }
+
+    #[test]
+    fn snapshot_rejects_unbounded_runtime_fingerprint() {
+        let snapshot =
+            DeclarationSnapshot::new(vec![declaration("app.users.v1", 100)]).expect("snapshot");
+
+        let err = snapshot
+            .with_runtime_fingerprint("x".repeat(257))
+            .expect_err("fingerprint too long");
+
+        assert_eq!(err, DeclarationSnapshotError::RuntimeFingerprintTooLong);
     }
 
     #[test]

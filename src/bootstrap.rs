@@ -3,7 +3,8 @@ use crate::{
     declaration::DeclarationSnapshot,
     ledger::{
         AllocationLedger, AllocationReservationError, AllocationRetirement,
-        AllocationRetirementError, LedgerCodec, LedgerCommitError, LedgerCommitStore,
+        AllocationRetirementError, AllocationStageError, LedgerCodec, LedgerCommitError,
+        LedgerCommitStore,
     },
     policy::AllocationPolicy,
     session::ValidatedAllocations,
@@ -187,7 +188,9 @@ impl<'store> AllocationBootstrap<'store> {
     {
         let validated =
             validate_allocations(&prior, snapshot, policy).map_err(BootstrapError::Validation)?;
-        let staged = prior.stage_validated_generation(&validated, committed_at);
+        let staged = prior
+            .stage_validated_generation(&validated, committed_at)
+            .map_err(BootstrapError::Staging)?;
         let committed = self
             .store
             .commit(&staged, codec)
@@ -224,6 +227,9 @@ pub enum BootstrapError<C, P> {
     /// Policy or historical allocation validation failed.
     #[error(transparent)]
     Validation(AllocationValidationError<P>),
+    /// Validated declarations could not be staged against the recovered ledger.
+    #[error(transparent)]
+    Staging(AllocationStageError),
 }
 
 ///
@@ -343,6 +349,33 @@ mod tests {
         }
     }
 
+    #[derive(Debug, Eq, PartialEq)]
+    struct RejectActivePolicy;
+
+    impl AllocationPolicy for RejectActivePolicy {
+        type Error = &'static str;
+
+        fn validate_key(&self, _key: &crate::StableKey) -> Result<(), Self::Error> {
+            Ok(())
+        }
+
+        fn validate_slot(
+            &self,
+            _key: &crate::StableKey,
+            _slot: &AllocationSlotDescriptor,
+        ) -> Result<(), Self::Error> {
+            Err("active slot rejected")
+        }
+
+        fn validate_reserved_slot(
+            &self,
+            _key: &crate::StableKey,
+            _slot: &AllocationSlotDescriptor,
+        ) -> Result<(), Self::Error> {
+            Ok(())
+        }
+    }
+
     fn ledger() -> AllocationLedger {
         AllocationLedger {
             ledger_schema_version: 1,
@@ -355,7 +388,7 @@ mod tests {
     fn declaration() -> AllocationDeclaration {
         AllocationDeclaration::new(
             "app.users.v1",
-            AllocationSlotDescriptor::memory_manager(100),
+            AllocationSlotDescriptor::memory_manager(100).expect("usable slot"),
             None,
             SchemaMetadata::default(),
         )
@@ -464,6 +497,32 @@ mod tests {
     }
 
     #[test]
+    fn reservation_policy_alone_does_not_activate_reserved_allocation() {
+        let codec = TestCodec::default();
+        let mut store = LedgerCommitStore::default();
+        store.commit(&ledger(), &codec).expect("initial ledger");
+        let reservation = declaration();
+        AllocationBootstrap::new(&mut store)
+            .reserve_and_commit(&codec, &[reservation], &TestPolicy, Some(42))
+            .expect("reservation commit");
+        let snapshot = DeclarationSnapshot::new(vec![declaration()]).expect("snapshot");
+
+        let err = AllocationBootstrap::new(&mut store)
+            .validate_and_commit(&codec, snapshot, &RejectActivePolicy, Some(43))
+            .expect_err("active validation must run");
+        let recovered = store.recover(&codec).expect("recovered");
+
+        assert_eq!(
+            err,
+            BootstrapError::Validation(AllocationValidationError::Policy("active slot rejected"))
+        );
+        assert_eq!(
+            recovered.allocation_history.records[0].state,
+            AllocationState::Reserved
+        );
+    }
+
+    #[test]
     fn retire_and_commit_tombstones_through_protected_commit() {
         let codec = TestCodec::default();
         let mut store = LedgerCommitStore::default();
@@ -474,7 +533,7 @@ mod tests {
             .expect("active commit");
         let retirement = AllocationRetirement::new(
             "app.users.v1",
-            AllocationSlotDescriptor::memory_manager(100),
+            AllocationSlotDescriptor::memory_manager(100).expect("usable slot"),
         )
         .expect("retirement");
 
@@ -500,7 +559,7 @@ mod tests {
         store.commit(&ledger(), &codec).expect("initial ledger");
         let retirement = AllocationRetirement::new(
             "app.users.v1",
-            AllocationSlotDescriptor::memory_manager(100),
+            AllocationSlotDescriptor::memory_manager(100).expect("usable slot"),
         )
         .expect("retirement");
 

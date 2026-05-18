@@ -51,9 +51,19 @@ pub struct AllocationSlotDescriptor {
 }
 
 impl AllocationSlotDescriptor {
-    /// Construct a descriptor for a `MemoryManager` virtual memory ID.
+    /// Construct a descriptor for a usable `MemoryManager` virtual memory ID.
+    pub fn memory_manager(id: u8) -> Result<Self, MemoryManagerSlotError> {
+        validate_memory_manager_id(id)?;
+        Ok(Self::memory_manager_unchecked(id))
+    }
+
+    /// Construct a descriptor for a `MemoryManager` virtual memory ID without validating it.
+    ///
+    /// This exists for tests, diagnostics, and decoding untrusted durable DTOs.
+    /// Use [`Self::memory_manager`] when constructing new allocation
+    /// declarations.
     #[must_use]
-    pub fn memory_manager(id: u8) -> Self {
+    pub fn memory_manager_unchecked(id: u8) -> Self {
         Self {
             slot: AllocationSlot::MemoryManagerId(id),
             substrate: MEMORY_MANAGER_SUBSTRATE.to_string(),
@@ -63,8 +73,7 @@ impl AllocationSlotDescriptor {
 
     /// Construct a descriptor for a usable `MemoryManager` virtual memory ID.
     pub fn memory_manager_checked(id: u8) -> Result<Self, MemoryManagerSlotError> {
-        validate_memory_manager_id(id)?;
-        Ok(Self::memory_manager(id))
+        Self::memory_manager(id)
     }
 
     /// Return the usable `MemoryManager` virtual memory ID represented by this descriptor.
@@ -216,8 +225,21 @@ mod tests {
     }
 
     #[test]
+    fn memory_manager_default_constructor_rejects_sentinel() {
+        let err = AllocationSlotDescriptor::memory_manager(MEMORY_MANAGER_INVALID_ID)
+            .expect_err("sentinel must fail");
+
+        assert_eq!(
+            err,
+            MemoryManagerSlotError::InvalidMemoryManagerId {
+                id: MEMORY_MANAGER_INVALID_ID
+            }
+        );
+    }
+
+    #[test]
     fn memory_manager_id_validates_descriptor_shape() {
-        let slot = AllocationSlotDescriptor::memory_manager(42);
+        let slot = AllocationSlotDescriptor::memory_manager(42).expect("usable slot");
         assert_eq!(slot.memory_manager_id().expect("usable ID"), 42);
 
         let err = AllocationSlotDescriptor {

@@ -1,5 +1,5 @@
 use crate::{
-    declaration::AllocationDeclaration,
+    declaration::{AllocationDeclaration, DeclarationSnapshotError, validate_runtime_fingerprint},
     key::{StableKey, StableKeyError},
     physical::{CommitRecoveryError, DualCommitStore},
     schema::SchemaMetadata,
@@ -326,6 +326,41 @@ pub enum LedgerIntegrityError {
         /// Invalid parent generation.
         parent_generation: Option<u64>,
     },
+    /// Current ledger generation has no committed generation record.
+    #[error("current generation {current_generation} has no committed generation record")]
+    MissingCurrentGenerationRecord {
+        /// Current ledger generation.
+        current_generation: u64,
+    },
+    /// Generation records are not strictly increasing in durable order.
+    #[error("generation records are not strictly increasing at generation {generation}")]
+    NonIncreasingGenerationRecords {
+        /// Non-increasing generation.
+        generation: u64,
+    },
+    /// Generation record parent does not match the previous committed generation.
+    #[error(
+        "generation {generation} does not link to previous committed generation {expected_parent:?}"
+    )]
+    BrokenGenerationChain {
+        /// Generation whose parent link is invalid.
+        generation: u64,
+        /// Expected parent generation.
+        expected_parent: Option<u64>,
+        /// Actual parent generation.
+        actual_parent: Option<u64>,
+    },
+    /// Allocation record refers to a generation absent from committed history.
+    #[error("stable key '{stable_key}' references unknown generation {generation}")]
+    UnknownRecordGeneration {
+        /// Stable key whose record is invalid.
+        stable_key: StableKey,
+        /// Unknown generation.
+        generation: u64,
+    },
+    /// Generation diagnostic metadata is invalid.
+    #[error(transparent)]
+    DiagnosticMetadata(DeclarationSnapshotError),
 }
 
 ///
@@ -379,11 +414,17 @@ impl LedgerCommitStore {
         let ledger = codec
             .decode(&committed.payload)
             .map_err(LedgerCommitError::Codec)?;
+        if committed.generation != ledger.current_generation {
+            return Err(LedgerCommitError::PhysicalLogicalGenerationMismatch {
+                physical_generation: committed.generation,
+                logical_generation: ledger.current_generation,
+            });
+        }
         compatibility
             .validate(&ledger)
             .map_err(LedgerCommitError::Compatibility)?;
         ledger
-            .validate_integrity()
+            .validate_committed_integrity()
             .map_err(LedgerCommitError::Integrity)?;
         Ok(ledger)
     }
@@ -443,11 +484,11 @@ impl LedgerCommitStore {
             .validate(ledger)
             .map_err(LedgerCommitError::Compatibility)?;
         ledger
-            .validate_integrity()
+            .validate_committed_integrity()
             .map_err(LedgerCommitError::Integrity)?;
         let payload = codec.encode(ledger).map_err(LedgerCommitError::Codec)?;
         self.physical
-            .commit_payload(payload)
+            .commit_payload_at_generation(ledger.current_generation, payload)
             .map_err(LedgerCommitError::Recovery)?;
         self.recover_with_compatibility(codec, compatibility)
     }
@@ -474,6 +515,16 @@ pub enum LedgerCommitError<E> {
     /// Protected physical commit recovery failed.
     #[error(transparent)]
     Recovery(CommitRecoveryError),
+    /// Physical slot generation and decoded logical ledger generation disagree.
+    #[error(
+        "physical generation {physical_generation} does not match logical ledger generation {logical_generation}"
+    )]
+    PhysicalLogicalGenerationMismatch {
+        /// Generation encoded in the physical commit slot.
+        physical_generation: u64,
+        /// Generation decoded from the logical allocation ledger.
+        logical_generation: u64,
+    },
     /// Integration-supplied codec failed.
     #[error("allocation ledger codec failed")]
     Codec(E),
@@ -486,11 +537,69 @@ pub enum LedgerCommitError<E> {
 }
 
 ///
+/// AllocationStageError
+///
+/// Failure to stage a validated allocation generation.
+#[derive(Clone, Debug, Eq, thiserror::Error, PartialEq)]
+pub enum AllocationStageError {
+    /// Validated declarations were produced against a different ledger generation.
+    #[error(
+        "validated allocations were produced at generation {validated_generation}, but ledger is at generation {ledger_generation}"
+    )]
+    StaleValidatedAllocations {
+        /// Generation carried by the validated allocation session.
+        validated_generation: u64,
+        /// Current ledger generation.
+        ledger_generation: u64,
+    },
+    /// Ledger generation cannot be advanced without overflow.
+    #[error("ledger generation {generation} cannot be advanced without overflow")]
+    GenerationOverflow {
+        /// Current ledger generation.
+        generation: u64,
+    },
+    /// Stable key was historically bound to a different slot.
+    #[error("stable key '{stable_key}' was historically bound to a different allocation slot")]
+    StableKeySlotConflict {
+        /// Stable key being declared.
+        stable_key: StableKey,
+        /// Historical slot for the stable key.
+        historical_slot: Box<AllocationSlotDescriptor>,
+        /// Slot claimed by the declaration.
+        declared_slot: Box<AllocationSlotDescriptor>,
+    },
+    /// Slot was historically bound to a different stable key.
+    #[error("allocation slot '{slot:?}' was historically bound to stable key '{historical_key}'")]
+    SlotStableKeyConflict {
+        /// Slot being declared.
+        slot: Box<AllocationSlotDescriptor>,
+        /// Historical stable key for the slot.
+        historical_key: StableKey,
+        /// Stable key claimed by the declaration.
+        declared_key: StableKey,
+    },
+    /// Current declaration attempted to revive a retired allocation.
+    #[error("stable key '{stable_key}' was explicitly retired and cannot be redeclared")]
+    RetiredAllocation {
+        /// Retired stable key.
+        stable_key: StableKey,
+        /// Retired allocation slot.
+        slot: Box<AllocationSlotDescriptor>,
+    },
+}
+
+///
 /// AllocationReservationError
 ///
 /// Failure to stage a reservation generation.
 #[derive(Clone, Debug, Eq, thiserror::Error, PartialEq)]
 pub enum AllocationReservationError {
+    /// Ledger generation cannot be advanced without overflow.
+    #[error("ledger generation {generation} cannot be advanced without overflow")]
+    GenerationOverflow {
+        /// Current ledger generation.
+        generation: u64,
+    },
     /// Stable key was historically bound to a different slot.
     #[error("stable key '{stable_key}' was historically bound to a different allocation slot")]
     StableKeySlotConflict {
@@ -538,6 +647,12 @@ pub enum AllocationRetirementError {
     /// Stable-key grammar failure.
     #[error(transparent)]
     Key(StableKeyError),
+    /// Ledger generation cannot be advanced without overflow.
+    #[error("ledger generation {generation} cannot be advanced without overflow")]
+    GenerationOverflow {
+        /// Current ledger generation.
+        generation: u64,
+    },
     /// Stable key has no historical allocation record.
     #[error("stable key '{0}' has no allocation record to retire")]
     UnknownStableKey(StableKey),
@@ -664,23 +779,105 @@ impl AllocationLedger {
         Ok(())
     }
 
+    /// Validate strict committed-ledger invariants before recovery or commit.
+    ///
+    /// Public durable structs are DTOs: decoded or manually constructed values
+    /// are untrusted until this method succeeds.
+    pub fn validate_committed_integrity(&self) -> Result<(), LedgerIntegrityError> {
+        self.validate_integrity()?;
+
+        if self.current_generation != 0
+            && !self
+                .allocation_history
+                .generations
+                .iter()
+                .any(|record| record.generation == self.current_generation)
+        {
+            return Err(LedgerIntegrityError::MissingCurrentGenerationRecord {
+                current_generation: self.current_generation,
+            });
+        }
+
+        let mut previous = None;
+        let mut known_generations = BTreeSet::new();
+        for generation in &self.allocation_history.generations {
+            validate_runtime_fingerprint(generation.runtime_fingerprint.as_deref())
+                .map_err(LedgerIntegrityError::DiagnosticMetadata)?;
+
+            let expected_generation = previous.map_or(1, |previous| previous + 1);
+            if generation.generation != expected_generation {
+                return Err(LedgerIntegrityError::NonIncreasingGenerationRecords {
+                    generation: generation.generation,
+                });
+            }
+
+            let expected_parent =
+                previous.or_else(|| (generation.parent_generation == Some(0)).then_some(0));
+            if generation.parent_generation != expected_parent {
+                return Err(LedgerIntegrityError::BrokenGenerationChain {
+                    generation: generation.generation,
+                    expected_parent,
+                    actual_parent: generation.parent_generation,
+                });
+            }
+
+            known_generations.insert(generation.generation);
+            previous = Some(generation.generation);
+        }
+
+        for record in &self.allocation_history.records {
+            validate_known_record_generation(
+                &known_generations,
+                &record.stable_key,
+                record.first_generation,
+            )?;
+            validate_known_record_generation(
+                &known_generations,
+                &record.stable_key,
+                record.last_seen_generation,
+            )?;
+            if let Some(retired_generation) = record.retired_generation {
+                validate_known_record_generation(
+                    &known_generations,
+                    &record.stable_key,
+                    retired_generation,
+                )?;
+            }
+            for schema in &record.schema_history {
+                validate_known_record_generation(
+                    &known_generations,
+                    &record.stable_key,
+                    schema.generation,
+                )?;
+            }
+        }
+
+        Ok(())
+    }
+
     /// Return a copy of the ledger with `validated` recorded as the next generation.
     ///
     /// This is a pure logical update. Physical atomicity is the responsibility of
     /// the substrate commit protocol.
-    #[must_use]
     pub fn stage_validated_generation(
         &self,
         validated: &ValidatedAllocations,
         committed_at: Option<u64>,
-    ) -> Self {
-        let next_generation = self.current_generation.saturating_add(1);
+    ) -> Result<Self, AllocationStageError> {
+        if validated.generation() != self.current_generation {
+            return Err(AllocationStageError::StaleValidatedAllocations {
+                validated_generation: validated.generation(),
+                ledger_generation: self.current_generation,
+            });
+        }
+        let next_generation = checked_next_generation(self.current_generation)
+            .map_err(|generation| AllocationStageError::GenerationOverflow { generation })?;
         let mut next = self.clone();
         next.current_generation = next_generation;
         let declaration_count = u32::try_from(validated.declarations().len()).unwrap_or(u32::MAX);
 
         for declaration in validated.declarations() {
-            record_declaration(&mut next, next_generation, declaration);
+            record_declaration(&mut next, next_generation, declaration)?;
         }
 
         next.allocation_history.generations.push(GenerationRecord {
@@ -691,7 +888,7 @@ impl AllocationLedger {
             committed_at,
         });
 
-        next
+        Ok(next)
     }
 
     /// Return a copy of the ledger with `reservations` recorded as the next generation.
@@ -703,7 +900,8 @@ impl AllocationLedger {
         reservations: &[AllocationDeclaration],
         committed_at: Option<u64>,
     ) -> Result<Self, AllocationReservationError> {
-        let next_generation = self.current_generation.saturating_add(1);
+        let next_generation = checked_next_generation(self.current_generation)
+            .map_err(|generation| AllocationReservationError::GenerationOverflow { generation })?;
         let mut next = self.clone();
         next.current_generation = next_generation;
 
@@ -728,7 +926,8 @@ impl AllocationLedger {
         retirement: &AllocationRetirement,
         committed_at: Option<u64>,
     ) -> Result<Self, AllocationRetirementError> {
-        let next_generation = self.current_generation.saturating_add(1);
+        let next_generation = checked_next_generation(self.current_generation)
+            .map_err(|generation| AllocationRetirementError::GenerationOverflow { generation })?;
         let mut next = self.clone();
         let record = next
             .allocation_history
@@ -772,15 +971,41 @@ fn record_declaration(
     ledger: &mut AllocationLedger,
     generation: u64,
     declaration: &AllocationDeclaration,
-) {
+) -> Result<(), AllocationStageError> {
     if let Some(record) = ledger
         .allocation_history
         .records
         .iter_mut()
         .find(|record| record.stable_key == declaration.stable_key)
     {
+        if record.state == AllocationState::Retired {
+            return Err(AllocationStageError::RetiredAllocation {
+                stable_key: declaration.stable_key.clone(),
+                slot: Box::new(record.slot.clone()),
+            });
+        }
+        if record.slot != declaration.slot {
+            return Err(AllocationStageError::StableKeySlotConflict {
+                stable_key: declaration.stable_key.clone(),
+                historical_slot: Box::new(record.slot.clone()),
+                declared_slot: Box::new(declaration.slot.clone()),
+            });
+        }
         record.observe_declaration(generation, declaration);
-        return;
+        return Ok(());
+    }
+
+    if let Some(record) = ledger
+        .allocation_history
+        .records
+        .iter()
+        .find(|record| record.slot == declaration.slot)
+    {
+        return Err(AllocationStageError::SlotStableKeyConflict {
+            slot: Box::new(declaration.slot.clone()),
+            historical_key: record.stable_key.clone(),
+            declared_key: declaration.stable_key.clone(),
+        });
     }
 
     ledger
@@ -791,6 +1016,14 @@ fn record_declaration(
             declaration.clone(),
             AllocationState::Active,
         ));
+    Ok(())
+}
+
+const fn checked_next_generation(current_generation: u64) -> Result<u64, u64> {
+    match current_generation.checked_add(1) {
+        Some(next_generation) => Ok(next_generation),
+        None => Err(current_generation),
+    }
 }
 
 fn record_reservation(
@@ -900,6 +1133,20 @@ fn validate_record_integrity(
     validate_schema_history_integrity(current_generation, record)
 }
 
+fn validate_known_record_generation(
+    known_generations: &BTreeSet<u64>,
+    stable_key: &StableKey,
+    generation: u64,
+) -> Result<(), LedgerIntegrityError> {
+    if known_generations.contains(&generation) {
+        return Ok(());
+    }
+    Err(LedgerIntegrityError::UnknownRecordGeneration {
+        stable_key: stable_key.clone(),
+        generation,
+    })
+}
+
 fn validate_schema_history_integrity(
     current_generation: u64,
     record: &AllocationRecord,
@@ -932,7 +1179,11 @@ fn validate_schema_history_integrity(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{declaration::DeclarationSnapshot, schema::SchemaMetadata};
+    use crate::{
+        declaration::DeclarationSnapshot, physical::CommittedGenerationBytes,
+        schema::SchemaMetadata,
+    };
+    use std::cell::RefCell;
 
     #[derive(Clone, Copy, Debug, Eq, PartialEq)]
     struct TestCodec;
@@ -956,19 +1207,44 @@ mod tests {
                 u32::from_le_bytes(bytes[4..8].try_into().map_err(|_| "invalid format")?);
             let current_generation =
                 u64::from_le_bytes(bytes[8..16].try_into().map_err(|_| "invalid generation")?);
-            Ok(AllocationLedger {
-                ledger_schema_version,
-                physical_format_id,
-                current_generation,
-                ..ledger()
-            })
+            let mut ledger = committed_ledger(current_generation);
+            ledger.ledger_schema_version = ledger_schema_version;
+            ledger.physical_format_id = physical_format_id;
+            Ok(ledger)
+        }
+    }
+
+    #[derive(Debug, Default)]
+    struct FullLedgerCodec {
+        ledgers: RefCell<Vec<AllocationLedger>>,
+    }
+
+    impl LedgerCodec for FullLedgerCodec {
+        type Error = &'static str;
+
+        fn encode(&self, ledger: &AllocationLedger) -> Result<Vec<u8>, Self::Error> {
+            let mut ledgers = self.ledgers.borrow_mut();
+            let index = u64::try_from(ledgers.len()).map_err(|_| "too many ledgers")?;
+            ledgers.push(ledger.clone());
+            Ok(index.to_le_bytes().to_vec())
+        }
+
+        fn decode(&self, bytes: &[u8]) -> Result<AllocationLedger, Self::Error> {
+            let bytes = <[u8; 8]>::try_from(bytes).map_err(|_| "invalid ledger index")?;
+            let index =
+                usize::try_from(u64::from_le_bytes(bytes)).map_err(|_| "invalid ledger index")?;
+            self.ledgers
+                .borrow()
+                .get(index)
+                .cloned()
+                .ok_or("unknown ledger index")
         }
     }
 
     fn declaration(key: &str, id: u8, schema_version: Option<u32>) -> AllocationDeclaration {
         AllocationDeclaration::new(
             key,
-            AllocationSlotDescriptor::memory_manager(id),
+            AllocationSlotDescriptor::memory_manager(id).expect("usable slot"),
             None,
             SchemaMetadata {
                 schema_version,
@@ -987,6 +1263,30 @@ mod tests {
         }
     }
 
+    fn committed_ledger(current_generation: u64) -> AllocationLedger {
+        AllocationLedger {
+            ledger_schema_version: CURRENT_LEDGER_SCHEMA_VERSION,
+            physical_format_id: CURRENT_PHYSICAL_FORMAT_ID,
+            current_generation,
+            allocation_history: AllocationHistory {
+                records: Vec::new(),
+                generations: (1..=current_generation)
+                    .map(|generation| GenerationRecord {
+                        generation,
+                        parent_generation: if generation == 1 {
+                            Some(0)
+                        } else {
+                            Some(generation - 1)
+                        },
+                        runtime_fingerprint: None,
+                        declaration_count: 0,
+                        committed_at: None,
+                    })
+                    .collect(),
+            },
+        }
+    }
+
     fn active_record(key: &str, id: u8) -> AllocationRecord {
         AllocationRecord::from_declaration(1, declaration(key, id, None), AllocationState::Active)
     }
@@ -998,12 +1298,23 @@ mod tests {
         crate::session::ValidatedAllocations::new(generation, declarations, None)
     }
 
+    fn record<'ledger>(ledger: &'ledger AllocationLedger, key: &str) -> &'ledger AllocationRecord {
+        ledger
+            .allocation_history
+            .records
+            .iter()
+            .find(|record| record.stable_key.as_str() == key)
+            .expect("allocation record")
+    }
+
     #[test]
     fn stage_validated_generation_records_new_allocations() {
         let declarations = vec![declaration("app.users.v1", 100, Some(1))];
         let validated = validated(3, declarations);
 
-        let staged = ledger().stage_validated_generation(&validated, Some(42));
+        let staged = ledger()
+            .stage_validated_generation(&validated, Some(42))
+            .expect("staged generation");
 
         assert_eq!(staged.current_generation, 4);
         assert_eq!(staged.allocation_history.records.len(), 1);
@@ -1012,6 +1323,43 @@ mod tests {
         assert_eq!(
             staged.allocation_history.generations[0].committed_at,
             Some(42)
+        );
+    }
+
+    #[test]
+    fn stage_validated_generation_rejects_stale_validated_allocations() {
+        let validated = validated(2, vec![declaration("app.users.v1", 100, Some(1))]);
+
+        let err = ledger()
+            .stage_validated_generation(&validated, None)
+            .expect_err("stale validated allocations");
+
+        assert_eq!(
+            err,
+            AllocationStageError::StaleValidatedAllocations {
+                validated_generation: 2,
+                ledger_generation: 3
+            }
+        );
+    }
+
+    #[test]
+    fn stage_validated_generation_rejects_generation_overflow() {
+        let ledger = AllocationLedger {
+            current_generation: u64::MAX,
+            ..ledger()
+        };
+        let validated = validated(u64::MAX, vec![declaration("app.users.v1", 100, Some(1))]);
+
+        let err = ledger
+            .stage_validated_generation(&validated, None)
+            .expect_err("overflow must fail");
+
+        assert_eq!(
+            err,
+            AllocationStageError::GenerationOverflow {
+                generation: u64::MAX
+            }
         );
     }
 
@@ -1026,8 +1374,12 @@ mod tests {
         );
         let second = validated(4, vec![declaration("app.users.v1", 100, Some(1))]);
 
-        let staged = ledger().stage_validated_generation(&first, None);
-        let staged = staged.stage_validated_generation(&second, None);
+        let staged = ledger()
+            .stage_validated_generation(&first, None)
+            .expect("first generation");
+        let staged = staged
+            .stage_validated_generation(&second, None)
+            .expect("second generation");
 
         assert_eq!(staged.current_generation, 5);
         assert_eq!(staged.allocation_history.records.len(), 2);
@@ -1046,8 +1398,12 @@ mod tests {
         let first = validated(3, vec![declaration("app.users.v1", 100, Some(1))]);
         let second = validated(4, vec![declaration("app.users.v1", 100, Some(2))]);
 
-        let staged = ledger().stage_validated_generation(&first, None);
-        let staged = staged.stage_validated_generation(&second, None);
+        let staged = ledger()
+            .stage_validated_generation(&first, None)
+            .expect("first generation");
+        let staged = staged
+            .stage_validated_generation(&second, None)
+            .expect("second generation");
         let record = &staged.allocation_history.records[0];
 
         assert_eq!(record.schema_history.len(), 2);
@@ -1076,9 +1432,31 @@ mod tests {
     }
 
     #[test]
+    fn stage_reservation_generation_rejects_generation_overflow() {
+        let ledger = AllocationLedger {
+            current_generation: u64::MAX,
+            ..ledger()
+        };
+        let reservations = vec![declaration("ic_memory.generation_log.v1", 1, None)];
+
+        let err = ledger
+            .stage_reservation_generation(&reservations, None)
+            .expect_err("overflow must fail");
+
+        assert_eq!(
+            err,
+            AllocationReservationError::GenerationOverflow {
+                generation: u64::MAX
+            }
+        );
+    }
+
+    #[test]
     fn stage_reservation_generation_rejects_active_allocation() {
         let active = validated(3, vec![declaration("app.users.v1", 100, None)]);
-        let staged = ledger().stage_validated_generation(&active, None);
+        let staged = ledger()
+            .stage_validated_generation(&active, None)
+            .expect("active generation");
         let reservations = vec![declaration("app.users.v1", 100, None)];
 
         let err = staged
@@ -1092,6 +1470,25 @@ mod tests {
     }
 
     #[test]
+    fn stage_reservation_generation_rejects_retired_allocation() {
+        let mut ledger = ledger();
+        let mut record = active_record("app.users.v1", 100);
+        record.state = AllocationState::Retired;
+        record.retired_generation = Some(3);
+        ledger.allocation_history.records = vec![record];
+        let reservations = vec![declaration("app.users.v1", 100, None)];
+
+        let err = ledger
+            .stage_reservation_generation(&reservations, None)
+            .expect_err("retired cannot revive");
+
+        assert!(matches!(
+            err,
+            AllocationReservationError::RetiredAllocation { .. }
+        ));
+    }
+
+    #[test]
     fn stage_validated_generation_activates_reserved_record() {
         let reservations = vec![declaration("app.future_store.v1", 100, Some(1))];
         let staged = ledger()
@@ -1099,7 +1496,9 @@ mod tests {
             .expect("reserved generation");
         let active = validated(4, vec![declaration("app.future_store.v1", 100, Some(2))]);
 
-        let staged = staged.stage_validated_generation(&active, None);
+        let staged = staged
+            .stage_validated_generation(&active, None)
+            .expect("active generation");
         let record = &staged.allocation_history.records[0];
 
         assert_eq!(record.state, AllocationState::Active);
@@ -1111,10 +1510,12 @@ mod tests {
     #[test]
     fn stage_retirement_generation_tombstones_named_allocation() {
         let active = validated(3, vec![declaration("app.users.v1", 100, None)]);
-        let staged = ledger().stage_validated_generation(&active, None);
+        let staged = ledger()
+            .stage_validated_generation(&active, None)
+            .expect("active generation");
         let retirement = AllocationRetirement::new(
             "app.users.v1",
-            AllocationSlotDescriptor::memory_manager(100),
+            AllocationSlotDescriptor::memory_manager(100).expect("usable slot"),
         )
         .expect("retirement");
 
@@ -1133,12 +1534,37 @@ mod tests {
     }
 
     #[test]
-    fn stage_retirement_generation_requires_matching_slot() {
-        let active = validated(3, vec![declaration("app.users.v1", 100, None)]);
-        let staged = ledger().stage_validated_generation(&active, None);
+    fn stage_retirement_generation_rejects_generation_overflow() {
+        let mut ledger = ledger();
+        ledger.current_generation = u64::MAX;
+        ledger.allocation_history.records = vec![active_record("app.users.v1", 100)];
         let retirement = AllocationRetirement::new(
             "app.users.v1",
-            AllocationSlotDescriptor::memory_manager(101),
+            AllocationSlotDescriptor::memory_manager(100).expect("usable slot"),
+        )
+        .expect("retirement");
+
+        let err = ledger
+            .stage_retirement_generation(&retirement, None)
+            .expect_err("overflow must fail");
+
+        assert_eq!(
+            err,
+            AllocationRetirementError::GenerationOverflow {
+                generation: u64::MAX
+            }
+        );
+    }
+
+    #[test]
+    fn stage_retirement_generation_requires_matching_slot() {
+        let active = validated(3, vec![declaration("app.users.v1", 100, None)]);
+        let staged = ledger()
+            .stage_validated_generation(&active, None)
+            .expect("active generation");
+        let retirement = AllocationRetirement::new(
+            "app.users.v1",
+            AllocationSlotDescriptor::memory_manager(101).expect("usable slot"),
         )
         .expect("retirement");
 
@@ -1160,7 +1586,9 @@ mod tests {
         let validated =
             crate::session::ValidatedAllocations::new(3, declarations, runtime_fingerprint);
 
-        let staged = ledger().stage_validated_generation(&validated, None);
+        let staged = ledger()
+            .stage_validated_generation(&validated, None)
+            .expect("validated generation");
 
         assert_eq!(staged.allocation_history.records.len(), 1);
     }
@@ -1173,11 +1601,102 @@ mod tests {
             Some("wasm:abc123".to_string()),
         );
 
-        let staged = ledger().stage_validated_generation(&validated, None);
+        let staged = ledger()
+            .stage_validated_generation(&validated, None)
+            .expect("validated generation");
 
         assert_eq!(
             staged.allocation_history.generations[0].runtime_fingerprint,
             Some("wasm:abc123".to_string())
+        );
+    }
+
+    #[test]
+    fn strict_committed_integrity_accepts_full_lifecycle() {
+        let mut ledger = committed_ledger(0);
+        ledger
+            .validate_committed_integrity()
+            .expect("genesis ledger with no history");
+
+        ledger = ledger
+            .stage_validated_generation(
+                &validated(0, vec![declaration("app.users.v1", 100, Some(1))]),
+                Some(1),
+            )
+            .expect("first real commit after genesis");
+        ledger
+            .validate_committed_integrity()
+            .expect("first real commit");
+
+        ledger = ledger
+            .stage_validated_generation(
+                &validated(1, vec![declaration("app.users.v1", 100, Some(1))]),
+                Some(2),
+            )
+            .expect("repeated active declaration");
+        ledger
+            .validate_committed_integrity()
+            .expect("repeated active declaration");
+        assert_eq!(record(&ledger, "app.users.v1").schema_history.len(), 1);
+
+        ledger = ledger
+            .stage_validated_generation(
+                &validated(2, vec![declaration("app.users.v1", 100, Some(2))]),
+                Some(3),
+            )
+            .expect("schema drift");
+        ledger
+            .validate_committed_integrity()
+            .expect("schema metadata drift");
+        assert_eq!(record(&ledger, "app.users.v1").schema_history.len(), 2);
+
+        ledger = ledger
+            .stage_reservation_generation(
+                &[declaration("app.future_store.v1", 101, Some(1))],
+                Some(4),
+            )
+            .expect("reservation-only generation");
+        ledger
+            .validate_committed_integrity()
+            .expect("reservation-only generation");
+        assert_eq!(
+            record(&ledger, "app.future_store.v1").state,
+            AllocationState::Reserved
+        );
+
+        ledger = ledger
+            .stage_validated_generation(
+                &validated(4, vec![declaration("app.future_store.v1", 101, Some(2))]),
+                Some(5),
+            )
+            .expect("reservation activation");
+        ledger
+            .validate_committed_integrity()
+            .expect("reservation activation");
+        assert_eq!(
+            record(&ledger, "app.future_store.v1").state,
+            AllocationState::Active
+        );
+
+        let retirement = AllocationRetirement::new(
+            "app.users.v1",
+            AllocationSlotDescriptor::memory_manager(100).expect("usable slot"),
+        )
+        .expect("retirement");
+        ledger = ledger
+            .stage_retirement_generation(&retirement, Some(6))
+            .expect("retirement generation");
+        ledger
+            .validate_committed_integrity()
+            .expect("retirement generation");
+        assert_eq!(ledger.current_generation, 6);
+        assert_eq!(
+            record(&ledger, "app.users.v1").state,
+            AllocationState::Retired
+        );
+        assert_eq!(
+            record(&ledger, "app.future_store.v1").last_seen_generation,
+            5
         );
     }
 
@@ -1265,6 +1784,35 @@ mod tests {
     }
 
     #[test]
+    fn validate_committed_integrity_requires_current_generation_record() {
+        let err = ledger()
+            .validate_committed_integrity()
+            .expect_err("missing current generation");
+
+        assert_eq!(
+            err,
+            LedgerIntegrityError::MissingCurrentGenerationRecord {
+                current_generation: 3
+            }
+        );
+    }
+
+    #[test]
+    fn validate_committed_integrity_rejects_generation_history_gaps() {
+        let mut ledger = committed_ledger(3);
+        ledger.allocation_history.generations.remove(1);
+
+        let err = ledger
+            .validate_committed_integrity()
+            .expect_err("generation history gap");
+
+        assert!(matches!(
+            err,
+            LedgerIntegrityError::NonIncreasingGenerationRecords { .. }
+        ));
+    }
+
+    #[test]
     fn ledger_commit_store_rejects_invalid_ledger_before_write() {
         let mut store = LedgerCommitStore::default();
         let codec = TestCodec;
@@ -1287,14 +1835,8 @@ mod tests {
     fn ledger_commit_store_recovers_latest_committed_ledger() {
         let mut store = LedgerCommitStore::default();
         let codec = TestCodec;
-        let first = AllocationLedger {
-            current_generation: 1,
-            ..ledger()
-        };
-        let second = AllocationLedger {
-            current_generation: 2,
-            ..ledger()
-        };
+        let first = committed_ledger(1);
+        let second = committed_ledger(2);
 
         store.commit(&first, &codec).expect("first commit");
         store.commit(&second, &codec).expect("second commit");
@@ -1304,17 +1846,88 @@ mod tests {
     }
 
     #[test]
+    fn ledger_commit_store_recovers_compatible_genesis_and_first_real_commit() {
+        let mut store = LedgerCommitStore::default();
+        let codec = FullLedgerCodec::default();
+        let genesis = committed_ledger(0);
+
+        let recovered = store
+            .recover_or_initialize(&codec, &genesis)
+            .expect("compatible genesis ledger");
+        assert_eq!(recovered.current_generation, 0);
+        assert!(recovered.allocation_history.generations.is_empty());
+
+        let first = recovered
+            .stage_validated_generation(
+                &validated(0, vec![declaration("app.users.v1", 100, Some(1))]),
+                None,
+            )
+            .expect("first real generation");
+        let recovered = store.commit(&first, &codec).expect("first commit");
+
+        assert_eq!(recovered.current_generation, 1);
+        assert_eq!(recovered.allocation_history.generations[0].generation, 1);
+        assert_eq!(record(&recovered, "app.users.v1").first_generation, 1);
+    }
+
+    #[test]
+    fn ledger_commit_store_recovers_full_payload_after_corrupt_latest_slot() {
+        let mut store = LedgerCommitStore::default();
+        let codec = FullLedgerCodec::default();
+        let genesis = committed_ledger(0);
+        store.commit(&genesis, &codec).expect("genesis commit");
+        let first = genesis
+            .stage_validated_generation(
+                &validated(0, vec![declaration("app.users.v1", 100, Some(1))]),
+                None,
+            )
+            .expect("first generation");
+        let first = store.commit(&first, &codec).expect("first commit");
+        let second = first
+            .stage_validated_generation(
+                &validated(1, vec![declaration("app.users.v1", 100, Some(2))]),
+                None,
+            )
+            .expect("second generation");
+
+        store
+            .write_corrupt_inactive_ledger(&second, &codec)
+            .expect("corrupt latest");
+        let recovered = store.recover(&codec).expect("recover prior generation");
+
+        assert_eq!(recovered.current_generation, 1);
+        assert_eq!(record(&recovered, "app.users.v1").schema_history.len(), 1);
+    }
+
+    #[test]
+    fn ledger_commit_store_recovers_identical_duplicate_slots() {
+        let codec = FullLedgerCodec::default();
+        let ledger = committed_ledger(0)
+            .stage_validated_generation(
+                &validated(0, vec![declaration("app.users.v1", 100, Some(1))]),
+                None,
+            )
+            .expect("first generation");
+        let payload = codec.encode(&ledger).expect("payload");
+        let committed = CommittedGenerationBytes::new(ledger.current_generation, payload);
+        let store = LedgerCommitStore {
+            physical: DualCommitStore {
+                slot0: Some(committed.clone()),
+                slot1: Some(committed),
+            },
+        };
+
+        let recovered = store.recover(&codec).expect("recovered");
+
+        assert_eq!(recovered, ledger);
+    }
+
+    #[test]
     fn ledger_commit_store_ignores_corrupt_inactive_ledger() {
         let mut store = LedgerCommitStore::default();
         let codec = TestCodec;
-        let first = AllocationLedger {
-            current_generation: 1,
-            ..ledger()
-        };
-        let second = AllocationLedger {
-            current_generation: 2,
-            ..ledger()
-        };
+        let first = committed_ledger(1);
+        let second = committed_ledger(2);
 
         store.commit(&first, &codec).expect("first commit");
         store
@@ -1326,10 +1939,55 @@ mod tests {
     }
 
     #[test]
+    fn ledger_commit_store_rejects_physical_logical_generation_mismatch() {
+        let store = LedgerCommitStore {
+            physical: DualCommitStore {
+                slot0: Some(CommittedGenerationBytes::new(
+                    7,
+                    TestCodec.encode(&committed_ledger(6)).expect("payload"),
+                )),
+                slot1: None,
+            },
+        };
+        let codec = TestCodec;
+
+        let err = store.recover(&codec).expect_err("mismatch");
+
+        assert_eq!(
+            err,
+            LedgerCommitError::PhysicalLogicalGenerationMismatch {
+                physical_generation: 7,
+                logical_generation: 6
+            }
+        );
+    }
+
+    #[test]
+    fn ledger_commit_store_rejects_non_next_logical_generation() {
+        let mut store = LedgerCommitStore::default();
+        let codec = TestCodec;
+        store
+            .commit(&committed_ledger(1), &codec)
+            .expect("first commit");
+
+        let err = store
+            .commit(&committed_ledger(3), &codec)
+            .expect_err("skipped generation");
+
+        assert_eq!(
+            err,
+            LedgerCommitError::Recovery(CommitRecoveryError::UnexpectedGeneration {
+                expected: 2,
+                actual: 3
+            })
+        );
+    }
+
+    #[test]
     fn ledger_commit_store_initializes_empty_store_explicitly() {
         let mut store = LedgerCommitStore::default();
         let codec = TestCodec;
-        let genesis = ledger();
+        let genesis = committed_ledger(3);
 
         let recovered = store
             .recover_or_initialize(&codec, &genesis)
@@ -1363,7 +2021,7 @@ mod tests {
         let codec = TestCodec;
         let incompatible = AllocationLedger {
             ledger_schema_version: CURRENT_LEDGER_SCHEMA_VERSION + 1,
-            ..ledger()
+            ..committed_ledger(0)
         };
 
         let err = store
@@ -1385,12 +2043,12 @@ mod tests {
         let codec = TestCodec;
         let incompatible = AllocationLedger {
             ledger_schema_version: CURRENT_LEDGER_SCHEMA_VERSION + 1,
-            ..ledger()
+            ..committed_ledger(3)
         };
         let payload = codec.encode(&incompatible).expect("payload");
         store
             .physical
-            .commit_payload(payload)
+            .commit_payload_at_generation(incompatible.current_generation, payload)
             .expect("physical commit");
 
         let err = store.recover(&codec).expect_err("incompatible schema");
@@ -1409,7 +2067,7 @@ mod tests {
         let codec = TestCodec;
         let incompatible = AllocationLedger {
             physical_format_id: CURRENT_PHYSICAL_FORMAT_ID + 1,
-            ..ledger()
+            ..committed_ledger(0)
         };
 
         let err = store
