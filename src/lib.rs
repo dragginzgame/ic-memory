@@ -67,9 +67,11 @@ pub use slot::{
     IC_MEMORY_AUTHORITY_PURPOSE, IC_MEMORY_LEDGER_LABEL, IC_MEMORY_LEDGER_STABLE_KEY,
     IC_MEMORY_STABLE_KEY_PREFIX, MEMORY_MANAGER_DESCRIPTOR_VERSION,
     MEMORY_MANAGER_GOVERNANCE_MAX_ID, MEMORY_MANAGER_INVALID_ID, MEMORY_MANAGER_LEDGER_ID,
-    MEMORY_MANAGER_MAX_ID, MEMORY_MANAGER_MIN_ID, MEMORY_MANAGER_SUBSTRATE, MemoryManagerIdRange,
-    MemoryManagerRangeError, MemoryManagerSlotError, is_ic_memory_stable_key,
-    memory_manager_governance_range, validate_memory_manager_id,
+    MEMORY_MANAGER_MAX_ID, MEMORY_MANAGER_MIN_ID, MEMORY_MANAGER_SUBSTRATE,
+    MemoryManagerAuthorityRecord, MemoryManagerIdRange, MemoryManagerRangeAuthority,
+    MemoryManagerRangeAuthorityError, MemoryManagerRangeError, MemoryManagerRangeMode,
+    MemoryManagerSlotError, is_ic_memory_stable_key, memory_manager_governance_range,
+    validate_memory_manager_id,
 };
 pub use substrate::{LedgerAnchor, StorageSubstrate};
 pub use validation::{AllocationValidationError, validate_allocations};
