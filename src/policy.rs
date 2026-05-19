@@ -4,6 +4,11 @@ use crate::{key::StableKey, slot::AllocationSlotDescriptor};
 /// AllocationPolicy
 ///
 /// Framework-supplied rules for whether a key may claim a slot.
+///
+/// Policy is intentionally separate from the durable ledger invariant. The
+/// ledger remembers `stable_key -> allocation_slot`; this trait lets an
+/// integration reject declarations that do not belong to its namespace or
+/// substrate-specific range before staging a generation.
 pub trait AllocationPolicy {
     /// Policy error type.
     type Error;

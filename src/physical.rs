@@ -275,6 +275,7 @@ impl DualCommitStore {
     ///
     /// This helper is intentionally part of the model because recovery behavior
     /// is an ABI requirement, not an implementation detail.
+    #[cfg(test)]
     pub fn write_corrupt_inactive_slot(&mut self, generation: u64, payload: Vec<u8>) {
         let mut corrupt = CommittedGenerationBytes::new(generation, payload);
         corrupt.checksum = corrupt.checksum.wrapping_add(1);

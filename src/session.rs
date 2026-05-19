@@ -8,6 +8,11 @@ use serde::{Deserialize, Serialize};
 /// ValidatedAllocations
 ///
 /// Allocation declarations accepted by policy and historical ledger validation.
+///
+/// This value is produced by [`crate::validate_allocations`] and is the bridge
+/// between declaration validation and opening storage. It is not a durable
+/// ledger record; staging commits it into the next generation before an
+/// integration should expose memory handles.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct ValidatedAllocations {
     /// Committed generation that validated these allocations.
@@ -68,6 +73,11 @@ impl ValidatedAllocations {
 /// AllocationSession
 ///
 /// Validated capability required before opening allocation slots.
+///
+/// Integrations should construct sessions only after recovering the ledger,
+/// validating declarations, and committing the next generation. Opening storage
+/// through this type keeps handle creation tied to the validated stable-key
+/// snapshot.
 pub struct AllocationSession<S: StorageSubstrate> {
     substrate: S,
     validated: ValidatedAllocations,

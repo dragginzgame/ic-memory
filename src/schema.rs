@@ -4,6 +4,11 @@ use serde::{Deserialize, Serialize};
 /// SchemaMetadata
 ///
 /// Optional diagnostic metadata for an in-place store schema.
+///
+/// This metadata helps humans and frameworks diagnose which schema version or
+/// fingerprint was declared in each generation. It is bounded and validated for
+/// durable ledger encoding, but it does not perform application schema
+/// migrations or validate stable data semantics.
 #[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
 pub struct SchemaMetadata {
     /// Optional in-place schema version.

@@ -1,5 +1,48 @@
 # Changelog
 
+## 0.1.0
+
+### Breaking / API hardening
+
+- Made invariant-bearing durable DTO fields private where feasible, including
+  allocation declarations, ledger records, and slot descriptors.
+- Added checked constructors and accessors for public allocation DTOs so callers
+  do not need struct literals for normal use.
+- Removed the unused public generation DTO API from the crate surface.
+- Gated corrupt-write simulation helpers behind `#[cfg(test)]`; production code
+  can no longer call them.
+
+### Safety and validation
+
+- Added schema metadata validation to declaration staging, reservation staging,
+  and committed-ledger integrity validation.
+- Centralized historical claim-conflict detection for declaration validation,
+  declaration staging, and reservation staging while preserving existing public
+  error variants.
+- Preserved the core invariant: a stable key cannot move physical slots, and an
+  active physical slot cannot be reused by another stable key.
+
+### Structure and maintenance
+
+- Split `slot` internals into descriptor, `MemoryManager`, and range-authority
+  modules while keeping crate-level re-exports stable.
+- Split ledger records, errors, and integrity checks out of the main ledger
+  module.
+- Kept staging and commit behavior public-compatible; no Canic-specific policy
+  was added.
+
+### Documentation
+
+- Updated README, crate docs, rustdoc, and SAFETY docs for the current checked
+  constructor/accessor API.
+- Added a compiling golden-path example showing recovery, declaration,
+  validation, commit, and only-then-open ordering.
+- Clarified stable-key permanence, reservation behavior, tombstones, checksum
+  limits, non-goals, and the boundary between generic `ic-memory`
+  infrastructure and Canic/IcyDB examples.
+
+---
+
 ## 0.0.7
 
 ### Documentation

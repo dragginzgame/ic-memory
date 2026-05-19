@@ -4,12 +4,19 @@ use std::{fmt, str::FromStr};
 ///
 /// StableKey
 ///
-/// Canonical durable allocation identity.
+/// Canonical durable logical allocation identity.
+///
+/// A stable key names the logical store, not the current storage backend or
+/// `MemoryManager` ID. Once committed, the key is permanently bound to its
+/// physical allocation slot; changing the key declares a new logical store.
 #[derive(Clone, Debug, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
 pub struct StableKey(String);
 
 impl StableKey {
-    /// Parse and validate a stable key.
+    /// Parse and validate a canonical stable key string.
+    ///
+    /// Keys are bounded lowercase ASCII dot-separated names ending in a
+    /// nonzero `.vN` suffix.
     pub fn parse(value: impl AsRef<str>) -> Result<Self, StableKeyError> {
         validate(value.as_ref())?;
         Ok(Self(value.as_ref().to_string()))

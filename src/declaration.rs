@@ -11,21 +11,26 @@ const DIAGNOSTIC_STRING_MAX_BYTES: usize = 256;
 ///
 /// AllocationDeclaration
 ///
-/// Data-only claim that a stable key owns an allocation slot.
+/// Checked runtime claim that a stable key should own an allocation slot.
+///
+/// Declarations are supplied by the current binary before opening storage.
+/// Constructors validate the stable key, slot descriptor, label, and schema
+/// metadata, but a declaration is not authoritative until it has been validated
+/// against the recovered ledger and committed as part of a generation.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct AllocationDeclaration {
     /// Durable stable key.
-    pub stable_key: StableKey,
+    pub(crate) stable_key: StableKey,
     /// Claimed allocation slot.
-    pub slot: AllocationSlotDescriptor,
+    pub(crate) slot: AllocationSlotDescriptor,
     /// Optional diagnostic label.
-    pub label: Option<String>,
+    pub(crate) label: Option<String>,
     /// Optional diagnostic schema metadata.
-    pub schema: SchemaMetadata,
+    pub(crate) schema: SchemaMetadata,
 }
 
 impl AllocationDeclaration {
-    /// Build a declaration from raw parts.
+    /// Build a declaration from raw parts after validating diagnostic metadata.
     pub fn new(
         stable_key: impl AsRef<str>,
         slot: AllocationSlotDescriptor,
@@ -84,12 +89,40 @@ impl AllocationDeclaration {
             .map_err(DeclarationSnapshotError::MemoryManagerSlot)?;
         Self::new(stable_key, slot, None, schema)
     }
+
+    /// Return the durable stable key claimed by this declaration.
+    #[must_use]
+    pub const fn stable_key(&self) -> &StableKey {
+        &self.stable_key
+    }
+
+    /// Return the allocation slot claimed by this declaration.
+    #[must_use]
+    pub const fn slot(&self) -> &AllocationSlotDescriptor {
+        &self.slot
+    }
+
+    /// Return the optional diagnostic label.
+    #[must_use]
+    pub fn label(&self) -> Option<&str> {
+        self.label.as_deref()
+    }
+
+    /// Return the optional schema metadata.
+    #[must_use]
+    pub const fn schema(&self) -> &SchemaMetadata {
+        &self.schema
+    }
 }
 
 ///
 /// DeclarationCollector
 ///
-/// Mutable collection phase before a snapshot is sealed.
+/// Mutable builder for this binary's allocation declarations.
+///
+/// The collector is transient runtime state. Sealing rejects duplicate stable
+/// keys and duplicate slots within one binary snapshot; historical compatibility
+/// is checked later by [`crate::validate_allocations`].
 #[derive(Clone, Debug, Default)]
 pub struct DeclarationCollector {
     declarations: Vec<AllocationDeclaration>,
@@ -222,6 +255,10 @@ impl DeclarationCollector {
 /// DeclarationSnapshot
 ///
 /// Immutable runtime declaration snapshot ready for policy and history validation.
+///
+/// A snapshot is duplicate-free, but it is still not permission to open storage.
+/// Integrations should call [`crate::validate_allocations`], commit the staged
+/// generation, and only then expose an [`crate::AllocationSession`].
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct DeclarationSnapshot {
     /// Runtime declarations.

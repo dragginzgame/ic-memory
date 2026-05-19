@@ -1,7 +1,10 @@
 use crate::{
     declaration::DeclarationSnapshot,
     key::StableKey,
-    ledger::{AllocationLedger, AllocationRecord, AllocationState},
+    ledger::{
+        AllocationLedger,
+        claim::{ClaimConflict, validate_declaration_claim},
+    },
     policy::AllocationPolicy,
     session::ValidatedAllocations,
     slot::AllocationSlotDescriptor,
@@ -79,55 +82,44 @@ fn validate_declaration_history<P>(
     ledger: &AllocationLedger,
     declaration: &crate::declaration::AllocationDeclaration,
 ) -> Result<(), AllocationValidationError<P>> {
-    if let Some(record) = find_by_key(ledger, &declaration.stable_key) {
-        if record.state == AllocationState::Retired {
-            return Err(AllocationValidationError::RetiredAllocation {
-                stable_key: declaration.stable_key.clone(),
-                slot: Box::new(record.slot.clone()),
-            });
-        }
-        if record.slot != declaration.slot {
-            return Err(AllocationValidationError::StableKeySlotConflict {
+    validate_declaration_claim(ledger, declaration)
+        .map(|_| ())
+        .map_err(|conflict| map_validation_claim_conflict(ledger, declaration, conflict))
+}
+
+fn map_validation_claim_conflict<P>(
+    ledger: &AllocationLedger,
+    declaration: &crate::declaration::AllocationDeclaration,
+    conflict: ClaimConflict,
+) -> AllocationValidationError<P> {
+    match conflict {
+        ClaimConflict::StableKeyMoved { record_index } => {
+            let record = &ledger.allocation_history.records[record_index];
+            AllocationValidationError::StableKeySlotConflict {
                 stable_key: declaration.stable_key.clone(),
                 historical_slot: Box::new(record.slot.clone()),
                 declared_slot: Box::new(declaration.slot.clone()),
-            });
+            }
+        }
+        ClaimConflict::SlotReused { record_index } => {
+            let record = &ledger.allocation_history.records[record_index];
+            AllocationValidationError::SlotStableKeyConflict {
+                slot: Box::new(declaration.slot.clone()),
+                historical_key: record.stable_key.clone(),
+                declared_key: declaration.stable_key.clone(),
+            }
+        }
+        ClaimConflict::Tombstoned { record_index } => {
+            let record = &ledger.allocation_history.records[record_index];
+            AllocationValidationError::RetiredAllocation {
+                stable_key: declaration.stable_key.clone(),
+                slot: Box::new(record.slot.clone()),
+            }
+        }
+        ClaimConflict::ActiveAllocation { .. } => {
+            unreachable!("active allocation conflicts are reservation-only")
         }
     }
-
-    if let Some(record) = find_by_slot(ledger, &declaration.slot)
-        && record.stable_key != declaration.stable_key
-    {
-        return Err(AllocationValidationError::SlotStableKeyConflict {
-            slot: Box::new(declaration.slot.clone()),
-            historical_key: record.stable_key.clone(),
-            declared_key: declaration.stable_key.clone(),
-        });
-    }
-
-    Ok(())
-}
-
-fn find_by_key<'ledger>(
-    ledger: &'ledger AllocationLedger,
-    stable_key: &StableKey,
-) -> Option<&'ledger AllocationRecord> {
-    ledger
-        .allocation_history
-        .records
-        .iter()
-        .find(|record| &record.stable_key == stable_key)
-}
-
-fn find_by_slot<'ledger>(
-    ledger: &'ledger AllocationLedger,
-    slot: &AllocationSlotDescriptor,
-) -> Option<&'ledger AllocationRecord> {
-    ledger
-        .allocation_history
-        .records
-        .iter()
-        .find(|record| &record.slot == slot)
 }
 
 #[cfg(test)]
@@ -135,7 +127,7 @@ mod tests {
     use super::*;
     use crate::{
         declaration::AllocationDeclaration,
-        ledger::{AllocationHistory, AllocationRecord},
+        ledger::{AllocationHistory, AllocationRecord, AllocationState},
         schema::SchemaMetadata,
         slot::AllocationSlotDescriptor,
     };

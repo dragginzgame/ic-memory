@@ -5,9 +5,25 @@
 //! Stable-memory allocation-governance primitives for Internet Computer
 //! canister upgrades.
 //!
-//! `ic-memory` prevents stable-memory slot drift: a logical stable key must keep
-//! owning the same physical allocation slot across upgrades. The crate records
-//! and validates durable ownership as `stable_key -> allocation_slot forever`.
+//! `ic-memory` prevents stable-memory slot drift.
+//!
+//! Once a stable key is committed to a physical allocation slot, future binaries
+//! must either reopen that same stable key on that same slot or declare a new
+//! stable key.
+//!
+//! The crate records and validates durable ownership in both directions: an
+//! active stable key cannot move to a different physical slot, and an active
+//! physical slot cannot be reused by a different stable key.
+//!
+//! The intended integration flow is:
+//!
+//! 1. Recover the persisted allocation ledger.
+//! 2. Declare the stable stores expected by the current binary.
+//! 3. Validate those declarations against ledger history and any framework
+//!    policy.
+//! 4. Commit the next generation.
+//! 5. Only then open stable-memory handles through a validated allocation
+//!    session.
 //!
 //! This crate owns allocation invariants, not framework policy. Namespace
 //! rules, range ownership, controller authorization, endpoint lifecycle, schema
@@ -15,7 +31,8 @@
 //! application.
 //!
 //! Use these primitives before opening stable-memory handles. Integrations
-//! should recover the historical ledger, validate current declarations, commit a
+//! should recover the historical ledger, declare the stores expected by the
+//! current binary, validate declarations against history and policy, commit a
 //! new generation, and only then publish a validated allocation session that can
 //! open slots through a storage substrate.
 //!
@@ -26,7 +43,6 @@
 pub mod bootstrap;
 pub mod declaration;
 pub mod diagnostics;
-pub mod generation;
 pub mod key;
 pub mod ledger;
 pub mod physical;
@@ -45,7 +61,6 @@ pub use declaration::{
     AllocationDeclaration, DeclarationCollector, DeclarationSnapshot, DeclarationSnapshotError,
 };
 pub use diagnostics::{DiagnosticExport, DiagnosticGeneration, DiagnosticRecord};
-pub use generation::{GenerationCommit, GenerationMutation, StagedGeneration};
 pub use key::{StableKey, StableKeyError};
 pub use ledger::{
     AllocationHistory, AllocationLedger, AllocationRecord, AllocationReservationError,

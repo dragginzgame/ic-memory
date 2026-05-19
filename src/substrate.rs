@@ -16,6 +16,10 @@ pub struct LedgerAnchor {
 /// StorageSubstrate
 ///
 /// Physical storage provider for the ledger anchor and allocation slots.
+///
+/// A substrate knows how to open physical storage, but it should not decide
+/// allocation history on its own. Frameworks should validate and commit the
+/// ledger first, then open slots through [`crate::AllocationSession`].
 pub trait StorageSubstrate {
     /// Native slot type accepted by this substrate.
     type Slot;

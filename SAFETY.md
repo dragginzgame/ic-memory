@@ -10,8 +10,11 @@ authorization, or endpoint safety.
 
 ## Non-Negotiable Allocation Invariants
 
-- `stable_key -> allocation_slot` is forever.
-- `allocation_slot -> stable_key` is forever.
+- Once a stable key is committed to a physical allocation slot, future binaries
+  must either reopen that same stable key on that same slot or declare a new
+  stable key.
+- The same active stable key cannot move to a different physical slot.
+- The same active physical slot cannot be reused by a different stable key.
 - Once a stable key has been assigned to a slot, that key must never point to a
   different slot.
 - Once a slot has been assigned to a stable key, that slot must never be reused
@@ -21,6 +24,11 @@ authorization, or endpoint safety.
 - Omitted historical declarations are preserved, not implicitly retired.
 - A reserved allocation can become active only after full declaration
   validation.
+- A reservation is policy/diagnostic staging only until it is declared as an
+  active allocation. Refreshing a matching reservation is allowed; reserving an
+  already active or retired allocation is rejected.
+- Schema metadata attached to declarations, reservations, and committed schema
+  history must pass `SchemaMetadata::validate()`.
 
 ## Generation Invariants
 
@@ -55,6 +63,19 @@ authorization, or endpoint safety.
 - Recovered ledgers are untrusted until compatibility and committed-integrity
   checks succeed.
 
+## Validation-Before-Open Invariant
+
+Storage integrations must validate layout before opening stable-memory handles:
+
+1. Recover the persisted allocation ledger.
+2. Declare the stores expected by the current binary.
+3. Validate those declarations against ledger history and framework policy.
+4. Commit the new allocation generation.
+5. Only then open stable-memory handles through the validated session/substrate.
+
+Opening stable-memory handles before validation defeats the purpose of this
+crate.
+
 ## Retirement Invariants
 
 - A retired stable key cannot be declared again.
@@ -72,6 +93,22 @@ The protected physical checksum is only torn-write and accidental-corruption
 detection. It is non-cryptographic and does not provide adversarial tamper
 resistance, authenticity, or authorization.
 
-Public durable structs are DTOs. Decoded, deserialized, diagnostic, or manually
-constructed values are untrusted until the relevant recovery, compatibility,
-integrity, validation, or commit path has accepted them.
+Public durable structs are DTOs. Decoded, deserialized, and diagnostic values
+are untrusted until the relevant recovery, compatibility, integrity,
+validation, or commit path has accepted them.
+
+Invariant-bearing DTO fields are intentionally private where feasible. Callers
+should use checked constructors and accessors instead of fabricating durable
+allocation state directly.
+
+## Non-Goals
+
+`ic-memory` does not provide:
+
+- cryptographic tamper resistance
+- malicious-controller protection
+- endpoint authorization
+- application schema migration correctness
+- stable data semantic validation
+- IC management-canister lifecycle safety
+- full disaster recovery
