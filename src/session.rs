@@ -13,6 +13,8 @@ use serde::{Deserialize, Serialize};
 /// between declaration validation and opening storage. It is not a durable
 /// ledger record; staging commits it into the next generation before an
 /// integration should expose memory handles.
+///
+
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct ValidatedAllocations {
     /// Committed generation that validated these allocations.

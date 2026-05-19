@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.3.0
+
+### Native IC substrate
+
+- Made `ic-stable-structures = "0.7.2"` a normal dependency instead of an
+  optional feature-gated dependency.
+- Made `serde_cbor = "0.11"` a normal dependency.
+- Removed the `ic-stable-structures` feature; `stable_cell` support now always
+  compiles and its ledger-anchor exports are always available.
+- Added `CborLedgerCodec` as the built-in CBOR codec for `AllocationLedger`
+  commit payloads.
+- Clarified that the native ledger stack is `MemoryManager` ID 0 ->
+  `ic-stable-structures::Cell<StableCellLedgerRecord, _>` ->
+  `LedgerCommitStore` -> dual protected committed `AllocationLedger` payloads.
+- Kept collection construction out of scope: `ic-memory` governs allocation
+  ownership and does not wrap every `ic-stable-structures` collection.
+
+---
+
 ## 0.2.0
 
 ### Breaking / API hardening

@@ -36,9 +36,14 @@
 //! new generation, and only then publish a validated allocation session that can
 //! open slots through a storage substrate.
 //!
-//! The APIs are generic over storage substrates. `ic-stable-structures`
-//! `MemoryManager` IDs are supported as durable slot descriptors, but this crate
-//! is not a replacement for `ic-stable-structures` and is not Canic-specific.
+//! `ic-stable-structures` `MemoryManager` IDs are the first-class supported
+//! physical slot substrate. The crate still keeps narrow internal abstractions
+//! for storage adapters and diagnostics, but the native IC path is
+//! `MemoryManager` ID 0 -> `ic-stable-structures::Cell<StableCellLedgerRecord,
+//! _>` -> [`LedgerCommitStore`] -> committed [`AllocationLedger`] payloads.
+//!
+//! `ic-memory` is not a replacement for `ic-stable-structures` collections and
+//! does not wrap typed stores such as `StableBTreeMap`.
 
 pub mod bootstrap;
 pub mod declaration;
@@ -50,8 +55,11 @@ pub mod policy;
 pub mod schema;
 pub mod session;
 pub mod slot;
+pub mod stable_cell;
 pub mod substrate;
 pub mod validation;
+
+pub use ic_stable_structures as stable_structures;
 
 pub use bootstrap::{
     AllocationBootstrap, BootstrapCommit, BootstrapError, BootstrapReservationError,
@@ -65,9 +73,9 @@ pub use key::{StableKey, StableKeyError};
 pub use ledger::{
     AllocationHistory, AllocationLedger, AllocationRecord, AllocationReservationError,
     AllocationRetirement, AllocationRetirementError, AllocationStageError, AllocationState,
-    CURRENT_LEDGER_SCHEMA_VERSION, CURRENT_PHYSICAL_FORMAT_ID, GenerationRecord, LedgerCodec,
-    LedgerCommitError, LedgerCommitStore, LedgerCompatibility, LedgerCompatibilityError,
-    LedgerIntegrityError, SchemaMetadataRecord,
+    CURRENT_LEDGER_SCHEMA_VERSION, CURRENT_PHYSICAL_FORMAT_ID, CborLedgerCodec, GenerationRecord,
+    LedgerCodec, LedgerCommitError, LedgerCommitStore, LedgerCompatibility,
+    LedgerCompatibilityError, LedgerIntegrityError, SchemaMetadataRecord,
 };
 pub use physical::{
     AuthoritativeSlot, CommitRecoveryError, CommitSlotDiagnostic, CommitSlotIndex,
@@ -87,6 +95,11 @@ pub use slot::{
     MemoryManagerRangeAuthorityError, MemoryManagerRangeError, MemoryManagerRangeMode,
     MemoryManagerSlotError, is_ic_memory_stable_key, memory_manager_governance_range,
     validate_memory_manager_id,
+};
+pub use stable_cell::{
+    STABLE_CELL_HEADER_SIZE, STABLE_CELL_LAYOUT_VERSION, STABLE_CELL_MAGIC,
+    STABLE_CELL_VALUE_OFFSET, StableCellLedgerRecord, StableCellPayloadError,
+    decode_stable_cell_ledger_record, decode_stable_cell_payload,
 };
 pub use substrate::{LedgerAnchor, StorageSubstrate};
 pub use validation::{AllocationValidationError, validate_allocations};

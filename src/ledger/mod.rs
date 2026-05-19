@@ -30,6 +30,8 @@ pub use record::{
 /// through [`LedgerCommitStore`], which checks physical/logical generation,
 /// compatibility, and committed ledger integrity before returning authoritative
 /// state.
+///
+
 pub trait LedgerCodec {
     /// Encoding or decoding error type.
     type Error;
@@ -39,6 +41,32 @@ pub trait LedgerCodec {
 
     /// Decode durable bytes into a logical allocation ledger.
     fn decode(&self, bytes: &[u8]) -> Result<AllocationLedger, Self::Error>;
+}
+
+///
+/// CborLedgerCodec
+///
+/// Native CBOR ledger codec for persisted [`AllocationLedger`] payloads.
+///
+/// This is the default codec for the native IC stack:
+/// `MemoryManager` ID 0 stores an `ic-stable-structures::Cell` containing a
+/// [`crate::StableCellLedgerRecord`], whose [`LedgerCommitStore`] contains
+/// dual protected CBOR-encoded ledger generations.
+///
+
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct CborLedgerCodec;
+
+impl LedgerCodec for CborLedgerCodec {
+    type Error = serde_cbor::Error;
+
+    fn encode(&self, ledger: &AllocationLedger) -> Result<Vec<u8>, Self::Error> {
+        serde_cbor::to_vec(ledger)
+    }
+
+    fn decode(&self, bytes: &[u8]) -> Result<AllocationLedger, Self::Error> {
+        serde_cbor::from_slice(bytes)
+    }
 }
 
 ///
@@ -55,6 +83,8 @@ pub trait LedgerCodec {
 ///
 /// TODO: Move commit/recovery behavior to `ledger::commit` once the staging
 /// split is also mechanical, so the commit tests can move with their fixtures.
+///
+
 #[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
 pub struct LedgerCommitStore {
     /// Protected physical commit slots.
@@ -620,6 +650,17 @@ mod tests {
             generation_err,
             DeclarationSnapshotError::EmptyRuntimeFingerprint
         );
+    }
+
+    #[test]
+    fn cbor_ledger_codec_round_trips_allocation_ledger() {
+        let ledger = committed_ledger(2);
+        let codec = CborLedgerCodec;
+
+        let encoded = codec.encode(&ledger).expect("encode ledger");
+        let decoded = codec.decode(&encoded).expect("decode ledger");
+
+        assert_eq!(decoded, ledger);
     }
 
     #[test]

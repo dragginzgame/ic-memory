@@ -93,6 +93,17 @@ It enforces both directions for active allocations:
 `ic-memory` checks that each logical store is still opening the same physical
 slot it owned before.
 
+The native IC ledger anchor is:
+
+```text
+MemoryManager ID 0
+  -> ic-stable-structures::Cell<StableCellLedgerRecord, _>
+  -> LedgerCommitStore
+  -> dual protected committed AllocationLedger payloads
+```
+
+`CborLedgerCodec` is the built-in codec for those committed ledger payloads.
+
 A typical framework flow is:
 
 1. Recover the saved allocation ledger.
@@ -107,8 +118,8 @@ Do not rawdog stable-memory IDs.
 
 ## Golden Path
 
-The exact persistence and storage substrate are integration-specific. The safe
-order is fixed:
+The native ledger anchor is an `ic-stable-structures::Cell` at `MemoryManager`
+ID 0, but the safe order is fixed for every integration:
 
 ```text
 recover persisted allocation ledger
@@ -137,8 +148,8 @@ let orders = session.open(&StableKey::parse("app.orders.v1")?)?;
 ```
 
 The helper names for recovery, commit, `policy`, and `storage` are placeholders.
-Frameworks wire those to their own stable-memory persistence and storage
-substrate. The ordering is the contract.
+Frameworks wire those to their own stable-memory persistence and collection
+construction. The ordering is the contract.
 
 `AllocationLedger::new(...)` builds a structurally valid ledger DTO. Use
 `AllocationLedger::new_committed(...)` only when you are manually constructing
@@ -304,6 +315,9 @@ Canic policy, not an `ic-memory` rule.
 ## What It Does Not Do
 
 `ic-memory` does not replace `ic-stable-structures`.
+
+It owns allocation governance. It does not re-export or wrap every
+`ic-stable-structures` collection type.
 
 It also does not handle:
 
