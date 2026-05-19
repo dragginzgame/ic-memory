@@ -72,13 +72,6 @@ impl AllocationSlotDescriptor {
         }
     }
 
-    /// Construct a descriptor for a usable `MemoryManager` virtual memory ID.
-    ///
-    /// This is an explicit alias for [`AllocationSlotDescriptor::memory_manager`].
-    pub fn memory_manager_checked(id: u8) -> Result<Self, MemoryManagerSlotError> {
-        Self::memory_manager(id)
-    }
-
     /// Return the usable `MemoryManager` virtual memory ID represented by this descriptor.
     ///
     /// This validates substrate, descriptor version, slot kind, and sentinel ID

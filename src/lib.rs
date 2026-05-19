@@ -36,6 +36,14 @@
 //! new generation, and only then publish a validated allocation session that can
 //! open slots through a storage substrate.
 //!
+//! [`AllocationBootstrap`] is the golden path for whichever layer owns a given
+//! ledger store. Canic may own bootstrap for a framework canister and compose
+//! IcyDB/application declarations through its registry; IcyDB may own bootstrap
+//! directly for generated database stores; or a standalone application canister
+//! may own bootstrap itself. Exactly one owner should bootstrap one ledger
+//! store. Multiple layers in the same canister must either compose declarations
+//! into that owner or use distinct ledger stores and allocation domains.
+//!
 //! `ic-stable-structures` `MemoryManager` IDs are the first-class supported
 //! physical slot substrate. The crate still keeps narrow internal abstractions
 //! for storage adapters and diagnostics, but the native IC path is
@@ -82,7 +90,7 @@ pub use physical::{
     CommitStoreDiagnostic, CommittedGenerationBytes, DualCommitStore, DualProtectedCommitStore,
     ProtectedGenerationSlot, select_authoritative_slot,
 };
-pub use policy::{AllocationPolicy, NamespaceAuthority, RangeAuthority};
+pub use policy::AllocationPolicy;
 pub use schema::{SchemaMetadata, SchemaMetadataError};
 pub use session::{AllocationSession, AllocationSessionError, ValidatedAllocations};
 pub use slot::{

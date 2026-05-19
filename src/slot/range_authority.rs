@@ -362,12 +362,6 @@ impl MemoryManagerRangeAuthority {
         &self.authorities
     }
 
-    /// Clone the ordered non-overlapping authority records for diagnostics.
-    #[must_use]
-    pub fn to_records(&self) -> Vec<MemoryManagerAuthorityRecord> {
-        self.authorities.clone()
-    }
-
     /// Validate that authority records exactly and contiguously cover `target`.
     ///
     /// All records must be inside `target`, and together they must form a
@@ -607,16 +601,4 @@ fn validate_diagnostic_string(
         });
     }
     Ok(())
-}
-
-impl crate::policy::RangeAuthority for MemoryManagerRangeAuthority {
-    type Error = MemoryManagerRangeAuthorityError;
-
-    fn validate_slot(&self, slot: &AllocationSlotDescriptor) -> Result<(), Self::Error> {
-        let id = slot.memory_manager_id()?;
-        if self.authority_for_id(id)?.is_none() {
-            return Err(MemoryManagerRangeAuthorityError::UnclaimedId { id });
-        }
-        Ok(())
-    }
 }

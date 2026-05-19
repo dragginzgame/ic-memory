@@ -30,24 +30,3 @@ pub trait AllocationPolicy {
         slot: &AllocationSlotDescriptor,
     ) -> Result<(), Self::Error>;
 }
-
-///
-/// NamespaceAuthority
-///
-/// Policy-owned stable-key namespace ownership.
-pub trait NamespaceAuthority {
-    /// Return true when this authority owns `key`.
-    fn owns(&self, key: &StableKey) -> bool;
-}
-
-///
-/// RangeAuthority
-///
-/// Optional substrate-specific range authority validation.
-pub trait RangeAuthority {
-    /// Range validation error type.
-    type Error;
-
-    /// Validate one allocation slot against the authority.
-    fn validate_slot(&self, slot: &AllocationSlotDescriptor) -> Result<(), Self::Error>;
-}

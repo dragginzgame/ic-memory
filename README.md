@@ -119,7 +119,24 @@ Do not rawdog stable-memory IDs.
 ## Golden Path
 
 The native ledger anchor is an `ic-stable-structures::Cell` at `MemoryManager`
-ID 0, but the safe order is fixed for every integration:
+ID 0. `AllocationBootstrap` is the golden path for whichever layer owns that
+ledger store.
+
+Supported ownership modes:
+
+- Framework-owned bootstrap: Canic owns the allocation ledger bootstrap, and
+  IcyDB/application declarations flow through Canic.
+- Library-owned bootstrap: IcyDB may use `ic-memory` directly without Canic,
+  and applications using IcyDB rely on IcyDB's bootstrap.
+- Application-owned bootstrap: a standalone canister may use `ic-memory`
+  directly without Canic or IcyDB.
+
+Exactly one owner should bootstrap a given `ic-memory` ledger store. If
+multiple layers use `ic-memory` in the same canister, they must either compose
+declarations into one bootstrap owner or use distinct ledger stores and
+allocation domains.
+
+The safe order is fixed for every owner:
 
 ```text
 recover persisted allocation ledger
@@ -138,18 +155,22 @@ let declarations = DeclarationCollector::new()
     .with_memory_manager("app.orders.v1", 100, "orders")?
     .seal()?;
 
-let validated = validate_allocations(&ledger, declarations, &policy)?;
+let mut bootstrap = AllocationBootstrap::new(record.store_mut());
+let commit = bootstrap.initialize_validate_and_commit(
+    &CborLedgerCodec,
+    &genesis_ledger,
+    declarations,
+    &policy,
+    runtime_fingerprint,
+)?;
 
-let next_ledger = ledger.stage_validated_generation(&validated, runtime_fingerprint)?;
-commit_allocation_ledger(&next_ledger)?;
-
-let session = AllocationSession::new(storage, validated);
+let session = AllocationSession::new(storage, commit.validated);
 let orders = session.open(&StableKey::parse("app.orders.v1")?)?;
 ```
 
-The helper names for recovery, commit, `policy`, and `storage` are placeholders.
-Frameworks wire those to their own stable-memory persistence and collection
-construction. The ordering is the contract.
+The helper names for `record`, `genesis_ledger`, `policy`, and `storage` are
+placeholders. Frameworks and libraries wire those to their own stable-memory
+persistence and collection construction. The ordering is the contract.
 
 `AllocationLedger::new(...)` builds a structurally valid ledger DTO. Use
 `AllocationLedger::new_committed(...)` only when you are manually constructing
@@ -257,12 +278,14 @@ use ic_memory::MemoryManagerRangeAuthority;
 let framework_records = MemoryManagerRangeAuthority::new()
     .reserve_ids(10, 99, "framework.example")
     .expect("framework range")
-    .to_records();
+    .authorities()
+    .to_vec();
 
 let database_records = MemoryManagerRangeAuthority::new()
     .reserve_ids(120, 149, "database.framework")
     .expect("database range")
-    .to_records();
+    .authorities()
+    .to_vec();
 
 let authority = MemoryManagerRangeAuthority::from_records(
     framework_records

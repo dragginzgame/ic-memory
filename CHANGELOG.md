@@ -1,5 +1,31 @@
 # Changelog
 
+## 0.4.0
+
+### Breaking cleanup
+
+- Bumped from the already-published `0.3.0` to `0.4.0` because this release
+  removes public APIs that were redundant or unused.
+- Removed the unused `NamespaceAuthority` and `RangeAuthority` policy traits.
+  Direct `MemoryManagerRangeAuthority` methods are the supported range-policy
+  API.
+- Removed the redundant `AllocationSlotDescriptor::memory_manager_checked`
+  constructor alias. Use `AllocationSlotDescriptor::memory_manager`.
+- Removed the redundant `MemoryManagerRangeAuthority::to_records` export alias.
+  Use `authorities()` for the stable read-only diagnostic/export surface.
+
+### Documentation
+
+- Clarified that `AllocationBootstrap` is the golden path for whichever layer
+  owns an `ic-memory` ledger store, not specifically for Canic.
+- Documented framework-owned, library-owned, and application-owned bootstrap
+  modes, plus the rule that exactly one owner should bootstrap a given ledger
+  store.
+- Updated the README golden path to use
+  `AllocationBootstrap::initialize_validate_and_commit`.
+
+---
+
 ## 0.3.0
 
 ### Native IC substrate

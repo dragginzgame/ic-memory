@@ -20,25 +20,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn memory_manager_checked_accepts_usable_ids() {
-        assert!(AllocationSlotDescriptor::memory_manager_checked(MEMORY_MANAGER_MIN_ID).is_ok());
-        assert!(AllocationSlotDescriptor::memory_manager_checked(MEMORY_MANAGER_MAX_ID).is_ok());
-    }
-
-    #[test]
-    fn memory_manager_checked_rejects_sentinel() {
-        let err = AllocationSlotDescriptor::memory_manager_checked(MEMORY_MANAGER_INVALID_ID)
-            .expect_err("sentinel must fail");
-
-        assert_eq!(
-            err,
-            MemoryManagerSlotError::InvalidMemoryManagerId {
-                id: MEMORY_MANAGER_INVALID_ID
-            }
-        );
-    }
-
-    #[test]
     fn memory_manager_default_constructor_rejects_sentinel() {
         let err = AllocationSlotDescriptor::memory_manager(MEMORY_MANAGER_INVALID_ID)
             .expect_err("sentinel must fail");
@@ -655,7 +636,7 @@ mod tests {
             .expect("ic-memory range");
 
         assert_eq!(
-            authority.to_records(),
+            authority.authorities(),
             vec![
                 MemoryManagerAuthorityRecord {
                     range: memory_manager_governance_range(),
@@ -671,6 +652,7 @@ mod tests {
                     purpose: Some("application stable stores".to_string()),
                 },
             ]
+            .as_slice()
         );
     }
 }

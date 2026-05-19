@@ -14,11 +14,27 @@ use crate::{
 ///
 /// AllocationBootstrap
 ///
-/// Generic generation bootstrap pipeline.
+/// Golden-path allocation ledger bootstrap pipeline.
 ///
-/// This type owns allocation-governance sequencing only. Frameworks own when
-/// the pipeline runs, how the ledger store is backed by stable memory, and when
-/// endpoint dispatch is allowed.
+/// This type owns allocation-governance sequencing only: recover the persisted
+/// ledger, apply the owner layer's policy, validate current declarations
+/// against ledger history, stage and commit the next generation, and return
+/// [`ValidatedAllocations`] only after the commit succeeds.
+///
+/// `AllocationBootstrap` is for whichever layer owns a given `ic-memory`
+/// ledger store. That owner may be a framework such as Canic, a library such as
+/// IcyDB using `ic-memory` directly, or a standalone application canister. The
+/// ownership model is not a fixed `ic-memory -> Canic -> IcyDB -> application`
+/// chain.
+///
+/// Exactly one owner should bootstrap a given ledger store. If multiple layers
+/// use `ic-memory` in the same canister, they must either compose their
+/// declarations into one bootstrap owner or use distinct ledger stores and
+/// allocation domains.
+///
+/// The owner still decides when bootstrap runs, how the ledger store is backed
+/// by stable memory, and when endpoint dispatch or stable-memory handle opening
+/// is allowed.
 #[derive(Debug)]
 pub struct AllocationBootstrap<'store> {
     store: &'store mut LedgerCommitStore,
