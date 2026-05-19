@@ -1,3 +1,15 @@
+---
+
+<p align="center">
+  <strong style="font-size: 3em;">DO NOT USE</strong>
+</p>
+
+<p align="center">
+  <img src="images/under-construction.gif" alt="Animated warning banner" width="400">
+</p>
+
+---
+
 # ic-memory
 
 `ic-memory` helps Internet Computer canisters avoid opening the wrong stable
@@ -14,7 +26,7 @@ slot for a different store, `ic-memory` rejects the layout before stable-memory
 handles are opened.
 
 <p align="center">
-  <img src="images/balloon-meme.jpg" alt="Meme showing ic-memory keeping ic-stable-structures stable memory allocations from drifting" width="500">
+  <img src="images/balloon-meme.jpg" alt="Meme showing ic-memory keeping ic-stable-structures stable memory allocations from drifting" width="375">
 </p>
 
 ## Why Use It?
@@ -82,22 +94,25 @@ Declare every stable store with a stable name and a physical slot:
 
 ```rust
 use ic_memory::{
-    AllocationDeclaration, AllocationSlotDescriptor, DeclarationCollector, SchemaMetadata,
+    DeclarationCollector, IC_MEMORY_AUTHORITY_OWNER, MEMORY_MANAGER_MAX_ID,
+    MemoryManagerRangeAuthority, memory_manager_governance_range,
 };
 
-let mut declarations = DeclarationCollector::default();
+let ranges = MemoryManagerRangeAuthority::new()
+    .reserve(memory_manager_governance_range(), IC_MEMORY_AUTHORITY_OWNER)
+    .expect("ic-memory governance range")
+    .reserve_ids(10, 99, "framework")
+    .expect("framework range")
+    .allow_ids(100, MEMORY_MANAGER_MAX_ID, "applications")
+    .expect("application range");
 
-declarations.push(
-    AllocationDeclaration::new(
-        "app.orders.v1",
-        AllocationSlotDescriptor::memory_manager(100).expect("usable slot"),
-        Some("orders".to_string()),
-        SchemaMetadata::default(),
-    )
-    .expect("valid allocation declaration"),
-);
+assert_eq!(ranges.authorities().len(), 3);
 
-let snapshot = declarations.seal().expect("valid declaration snapshot");
+let snapshot = DeclarationCollector::new()
+    .with_memory_manager("app.orders.v1", 100, "orders")
+    .expect("valid allocation declaration")
+    .seal()
+    .expect("valid declaration snapshot");
 assert_eq!(snapshot.len(), 1);
 ```
 

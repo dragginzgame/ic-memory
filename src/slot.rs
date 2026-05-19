@@ -190,6 +190,15 @@ impl MemoryManagerIdRange {
         Ok(Self { start, end })
     }
 
+    /// Return the full usable `MemoryManager` ID range.
+    #[must_use]
+    pub const fn all_usable() -> Self {
+        Self {
+            start: MEMORY_MANAGER_MIN_ID,
+            end: MEMORY_MANAGER_MAX_ID,
+        }
+    }
+
     /// Return true when `id` is inside this inclusive range.
     #[must_use]
     pub const fn contains(&self, id: u8) -> bool {
@@ -314,6 +323,19 @@ impl MemoryManagerRangeAuthority {
         self.reserve_with_purpose(range, authority, None)
     }
 
+    /// Add a reserved authority range from inclusive ID bounds.
+    ///
+    /// Reserved is a policy authority mode. It does not allocate every ID in
+    /// the range and does not write to the allocation ledger.
+    pub fn reserve_ids(
+        self,
+        start: u8,
+        end: u8,
+        authority: impl Into<String>,
+    ) -> Result<Self, MemoryManagerRangeAuthorityError> {
+        self.reserve(MemoryManagerIdRange::new(start, end)?, authority)
+    }
+
     /// Add a reserved authority range with a diagnostic purpose.
     ///
     /// Reserved is a policy authority mode. It does not allocate every ID in
@@ -325,6 +347,20 @@ impl MemoryManagerRangeAuthority {
         purpose: Option<String>,
     ) -> Result<Self, MemoryManagerRangeAuthorityError> {
         self.insert(range, authority, MemoryManagerRangeMode::Reserved, purpose)
+    }
+
+    /// Add a reserved authority range from inclusive ID bounds with a diagnostic purpose.
+    ///
+    /// Reserved is a policy authority mode. It does not allocate every ID in
+    /// the range and does not write to the allocation ledger.
+    pub fn reserve_ids_with_purpose(
+        self,
+        start: u8,
+        end: u8,
+        authority: impl Into<String>,
+        purpose: Option<String>,
+    ) -> Result<Self, MemoryManagerRangeAuthorityError> {
+        self.reserve_with_purpose(MemoryManagerIdRange::new(start, end)?, authority, purpose)
     }
 
     /// Add an allowed authority range.
@@ -339,6 +375,19 @@ impl MemoryManagerRangeAuthority {
         self.allow_with_purpose(range, authority, None)
     }
 
+    /// Add an allowed authority range from inclusive ID bounds.
+    ///
+    /// Allowed is a policy authority mode. It does not allocate any ID in the
+    /// range and does not write to the allocation ledger.
+    pub fn allow_ids(
+        self,
+        start: u8,
+        end: u8,
+        authority: impl Into<String>,
+    ) -> Result<Self, MemoryManagerRangeAuthorityError> {
+        self.allow(MemoryManagerIdRange::new(start, end)?, authority)
+    }
+
     /// Add an allowed authority range with a diagnostic purpose.
     ///
     /// Allowed is a policy authority mode. It does not allocate any ID in the
@@ -350,6 +399,20 @@ impl MemoryManagerRangeAuthority {
         purpose: Option<String>,
     ) -> Result<Self, MemoryManagerRangeAuthorityError> {
         self.insert(range, authority, MemoryManagerRangeMode::Allowed, purpose)
+    }
+
+    /// Add an allowed authority range from inclusive ID bounds with a diagnostic purpose.
+    ///
+    /// Allowed is a policy authority mode. It does not allocate any ID in the
+    /// range and does not write to the allocation ledger.
+    pub fn allow_ids_with_purpose(
+        self,
+        start: u8,
+        end: u8,
+        authority: impl Into<String>,
+        purpose: Option<String>,
+    ) -> Result<Self, MemoryManagerRangeAuthorityError> {
+        self.allow_with_purpose(MemoryManagerIdRange::new(start, end)?, authority, purpose)
     }
 
     /// Validate that `slot` belongs to `expected_authority`.
@@ -559,6 +622,9 @@ impl MemoryManagerRangeAuthority {
 /// Invalid `MemoryManager` range authority policy.
 #[derive(Clone, Debug, Eq, thiserror::Error, PartialEq)]
 pub enum MemoryManagerRangeAuthorityError {
+    /// Authority range bounds are invalid.
+    #[error(transparent)]
+    Range(#[from] MemoryManagerRangeError),
     /// Slot descriptor is not a usable `MemoryManager` ID slot.
     #[error("{0}")]
     Slot(#[from] MemoryManagerSlotError),
@@ -785,6 +851,15 @@ mod tests {
     }
 
     #[test]
+    fn memory_manager_range_all_usable_matches_usable_bounds() {
+        assert_eq!(
+            MemoryManagerIdRange::all_usable(),
+            MemoryManagerIdRange::new(MEMORY_MANAGER_MIN_ID, MEMORY_MANAGER_MAX_ID)
+                .expect("usable full range")
+        );
+    }
+
+    #[test]
     fn memory_manager_governance_range_is_owned_by_ic_memory() {
         let range = memory_manager_governance_range();
 
@@ -823,15 +898,9 @@ mod tests {
         let authority = MemoryManagerRangeAuthority::new()
             .reserve(memory_manager_governance_range(), IC_MEMORY_AUTHORITY_OWNER)
             .expect("ic-memory range")
-            .reserve(
-                MemoryManagerIdRange::new(10, 99).expect("framework range"),
-                "framework",
-            )
+            .reserve_ids(10, 99, "framework")
             .expect("framework range")
-            .allow(
-                MemoryManagerIdRange::new(100, MEMORY_MANAGER_MAX_ID).expect("app range"),
-                "applications",
-            )
+            .allow_ids(100, MEMORY_MANAGER_MAX_ID, "applications")
             .expect("app range");
 
         assert_eq!(authority.authorities().len(), 3);
@@ -845,6 +914,22 @@ mod tests {
         );
         assert_eq!(authority.authorities()[1].range.start(), 10);
         assert_eq!(authority.authorities()[2].range.start(), 100);
+    }
+
+    #[test]
+    fn memory_manager_range_authority_id_bound_builders_reject_invalid_ranges() {
+        let err = MemoryManagerRangeAuthority::new()
+            .allow_ids(100, MEMORY_MANAGER_INVALID_ID, "applications")
+            .expect_err("sentinel must fail");
+
+        assert_eq!(
+            err,
+            MemoryManagerRangeAuthorityError::Range(
+                MemoryManagerRangeError::InvalidMemoryManagerId {
+                    id: MEMORY_MANAGER_INVALID_ID
+                }
+            )
+        );
     }
 
     #[test]
