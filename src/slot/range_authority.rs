@@ -116,6 +116,25 @@ pub struct MemoryManagerAuthorityRecord {
     pub purpose: Option<String>,
 }
 
+impl MemoryManagerAuthorityRecord {
+    /// Build a diagnostic authority record after validating printable metadata.
+    pub fn new(
+        range: MemoryManagerIdRange,
+        authority: impl Into<String>,
+        mode: MemoryManagerRangeMode,
+        purpose: Option<String>,
+    ) -> Result<Self, MemoryManagerRangeAuthorityError> {
+        let record = Self {
+            range,
+            authority: authority.into(),
+            mode,
+            purpose,
+        };
+        validate_authority_record(&record)?;
+        Ok(record)
+    }
+}
+
 ///
 /// MemoryManagerRangeAuthority
 ///
@@ -426,10 +445,7 @@ impl MemoryManagerRangeAuthority {
         mut self,
         record: MemoryManagerAuthorityRecord,
     ) -> Result<Self, MemoryManagerRangeAuthorityError> {
-        validate_diagnostic_string("authority", &record.authority)?;
-        if let Some(purpose) = &record.purpose {
-            validate_diagnostic_string("purpose", purpose)?;
-        }
+        validate_authority_record(&record)?;
 
         for existing in &self.authorities {
             if ranges_overlap(existing.range, record.range) {
@@ -456,6 +472,16 @@ impl MemoryManagerRangeAuthority {
         };
         Ok(record)
     }
+}
+
+fn validate_authority_record(
+    record: &MemoryManagerAuthorityRecord,
+) -> Result<(), MemoryManagerRangeAuthorityError> {
+    validate_diagnostic_string("authority", &record.authority)?;
+    if let Some(purpose) = &record.purpose {
+        validate_diagnostic_string("purpose", purpose)?;
+    }
+    Ok(())
 }
 
 ///

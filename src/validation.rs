@@ -94,7 +94,7 @@ fn map_validation_claim_conflict<P>(
 ) -> AllocationValidationError<P> {
     match conflict {
         ClaimConflict::StableKeyMoved { record_index } => {
-            let record = &ledger.allocation_history.records[record_index];
+            let record = &ledger.allocation_history().records()[record_index];
             AllocationValidationError::StableKeySlotConflict {
                 stable_key: declaration.stable_key.clone(),
                 historical_slot: Box::new(record.slot.clone()),
@@ -102,7 +102,7 @@ fn map_validation_claim_conflict<P>(
             }
         }
         ClaimConflict::SlotReused { record_index } => {
-            let record = &ledger.allocation_history.records[record_index];
+            let record = &ledger.allocation_history().records()[record_index];
             AllocationValidationError::SlotStableKeyConflict {
                 slot: Box::new(declaration.slot.clone()),
                 historical_key: record.stable_key.clone(),
@@ -110,7 +110,7 @@ fn map_validation_claim_conflict<P>(
             }
         }
         ClaimConflict::Tombstoned { record_index } => {
-            let record = &ledger.allocation_history.records[record_index];
+            let record = &ledger.allocation_history().records()[record_index];
             AllocationValidationError::RetiredAllocation {
                 stable_key: declaration.stable_key.clone(),
                 slot: Box::new(record.slot.clone()),
@@ -170,10 +170,7 @@ mod tests {
             ledger_schema_version: 1,
             physical_format_id: 1,
             current_generation: 7,
-            allocation_history: AllocationHistory {
-                records,
-                generations: Vec::new(),
-            },
+            allocation_history: AllocationHistory::from_parts(records, Vec::new()),
         }
     }
 

@@ -1,13 +1,19 @@
 # Changelog
 
-## 0.1.0
+## 0.2.0
 
 ### Breaking / API hardening
 
+- Bumped from the already-published `0.1.0` to `0.2.0` because this release
+  tightens public DTO construction and hides fields that were public in
+  `0.1.0`.
 - Made invariant-bearing durable DTO fields private where feasible, including
-  allocation declarations, ledger records, and slot descriptors.
+  allocation declarations, ledger histories, ledger records, physical commit
+  slots, and slot descriptors.
 - Added checked constructors and accessors for public allocation DTOs so callers
   do not need struct literals for normal use.
+- Added `AllocationLedger::new_committed` for strict committed-ledger
+  construction.
 - Removed the unused public generation DTO API from the crate surface.
 - Gated corrupt-write simulation helpers behind `#[cfg(test)]`; production code
   can no longer call them.
@@ -35,7 +41,7 @@
 
 - Updated README, crate docs, rustdoc, and SAFETY docs for the current checked
   constructor/accessor API.
-- Added a compiling golden-path example showing recovery, declaration,
+- Added a concise golden-path sketch showing recovery, declaration,
   validation, commit, and only-then-open ordering.
 - Clarified stable-key permanence, reservation behavior, tombstones, checksum
   limits, non-goals, and the boundary between generic `ic-memory`

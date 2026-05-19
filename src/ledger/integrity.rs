@@ -8,7 +8,7 @@ impl AllocationLedger {
         let mut stable_keys = BTreeSet::new();
         let mut slots = BTreeSet::new();
 
-        for record in &self.allocation_history.records {
+        for record in self.allocation_history.records() {
             if !stable_keys.insert(record.stable_key.clone()) {
                 return Err(LedgerIntegrityError::DuplicateStableKey {
                     stable_key: record.stable_key.clone(),
@@ -23,7 +23,7 @@ impl AllocationLedger {
         }
 
         let mut generations = BTreeSet::new();
-        for generation in &self.allocation_history.generations {
+        for generation in self.allocation_history.generations() {
             if !generations.insert(generation.generation) {
                 return Err(LedgerIntegrityError::DuplicateGeneration {
                     generation: generation.generation,
@@ -59,7 +59,7 @@ impl AllocationLedger {
         if self.current_generation != 0
             && !self
                 .allocation_history
-                .generations
+                .generations()
                 .iter()
                 .any(|record| record.generation == self.current_generation)
         {
@@ -70,7 +70,7 @@ impl AllocationLedger {
 
         let mut previous = None;
         let mut known_generations = BTreeSet::new();
-        for generation in &self.allocation_history.generations {
+        for generation in self.allocation_history.generations() {
             validate_runtime_fingerprint(generation.runtime_fingerprint.as_deref())
                 .map_err(LedgerIntegrityError::DiagnosticMetadata)?;
 
@@ -95,7 +95,7 @@ impl AllocationLedger {
             previous = Some(generation.generation);
         }
 
-        for record in &self.allocation_history.records {
+        for record in self.allocation_history.records() {
             validate_known_record_generation(
                 &known_generations,
                 &record.stable_key,

@@ -47,15 +47,15 @@ impl DiagnosticExport {
             current_generation: ledger.current_generation,
             ledger_anchor,
             records: ledger
-                .allocation_history
-                .records
+                .allocation_history()
+                .records()
                 .iter()
                 .cloned()
                 .map(|allocation| DiagnosticRecord { allocation })
                 .collect(),
             generations: ledger
-                .allocation_history
-                .generations
+                .allocation_history()
+                .generations()
                 .iter()
                 .cloned()
                 .map(|generation| DiagnosticGeneration { generation })
@@ -108,20 +108,20 @@ mod tests {
             ledger_schema_version: 1,
             physical_format_id: 1,
             current_generation: 3,
-            allocation_history: AllocationHistory {
-                records: vec![AllocationRecord::from_declaration(
+            allocation_history: AllocationHistory::from_parts(
+                vec![AllocationRecord::from_declaration(
                     3,
                     declaration,
                     AllocationState::Active,
                 )],
-                generations: vec![GenerationRecord {
+                vec![GenerationRecord {
                     generation: 3,
                     parent_generation: Some(2),
                     runtime_fingerprint: Some("wasm:abc123".to_string()),
                     declaration_count: 1,
                     committed_at: None,
                 }],
-            },
+            ),
         };
 
         let export = DiagnosticExport::from_ledger(

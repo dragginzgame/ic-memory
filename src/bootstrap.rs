@@ -408,8 +408,8 @@ mod tests {
 
         assert_eq!(commit.ledger.current_generation, 1);
         assert_eq!(commit.validated.generation(), 1);
-        assert_eq!(commit.ledger.allocation_history.records.len(), 1);
-        assert_eq!(commit.ledger.allocation_history.generations.len(), 1);
+        assert_eq!(commit.ledger.allocation_history.records().len(), 1);
+        assert_eq!(commit.ledger.allocation_history.generations().len(), 1);
     }
 
     #[test]
@@ -424,7 +424,7 @@ mod tests {
 
         assert_eq!(commit.ledger.current_generation, 1);
         assert_eq!(commit.validated.generation(), 1);
-        assert_eq!(commit.ledger.allocation_history.records.len(), 1);
+        assert_eq!(commit.ledger.allocation_history.records().len(), 1);
     }
 
     #[test]
@@ -455,9 +455,9 @@ mod tests {
             .expect("reservation commit");
 
         assert_eq!(committed.current_generation, 1);
-        assert_eq!(committed.allocation_history.records.len(), 1);
+        assert_eq!(committed.allocation_history.records().len(), 1);
         assert_eq!(
-            committed.allocation_history.records[0].state,
+            committed.allocation_history.records()[0].state(),
             AllocationState::Reserved
         );
     }
@@ -474,7 +474,7 @@ mod tests {
 
         assert_eq!(committed.current_generation, 1);
         assert_eq!(
-            committed.allocation_history.records[0].state,
+            committed.allocation_history.records()[0].state(),
             AllocationState::Reserved
         );
     }
@@ -493,7 +493,7 @@ mod tests {
 
         assert!(matches!(err, BootstrapReservationError::Policy(_)));
         assert_eq!(recovered.current_generation, 0);
-        assert!(recovered.allocation_history.records.is_empty());
+        assert!(recovered.allocation_history.records().is_empty());
     }
 
     #[test]
@@ -517,7 +517,7 @@ mod tests {
             BootstrapError::Validation(AllocationValidationError::Policy("active slot rejected"))
         );
         assert_eq!(
-            recovered.allocation_history.records[0].state,
+            recovered.allocation_history.records()[0].state(),
             AllocationState::Reserved
         );
     }
@@ -543,11 +543,11 @@ mod tests {
 
         assert_eq!(committed.current_generation, 2);
         assert_eq!(
-            committed.allocation_history.records[0].state,
+            committed.allocation_history.records()[0].state(),
             AllocationState::Retired
         );
         assert_eq!(
-            committed.allocation_history.records[0].retired_generation,
+            committed.allocation_history.records()[0].retired_generation(),
             Some(2)
         );
     }
@@ -570,6 +570,6 @@ mod tests {
 
         assert!(matches!(err, BootstrapRetirementError::Retirement(_)));
         assert_eq!(recovered.current_generation, 0);
-        assert!(recovered.allocation_history.records.is_empty());
+        assert!(recovered.allocation_history.records().is_empty());
     }
 }

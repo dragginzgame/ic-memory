@@ -118,102 +118,33 @@ commit the new generation
 only then open stable-memory handles
 ```
 
-Minimal compiling sketch:
+Minimal sketch:
 
-```rust
-use ic_memory::{
-    AllocationHistory, AllocationLedger, AllocationPolicy, CURRENT_LEDGER_SCHEMA_VERSION,
-    CURRENT_PHYSICAL_FORMAT_ID, DeclarationCollector, LedgerCodec, LedgerCommitStore, StableKey,
-    validate_allocations,
-};
-use std::cell::RefCell;
+```ignore
+let ledger = recover_allocation_ledger()?;
 
-#[derive(Default)]
-struct DemoCodec {
-    ledgers: RefCell<Vec<AllocationLedger>>,
-}
+let declarations = DeclarationCollector::new()
+    .with_memory_manager("app.orders.v1", 100, "orders")?
+    .seal()?;
 
-impl LedgerCodec for DemoCodec {
-    type Error = &'static str;
+let validated = validate_allocations(&ledger, declarations, &policy)?;
 
-    fn encode(&self, ledger: &AllocationLedger) -> Result<Vec<u8>, Self::Error> {
-        let mut ledgers = self.ledgers.borrow_mut();
-        let index = u64::try_from(ledgers.len()).map_err(|_| "too many ledgers")?;
-        ledgers.push(ledger.clone());
-        Ok(index.to_le_bytes().to_vec())
-    }
+let next_ledger = ledger.stage_validated_generation(&validated, runtime_fingerprint)?;
+commit_allocation_ledger(&next_ledger)?;
 
-    fn decode(&self, bytes: &[u8]) -> Result<AllocationLedger, Self::Error> {
-        let bytes: [u8; 8] = bytes.try_into().map_err(|_| "invalid ledger index")?;
-        let index =
-            usize::try_from(u64::from_le_bytes(bytes)).map_err(|_| "invalid ledger index")?;
-        self.ledgers
-            .borrow()
-            .get(index)
-            .cloned()
-            .ok_or("unknown ledger index")
-    }
-}
-
-struct AllowAllPolicy;
-
-impl AllocationPolicy for AllowAllPolicy {
-    type Error = &'static str;
-
-    fn validate_key(&self, _key: &StableKey) -> Result<(), Self::Error> {
-        Ok(())
-    }
-
-    fn validate_slot(
-        &self,
-        _key: &StableKey,
-        _slot: &ic_memory::AllocationSlotDescriptor,
-    ) -> Result<(), Self::Error> {
-        Ok(())
-    }
-
-    fn validate_reserved_slot(
-        &self,
-        _key: &StableKey,
-        _slot: &ic_memory::AllocationSlotDescriptor,
-    ) -> Result<(), Self::Error> {
-        Ok(())
-    }
-}
-
-let codec = DemoCodec::default();
-let mut store = LedgerCommitStore::default();
-let genesis = AllocationLedger::new(
-    CURRENT_LEDGER_SCHEMA_VERSION,
-    CURRENT_PHYSICAL_FORMAT_ID,
-    0,
-    AllocationHistory::default(),
-)
-.expect("valid genesis ledger");
-
-let ledger = store
-    .recover_or_initialize(&codec, &genesis)
-    .expect("recover or initialize allocation ledger");
-
-let snapshot = DeclarationCollector::new()
-    .with_memory_manager("app.orders.v1", 100, "orders")
-    .expect("valid allocation declaration")
-    .seal()
-    .expect("valid declaration snapshot");
-
-let validated =
-    validate_allocations(&ledger, snapshot, &AllowAllPolicy).expect("layout is safe");
-
-let next_ledger = ledger
-    .stage_validated_generation(&validated, None)
-    .expect("stage next allocation generation");
-
-let _committed = store
-    .commit(&next_ledger, &codec)
-    .expect("commit allocation ledger before opening stable memory");
-
-// Only now should the integration open stable-memory handles for `validated`.
+let session = AllocationSession::new(storage, validated);
+let orders = session.open(&StableKey::parse("app.orders.v1")?)?;
 ```
+
+The helper names for recovery, commit, `policy`, and `storage` are placeholders.
+Frameworks wire those to their own stable-memory persistence and storage
+substrate. The ordering is the contract.
+
+`AllocationLedger::new(...)` builds a structurally valid ledger DTO. Use
+`AllocationLedger::new_committed(...)` only when you are manually constructing
+committed ledger state and want the stricter committed-generation checks.
+Normal integrations should usually recover through the commit/recovery flow
+instead of hand-assembling committed state.
 
 ## Basic Declaration
 

@@ -1,6 +1,8 @@
 use super::{AllocationRetirementError, LedgerCompatibilityError, LedgerIntegrityError};
 use crate::{
-    declaration::AllocationDeclaration, key::StableKey, schema::SchemaMetadata,
+    declaration::{AllocationDeclaration, DeclarationSnapshotError, validate_runtime_fingerprint},
+    key::StableKey,
+    schema::{SchemaMetadata, SchemaMetadataError},
     slot::AllocationSlotDescriptor,
 };
 use serde::{Deserialize, Serialize};
@@ -18,8 +20,10 @@ pub const CURRENT_PHYSICAL_FORMAT_ID: u32 = 1;
 ///
 /// Decoded ledgers are input from persistent storage and should be treated as
 /// untrusted until compatibility and integrity validation pass. Public
-/// construction goes through [`AllocationLedger::new`], which validates the
-/// invariant-bearing history before returning a value.
+/// construction goes through [`AllocationLedger::new`], which validates
+/// structural history invariants before returning a value. Use
+/// [`AllocationLedger::new_committed`] when the value should also satisfy the
+/// strict committed-generation chain required by recovery and commit.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct AllocationLedger {
     /// Ledger schema version.
@@ -43,9 +47,9 @@ pub struct AllocationLedger {
 #[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
 pub struct AllocationHistory {
     /// Stable-key allocation records.
-    pub records: Vec<AllocationRecord>,
+    pub(crate) records: Vec<AllocationRecord>,
     /// Committed generation records.
-    pub generations: Vec<GenerationRecord>,
+    pub(crate) generations: Vec<GenerationRecord>,
 }
 
 ///
@@ -127,9 +131,9 @@ pub enum AllocationState {
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct SchemaMetadataRecord {
     /// Generation that declared this schema metadata.
-    pub generation: u64,
+    pub(crate) generation: u64,
     /// Schema metadata declared by that generation.
-    pub schema: SchemaMetadata,
+    pub(crate) schema: SchemaMetadata,
 }
 
 ///
@@ -139,15 +143,15 @@ pub struct SchemaMetadataRecord {
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct GenerationRecord {
     /// Committed generation number.
-    pub generation: u64,
+    pub(crate) generation: u64,
     /// Parent generation, if recorded.
-    pub parent_generation: Option<u64>,
+    pub(crate) parent_generation: Option<u64>,
     /// Optional binary/runtime fingerprint.
-    pub runtime_fingerprint: Option<String>,
+    pub(crate) runtime_fingerprint: Option<String>,
     /// Number of declarations in the generation.
-    pub declaration_count: u32,
+    pub(crate) declaration_count: u32,
     /// Optional commit timestamp supplied by the integration layer.
-    pub committed_at: Option<u64>,
+    pub(crate) committed_at: Option<u64>,
 }
 
 ///
@@ -213,6 +217,124 @@ impl Default for LedgerCompatibility {
     }
 }
 
+impl AllocationHistory {
+    #[cfg(test)]
+    pub(crate) const fn from_parts(
+        records: Vec<AllocationRecord>,
+        generations: Vec<GenerationRecord>,
+    ) -> Self {
+        Self {
+            records,
+            generations,
+        }
+    }
+
+    /// Borrow stable-key allocation records in durable order.
+    #[must_use]
+    pub fn records(&self) -> &[AllocationRecord] {
+        &self.records
+    }
+
+    /// Borrow committed generation records in durable order.
+    #[must_use]
+    pub fn generations(&self) -> &[GenerationRecord] {
+        &self.generations
+    }
+
+    /// Return true when the history has no allocation records and no generation records.
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.records.is_empty() && self.generations.is_empty()
+    }
+
+    pub(crate) const fn records_mut(&mut self) -> &mut Vec<AllocationRecord> {
+        &mut self.records
+    }
+
+    #[cfg(test)]
+    pub(crate) const fn generations_mut(&mut self) -> &mut Vec<GenerationRecord> {
+        &mut self.generations
+    }
+
+    pub(crate) fn push_record(&mut self, record: AllocationRecord) {
+        self.records.push(record);
+    }
+
+    pub(crate) fn push_generation(&mut self, generation: GenerationRecord) {
+        self.generations.push(generation);
+    }
+}
+
+impl SchemaMetadataRecord {
+    /// Build a schema metadata history record after validating the metadata.
+    pub fn new(generation: u64, schema: SchemaMetadata) -> Result<Self, SchemaMetadataError> {
+        schema.validate()?;
+        Ok(Self { generation, schema })
+    }
+
+    /// Return the generation that declared this schema metadata.
+    #[must_use]
+    pub const fn generation(&self) -> u64 {
+        self.generation
+    }
+
+    /// Return the schema metadata declared by that generation.
+    #[must_use]
+    pub const fn schema(&self) -> &SchemaMetadata {
+        &self.schema
+    }
+}
+
+impl GenerationRecord {
+    /// Build a committed generation diagnostic record after validating metadata.
+    pub fn new(
+        generation: u64,
+        parent_generation: Option<u64>,
+        runtime_fingerprint: Option<String>,
+        declaration_count: u32,
+        committed_at: Option<u64>,
+    ) -> Result<Self, DeclarationSnapshotError> {
+        validate_runtime_fingerprint(runtime_fingerprint.as_deref())?;
+        Ok(Self {
+            generation,
+            parent_generation,
+            runtime_fingerprint,
+            declaration_count,
+            committed_at,
+        })
+    }
+
+    /// Return the committed generation number.
+    #[must_use]
+    pub const fn generation(&self) -> u64 {
+        self.generation
+    }
+
+    /// Return the parent generation, if recorded.
+    #[must_use]
+    pub const fn parent_generation(&self) -> Option<u64> {
+        self.parent_generation
+    }
+
+    /// Borrow the optional binary/runtime fingerprint.
+    #[must_use]
+    pub fn runtime_fingerprint(&self) -> Option<&str> {
+        self.runtime_fingerprint.as_deref()
+    }
+
+    /// Return the number of declarations in the generation.
+    #[must_use]
+    pub const fn declaration_count(&self) -> u32 {
+        self.declaration_count
+    }
+
+    /// Return the optional commit timestamp supplied by the integration layer.
+    #[must_use]
+    pub const fn committed_at(&self) -> Option<u64> {
+        self.committed_at
+    }
+}
+
 impl AllocationRecord {
     /// Create a new allocation record from a declaration.
     #[must_use]
@@ -228,10 +350,10 @@ impl AllocationRecord {
             first_generation: generation,
             last_seen_generation: generation,
             retired_generation: None,
-            schema_history: vec![SchemaMetadataRecord {
-                generation,
-                schema: declaration.schema,
-            }],
+            schema_history: vec![
+                SchemaMetadataRecord::new(generation, declaration.schema)
+                    .expect("declarations validate schema metadata"),
+            ],
         }
     }
 
@@ -295,10 +417,10 @@ impl AllocationRecord {
 
         let latest_schema = self.schema_history.last().map(|record| &record.schema);
         if latest_schema != Some(&declaration.schema) {
-            self.schema_history.push(SchemaMetadataRecord {
-                generation,
-                schema: declaration.schema.clone(),
-            });
+            self.schema_history.push(
+                SchemaMetadataRecord::new(generation, declaration.schema.clone())
+                    .expect("declarations validate schema metadata"),
+            );
         }
     }
 
@@ -311,10 +433,10 @@ impl AllocationRecord {
 
         let latest_schema = self.schema_history.last().map(|record| &record.schema);
         if latest_schema != Some(&reservation.schema) {
-            self.schema_history.push(SchemaMetadataRecord {
-                generation,
-                schema: reservation.schema.clone(),
-            });
+            self.schema_history.push(
+                SchemaMetadataRecord::new(generation, reservation.schema.clone())
+                    .expect("reservations validate schema metadata"),
+            );
         }
     }
 }
@@ -322,9 +444,11 @@ impl AllocationRecord {
 impl AllocationLedger {
     /// Build a ledger DTO and validate structural ledger invariants.
     ///
-    /// This constructor is intended for recovered durable records and tests. It
-    /// validates committed allocation history, including schema metadata
-    /// records, but it does not open storage or allocate slots.
+    /// This constructor validates duplicate records, lifecycle state, record
+    /// generation bounds, and schema metadata records. It does not require a
+    /// complete committed-generation chain. Use
+    /// [`AllocationLedger::new_committed`] when constructing an authoritative
+    /// committed ledger DTO.
     pub fn new(
         ledger_schema_version: u32,
         physical_format_id: u32,
@@ -338,6 +462,27 @@ impl AllocationLedger {
             allocation_history,
         };
         ledger.validate_integrity()?;
+        Ok(ledger)
+    }
+
+    /// Build a committed ledger DTO and validate strict committed-history invariants.
+    ///
+    /// This constructor runs the same committed-integrity checks used by
+    /// recovery and commit. Use it when the value should be treated as an
+    /// authoritative committed ledger, not merely as a structurally valid DTO.
+    pub fn new_committed(
+        ledger_schema_version: u32,
+        physical_format_id: u32,
+        current_generation: u64,
+        allocation_history: AllocationHistory,
+    ) -> Result<Self, LedgerIntegrityError> {
+        let ledger = Self::new(
+            ledger_schema_version,
+            physical_format_id,
+            current_generation,
+            allocation_history,
+        )?;
+        ledger.validate_committed_integrity()?;
         Ok(ledger)
     }
 

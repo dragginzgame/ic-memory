@@ -580,6 +580,36 @@ mod tests {
     }
 
     #[test]
+    fn memory_manager_authority_record_constructor_validates_metadata() {
+        let record = MemoryManagerAuthorityRecord::new(
+            MemoryManagerIdRange::new(10, 99).expect("framework range"),
+            "framework",
+            MemoryManagerRangeMode::Reserved,
+            Some("framework-owned stores".to_string()),
+        )
+        .expect("authority record");
+
+        assert_eq!(record.authority, "framework");
+        assert_eq!(record.purpose.as_deref(), Some("framework-owned stores"));
+
+        let err = MemoryManagerAuthorityRecord::new(
+            MemoryManagerIdRange::new(10, 99).expect("framework range"),
+            "",
+            MemoryManagerRangeMode::Reserved,
+            None,
+        )
+        .expect_err("empty authority must fail");
+
+        assert_eq!(
+            err,
+            MemoryManagerRangeAuthorityError::InvalidDiagnosticString {
+                field: "authority",
+                reason: "must not be empty",
+            }
+        );
+    }
+
+    #[test]
     fn memory_manager_range_authority_from_records_rejects_overlap() {
         let err = MemoryManagerRangeAuthority::from_records(vec![
             MemoryManagerAuthorityRecord {

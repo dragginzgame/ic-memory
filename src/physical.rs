@@ -8,6 +8,10 @@ const FNV_PRIME: u64 = 0x0000_0100_0000_01b3;
 /// ProtectedGenerationSlot
 ///
 /// One physical generation slot that can participate in protected recovery.
+///
+/// This is an advanced low-level API for custom persistence/recovery
+/// integrations. Most callers should use the ledger commit/recovery flow
+/// instead of implementing physical slot recovery directly.
 pub trait ProtectedGenerationSlot: Eq {
     /// Generation encoded by this slot.
     fn generation(&self) -> u64;
@@ -20,6 +24,10 @@ pub trait ProtectedGenerationSlot: Eq {
 /// DualProtectedCommitStore
 ///
 /// Physical store with two protected generation slots.
+///
+/// This is an advanced low-level API for custom persistence/recovery
+/// integrations. Normal allocation flows recover and commit ledgers through the
+/// higher-level ledger commit APIs.
 pub trait DualProtectedCommitStore {
     /// Protected slot record type.
     type Slot: ProtectedGenerationSlot;
@@ -88,6 +96,10 @@ pub struct AuthoritativeSlot<'slot, T> {
 }
 
 /// Select the highest-generation valid physical slot.
+///
+/// This is an advanced recovery helper for custom dual-slot persistence
+/// integrations. It only selects among supplied protected slots; it does not
+/// decode or validate the allocation ledger payload.
 pub fn select_authoritative_slot<'slot, T: ProtectedGenerationSlot>(
     slot0: Option<&'slot T>,
     slot1: Option<&'slot T>,
@@ -127,16 +139,20 @@ pub fn select_authoritative_slot<'slot, T: ProtectedGenerationSlot>(
 /// CommittedGenerationBytes
 ///
 /// Physically committed ledger generation payload protected by a checksum.
+///
+/// This is an advanced low-level DTO for custom persistence/recovery
+/// integrations. Its recovered bytes are untrusted until marker/checksum
+/// validation and ledger decoding/integrity validation have both succeeded.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct CommittedGenerationBytes {
     /// Generation number represented by this payload.
-    pub generation: u64,
+    pub(crate) generation: u64,
     /// Physical commit marker. Readers reject records with an invalid marker.
-    pub commit_marker: u64,
+    pub(crate) commit_marker: u64,
     /// Checksum over the generation, marker, and payload bytes.
-    pub checksum: u64,
+    pub(crate) checksum: u64,
     /// Encoded ledger generation payload.
-    pub payload: Vec<u8>,
+    pub(crate) payload: Vec<u8>,
 }
 
 impl CommittedGenerationBytes {
@@ -151,6 +167,37 @@ impl CommittedGenerationBytes {
         };
         record.checksum = generation_checksum(&record);
         record
+    }
+
+    /// Return the generation number represented by this payload.
+    #[must_use]
+    pub const fn generation(&self) -> u64 {
+        self.generation
+    }
+
+    /// Return the physical commit marker.
+    ///
+    /// This is diagnostic data from a recovered record. Callers should use
+    /// [`CommittedGenerationBytes::validates`] before treating the record as
+    /// authoritative.
+    #[must_use]
+    pub const fn commit_marker(&self) -> u64 {
+        self.commit_marker
+    }
+
+    /// Return the checksum over the generation, marker, and payload bytes.
+    ///
+    /// The checksum is non-cryptographic and detects torn writes or accidental
+    /// corruption only.
+    #[must_use]
+    pub const fn checksum(&self) -> u64 {
+        self.checksum
+    }
+
+    /// Borrow the encoded ledger generation payload.
+    #[must_use]
+    pub fn payload(&self) -> &[u8] {
+        &self.payload
     }
 
     /// Return whether the marker and checksum validate.
@@ -175,6 +222,11 @@ impl ProtectedGenerationSlot for CommittedGenerationBytes {
 ///
 /// Dual-slot protected commit protocol for encoded ledger generations.
 ///
+/// This is an advanced low-level API for custom persistence/recovery
+/// integrations. Most applications should recover, validate, and commit through
+/// the allocation ledger flow rather than manipulating encoded physical commit
+/// slots directly.
+///
 /// Writers stage a complete generation record into the inactive slot. Readers
 /// recover by selecting the highest-generation valid slot. A torn or partial
 /// write cannot become authoritative unless its marker and checksum validate.
@@ -185,9 +237,9 @@ impl ProtectedGenerationSlot for CommittedGenerationBytes {
 #[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
 pub struct DualCommitStore {
     /// First physical commit slot.
-    pub slot0: Option<CommittedGenerationBytes>,
+    pub(crate) slot0: Option<CommittedGenerationBytes>,
     /// Second physical commit slot.
-    pub slot1: Option<CommittedGenerationBytes>,
+    pub(crate) slot1: Option<CommittedGenerationBytes>,
 }
 
 impl DualCommitStore {
@@ -195,6 +247,24 @@ impl DualCommitStore {
     #[must_use]
     pub const fn is_uninitialized(&self) -> bool {
         self.slot0.is_none() && self.slot1.is_none()
+    }
+
+    /// Borrow the first physical commit slot.
+    ///
+    /// Slot records are untrusted recovered state until recovery selects an
+    /// authoritative generation.
+    #[must_use]
+    pub const fn slot0(&self) -> Option<&CommittedGenerationBytes> {
+        self.slot0.as_ref()
+    }
+
+    /// Borrow the second physical commit slot.
+    ///
+    /// Slot records are untrusted recovered state until recovery selects an
+    /// authoritative generation.
+    #[must_use]
+    pub const fn slot1(&self) -> Option<&CommittedGenerationBytes> {
+        self.slot1.as_ref()
     }
 
     /// Return the highest-generation valid committed record.
@@ -436,6 +506,20 @@ mod tests {
 
         generation.checksum = generation.checksum.wrapping_add(1);
         assert!(!generation.validates());
+    }
+
+    #[test]
+    fn physical_commit_accessors_expose_read_only_state() {
+        let mut store = DualCommitStore::default();
+        store.commit_payload(payload(1)).expect("first commit");
+
+        let slot = store.slot0().expect("first slot");
+
+        assert_eq!(slot.generation(), 0);
+        assert_eq!(slot.payload(), payload(1).as_slice());
+        assert_eq!(slot.commit_marker(), COMMIT_MARKER);
+        assert_eq!(slot.checksum(), generation_checksum(slot));
+        assert!(store.slot1().is_none());
     }
 
     #[test]

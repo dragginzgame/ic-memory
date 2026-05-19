@@ -156,7 +156,7 @@ mod tests {
                 .as_str(),
             "app.users.primary.v1"
         );
-        assert!(StableKey::parse("canic.core.auth_state.v12").is_ok());
+        assert!(StableKey::parse("framework.core.auth_state.v12").is_ok());
     }
 
     #[test]
