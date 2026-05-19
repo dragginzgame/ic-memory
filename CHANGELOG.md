@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.4.1
+
+### Ledger hardening
+
+- Split allocation staging behavior into `ledger::stage`, keeping the public
+  staging API stable while reducing the size of `ledger::mod`.
+- Replaced saturating generation diagnostic counts with explicit fail-closed
+  errors when declaration or reservation counts exceed the durable `u32` limit.
+- Documented that empty validated and reservation generations are intentional
+  generation boundaries.
+- Documented and tested reserved-record retirement semantics.
+- Documented the expected allocation-ledger size bounds behind the current
+  clone-on-stage implementation.
+
+---
+
 ## 0.4.0
 
 ### Breaking cleanup

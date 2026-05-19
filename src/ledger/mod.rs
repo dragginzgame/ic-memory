@@ -2,13 +2,9 @@ pub(crate) mod claim;
 mod error;
 mod integrity;
 mod record;
+mod stage;
 
-use crate::{
-    declaration::AllocationDeclaration,
-    physical::{CommitRecoveryError, DualCommitStore},
-    session::ValidatedAllocations,
-};
-use claim::{ClaimConflict, ClaimOutcome, validate_declaration_claim, validate_reservation_claim};
+use crate::physical::{CommitRecoveryError, DualCommitStore};
 use serde::{Deserialize, Serialize};
 
 pub use error::{
@@ -217,272 +213,11 @@ impl LedgerCommitStore {
     }
 }
 
-impl AllocationLedger {
-    // TODO: Move staging behavior to `ledger::stage` in a later mechanical split.
-    /// Return a copy of the ledger with `validated` recorded as the next generation.
-    ///
-    /// This is a pure logical update. Physical atomicity is the responsibility of
-    /// the substrate commit protocol.
-    pub fn stage_validated_generation(
-        &self,
-        validated: &ValidatedAllocations,
-        committed_at: Option<u64>,
-    ) -> Result<Self, AllocationStageError> {
-        if validated.generation() != self.current_generation {
-            return Err(AllocationStageError::StaleValidatedAllocations {
-                validated_generation: validated.generation(),
-                ledger_generation: self.current_generation,
-            });
-        }
-        let next_generation = checked_next_generation(self.current_generation)
-            .map_err(|generation| AllocationStageError::GenerationOverflow { generation })?;
-        let mut next = self.clone();
-        next.current_generation = next_generation;
-        let declaration_count = u32::try_from(validated.declarations().len()).unwrap_or(u32::MAX);
-
-        for declaration in validated.declarations() {
-            declaration.schema.validate().map_err(|error| {
-                AllocationStageError::InvalidSchemaMetadata {
-                    stable_key: declaration.stable_key.clone(),
-                    error,
-                }
-            })?;
-            record_declaration(&mut next, next_generation, declaration)?;
-        }
-
-        next.allocation_history.push_generation(GenerationRecord {
-            generation: next_generation,
-            parent_generation: Some(self.current_generation),
-            runtime_fingerprint: validated.runtime_fingerprint().map(str::to_string),
-            declaration_count,
-            committed_at,
-        });
-
-        Ok(next)
-    }
-
-    /// Return a copy of the ledger with `reservations` recorded as the next generation.
-    ///
-    /// This is a pure logical update. The caller is responsible for applying
-    /// framework policy before staging reservations.
-    pub fn stage_reservation_generation(
-        &self,
-        reservations: &[AllocationDeclaration],
-        committed_at: Option<u64>,
-    ) -> Result<Self, AllocationReservationError> {
-        let next_generation = checked_next_generation(self.current_generation)
-            .map_err(|generation| AllocationReservationError::GenerationOverflow { generation })?;
-        let mut next = self.clone();
-        next.current_generation = next_generation;
-
-        for reservation in reservations {
-            reservation.schema.validate().map_err(|error| {
-                AllocationReservationError::InvalidSchemaMetadata {
-                    stable_key: reservation.stable_key.clone(),
-                    error,
-                }
-            })?;
-            record_reservation(&mut next, next_generation, reservation)?;
-        }
-
-        next.allocation_history.push_generation(GenerationRecord {
-            generation: next_generation,
-            parent_generation: Some(self.current_generation),
-            runtime_fingerprint: None,
-            declaration_count: u32::try_from(reservations.len()).unwrap_or(u32::MAX),
-            committed_at,
-        });
-
-        Ok(next)
-    }
-
-    /// Return a copy of the ledger with one explicit retirement committed.
-    pub fn stage_retirement_generation(
-        &self,
-        retirement: &AllocationRetirement,
-        committed_at: Option<u64>,
-    ) -> Result<Self, AllocationRetirementError> {
-        let next_generation = checked_next_generation(self.current_generation)
-            .map_err(|generation| AllocationRetirementError::GenerationOverflow { generation })?;
-        let mut next = self.clone();
-        let record = next
-            .allocation_history
-            .records_mut()
-            .iter_mut()
-            .find(|record| record.stable_key == retirement.stable_key)
-            .ok_or_else(|| {
-                AllocationRetirementError::UnknownStableKey(retirement.stable_key.clone())
-            })?;
-
-        if record.slot != retirement.slot {
-            return Err(AllocationRetirementError::SlotMismatch {
-                stable_key: retirement.stable_key.clone(),
-                historical_slot: Box::new(record.slot.clone()),
-                retired_slot: Box::new(retirement.slot.clone()),
-            });
-        }
-        if record.state == AllocationState::Retired {
-            return Err(AllocationRetirementError::AlreadyRetired {
-                stable_key: retirement.stable_key.clone(),
-                slot: Box::new(record.slot.clone()),
-            });
-        }
-
-        record.state = AllocationState::Retired;
-        record.retired_generation = Some(next_generation);
-        next.current_generation = next_generation;
-        next.allocation_history.push_generation(GenerationRecord {
-            generation: next_generation,
-            parent_generation: Some(self.current_generation),
-            runtime_fingerprint: None,
-            declaration_count: 0,
-            committed_at,
-        });
-
-        Ok(next)
-    }
-}
-
-fn record_declaration(
-    ledger: &mut AllocationLedger,
-    generation: u64,
-    declaration: &AllocationDeclaration,
-) -> Result<(), AllocationStageError> {
-    match validate_declaration_claim(ledger, declaration) {
-        Ok(ClaimOutcome::Existing { record_index }) => {
-            ledger.allocation_history.records_mut()[record_index]
-                .observe_declaration(generation, declaration);
-            Ok(())
-        }
-        Ok(ClaimOutcome::New) => {
-            ledger
-                .allocation_history
-                .push_record(AllocationRecord::from_declaration(
-                    generation,
-                    declaration.clone(),
-                    AllocationState::Active,
-                ));
-            Ok(())
-        }
-        Err(conflict) => Err(map_declaration_stage_conflict(
-            ledger,
-            declaration,
-            conflict,
-        )),
-    }
-}
-
-const fn checked_next_generation(current_generation: u64) -> Result<u64, u64> {
-    match current_generation.checked_add(1) {
-        Some(next_generation) => Ok(next_generation),
-        None => Err(current_generation),
-    }
-}
-
-fn record_reservation(
-    ledger: &mut AllocationLedger,
-    generation: u64,
-    reservation: &AllocationDeclaration,
-) -> Result<(), AllocationReservationError> {
-    match validate_reservation_claim(ledger, reservation) {
-        Ok(ClaimOutcome::Existing { record_index }) => {
-            ledger.allocation_history.records_mut()[record_index]
-                .observe_reservation(generation, reservation);
-            Ok(())
-        }
-        Ok(ClaimOutcome::New) => {
-            ledger
-                .allocation_history
-                .push_record(AllocationRecord::reserved(generation, reservation.clone()));
-            Ok(())
-        }
-        Err(conflict) => Err(map_reservation_stage_conflict(
-            ledger,
-            reservation,
-            conflict,
-        )),
-    }
-}
-
-fn map_declaration_stage_conflict(
-    ledger: &AllocationLedger,
-    declaration: &AllocationDeclaration,
-    conflict: ClaimConflict,
-) -> AllocationStageError {
-    match conflict {
-        ClaimConflict::StableKeyMoved { record_index } => {
-            let record = &ledger.allocation_history.records()[record_index];
-            AllocationStageError::StableKeySlotConflict {
-                stable_key: declaration.stable_key.clone(),
-                historical_slot: Box::new(record.slot.clone()),
-                declared_slot: Box::new(declaration.slot.clone()),
-            }
-        }
-        ClaimConflict::SlotReused { record_index } => {
-            let record = &ledger.allocation_history.records()[record_index];
-            AllocationStageError::SlotStableKeyConflict {
-                slot: Box::new(declaration.slot.clone()),
-                historical_key: record.stable_key.clone(),
-                declared_key: declaration.stable_key.clone(),
-            }
-        }
-        ClaimConflict::Tombstoned { record_index } => {
-            let record = &ledger.allocation_history.records()[record_index];
-            AllocationStageError::RetiredAllocation {
-                stable_key: declaration.stable_key.clone(),
-                slot: Box::new(record.slot.clone()),
-            }
-        }
-        ClaimConflict::ActiveAllocation { .. } => {
-            unreachable!("active allocation conflicts are reservation-only")
-        }
-    }
-}
-
-fn map_reservation_stage_conflict(
-    ledger: &AllocationLedger,
-    reservation: &AllocationDeclaration,
-    conflict: ClaimConflict,
-) -> AllocationReservationError {
-    match conflict {
-        ClaimConflict::StableKeyMoved { record_index } => {
-            let record = &ledger.allocation_history.records()[record_index];
-            AllocationReservationError::StableKeySlotConflict {
-                stable_key: reservation.stable_key.clone(),
-                historical_slot: Box::new(record.slot.clone()),
-                reserved_slot: Box::new(reservation.slot.clone()),
-            }
-        }
-        ClaimConflict::SlotReused { record_index } => {
-            let record = &ledger.allocation_history.records()[record_index];
-            AllocationReservationError::SlotStableKeyConflict {
-                slot: Box::new(reservation.slot.clone()),
-                historical_key: record.stable_key.clone(),
-                reserved_key: reservation.stable_key.clone(),
-            }
-        }
-        ClaimConflict::Tombstoned { record_index } => {
-            let record = &ledger.allocation_history.records()[record_index];
-            AllocationReservationError::RetiredAllocation {
-                stable_key: reservation.stable_key.clone(),
-                slot: Box::new(record.slot.clone()),
-            }
-        }
-        ClaimConflict::ActiveAllocation { record_index } => {
-            let record = &ledger.allocation_history.records()[record_index];
-            AllocationReservationError::ActiveAllocation {
-                stable_key: reservation.stable_key.clone(),
-                slot: Box::new(record.slot.clone()),
-            }
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::{
-        declaration::{DeclarationSnapshot, DeclarationSnapshotError},
+        declaration::{AllocationDeclaration, DeclarationSnapshot, DeclarationSnapshotError},
         key::StableKey,
         physical::CommittedGenerationBytes,
         schema::{SchemaMetadata, SchemaMetadataError},
@@ -683,6 +418,40 @@ mod tests {
     }
 
     #[test]
+    fn stage_validated_generation_allows_empty_generation_boundary() {
+        let validated = crate::session::ValidatedAllocations::new(
+            3,
+            Vec::new(),
+            Some("test-runtime".to_string()),
+        );
+
+        let staged = ledger()
+            .stage_validated_generation(&validated, Some(42))
+            .expect("empty validated generation");
+
+        assert_eq!(staged.current_generation, 4);
+        assert!(staged.allocation_history.records().is_empty());
+        assert_eq!(staged.allocation_history.generations().len(), 1);
+        assert_eq!(staged.allocation_history.generations()[0].generation(), 4);
+        assert_eq!(
+            staged.allocation_history.generations()[0].parent_generation(),
+            Some(3)
+        );
+        assert_eq!(
+            staged.allocation_history.generations()[0].runtime_fingerprint(),
+            Some("test-runtime")
+        );
+        assert_eq!(
+            staged.allocation_history.generations()[0].declaration_count(),
+            0
+        );
+        assert_eq!(
+            staged.allocation_history.generations()[0].committed_at(),
+            Some(42)
+        );
+    }
+
+    #[test]
     fn stage_validated_generation_rejects_stale_validated_allocations() {
         let validated = validated(2, vec![declaration("app.users.v1", 100, Some(1))]);
 
@@ -856,6 +625,28 @@ mod tests {
         assert_eq!(
             staged.allocation_history.generations()[0].declaration_count,
             1
+        );
+    }
+
+    #[test]
+    fn stage_reservation_generation_allows_empty_generation_boundary() {
+        let reservations = Vec::new();
+
+        let staged = ledger()
+            .stage_reservation_generation(&reservations, Some(42))
+            .expect("empty reservation generation");
+
+        assert_eq!(staged.current_generation, 4);
+        assert!(staged.allocation_history.records().is_empty());
+        assert_eq!(staged.allocation_history.generations().len(), 1);
+        assert_eq!(staged.allocation_history.generations()[0].generation(), 4);
+        assert_eq!(
+            staged.allocation_history.generations()[0].declaration_count(),
+            0
+        );
+        assert_eq!(
+            staged.allocation_history.generations()[0].committed_at(),
+            Some(42)
         );
     }
 
@@ -1039,6 +830,33 @@ mod tests {
         assert_eq!(record.retired_generation, Some(5));
         assert_eq!(
             staged.allocation_history.generations()[1].declaration_count,
+            0
+        );
+    }
+
+    #[test]
+    fn stage_retirement_generation_tombstones_reserved_allocation() {
+        let reservations = vec![declaration("app.future_store.v1", 100, Some(1))];
+        let staged = ledger()
+            .stage_reservation_generation(&reservations, None)
+            .expect("reserved generation");
+        let retirement = AllocationRetirement::new(
+            "app.future_store.v1",
+            AllocationSlotDescriptor::memory_manager(100).expect("usable slot"),
+        )
+        .expect("retirement");
+
+        let staged = staged
+            .stage_retirement_generation(&retirement, Some(42))
+            .expect("reserved retirement generation");
+        let record = &staged.allocation_history.records()[0];
+
+        assert_eq!(staged.current_generation, 5);
+        assert_eq!(record.state, AllocationState::Retired);
+        assert_eq!(record.first_generation, 4);
+        assert_eq!(record.retired_generation, Some(5));
+        assert_eq!(
+            staged.allocation_history.generations()[1].declaration_count(),
             0
         );
     }

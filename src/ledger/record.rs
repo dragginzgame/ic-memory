@@ -24,6 +24,11 @@ pub const CURRENT_PHYSICAL_FORMAT_ID: u32 = 1;
 /// structural history invariants before returning a value. Use
 /// [`AllocationLedger::new_committed`] when the value should also satisfy the
 /// strict committed-generation chain required by recovery and commit.
+///
+/// Staging APIs clone this DTO before applying a logical generation. The ledger
+/// is expected to contain allocation metadata only, bounded by the number of
+/// stable allocation identities and committed bootstrap generations, not user
+/// collection contents.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct AllocationLedger {
     /// Ledger schema version.

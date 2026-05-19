@@ -237,6 +237,12 @@ pub enum AllocationStageError {
         /// Current ledger generation.
         generation: u64,
     },
+    /// Declaration count does not fit in durable generation diagnostics.
+    #[error("generation contains {count} declarations, exceeding the durable u32 diagnostic limit")]
+    TooManyDeclarations {
+        /// Number of declarations in the staged generation.
+        count: usize,
+    },
     /// A staged declaration carries invalid schema metadata.
     #[error("stable key '{stable_key}' has invalid schema metadata")]
     InvalidSchemaMetadata {
@@ -286,6 +292,12 @@ pub enum AllocationReservationError {
     GenerationOverflow {
         /// Current ledger generation.
         generation: u64,
+    },
+    /// Declaration count does not fit in durable generation diagnostics.
+    #[error("generation contains {count} reservations, exceeding the durable u32 diagnostic limit")]
+    TooManyReservations {
+        /// Number of reservations in the staged generation.
+        count: usize,
     },
     /// A staged reservation carries invalid schema metadata.
     #[error("stable key '{stable_key}' has invalid schema metadata")]
