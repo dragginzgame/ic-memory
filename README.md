@@ -1,4 +1,6 @@
----
+
+
+# ic-memory
 
 <p align="center">
   <strong style="font-size: 3em;">DO NOT USE</strong>
@@ -9,8 +11,6 @@
 </p>
 
 ---
-
-# ic-memory
 
 `ic-memory` helps Internet Computer canisters avoid opening the wrong stable
 memory after an upgrade.
@@ -71,6 +71,10 @@ orders data.
 
 `ic-memory` catches that mismatch first.
 
+<p align="center">
+  <img src="images/dont-overwrite.png" alt="Retro computer warning: don't overwrite your memory" width="500">
+</p>
+
 ## How It Fits
 
 `ic-stable-structures` stores the data.
@@ -93,20 +97,7 @@ The important rule: validate layout before touching stable data.
 Declare every stable store with a stable name and a physical slot:
 
 ```rust
-use ic_memory::{
-    DeclarationCollector, IC_MEMORY_AUTHORITY_OWNER, MEMORY_MANAGER_MAX_ID,
-    MemoryManagerRangeAuthority, memory_manager_governance_range,
-};
-
-let ranges = MemoryManagerRangeAuthority::new()
-    .reserve(memory_manager_governance_range(), IC_MEMORY_AUTHORITY_OWNER)
-    .expect("ic-memory governance range")
-    .reserve_ids(10, 99, "framework")
-    .expect("framework range")
-    .allow_ids(100, MEMORY_MANAGER_MAX_ID, "applications")
-    .expect("application range");
-
-assert_eq!(ranges.authorities().len(), 3);
+use ic_memory::DeclarationCollector;
 
 let snapshot = DeclarationCollector::new()
     .with_memory_manager("app.orders.v1", 100, "orders")
@@ -118,6 +109,124 @@ assert_eq!(snapshot.len(), 1);
 
 That snapshot is what you validate against the recovered ledger before opening
 the store.
+
+## Stable Keys
+
+Stable keys are permanent logical store names. They should describe ownership
+and purpose, not the current memory ID.
+
+Format:
+
+```text
+namespace.component.store_or_role.vN
+```
+
+Rules:
+
+- ASCII only.
+- Lowercase only.
+- Dot-separated segments.
+- Each segment starts with a lowercase letter.
+- Segments may contain lowercase letters, digits, and underscores.
+- No whitespace, slashes, or hyphens.
+- Must end with a nonzero version suffix such as `.v1` or `.v12`.
+- Maximum length is 128 bytes.
+
+Examples:
+
+```rust
+use ic_memory::StableKey;
+
+StableKey::parse("app.orders.v1").expect("app key");
+StableKey::parse("canic.core.app_state.v1").expect("Canic framework key");
+StableKey::parse("canic.core.intent_records.v1").expect("Canic store key");
+StableKey::parse("icydb.test_db.users.data.v1").expect("IcyDB table data key");
+StableKey::parse("icydb.demo_rpg.commit.control.v1").expect("IcyDB commit key");
+```
+
+Suggested namespace conventions:
+
+- `ic_memory.*` is reserved for `ic-memory` governance records.
+- `canic.core.*` is appropriate for Canic framework-owned stores.
+- `icydb.<memory_namespace>.<store_name>.<role>.vN` works for generated IcyDB
+  stores, such as `icydb.test_db.users.data.v1`.
+- Application-owned stores can use an application namespace, such as
+  `app.orders.v1` or `myapp.audit_log.v1`.
+
+Changing a key creates a new logical allocation identity. If the durable store
+is the same, keep the stable key and update schema metadata instead.
+
+## Range Authority
+
+Range authority is policy metadata. It does not allocate stable-memory IDs and
+does not write to the allocation ledger.
+
+Packages should publish only the ranges they own:
+
+```rust
+use ic_memory::{
+    IC_MEMORY_AUTHORITY_OWNER, MemoryManagerRangeAuthority, MemoryManagerRangeMode,
+    memory_manager_governance_range,
+};
+
+let authority = MemoryManagerRangeAuthority::new()
+    .reserve(memory_manager_governance_range(), IC_MEMORY_AUTHORITY_OWNER)
+    .expect("ic-memory governance range")
+    .reserve_ids(10, 99, "canic.framework")
+    .expect("framework range");
+
+authority
+    .validate_id_authority_mode(42, "canic.framework", MemoryManagerRangeMode::Reserved)
+    .expect("Canic-owned framework ID");
+```
+
+An open stack composes records from multiple packages and rejects overlaps:
+
+```rust
+use ic_memory::MemoryManagerRangeAuthority;
+
+let canic_records = MemoryManagerRangeAuthority::new()
+    .reserve_ids(10, 99, "canic.framework")
+    .expect("Canic range")
+    .to_records();
+
+let database_records = MemoryManagerRangeAuthority::new()
+    .reserve_ids(120, 149, "database.framework")
+    .expect("database range")
+    .to_records();
+
+let authority = MemoryManagerRangeAuthority::from_records(
+    canic_records
+        .into_iter()
+        .chain(database_records)
+        .collect(),
+)
+.expect("non-overlapping package ranges");
+
+assert_eq!(authority.authorities().len(), 2);
+```
+
+A final closed policy may claim the remaining application space and require full
+coverage:
+
+```rust
+use ic_memory::{
+    IC_MEMORY_AUTHORITY_OWNER, MEMORY_MANAGER_MAX_ID, MemoryManagerIdRange,
+    MemoryManagerRangeAuthority, memory_manager_governance_range,
+};
+
+let authority = MemoryManagerRangeAuthority::new()
+    .reserve(memory_manager_governance_range(), IC_MEMORY_AUTHORITY_OWNER)
+    .expect("ic-memory governance range")
+    .reserve_ids(10, 99, "canic.framework")
+    .expect("framework range")
+    .allow_ids(100, MEMORY_MANAGER_MAX_ID, "applications")
+    .expect("application range");
+
+authority
+    .validate_complete_coverage(MemoryManagerIdRange::all_usable())
+    .expect("closed policy covers every usable ID");
+```
 
 ## Current MemoryManager Rules
 

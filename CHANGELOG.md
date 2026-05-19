@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.0.7
+
+### Documentation
+
+- Added stable-key formatting guidance to the README, including grammar rules,
+  valid examples, and namespace conventions.
+- Documented representative `canic.core.*` and `icydb.*` stable-key patterns.
+- Clarified that stable keys are permanent logical allocation identities and
+  should not be changed when only schema metadata changes.
+- Updated README examples to show the open-stack range-authority model,
+  package-record composition, and optional closed-policy coverage checks.
+
+---
+
 ## 0.0.6
 
 ### Added
