@@ -221,7 +221,7 @@ mod tests {
         key::StableKey,
         physical::CommittedGenerationBytes,
         schema::{SchemaMetadata, SchemaMetadataError},
-        slot::AllocationSlotDescriptor,
+        slot::{AllocationSlotDescriptor, MEMORY_MANAGER_INVALID_ID, MemoryManagerSlotError},
     };
     use std::cell::RefCell;
 
@@ -1083,6 +1083,49 @@ mod tests {
         let err = ledger.validate_integrity().expect_err("duplicate slot");
 
         assert!(matches!(err, LedgerIntegrityError::DuplicateSlot { .. }));
+    }
+
+    #[test]
+    fn validate_committed_integrity_rejects_decoded_invalid_stable_key() {
+        let mut ledger = committed_ledger(1);
+        ledger
+            .allocation_history
+            .records
+            .push(active_record("app.users.v1", 100));
+        let mut bytes = serde_cbor::to_vec(&ledger).expect("encode ledger");
+        let key_start = bytes
+            .windows(b"app.users.v1".len())
+            .position(|window| window == b"app.users.v1")
+            .expect("encoded stable key");
+        bytes[key_start] = b'A';
+        let decoded: AllocationLedger = serde_cbor::from_slice(&bytes).expect("decode ledger");
+
+        let err = decoded
+            .validate_committed_integrity()
+            .expect_err("invalid decoded key must fail");
+
+        assert!(matches!(err, LedgerIntegrityError::InvalidStableKey(_)));
+    }
+
+    #[test]
+    fn validate_committed_integrity_rejects_decoded_invalid_memory_manager_slot() {
+        let mut ledger = committed_ledger(1);
+        let mut record = active_record("app.users.v1", 100);
+        record.slot = AllocationSlotDescriptor::memory_manager_unchecked(MEMORY_MANAGER_INVALID_ID);
+        ledger.allocation_history.records.push(record);
+
+        let err = ledger
+            .validate_committed_integrity()
+            .expect_err("invalid decoded slot must fail");
+
+        assert!(matches!(
+            err,
+            LedgerIntegrityError::InvalidSlotDescriptor(
+                crate::slot::AllocationSlotDescriptorError::MemoryManager(
+                    MemoryManagerSlotError::InvalidMemoryManagerId { id }
+                )
+            ) if id == MEMORY_MANAGER_INVALID_ID
+        ));
     }
 
     #[test]

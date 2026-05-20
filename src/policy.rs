@@ -9,6 +9,11 @@ use crate::{key::StableKey, slot::AllocationSlotDescriptor};
 /// ledger remembers `stable_key -> allocation_slot`; this trait lets an
 /// integration reject declarations that do not belong to its namespace or
 /// substrate-specific range before staging a generation.
+///
+/// In the default `MemoryManager` runtime, registered range claims are checked
+/// before this policy. Framework adapters should decide whether `ic-memory`
+/// range claims or their own policy is authoritative for a given ID space, then
+/// register ranges accordingly.
 pub trait AllocationPolicy {
     /// Policy error type.
     type Error;

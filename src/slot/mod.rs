@@ -2,7 +2,7 @@ mod descriptor;
 mod memory_manager;
 mod range_authority;
 
-pub use descriptor::{AllocationSlot, AllocationSlotDescriptor};
+pub use descriptor::{AllocationSlot, AllocationSlotDescriptor, AllocationSlotDescriptorError};
 pub use memory_manager::{
     IC_MEMORY_AUTHORITY_OWNER, IC_MEMORY_AUTHORITY_PURPOSE, IC_MEMORY_LEDGER_LABEL,
     IC_MEMORY_LEDGER_STABLE_KEY, IC_MEMORY_STABLE_KEY_PREFIX, MEMORY_MANAGER_DESCRIPTOR_VERSION,

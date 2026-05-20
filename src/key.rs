@@ -1,3 +1,4 @@
+use crate::validation::Validate;
 use serde::{Deserialize, Serialize};
 use std::{fmt, str::FromStr};
 
@@ -32,6 +33,14 @@ impl StableKey {
     #[must_use]
     pub fn into_string(self) -> String {
         self.0
+    }
+}
+
+impl Validate for StableKey {
+    type Error = StableKeyError;
+
+    fn validate(&self) -> Result<(), Self::Error> {
+        validate(&self.0)
     }
 }
 

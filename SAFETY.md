@@ -62,6 +62,10 @@ authorization, or endpoint safety.
 - A newer corrupt slot cannot override an older valid slot.
 - Recovered ledgers are untrusted until compatibility and committed-integrity
   checks succeed.
+- Stable-cell ledger storage used by the default runtime must be preflighted
+  before opening it through `ic-stable-structures::Cell`, so envelope or record
+  corruption is classified as a bootstrap error instead of escaping as a decode
+  panic.
 
 ## Validation-Before-Open Invariant
 
@@ -75,6 +79,17 @@ Storage integrations must validate layout before opening stable-memory handles:
 
 Opening stable-memory handles before validation defeats the purpose of this
 crate.
+
+## Capability Boundary
+
+`ValidatedAllocations` is an in-memory capability. It must not be deserializable,
+default-constructible, or publicly constructible. Only validation and bootstrap
+paths may produce it.
+
+Allocation sessions may open storage only from a `ValidatedAllocations` value
+that was produced after ledger compatibility, committed-ledger integrity,
+declaration validation, and committed generation staging checks. Diagnostics and
+durable DTOs are not authority.
 
 ## Retirement Invariants
 
@@ -96,6 +111,10 @@ resistance, authenticity, or authorization.
 Public durable structs are DTOs. Decoded, deserialized, and diagnostic values
 are untrusted until the relevant recovery, compatibility, integrity,
 validation, or commit path has accepted them.
+
+Serde decode is not validation. Constructor-backed invariants such as stable-key
+grammar and `MemoryManager` slot descriptor rules must be rechecked by the
+validation boundary before decoded values influence allocation authority.
 
 Invariant-bearing DTO fields are intentionally private where feasible. Callers
 should use checked constructors and accessors instead of fabricating durable

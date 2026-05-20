@@ -103,6 +103,20 @@ pub enum StableCellPayloadError {
     },
 }
 
+///
+/// StableCellLedgerError
+///
+/// Stable-cell ledger record validation failure.
+#[derive(Debug, Error)]
+pub enum StableCellLedgerError {
+    /// Stable-cell envelope is corrupt or unsupported.
+    #[error(transparent)]
+    Payload(#[from] StableCellPayloadError),
+    /// Stable-cell value bytes are not a valid ledger record.
+    #[error("stable-cell ledger record decode failed")]
+    Record(#[source] serde_cbor::Error),
+}
+
 /// Decode the raw value payload from an `ic-stable-structures::Cell` memory.
 ///
 /// This helper is intentionally narrow: it recognizes the physical stable-cell
@@ -150,6 +164,25 @@ pub fn decode_stable_cell_ledger_record(
     serde_cbor::from_slice(bytes)
 }
 
+/// Validate an existing stable-cell ledger record before opening it with
+/// `ic-stable-structures::Cell`.
+///
+/// `Cell::init` decodes the existing value through [`Storable::from_bytes`].
+/// That trait is panic-based, so the runtime preflights the raw memory with
+/// this fallible helper first. Empty memory is treated as uninitialized and is
+/// safe for `Cell::init` to create.
+pub fn validate_stable_cell_ledger_memory<M: Memory>(
+    memory: &M,
+) -> Result<(), StableCellLedgerError> {
+    if memory.size() == 0 {
+        return Ok(());
+    }
+
+    let payload = decode_stable_cell_payload(memory)?;
+    decode_stable_cell_ledger_record(&payload).map_err(StableCellLedgerError::Record)?;
+    Ok(())
+}
+
 fn serialize_record(record: &StableCellLedgerRecord) -> Vec<u8> {
     serde_cbor::to_vec(record).unwrap_or_else(|err| {
         panic!("StableCellLedgerRecord serialize failed: {err}");
@@ -183,5 +216,20 @@ mod tests {
             decode_stable_cell_payload(&memory),
             Err(StableCellPayloadError::NotStableCell)
         );
+    }
+
+    #[test]
+    fn stable_cell_ledger_preflight_classifies_bad_record_without_panic() {
+        let memory = VectorMemory::default();
+        memory.grow(1);
+        memory.write(0, STABLE_CELL_MAGIC);
+        memory.write(3, &[STABLE_CELL_LAYOUT_VERSION]);
+        memory.write(4, &1_u32.to_le_bytes());
+        memory.write(STABLE_CELL_VALUE_OFFSET, &[0xff]);
+
+        let err =
+            validate_stable_cell_ledger_memory(&memory).expect_err("bad record must be classified");
+
+        assert!(matches!(err, StableCellLedgerError::Record(_)));
     }
 }

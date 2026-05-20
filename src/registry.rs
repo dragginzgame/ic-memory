@@ -18,8 +18,9 @@ pub(crate) static TEST_REGISTRY_LOCK: Mutex<()> = Mutex::new(());
 /// code before bootstrap seals the declaration snapshot.
 ///
 /// The `declaring_crate` field is policy metadata for integration layers such
-/// as Canic or IcyDB. `ic-memory` records it for collection, but generic ledger
-/// validation still relies on the caller's [`crate::AllocationPolicy`].
+/// as Canic or IcyDB. The default runtime uses it to match declarations against
+/// registered range claims before it calls the caller's
+/// [`crate::AllocationPolicy`].
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct StaticMemoryDeclaration {
     declaring_crate: String,
@@ -58,7 +59,10 @@ impl StaticMemoryDeclaration {
 /// StaticMemoryRangeDeclaration
 ///
 /// One `MemoryManager` authority range registered by crate-level generated or
-/// macro code before bootstrap seals the declaration snapshot.
+/// macro code before bootstrap seals the declaration snapshot. In the default
+/// runtime, registered user ranges are authoritative generic range policy:
+/// declarations must stay inside the declaring crate's claimed range before
+/// caller-supplied policy runs.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct StaticMemoryRangeDeclaration {
     declaring_crate: String,

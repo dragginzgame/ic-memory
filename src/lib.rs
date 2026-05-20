@@ -26,9 +26,15 @@
 //!    session.
 //!
 //! This crate owns allocation invariants, not framework policy. Namespace
-//! rules, range ownership, controller authorization, endpoint lifecycle, schema
-//! migrations, and application validation belong to the framework or
-//! application.
+//! rules, controller authorization, endpoint lifecycle, schema migrations, and
+//! application validation belong to the framework or application.
+//!
+//! For the default `MemoryManager` runtime, registered `ic-memory` range claims
+//! are generic allocation policy and are enforced before caller-supplied
+//! policy. A framework such as Canic that wants higher-level range semantics
+//! should adapt to this contract deliberately: either register the ranges it
+//! wants `ic-memory` to enforce, or omit user ranges and enforce application
+//! space through its own [`AllocationPolicy`].
 //!
 //! Use these primitives before opening stable-memory handles. Integrations
 //! should recover the historical ledger, declare the stores expected by the
@@ -108,9 +114,9 @@ pub use runtime::{
 pub use schema::{SchemaMetadata, SchemaMetadataError};
 pub use session::{AllocationSession, AllocationSessionError, ValidatedAllocations};
 pub use slot::{
-    AllocationSlot, AllocationSlotDescriptor, IC_MEMORY_AUTHORITY_OWNER,
-    IC_MEMORY_AUTHORITY_PURPOSE, IC_MEMORY_LEDGER_LABEL, IC_MEMORY_LEDGER_STABLE_KEY,
-    IC_MEMORY_STABLE_KEY_PREFIX, MEMORY_MANAGER_DESCRIPTOR_VERSION,
+    AllocationSlot, AllocationSlotDescriptor, AllocationSlotDescriptorError,
+    IC_MEMORY_AUTHORITY_OWNER, IC_MEMORY_AUTHORITY_PURPOSE, IC_MEMORY_LEDGER_LABEL,
+    IC_MEMORY_LEDGER_STABLE_KEY, IC_MEMORY_STABLE_KEY_PREFIX, MEMORY_MANAGER_DESCRIPTOR_VERSION,
     MEMORY_MANAGER_GOVERNANCE_MAX_ID, MEMORY_MANAGER_INVALID_ID, MEMORY_MANAGER_LEDGER_ID,
     MEMORY_MANAGER_MAX_ID, MEMORY_MANAGER_MIN_ID, MEMORY_MANAGER_SUBSTRATE,
     MemoryManagerAuthorityRecord, MemoryManagerIdRange, MemoryManagerRangeAuthority,
@@ -120,11 +126,12 @@ pub use slot::{
 };
 pub use stable_cell::{
     STABLE_CELL_HEADER_SIZE, STABLE_CELL_LAYOUT_VERSION, STABLE_CELL_MAGIC,
-    STABLE_CELL_VALUE_OFFSET, StableCellLedgerRecord, StableCellPayloadError,
-    decode_stable_cell_ledger_record, decode_stable_cell_payload,
+    STABLE_CELL_VALUE_OFFSET, StableCellLedgerError, StableCellLedgerRecord,
+    StableCellPayloadError, decode_stable_cell_ledger_record, decode_stable_cell_payload,
+    validate_stable_cell_ledger_memory,
 };
 pub use substrate::{LedgerAnchor, StorageSubstrate};
-pub use validation::{AllocationValidationError, validate_allocations};
+pub use validation::{AllocationValidationError, Validate, validate_allocations};
 
 #[doc(hidden)]
 pub mod __reexports {

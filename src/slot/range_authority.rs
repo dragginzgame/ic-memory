@@ -144,6 +144,11 @@ impl MemoryManagerAuthorityRecord {
 /// mutates the allocation ledger, and it does not allocate or reserve durable
 /// stable-memory slots. Durable allocation remains the generic ledger mapping
 /// from stable key to allocation slot.
+///
+/// When used through the default runtime registry, registered ranges are
+/// authoritative generic policy and are checked before caller-supplied
+/// [`crate::AllocationPolicy`]. Frameworks that want their own policy to own
+/// application space should avoid registering ranges for that space.
 #[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
 pub struct MemoryManagerRangeAuthority {
     authorities: Vec<MemoryManagerAuthorityRecord>,

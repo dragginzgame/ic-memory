@@ -2,7 +2,7 @@ use crate::{
     declaration::AllocationDeclaration, key::StableKey, slot::AllocationSlotDescriptor,
     substrate::StorageSubstrate,
 };
-use serde::{Deserialize, Serialize};
+use std::sync::Arc;
 
 ///
 /// ValidatedAllocations
@@ -14,9 +14,18 @@ use serde::{Deserialize, Serialize};
 /// ledger record; staging commits it into the next generation before an
 /// integration should expose memory handles.
 ///
+/// This is an in-memory capability, not a serde DTO. It has no public
+/// constructor and should only be produced by validation or bootstrap paths.
+///
 
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ValidatedAllocations {
+    inner: Arc<ValidatedState>,
+    _private: (),
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct ValidatedState {
     /// Committed generation that validated these allocations.
     generation: u64,
     /// Validated declarations.
@@ -26,45 +35,52 @@ pub struct ValidatedAllocations {
 }
 
 impl ValidatedAllocations {
-    pub(crate) const fn new(
+    pub(crate) fn new(
         generation: u64,
         declarations: Vec<AllocationDeclaration>,
         runtime_fingerprint: Option<String>,
     ) -> Self {
         Self {
-            generation,
-            declarations,
-            runtime_fingerprint,
+            inner: Arc::new(ValidatedState {
+                generation,
+                declarations,
+                runtime_fingerprint,
+            }),
+            _private: (),
         }
     }
 
-    pub(crate) const fn with_generation(mut self, generation: u64) -> Self {
-        self.generation = generation;
-        self
+    pub(crate) fn with_generation(self, generation: u64) -> Self {
+        let mut state = (*self.inner).clone();
+        state.generation = generation;
+        Self {
+            inner: Arc::new(state),
+            _private: (),
+        }
     }
 
     /// Return the committed generation that validated these allocations.
     #[must_use]
-    pub const fn generation(&self) -> u64 {
-        self.generation
+    pub fn generation(&self) -> u64 {
+        self.inner.generation
     }
 
     /// Borrow the validated declarations.
     #[must_use]
     pub fn declarations(&self) -> &[AllocationDeclaration] {
-        &self.declarations
+        &self.inner.declarations
     }
 
     /// Borrow the optional runtime fingerprint.
     #[must_use]
     pub fn runtime_fingerprint(&self) -> Option<&str> {
-        self.runtime_fingerprint.as_deref()
+        self.inner.runtime_fingerprint.as_deref()
     }
 
     /// Find a validated slot by stable key.
     #[must_use]
     pub fn slot_for(&self, key: &StableKey) -> Option<&AllocationSlotDescriptor> {
-        self.declarations
+        self.declarations()
             .iter()
             .find(|declaration| &declaration.stable_key == key)
             .map(|declaration| &declaration.slot)

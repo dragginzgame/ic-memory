@@ -1,5 +1,34 @@
 # Changelog
 
+## 0.5.1
+
+### Audit hardening
+
+- Made `ValidatedAllocations` an opaque non-serializable capability. It no
+  longer derives serde traits and can only be produced by crate validation and
+  bootstrap paths.
+- Added deep validation for decoded DTOs before they can become allocation
+  authority. Stable-key grammar and `MemoryManager` slot descriptor invariants
+  are rechecked during snapshot validation and committed-ledger integrity
+  validation.
+- Raised the `validate_allocations()` authority boundary so the historical
+  ledger must pass current compatibility and committed-integrity validation
+  before it can produce `ValidatedAllocations`.
+- Added stable-cell ledger preflight for the default runtime so corrupt
+  `ic-stable-structures::Cell` storage is classified as a bootstrap error
+  before `Cell::init` would otherwise panic while decoding the ledger record.
+- Made the default runtime range-policy contract explicit: registered
+  `ic_memory_range!` claims are enforced before caller-supplied policy, while
+  framework adapters can omit user ranges and enforce application space in
+  their own policy.
+- Pinned the default developer and CI toolchain to Rust 1.95.0 while keeping
+  the crate MSRV at Rust 1.85.0 through `package.rust-version` and an MSRV CI
+  check.
+- Updated crates.io metadata to describe `ic-memory` as a Memory ID registry
+  wrapper for `ic-stable-structures`.
+
+---
+
 ## 0.5.0
 
 ### Runtime registration

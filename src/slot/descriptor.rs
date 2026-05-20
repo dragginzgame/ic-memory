@@ -1,3 +1,4 @@
+use crate::validation::Validate;
 use serde::{Deserialize, Serialize};
 
 ///
@@ -60,4 +61,30 @@ impl AllocationSlotDescriptor {
     pub const fn descriptor_version(&self) -> u32 {
         self.descriptor_version
     }
+}
+
+impl Validate for AllocationSlotDescriptor {
+    type Error = AllocationSlotDescriptorError;
+
+    fn validate(&self) -> Result<(), Self::Error> {
+        if matches!(self.slot, AllocationSlot::MemoryManagerId(_))
+            || self.substrate == super::memory_manager::MEMORY_MANAGER_SUBSTRATE
+        {
+            self.memory_manager_id()
+                .map_err(AllocationSlotDescriptorError::MemoryManager)?;
+        }
+
+        Ok(())
+    }
+}
+
+///
+/// AllocationSlotDescriptorError
+///
+/// Allocation slot descriptor validation failure.
+#[derive(Clone, Debug, Eq, thiserror::Error, PartialEq)]
+pub enum AllocationSlotDescriptorError {
+    /// `MemoryManager` descriptor invariants failed.
+    #[error(transparent)]
+    MemoryManager(super::memory_manager::MemoryManagerSlotError),
 }

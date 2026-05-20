@@ -31,6 +31,11 @@ A typical framework flow is:
 
 The important rule: validate layout before touching stable data.
 
+The default runtime also preflights the ledger stable-cell before opening it
+through `ic-stable-structures::Cell`. Corrupt cell envelopes or ledger-record
+bytes are reported as bootstrap errors instead of relying on panic behavior
+inside `Cell::init`.
+
 ## Runtime Ownership
 
 Exactly one owner should bootstrap the default `ic-memory` runtime in a
@@ -41,6 +46,34 @@ All crates using the default runtime compose into one bootstrap authority.
 
 If multiple layers need separate allocation domains, they should use distinct
 ledger stores and custom integration code.
+
+## Policy Authority
+
+There is one authority order in the default runtime:
+
+1. `ic-memory` always owns its governance range.
+2. Registered `ic_memory_range!` claims are authoritative generic range policy.
+3. The caller-supplied `AllocationPolicy` is applied after generic range checks.
+
+That means a framework adapter must choose deliberately which layer owns range
+decisions.
+
+If a package registers a user range, `ic-memory` enforces that the package's
+declarations stay inside that range. If any user range is registered, all user
+`MemoryManager` declarations are checked against registered range ownership.
+This is the standalone multi-crate composition mode.
+
+If a framework such as Canic wants its own policy to decide application space,
+it should not register `ic_memory_range!` claims for that application space.
+It can still use `bootstrap_default_memory_manager_with_policy(...)` and reject
+keys or slots in its `AllocationPolicy`.
+
+Canic-specific namespace and framework range rules are Canic policy. They are
+not hard-coded `ic-memory` rules. Canic should adapt to `ic-memory` by either:
+
+- registering the framework and package ranges it wants `ic-memory` to enforce;
+- or leaving application ranges unclaimed and enforcing those rules in Canic's
+  policy adapter.
 
 ## Declaration-Only Hooks
 
@@ -82,6 +115,12 @@ commit the new generation
 only then open stable-memory handles
 ```
 
+Decoded ledger and declaration DTOs are not trusted just because serde accepted
+them. The validation boundary rechecks ledger compatibility, committed-ledger
+integrity, stable-key grammar, slot descriptor shape, schema metadata,
+duplicate claims, policy, and historical ownership before a
+`ValidatedAllocations` capability is produced.
+
 Manual sketch:
 
 ```rust,ignore
@@ -111,6 +150,10 @@ The ordering is the contract.
 committed ledger state and want the stricter committed-generation checks.
 Normal integrations should usually recover through the commit/recovery flow
 instead of hand-assembling committed state.
+
+`ValidatedAllocations` is intentionally opaque and non-serializable. It is a
+runtime capability produced by validation/bootstrap, not a durable record or a
+diagnostic export format.
 
 ## Stable Key Rules
 
@@ -154,7 +197,9 @@ is the same, keep the stable key and update schema metadata instead.
 ## Range Authority
 
 Range authority is policy metadata. It does not allocate stable-memory IDs and
-does not write to the allocation ledger.
+does not write to the allocation ledger. In the default runtime, however,
+registered range authority is enforced before the caller-supplied policy, as
+described in [Policy Authority](#policy-authority).
 
 Packages should publish only the ranges they own:
 
@@ -237,15 +282,16 @@ For the built-in `ic-stable-structures::MemoryManager` slot descriptor:
 The crate also exposes range-authority helpers for frameworks that want to split
 ID ranges between infrastructure and application stores.
 
-Canic currently uses `10..=99` as a framework-reserved example range. That is
-Canic policy, not an `ic-memory` rule.
+Canic can reserve framework ranges such as `10..=99` through its adapter. That
+kind of range is Canic policy, not an `ic-memory` rule.
 
 ## What It Does Not Do
 
 `ic-memory` does not replace `ic-stable-structures`.
 
-It owns allocation governance. It does not re-export or wrap every
-`ic-stable-structures` collection type.
+It owns allocation governance. It re-exports the `ic-stable-structures`
+namespace for convenience, but it does not wrap collection types such as
+`StableBTreeMap` as `ic-memory` APIs.
 
 It also does not handle:
 

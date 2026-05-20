@@ -3,7 +3,7 @@ use crate::{
     key::{StableKey, StableKeyError},
     physical::CommitRecoveryError,
     schema::SchemaMetadataError,
-    slot::AllocationSlotDescriptor,
+    slot::{AllocationSlotDescriptor, AllocationSlotDescriptorError},
 };
 
 ///
@@ -40,6 +40,12 @@ pub enum LedgerCompatibilityError {
 /// Decoded ledger violates structural allocation-history invariants.
 #[derive(Clone, Debug, Eq, thiserror::Error, PartialEq)]
 pub enum LedgerIntegrityError {
+    /// Stable-key grammar was invalid after durable decode.
+    #[error(transparent)]
+    InvalidStableKey(StableKeyError),
+    /// Allocation slot descriptor was invalid after durable decode.
+    #[error(transparent)]
+    InvalidSlotDescriptor(AllocationSlotDescriptorError),
     /// Stable key appears in more than one allocation record.
     #[error("stable key '{stable_key}' appears in more than one allocation record")]
     DuplicateStableKey {

@@ -23,10 +23,6 @@ If a future version tries to move that store to a different slot, or reuse that
 slot for a different store, `ic-memory` rejects the layout before stable-memory
 handles are opened.
 
-<p align="center">
-  <img src="images/balloon-meme.jpg" alt="Meme showing ic-memory keeping ic-stable-structures stable memory allocations from drifting" width="375">
-</p>
-
 ## Why Use It?
 
 Use `ic-memory` when a canister has more than one stable store and the layout
@@ -37,6 +33,10 @@ systems, and canister families that evolve across releases.
 
 You probably do not need it for a tiny canister with one hand-written stable
 structure and a fixed layout.
+
+<p align="center">
+  <img src="images/balloon-meme.jpg" alt="Meme showing ic-memory keeping ic-stable-structures stable memory allocations from drifting" width="375">
+</p>
 
 ## The Bug
 
@@ -58,10 +58,6 @@ That can still compile. It can even install.
 
 But now the canister may open orders data as users data, and users data as
 orders data. `ic-memory` catches that mismatch first.
-
-<p align="center">
-  <img src="images/dont-overwrite.png" alt="Retro computer warning: don't overwrite your memory" width="500">
-</p>
 
 ## Quick Start
 
@@ -137,6 +133,15 @@ when your code first touches the `thread_local!`.
 Duplicate stable keys, duplicate MemoryManager IDs, overlapping ranges, and
 out-of-range declarations fail before stable structures open.
 
+Range claims are authoritative in the default runtime. If a crate registers
+`ic_memory_range!`, its declared memories must stay inside that range. Framework
+adapters that want their own range policy, such as Canic, should register only
+the ranges they want `ic-memory` to enforce and put the rest in their policy
+adapter.
+
+The validated allocation state is an in-memory capability produced by bootstrap;
+it is not a serde payload and should not be treated as configuration.
+
 ## Stable Keys
 
 Stable keys are permanent logical store names. They should describe ownership
@@ -176,3 +181,7 @@ The non-negotiable invariants are recorded in [SAFETY.md](SAFETY.md).
 `ic-memory` is early infrastructure extracted from Canic. It owns allocation
 governance, not schema migration, endpoint routing, authorization, or data
 semantics.
+
+<p align="center">
+  <img src="images/dont-overwrite.png" alt="Retro computer warning: don't overwrite your memory" width="500">
+</p>

@@ -1,7 +1,7 @@
 use crate::{
     AllocationBootstrap, AllocationDeclaration, AllocationHistory, AllocationLedger,
     AllocationPolicy, AllocationSlotDescriptor, CborLedgerCodec, DeclarationSnapshot,
-    StableCellLedgerRecord, StableKey, ValidatedAllocations,
+    StableCellLedgerError, StableCellLedgerRecord, StableKey, ValidatedAllocations,
     registry::{
         StaticMemoryDeclaration, StaticMemoryDeclarationError, StaticMemoryRangeDeclaration,
         seal_static_memory_registry, static_memory_declarations, static_memory_range_declarations,
@@ -59,6 +59,9 @@ pub enum RuntimeBootstrapError<P> {
     /// Protected ledger recovery or commit failed.
     #[error(transparent)]
     LedgerCommit(#[from] crate::LedgerCommitError<serde_cbor::Error>),
+    /// Stable-cell ledger storage is corrupt before protected recovery can run.
+    #[error(transparent)]
+    StableCellLedger(#[from] StableCellLedgerError),
     /// Declaration validation failed.
     #[error(transparent)]
     Validation(#[from] crate::AllocationValidationError<RuntimePolicyError<P>>),
@@ -163,6 +166,19 @@ pub fn bootstrap_default_memory_manager()
 }
 
 /// Bootstrap the default runtime and layer caller-supplied policy over generic range checks.
+///
+/// Authority order is explicit:
+///
+/// 1. `ic-memory` always owns its governance range.
+/// 2. If any user range is registered, all `MemoryManager` declarations must
+///    belong to the range claimed by their declaring crate.
+/// 3. The caller-supplied [`AllocationPolicy`] then applies framework-specific
+///    namespace and lifecycle rules.
+///
+/// Framework adapters such as Canic should register only the ranges they want
+/// this generic runtime to enforce. If a framework wants its own policy to be
+/// authoritative for application space, it should omit user range registrations
+/// for that space and enforce the rule in its [`AllocationPolicy`].
 pub fn bootstrap_default_memory_manager_with_policy<P: AllocationPolicy>(
     policy: &P,
 ) -> Result<ValidatedAllocations, RuntimeBootstrapError<P::Error>> {
@@ -243,14 +259,15 @@ fn run_eager_init_hooks() {
     }
 }
 
-fn with_default_ledger_cell<T>(op: impl FnOnce(&mut DefaultLedgerCell) -> T) -> T {
+fn with_default_ledger_cell<P, T>(
+    op: impl FnOnce(&mut DefaultLedgerCell) -> Result<T, RuntimeBootstrapError<P>>,
+) -> Result<T, RuntimeBootstrapError<P>> {
     DEFAULT_LEDGER_CELL.with(|cell| {
         let mut cell = cell.borrow_mut();
         if cell.is_none() {
-            *cell = Some(Cell::init(
-                default_memory_manager_memory(MEMORY_MANAGER_LEDGER_ID),
-                StableCellLedgerRecord::default(),
-            ));
+            let memory = default_memory_manager_memory(MEMORY_MANAGER_LEDGER_ID);
+            crate::validate_stable_cell_ledger_memory(&memory)?;
+            *cell = Some(Cell::init(memory, StableCellLedgerRecord::default()));
         }
         op(cell.as_mut().expect("default ledger cell initialized"))
     })
@@ -403,6 +420,11 @@ impl<P: AllocationPolicy> RuntimeMemoryManagerPolicy<'_, P> {
         slot: &AllocationSlotDescriptor,
     ) -> Result<(), RuntimePolicyError<P::Error>> {
         let declaring_crate = self.declaring_crate(key)?;
+        // Range claims are authoritative generic policy in the default runtime.
+        // Once any user range is registered, every user declaration must fit
+        // the declaring crate's claimed range. With no user ranges, only the
+        // internal ic-memory governance range is enforced here and custom
+        // policy may decide application-space ownership.
         if declaring_crate == IC_MEMORY_AUTHORITY_OWNER || self.user_ranges_registered {
             self.range_authority
                 .validate_slot_authority(slot, declaring_crate)?;

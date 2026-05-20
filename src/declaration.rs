@@ -1,7 +1,8 @@
 use crate::{
     key::{StableKey, StableKeyError},
     schema::{SchemaMetadata, SchemaMetadataError},
-    slot::{AllocationSlotDescriptor, MemoryManagerSlotError},
+    slot::{AllocationSlotDescriptor, AllocationSlotDescriptorError, MemoryManagerSlotError},
+    validation::Validate,
 };
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeSet;
@@ -38,6 +39,8 @@ impl AllocationDeclaration {
         schema: SchemaMetadata,
     ) -> Result<Self, DeclarationSnapshotError> {
         let stable_key = StableKey::parse(stable_key).map_err(DeclarationSnapshotError::Key)?;
+        slot.validate()
+            .map_err(DeclarationSnapshotError::SlotDescriptor)?;
         validate_label(label.as_deref())?;
         schema
             .validate()
@@ -112,6 +115,20 @@ impl AllocationDeclaration {
     #[must_use]
     pub const fn schema(&self) -> &SchemaMetadata {
         &self.schema
+    }
+
+    /// Validate constructor invariants after decode or manual assembly.
+    pub fn validate(&self) -> Result<(), DeclarationSnapshotError> {
+        self.stable_key
+            .validate()
+            .map_err(DeclarationSnapshotError::Key)?;
+        self.slot
+            .validate()
+            .map_err(DeclarationSnapshotError::SlotDescriptor)?;
+        validate_label(self.label.as_deref())?;
+        self.schema
+            .validate()
+            .map_err(DeclarationSnapshotError::SchemaMetadata)
     }
 }
 
@@ -270,13 +287,7 @@ pub struct DeclarationSnapshot {
 impl DeclarationSnapshot {
     /// Create and validate a declaration snapshot.
     pub fn new(declarations: Vec<AllocationDeclaration>) -> Result<Self, DeclarationSnapshotError> {
-        for declaration in &declarations {
-            validate_label(declaration.label.as_deref())?;
-            declaration
-                .schema
-                .validate()
-                .map_err(DeclarationSnapshotError::SchemaMetadata)?;
-        }
+        validate_declarations(&declarations)?;
         reject_duplicates(&declarations)?;
         Ok(Self {
             declarations,
@@ -319,6 +330,13 @@ impl DeclarationSnapshot {
         self.runtime_fingerprint.as_deref()
     }
 
+    /// Validate decoded snapshot invariants before allocation validation.
+    pub fn validate(&self) -> Result<(), DeclarationSnapshotError> {
+        validate_declarations(&self.declarations)?;
+        reject_duplicates(&self.declarations)?;
+        validate_runtime_fingerprint(self.runtime_fingerprint.as_deref())
+    }
+
     pub(crate) fn into_parts(self) -> (Vec<AllocationDeclaration>, Option<String>) {
         (self.declarations, self.runtime_fingerprint)
     }
@@ -336,6 +354,9 @@ pub enum DeclarationSnapshotError {
     /// `MemoryManager` slot validation failure.
     #[error(transparent)]
     MemoryManagerSlot(MemoryManagerSlotError),
+    /// Allocation slot descriptor validation failure.
+    #[error(transparent)]
+    SlotDescriptor(AllocationSlotDescriptorError),
     /// Schema metadata encoding failure.
     #[error(transparent)]
     SchemaMetadata(SchemaMetadataError),
@@ -386,6 +407,15 @@ fn validate_label(label: Option<&str>) -> Result<(), DeclarationSnapshotError> {
     }
     if label.bytes().any(|byte| byte.is_ascii_control()) {
         return Err(DeclarationSnapshotError::ControlCharacterLabel);
+    }
+    Ok(())
+}
+
+fn validate_declarations(
+    declarations: &[AllocationDeclaration],
+) -> Result<(), DeclarationSnapshotError> {
+    for declaration in declarations {
+        declaration.validate()?;
     }
     Ok(())
 }
@@ -483,6 +513,22 @@ mod tests {
         assert!(matches!(
             err,
             DeclarationSnapshotError::MemoryManagerSlot(_)
+        ));
+    }
+
+    #[test]
+    fn snapshot_rejects_decoded_invalid_memory_manager_slot() {
+        let mut declaration = declaration("app.orders.v1", 100);
+        declaration.slot =
+            AllocationSlotDescriptor::memory_manager_unchecked(crate::MEMORY_MANAGER_INVALID_ID);
+
+        let err = DeclarationSnapshot::new(vec![declaration]).expect_err("snapshot must fail");
+
+        assert!(matches!(
+            err,
+            DeclarationSnapshotError::SlotDescriptor(AllocationSlotDescriptorError::MemoryManager(
+                MemoryManagerSlotError::InvalidMemoryManagerId { id }
+            )) if id == crate::MEMORY_MANAGER_INVALID_ID
         ));
     }
 

@@ -1,5 +1,5 @@
 use super::{AllocationLedger, AllocationRecord, AllocationState, LedgerIntegrityError};
-use crate::{declaration::validate_runtime_fingerprint, key::StableKey};
+use crate::{declaration::validate_runtime_fingerprint, key::StableKey, validation::Validate};
 use std::collections::BTreeSet;
 
 impl AllocationLedger {
@@ -130,6 +130,15 @@ fn validate_record_integrity(
     current_generation: u64,
     record: &AllocationRecord,
 ) -> Result<(), LedgerIntegrityError> {
+    record
+        .stable_key
+        .validate()
+        .map_err(LedgerIntegrityError::InvalidStableKey)?;
+    record
+        .slot
+        .validate()
+        .map_err(LedgerIntegrityError::InvalidSlotDescriptor)?;
+
     if record.first_generation > record.last_seen_generation {
         return Err(LedgerIntegrityError::InvalidRecordGenerationOrder {
             stable_key: record.stable_key.clone(),

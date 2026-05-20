@@ -1,8 +1,8 @@
 use crate::{
-    declaration::DeclarationSnapshot,
+    declaration::{DeclarationSnapshot, DeclarationSnapshotError},
     key::StableKey,
     ledger::{
-        AllocationLedger,
+        AllocationLedger, LedgerCompatibility, LedgerCompatibilityError, LedgerIntegrityError,
         claim::{ClaimConflict, validate_declaration_claim},
     },
     policy::AllocationPolicy,
@@ -11,11 +11,33 @@ use crate::{
 };
 
 ///
+/// Validate
+///
+/// Re-check constructor invariants on decoded DTOs before they become
+/// authoritative.
+pub trait Validate {
+    /// Validation error for this DTO.
+    type Error;
+
+    /// Validate this value's domain invariants.
+    fn validate(&self) -> Result<(), Self::Error>;
+}
+
+///
 /// AllocationValidationError
 ///
 /// Failure to validate declarations against policy and historical ledger facts.
 #[derive(Clone, Debug, Eq, thiserror::Error, PartialEq)]
 pub enum AllocationValidationError<P> {
+    /// Historical ledger format is not supported by this validator.
+    #[error(transparent)]
+    Compatibility(LedgerCompatibilityError),
+    /// Historical ledger was decoded or assembled with invalid committed state.
+    #[error(transparent)]
+    LedgerIntegrity(LedgerIntegrityError),
+    /// Declaration snapshot was decoded or assembled with invalid DTOs.
+    #[error(transparent)]
+    Snapshot(DeclarationSnapshotError),
     /// Policy adapter rejected the declaration.
     #[error("allocation policy rejected a declaration")]
     Policy(P),
@@ -49,15 +71,29 @@ pub enum AllocationValidationError<P> {
     },
 }
 
-/// Validate current declarations against framework policy and ledger history.
+/// Validate a committed ledger and current declarations before opening.
 ///
-/// This proves allocation ABI safety only. It does not prove store-level schema
+/// This is the authority boundary for [`ValidatedAllocations`]: the historical
+/// ledger must pass compatibility and committed-integrity checks before current
+/// declarations are checked against framework policy and ledger history. This
+/// proves allocation ABI safety only. It does not prove store-level schema
 /// compatibility.
 pub fn validate_allocations<P: AllocationPolicy>(
     ledger: &AllocationLedger,
     snapshot: DeclarationSnapshot,
     policy: &P,
 ) -> Result<ValidatedAllocations, AllocationValidationError<P::Error>> {
+    LedgerCompatibility::current()
+        .validate(ledger)
+        .map_err(AllocationValidationError::Compatibility)?;
+    ledger
+        .validate_committed_integrity()
+        .map_err(AllocationValidationError::LedgerIntegrity)?;
+
+    snapshot
+        .validate()
+        .map_err(AllocationValidationError::Snapshot)?;
+
     for declaration in snapshot.declarations() {
         policy
             .validate_key(&declaration.stable_key)
@@ -127,7 +163,7 @@ mod tests {
     use super::*;
     use crate::{
         declaration::AllocationDeclaration,
-        ledger::{AllocationHistory, AllocationRecord, AllocationState},
+        ledger::{AllocationHistory, AllocationRecord, AllocationState, GenerationRecord},
         schema::SchemaMetadata,
         slot::AllocationSlotDescriptor,
     };
@@ -166,6 +202,32 @@ mod tests {
     }
 
     fn ledger(records: Vec<AllocationRecord>) -> AllocationLedger {
+        let generations = (1..=7)
+            .map(|generation| {
+                GenerationRecord::new(
+                    generation,
+                    if generation == 1 {
+                        Some(0)
+                    } else {
+                        Some(generation - 1)
+                    },
+                    None,
+                    0,
+                    None,
+                )
+                .expect("generation record")
+            })
+            .collect();
+
+        AllocationLedger {
+            ledger_schema_version: 1,
+            physical_format_id: 1,
+            current_generation: 7,
+            allocation_history: AllocationHistory::from_parts(records, generations),
+        }
+    }
+
+    fn untrusted_ledger(records: Vec<AllocationRecord>) -> AllocationLedger {
         AllocationLedger {
             ledger_schema_version: 1,
             physical_format_id: 1,
@@ -201,6 +263,28 @@ mod tests {
         .expect("validated");
 
         assert_eq!(validated.generation(), 7);
+    }
+
+    #[test]
+    fn rejects_untrusted_ledger_before_returning_validated_allocations() {
+        let snapshot =
+            DeclarationSnapshot::new(vec![declaration("app.users.v1", 100)]).expect("snapshot");
+
+        let err = validate_allocations(
+            &untrusted_ledger(vec![active_record("app.users.v1", 100)]),
+            snapshot,
+            &TestPolicy,
+        )
+        .expect_err("untrusted ledger must not mint authority");
+
+        assert!(matches!(
+            err,
+            AllocationValidationError::LedgerIntegrity(
+                LedgerIntegrityError::MissingCurrentGenerationRecord {
+                    current_generation: 7
+                }
+            )
+        ));
     }
 
     #[test]
