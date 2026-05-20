@@ -158,6 +158,9 @@ pub fn decode_stable_cell_payload<M: Memory>(
 /// This decodes only the cell value payload, not the enclosing stable-cell
 /// header. Use [`decode_stable_cell_payload`] first when inspecting raw stable
 /// memory.
+///
+/// The returned record is decoded DTO state, not authority. Recover through the
+/// embedded [`LedgerCommitStore`] before trusting any ledger payload.
 pub fn decode_stable_cell_ledger_record(
     bytes: &[u8],
 ) -> Result<StableCellLedgerRecord, serde_cbor::Error> {

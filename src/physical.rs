@@ -304,9 +304,14 @@ impl DualCommitStore {
 
     /// Commit `payload` as an explicitly numbered physical generation.
     ///
-    /// This is the preferred API for logical ledger commits: the physical slot
-    /// generation is taken from the logical ledger generation and checked
-    /// against the recovered physical predecessor.
+    /// This is the low-level physical-slot primitive used by
+    /// [`crate::LedgerCommitStore`]. Normal ledger commits should use
+    /// [`crate::LedgerCommitStore::commit`] or [`crate::AllocationBootstrap`] so
+    /// payloads are decoded, compatibility-checked, and integrity-validated
+    /// before they can become authoritative.
+    ///
+    /// The physical slot generation is checked against the recovered physical
+    /// predecessor. This method does not inspect `payload`.
     pub fn commit_payload_at_generation(
         &mut self,
         generation: u64,

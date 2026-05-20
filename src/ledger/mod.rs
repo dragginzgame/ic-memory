@@ -77,10 +77,6 @@ impl LedgerCodec for CborLedgerCodec {
 /// This store commits allocation ledger generations. It does not open
 /// stable-memory handles and does not allocate application slots.
 ///
-/// TODO: Move commit/recovery behavior to `ledger::commit` once the staging
-/// split is also mechanical, so the commit tests can move with their fixtures.
-///
-
 #[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
 pub struct LedgerCommitStore {
     /// Protected physical commit slots.
@@ -108,6 +104,12 @@ impl LedgerCommitStore {
     }
 
     /// Recover the authoritative allocation ledger using explicit compatibility rules.
+    ///
+    /// This is an advanced migration/adaptor hook. Normal readers should use
+    /// [`LedgerCommitStore::recover`], which applies this crate version's current
+    /// compatibility rules. Do not broaden `compatibility` unless the supplied
+    /// codec and this reader's integrity checks fully understand every accepted
+    /// ledger schema version.
     pub fn recover_with_compatibility<C: LedgerCodec>(
         &self,
         codec: &C,
@@ -153,6 +155,11 @@ impl LedgerCommitStore {
     }
 
     /// Recover the authoritative ledger, or initialize an empty store with explicit compatibility.
+    ///
+    /// This is an advanced migration/adaptor hook. Normal bootstrap code should
+    /// use [`LedgerCommitStore::recover_or_initialize`]. Do not broaden
+    /// `compatibility` unless the supplied codec and this reader's integrity
+    /// checks fully understand every accepted ledger schema version.
     pub fn recover_or_initialize_with_compatibility<C: LedgerCodec>(
         &mut self,
         codec: &C,
@@ -180,6 +187,11 @@ impl LedgerCommitStore {
     }
 
     /// Commit one logical allocation ledger generation through explicit compatibility.
+    ///
+    /// This is an advanced migration/adaptor hook. Normal writers should use
+    /// [`LedgerCommitStore::commit`]. Do not broaden `compatibility` unless the
+    /// supplied codec and this reader's integrity checks fully understand every
+    /// accepted ledger schema version.
     pub fn commit_with_compatibility<C: LedgerCodec>(
         &mut self,
         ledger: &AllocationLedger,
