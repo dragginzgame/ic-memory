@@ -2,6 +2,22 @@
 
 ## 0.5.0
 
+### Runtime registration
+
+- Added a generic multi-crate runtime registration layer for downstream crates
+  such as IcyDB, including range declarations, `ic_memory_key!`,
+  `ic_memory_range!`, `eager_init!`, default `MemoryManager` bootstrap, and
+  validated runtime opening without Canic.
+- Moved the normal documentation path to the macro-based runtime API and moved
+  lower-level ledger/bootstrap guidance to `ADVANCED.md`.
+- Left TLS eager initialization out of `ic-memory`; framework helpers such as
+  Canic's `eager_static!` should wrap ordinary `thread_local!` values and use
+  `ic_memory_key!` / `ic_memory_range!` for allocation registration.
+
+---
+
+## 0.4.1
+
 ### Ledger hardening
 
 - Split allocation staging behavior into `ledger::stage`, keeping the public
@@ -13,10 +29,6 @@
 - Documented and tested reserved-record retirement semantics.
 - Documented the expected allocation-ledger size bounds behind the current
   clone-on-stage implementation.
-- Added a generic multi-crate runtime registration layer for downstream crates
-  such as IcyDB, including range declarations, `ic_memory_key!`,
-  `ic_memory_range!`, `eager_init!`, default `MemoryManager` bootstrap, and
-  validated runtime opening without Canic.
 
 ---
 
