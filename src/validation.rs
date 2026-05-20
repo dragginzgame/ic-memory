@@ -2,7 +2,7 @@ use crate::{
     declaration::{DeclarationSnapshot, DeclarationSnapshotError},
     key::StableKey,
     ledger::{
-        AllocationLedger, LedgerCompatibility, LedgerCompatibilityError, LedgerIntegrityError,
+        AllocationLedger, LedgerCompatibilityError, LedgerIntegrityError, RecoveredLedger,
         claim::{ClaimConflict, validate_declaration_claim},
     },
     policy::AllocationPolicy,
@@ -79,16 +79,11 @@ pub enum AllocationValidationError<P> {
 /// proves allocation ABI safety only. It does not prove store-level schema
 /// compatibility.
 pub fn validate_allocations<P: AllocationPolicy>(
-    ledger: &AllocationLedger,
+    recovered: &RecoveredLedger,
     snapshot: DeclarationSnapshot,
     policy: &P,
 ) -> Result<ValidatedAllocations, AllocationValidationError<P::Error>> {
-    LedgerCompatibility::current()
-        .validate(ledger)
-        .map_err(AllocationValidationError::Compatibility)?;
-    ledger
-        .validate_committed_integrity()
-        .map_err(AllocationValidationError::LedgerIntegrity)?;
+    let ledger = recovered.ledger();
 
     snapshot
         .validate()
@@ -163,7 +158,10 @@ mod tests {
     use super::*;
     use crate::{
         declaration::AllocationDeclaration,
-        ledger::{AllocationHistory, AllocationRecord, AllocationState, GenerationRecord},
+        ledger::{
+            AllocationHistory, AllocationRecord, AllocationState,
+            CURRENT_LEDGER_PAYLOAD_ENVELOPE_VERSION, GenerationRecord,
+        },
         schema::SchemaMetadata,
         slot::AllocationSlotDescriptor,
     };
@@ -186,7 +184,11 @@ mod tests {
             _key: &StableKey,
             slot: &AllocationSlotDescriptor,
         ) -> Result<(), Self::Error> {
-            if slot == &AllocationSlotDescriptor::memory_manager_unchecked(255) {
+            if slot
+                == &AllocationSlotDescriptor::memory_manager_unchecked(
+                    crate::MEMORY_MANAGER_INVALID_ID,
+                )
+            {
                 return Err("bad slot");
             }
             Ok(())
@@ -227,15 +229,6 @@ mod tests {
         }
     }
 
-    fn untrusted_ledger(records: Vec<AllocationRecord>) -> AllocationLedger {
-        AllocationLedger {
-            ledger_schema_version: 1,
-            physical_format_id: 1,
-            current_generation: 7,
-            allocation_history: AllocationHistory::from_parts(records, Vec::new()),
-        }
-    }
-
     fn declaration(key: &str, id: u8) -> AllocationDeclaration {
         AllocationDeclaration::new(
             key,
@@ -250,13 +243,21 @@ mod tests {
         AllocationRecord::from_declaration(1, declaration(key, id), AllocationState::Active)
     }
 
+    fn recovered(records: Vec<AllocationRecord>) -> RecoveredLedger {
+        RecoveredLedger::from_trusted_parts(
+            ledger(records),
+            7,
+            CURRENT_LEDGER_PAYLOAD_ENVELOPE_VERSION,
+        )
+    }
+
     #[test]
     fn accepts_matching_historical_owner() {
         let snapshot =
             DeclarationSnapshot::new(vec![declaration("app.users.v1", 100)]).expect("snapshot");
 
         let validated = validate_allocations(
-            &ledger(vec![active_record("app.users.v1", 100)]),
+            &recovered(vec![active_record("app.users.v1", 100)]),
             snapshot,
             &TestPolicy,
         )
@@ -266,34 +267,12 @@ mod tests {
     }
 
     #[test]
-    fn rejects_untrusted_ledger_before_returning_validated_allocations() {
-        let snapshot =
-            DeclarationSnapshot::new(vec![declaration("app.users.v1", 100)]).expect("snapshot");
-
-        let err = validate_allocations(
-            &untrusted_ledger(vec![active_record("app.users.v1", 100)]),
-            snapshot,
-            &TestPolicy,
-        )
-        .expect_err("untrusted ledger must not mint authority");
-
-        assert!(matches!(
-            err,
-            AllocationValidationError::LedgerIntegrity(
-                LedgerIntegrityError::MissingCurrentGenerationRecord {
-                    current_generation: 7
-                }
-            )
-        ));
-    }
-
-    #[test]
     fn omitted_historical_records_do_not_fail_validation() {
         let snapshot =
             DeclarationSnapshot::new(vec![declaration("app.users.v1", 100)]).expect("snapshot");
 
         validate_allocations(
-            &ledger(vec![
+            &recovered(vec![
                 active_record("app.users.v1", 100),
                 active_record("app.orders.v1", 101),
             ]),
@@ -309,7 +288,7 @@ mod tests {
             DeclarationSnapshot::new(vec![declaration("app.users.v1", 101)]).expect("snapshot");
 
         let err = validate_allocations(
-            &ledger(vec![active_record("app.users.v1", 100)]),
+            &recovered(vec![active_record("app.users.v1", 100)]),
             snapshot,
             &TestPolicy,
         )
@@ -327,7 +306,7 @@ mod tests {
             DeclarationSnapshot::new(vec![declaration("app.orders.v1", 100)]).expect("snapshot");
 
         let err = validate_allocations(
-            &ledger(vec![active_record("app.users.v1", 100)]),
+            &recovered(vec![active_record("app.users.v1", 100)]),
             snapshot,
             &TestPolicy,
         )
@@ -347,7 +326,7 @@ mod tests {
         let snapshot =
             DeclarationSnapshot::new(vec![declaration("app.users.v1", 100)]).expect("snapshot");
 
-        let err = validate_allocations(&ledger(vec![record]), snapshot, &TestPolicy)
+        let err = validate_allocations(&recovered(vec![record]), snapshot, &TestPolicy)
             .expect_err("retired");
 
         assert!(matches!(
@@ -361,7 +340,7 @@ mod tests {
         let snapshot =
             DeclarationSnapshot::new(vec![declaration("bad.users.v1", 100)]).expect("snapshot");
 
-        let err = validate_allocations(&ledger(Vec::new()), snapshot, &TestPolicy)
+        let err = validate_allocations(&recovered(Vec::new()), snapshot, &TestPolicy)
             .expect_err("policy failure");
 
         assert_eq!(err, AllocationValidationError::Policy("bad key"));

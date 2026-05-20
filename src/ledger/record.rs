@@ -30,6 +30,7 @@ pub const CURRENT_PHYSICAL_FORMAT_ID: u32 = 1;
 /// stable allocation identities and committed bootstrap generations, not user
 /// collection contents.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct AllocationLedger {
     /// Ledger schema version.
     pub(crate) ledger_schema_version: u32,
@@ -50,6 +51,7 @@ pub struct AllocationLedger {
 /// allocation facts and generation diagnostics; callers should prefer ledger
 /// staging/validation methods over mutating histories directly.
 #[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct AllocationHistory {
     /// Stable-key allocation records.
     pub(crate) records: Vec<AllocationRecord>,
@@ -66,6 +68,7 @@ pub struct AllocationHistory {
 /// or invalid ownership state cannot be assembled through public struct
 /// literals; use accessors for diagnostics and ledger methods for mutation.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct AllocationRecord {
     /// Stable key that owns the slot.
     pub(crate) stable_key: StableKey,
@@ -91,6 +94,7 @@ pub struct AllocationRecord {
 /// Retirement prevents a stable key from being redeclared. It does not make the
 /// physical slot safe for another active stable key.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct AllocationRetirement {
     /// Stable key being retired.
     pub stable_key: StableKey,
@@ -134,6 +138,7 @@ pub enum AllocationState {
 /// durable encoding, but `ic-memory` does not prove application schema
 /// compatibility or data migration correctness.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct SchemaMetadataRecord {
     /// Generation that declared this schema metadata.
     pub(crate) generation: u64,
@@ -146,6 +151,7 @@ pub struct SchemaMetadataRecord {
 ///
 /// Diagnostic metadata for one committed ledger generation.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct GenerationRecord {
     /// Committed generation number.
     pub(crate) generation: u64,
@@ -167,6 +173,7 @@ pub struct GenerationRecord {
 /// Run this check on recovered ledgers before treating them as authoritative
 /// state. Integrity validation then checks allocation history invariants.
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct LedgerCompatibility {
     /// Minimum supported ledger schema version.
     pub min_ledger_schema_version: u32,
@@ -192,23 +199,31 @@ impl LedgerCompatibility {
         &self,
         ledger: &AllocationLedger,
     ) -> Result<(), LedgerCompatibilityError> {
-        if ledger.ledger_schema_version < self.min_ledger_schema_version {
+        self.validate_versions(ledger.ledger_schema_version, ledger.physical_format_id)
+    }
+
+    pub(crate) const fn validate_versions(
+        &self,
+        ledger_schema_version: u32,
+        physical_format_id: u32,
+    ) -> Result<(), LedgerCompatibilityError> {
+        if ledger_schema_version < self.min_ledger_schema_version {
             return Err(LedgerCompatibilityError::UnsupportedLedgerSchemaVersion {
-                found: ledger.ledger_schema_version,
+                found: ledger_schema_version,
                 min_supported: self.min_ledger_schema_version,
                 max_supported: self.max_ledger_schema_version,
             });
         }
-        if ledger.ledger_schema_version > self.max_ledger_schema_version {
+        if ledger_schema_version > self.max_ledger_schema_version {
             return Err(LedgerCompatibilityError::UnsupportedLedgerSchemaVersion {
-                found: ledger.ledger_schema_version,
+                found: ledger_schema_version,
                 min_supported: self.min_ledger_schema_version,
                 max_supported: self.max_ledger_schema_version,
             });
         }
-        if ledger.physical_format_id != self.physical_format_id {
+        if physical_format_id != self.physical_format_id {
             return Err(LedgerCompatibilityError::UnsupportedPhysicalFormat {
-                found: ledger.physical_format_id,
+                found: physical_format_id,
                 supported: self.physical_format_id,
             });
         }
@@ -219,6 +234,78 @@ impl LedgerCompatibility {
 impl Default for LedgerCompatibility {
     fn default() -> Self {
         Self::current()
+    }
+}
+
+///
+/// RecoveredLedger
+///
+/// Proof object for an allocation ledger that has crossed physical recovery,
+/// logical payload-envelope routing, compatibility checks, and committed
+/// integrity validation.
+///
+/// This type is not serializable and has no public constructor. It is the
+/// provenance boundary required before declarations can mint
+/// [`crate::ValidatedAllocations`].
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct RecoveredLedger {
+    ledger: AllocationLedger,
+    physical_generation: u64,
+    ledger_schema_version: u32,
+    envelope_version: u16,
+}
+
+impl RecoveredLedger {
+    pub(crate) const fn from_trusted_parts(
+        ledger: AllocationLedger,
+        physical_generation: u64,
+        envelope_version: u16,
+    ) -> Self {
+        let ledger_schema_version = ledger.ledger_schema_version;
+        Self {
+            ledger,
+            physical_generation,
+            ledger_schema_version,
+            envelope_version,
+        }
+    }
+
+    /// Borrow the recovered canonical allocation ledger.
+    ///
+    /// The returned ledger is diagnostic/staging state. It is not itself an
+    /// authority token; callers must keep passing the `RecoveredLedger` proof
+    /// across validation boundaries.
+    #[must_use]
+    pub const fn ledger(&self) -> &AllocationLedger {
+        &self.ledger
+    }
+
+    /// Return the selected physical committed generation.
+    #[must_use]
+    pub const fn physical_generation(&self) -> u64 {
+        self.physical_generation
+    }
+
+    /// Return the recovered ledger's current logical generation.
+    #[must_use]
+    pub const fn current_generation(&self) -> u64 {
+        self.ledger.current_generation
+    }
+
+    /// Return the schema version routed by the logical payload envelope.
+    #[must_use]
+    pub const fn ledger_schema_version(&self) -> u32 {
+        self.ledger_schema_version
+    }
+
+    /// Return the payload envelope version used during recovery.
+    #[must_use]
+    pub const fn envelope_version(&self) -> u16 {
+        self.envelope_version
+    }
+
+    pub(crate) fn into_ledger(self) -> AllocationLedger {
+        self.ledger
     }
 }
 

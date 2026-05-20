@@ -51,10 +51,13 @@
 //! into that owner or use distinct ledger stores and allocation domains.
 //!
 //! `ic-stable-structures` `MemoryManager` IDs are the first-class supported
-//! physical slot substrate. The crate still keeps narrow internal abstractions
-//! for storage adapters and diagnostics, but the native IC path is
+//! physical slot substrate. That ID domain is `u8`: IDs `0..=254` are usable,
+//! and ID `255` is always the `ic-stable-structures` unallocated sentinel.
+//! The crate still keeps narrow internal abstractions for storage adapters and
+//! diagnostics, but the native IC path is
 //! `MemoryManager` ID 0 -> `ic-stable-structures::Cell<StableCellLedgerRecord,
-//! _>` -> [`LedgerCommitStore`] -> committed [`AllocationLedger`] payloads.
+//! _>` -> [`LedgerCommitStore`] -> [`CommittedGenerationBytes`] ->
+//! [`LedgerPayloadEnvelope`] -> [`RecoveredLedger`] -> [`ValidatedAllocations`].
 //!
 //! `ic-memory` is not a replacement for `ic-stable-structures` collections and
 //! does not wrap typed stores such as `StableBTreeMap`.
@@ -89,9 +92,9 @@ pub use key::{StableKey, StableKeyError};
 pub use ledger::{
     AllocationHistory, AllocationLedger, AllocationRecord, AllocationReservationError,
     AllocationRetirement, AllocationRetirementError, AllocationStageError, AllocationState,
-    CURRENT_LEDGER_SCHEMA_VERSION, CURRENT_PHYSICAL_FORMAT_ID, CborLedgerCodec, GenerationRecord,
-    LedgerCodec, LedgerCommitError, LedgerCommitStore, LedgerCompatibility,
-    LedgerCompatibilityError, LedgerIntegrityError, SchemaMetadataRecord,
+    CURRENT_LEDGER_SCHEMA_VERSION, CURRENT_PHYSICAL_FORMAT_ID, GenerationRecord, LedgerCommitError,
+    LedgerCommitStore, LedgerCompatibilityError, LedgerIntegrityError, LedgerPayloadEnvelope,
+    LedgerPayloadEnvelopeError, RecoveredLedger, SchemaMetadataRecord,
 };
 pub use physical::{
     AuthoritativeSlot, CommitRecoveryError, CommitSlotDiagnostic, CommitSlotIndex,

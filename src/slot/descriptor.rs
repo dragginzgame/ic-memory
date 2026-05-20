@@ -4,25 +4,15 @@ use serde::{Deserialize, Serialize};
 ///
 /// AllocationSlot
 ///
-/// Durable physical allocation identity interpreted by a storage substrate.
+/// Durable physical `ic-stable-structures::MemoryManager` allocation identity.
 ///
 /// Stable keys are logical identities; allocation slots are the physical
 /// locations those keys are bound to in the ledger.
 #[derive(Clone, Debug, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
+#[serde(deny_unknown_fields)]
 pub enum AllocationSlot {
     /// `ic-stable-structures::MemoryManager` virtual memory ID.
     MemoryManagerId(u8),
-    /// Named substrate partition.
-    NamedPartition(String),
-    /// Forward-compatible custom slot descriptor.
-    Custom {
-        /// Substrate-defined slot kind.
-        kind: String,
-        /// Slot descriptor version.
-        version: u32,
-        /// Canonical substrate-defined value.
-        value: Vec<u8>,
-    },
 }
 
 ///
@@ -30,14 +20,13 @@ pub enum AllocationSlot {
 ///
 /// Encoded allocation slot persisted in the ledger.
 ///
-/// Constructors for built-in substrates validate their invariants before a
-/// descriptor can be used publicly. For `MemoryManager` slots, use
-/// [`AllocationSlotDescriptor::memory_manager`] so ID 255 is rejected.
+/// Use [`AllocationSlotDescriptor::memory_manager`] so ID 255 is rejected.
 #[derive(Clone, Debug, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct AllocationSlotDescriptor {
     /// Durable allocation slot.
     pub(crate) slot: AllocationSlot,
-    /// Substrate identifier that interprets the slot.
+    /// Fixed substrate marker for the current `MemoryManager` slot protocol.
     pub(crate) substrate: String,
     /// Descriptor encoding version.
     pub(crate) descriptor_version: u32,
@@ -50,7 +39,7 @@ impl AllocationSlotDescriptor {
         &self.slot
     }
 
-    /// Return the substrate identifier that interprets this slot.
+    /// Return the fixed substrate marker for this slot protocol.
     #[must_use]
     pub fn substrate(&self) -> &str {
         &self.substrate
@@ -67,14 +56,9 @@ impl Validate for AllocationSlotDescriptor {
     type Error = AllocationSlotDescriptorError;
 
     fn validate(&self) -> Result<(), Self::Error> {
-        if matches!(self.slot, AllocationSlot::MemoryManagerId(_))
-            || self.substrate == super::memory_manager::MEMORY_MANAGER_SUBSTRATE
-        {
-            self.memory_manager_id()
-                .map_err(AllocationSlotDescriptorError::MemoryManager)?;
-        }
-
-        Ok(())
+        self.memory_manager_id()
+            .map(|_| ())
+            .map_err(AllocationSlotDescriptorError::MemoryManager)
     }
 }
 

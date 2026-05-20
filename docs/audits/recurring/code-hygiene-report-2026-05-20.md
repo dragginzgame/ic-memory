@@ -11,11 +11,11 @@ serializable or publicly constructible, decoded ledger and declaration DTOs are
 revalidated before authority, and the normal bootstrap path is cohesive.
 
 The remaining issues are mostly documentation/API-surface hygiene around
-advanced low-level APIs. The code exposes physical commit and compatibility
-helpers that are legitimate for custom integrations, but some rustdoc wording
-does not make the trust boundary sharp enough. Future maintainers could read
-those helpers as the normal path and bypass the higher-level
-`LedgerCommitStore` / `AllocationBootstrap` sequencing.
+advanced low-level APIs. The code exposes physical commit helpers for framework
+and stable-IO owners, but some rustdoc wording does not make the trust boundary
+sharp enough. Future maintainers could read those helpers as the normal path
+and bypass the higher-level `LedgerCommitStore` / `AllocationBootstrap`
+sequencing.
 
 ## Commands Run
 
@@ -87,9 +87,9 @@ bytes and does not decode, run compatibility checks, or validate committed
 ledger integrity.
 
 Why it matters: The implementation is correct for a low-level physical commit
-primitive, but the wording is too inviting. A future custom integration could
-call this directly for ledger commits and accidentally skip `LedgerCommitStore`
-validation.
+primitive, but the wording is too inviting. A future framework adapter or
+manual bootstrap owner could call this directly for ledger commits and
+accidentally skip `LedgerCommitStore` validation.
 
 Recommended fix: Change the rustdoc to say this is the preferred physical-slot
 primitive used by `LedgerCommitStore`, and that normal ledger commits should go
@@ -103,22 +103,15 @@ already cover the higher-level validation path.
 Reference: `src/ledger/mod.rs:110`, `src/ledger/mod.rs:155`,
 `src/ledger/mod.rs:182`
 
-Issue: `recover_with_compatibility`,
-`recover_or_initialize_with_compatibility`, and `commit_with_compatibility`
-accept caller-supplied compatibility ranges. The names are clear, but the
-rustdoc does not warn that broadening compatibility can make an older reader
-accept bytes it does not actually understand.
+Status: Resolved during the 0.6 protocol-boundary work.
 
-Why it matters: This is not a bug in the default path. The default path uses
-`LedgerCompatibility::current()`. It is a hygiene issue because advanced API
-docs should make misuse hard.
+Resolution: The caller-supplied compatibility APIs were removed from the
+public recovery and commit path. `LedgerCommitStore` now uses crate-owned
+current compatibility checks internally, and callers cannot widen acceptable
+ledger schema ranges.
 
-Recommended fix: Add rustdoc stating that callers should use these only for
-explicit migration/adaptor code, and should not broaden compatibility unless the
-codec and integrity validation understand every accepted schema version.
-
-Suggested regression test: Add a future-version fixture test if this becomes a
-behavioral compatibility change. For the docs-only warning, no test is needed.
+Suggested regression test: Keep fixture tests for unsupported future envelope
+and ledger schema versions, and keep API inventory checks in recurring audits.
 
 ## Low Findings
 

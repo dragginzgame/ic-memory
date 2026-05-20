@@ -3,8 +3,7 @@ use crate::{
     declaration::DeclarationSnapshot,
     ledger::{
         AllocationLedger, AllocationReservationError, AllocationRetirement,
-        AllocationRetirementError, AllocationStageError, LedgerCodec, LedgerCommitError,
-        LedgerCommitStore,
+        AllocationRetirementError, AllocationStageError, LedgerCommitError, LedgerCommitStore,
     },
     policy::AllocationPolicy,
     session::ValidatedAllocations,
@@ -47,19 +46,17 @@ impl<'store> AllocationBootstrap<'store> {
     }
 
     /// Recover, validate, stage, commit, and publish one allocation generation.
-    pub fn validate_and_commit<C, P>(
+    pub fn validate_and_commit<P>(
         &mut self,
-        codec: &C,
         snapshot: DeclarationSnapshot,
         policy: &P,
         committed_at: Option<u64>,
-    ) -> Result<BootstrapCommit, BootstrapError<C::Error, P::Error>>
+    ) -> Result<BootstrapCommit, BootstrapError<P::Error>>
     where
-        C: LedgerCodec,
         P: AllocationPolicy,
     {
-        let prior = self.store.recover(codec).map_err(BootstrapError::Ledger)?;
-        self.validate_against(codec, prior, snapshot, policy, committed_at)
+        let prior = self.store.recover().map_err(BootstrapError::Ledger)?;
+        self.validate_against(prior, snapshot, policy, committed_at)
     }
 
     /// Initialize an empty ledger store explicitly, then validate and commit.
@@ -68,91 +65,79 @@ impl<'store> AllocationBootstrap<'store> {
     /// framework decision; the generic crate only guarantees that it is used
     /// when the protected physical store is empty, never when recovery sees
     /// corrupt or partially written state.
-    pub fn initialize_validate_and_commit<C, P>(
+    pub fn initialize_validate_and_commit<P>(
         &mut self,
-        codec: &C,
         genesis: &AllocationLedger,
         snapshot: DeclarationSnapshot,
         policy: &P,
         committed_at: Option<u64>,
-    ) -> Result<BootstrapCommit, BootstrapError<C::Error, P::Error>>
+    ) -> Result<BootstrapCommit, BootstrapError<P::Error>>
     where
-        C: LedgerCodec,
         P: AllocationPolicy,
     {
         let prior = self
             .store
-            .recover_or_initialize(codec, genesis)
+            .recover_or_initialize(genesis)
             .map_err(BootstrapError::Ledger)?;
-        self.validate_against(codec, prior, snapshot, policy, committed_at)
+        self.validate_against(prior, snapshot, policy, committed_at)
     }
 
     /// Recover, policy-check, reserve, and commit one reservation generation.
-    pub fn reserve_and_commit<C, P>(
+    pub fn reserve_and_commit<P>(
         &mut self,
-        codec: &C,
         reservations: &[AllocationDeclaration],
         policy: &P,
         committed_at: Option<u64>,
-    ) -> Result<AllocationLedger, BootstrapReservationError<C::Error, P::Error>>
+    ) -> Result<AllocationLedger, BootstrapReservationError<P::Error>>
     where
-        C: LedgerCodec,
         P: AllocationPolicy,
     {
         let prior = self
             .store
-            .recover(codec)
+            .recover()
             .map_err(BootstrapReservationError::Ledger)?;
-        self.reserve_against(codec, prior, reservations, policy, committed_at)
+        self.reserve_against(prior.into_ledger(), reservations, policy, committed_at)
     }
 
     /// Initialize an empty ledger store, then reserve and commit.
-    pub fn initialize_reserve_and_commit<C, P>(
+    pub fn initialize_reserve_and_commit<P>(
         &mut self,
-        codec: &C,
         genesis: &AllocationLedger,
         reservations: &[AllocationDeclaration],
         policy: &P,
         committed_at: Option<u64>,
-    ) -> Result<AllocationLedger, BootstrapReservationError<C::Error, P::Error>>
+    ) -> Result<AllocationLedger, BootstrapReservationError<P::Error>>
     where
-        C: LedgerCodec,
         P: AllocationPolicy,
     {
         let prior = self
             .store
-            .recover_or_initialize(codec, genesis)
+            .recover_or_initialize(genesis)
             .map_err(BootstrapReservationError::Ledger)?;
-        self.reserve_against(codec, prior, reservations, policy, committed_at)
+        self.reserve_against(prior.into_ledger(), reservations, policy, committed_at)
     }
 
     /// Recover, retire, and commit one explicit retirement generation.
-    pub fn retire_and_commit<C>(
+    pub fn retire_and_commit(
         &mut self,
-        codec: &C,
         retirement: &AllocationRetirement,
         committed_at: Option<u64>,
-    ) -> Result<AllocationLedger, BootstrapRetirementError<C::Error>>
-    where
-        C: LedgerCodec,
-    {
+    ) -> Result<AllocationLedger, BootstrapRetirementError> {
         let prior = self
             .store
-            .recover(codec)
+            .recover()
             .map_err(BootstrapRetirementError::Ledger)?;
-        self.retire_against(codec, prior, retirement, committed_at)
+        self.retire_against(prior.into_ledger(), retirement, committed_at)
     }
 
-    fn reserve_against<C, P>(
+    fn reserve_against<P>(
         &mut self,
-        codec: &C,
         prior: AllocationLedger,
         reservations: &[AllocationDeclaration],
         policy: &P,
         committed_at: Option<u64>,
-    ) -> Result<AllocationLedger, BootstrapReservationError<C::Error, P::Error>>
+    ) -> Result<AllocationLedger, BootstrapReservationError<P::Error>>
     where
-        C: LedgerCodec,
         P: AllocationPolicy,
     {
         for reservation in reservations {
@@ -168,53 +153,47 @@ impl<'store> AllocationBootstrap<'store> {
             .stage_reservation_generation(reservations, committed_at)
             .map_err(BootstrapReservationError::Reservation)?;
         self.store
-            .commit(&staged, codec)
+            .commit(&staged)
+            .map(crate::RecoveredLedger::into_ledger)
             .map_err(BootstrapReservationError::Ledger)
     }
 
-    fn retire_against<C>(
+    fn retire_against(
         &mut self,
-        codec: &C,
         prior: AllocationLedger,
         retirement: &AllocationRetirement,
         committed_at: Option<u64>,
-    ) -> Result<AllocationLedger, BootstrapRetirementError<C::Error>>
-    where
-        C: LedgerCodec,
-    {
+    ) -> Result<AllocationLedger, BootstrapRetirementError> {
         let staged = prior
             .stage_retirement_generation(retirement, committed_at)
             .map_err(BootstrapRetirementError::Retirement)?;
         self.store
-            .commit(&staged, codec)
+            .commit(&staged)
+            .map(crate::RecoveredLedger::into_ledger)
             .map_err(BootstrapRetirementError::Ledger)
     }
 
-    fn validate_against<C, P>(
+    fn validate_against<P>(
         &mut self,
-        codec: &C,
-        prior: AllocationLedger,
+        prior: crate::RecoveredLedger,
         snapshot: DeclarationSnapshot,
         policy: &P,
         committed_at: Option<u64>,
-    ) -> Result<BootstrapCommit, BootstrapError<C::Error, P::Error>>
+    ) -> Result<BootstrapCommit, BootstrapError<P::Error>>
     where
-        C: LedgerCodec,
         P: AllocationPolicy,
     {
         let validated =
             validate_allocations(&prior, snapshot, policy).map_err(BootstrapError::Validation)?;
-        let staged = prior
+        let prior_ledger = prior.into_ledger();
+        let staged = prior_ledger
             .stage_validated_generation(&validated, committed_at)
             .map_err(BootstrapError::Staging)?;
-        let committed = self
-            .store
-            .commit(&staged, codec)
-            .map_err(BootstrapError::Ledger)?;
+        let committed = self.store.commit(&staged).map_err(BootstrapError::Ledger)?;
 
         Ok(BootstrapCommit {
-            validated: validated.with_generation(committed.current_generation),
-            ledger: committed,
+            validated: validated.with_generation(committed.current_generation()),
+            ledger: committed.into_ledger(),
         })
     }
 }
@@ -236,10 +215,10 @@ pub struct BootstrapCommit {
 ///
 /// Failure to recover, validate, or commit an allocation generation.
 #[derive(Clone, Debug, Eq, thiserror::Error, PartialEq)]
-pub enum BootstrapError<C, P> {
+pub enum BootstrapError<P> {
     /// Ledger recovery or protected commit failed.
     #[error(transparent)]
-    Ledger(LedgerCommitError<C>),
+    Ledger(LedgerCommitError),
     /// Policy or historical allocation validation failed.
     #[error(transparent)]
     Validation(AllocationValidationError<P>),
@@ -253,10 +232,10 @@ pub enum BootstrapError<C, P> {
 ///
 /// Failure to policy-check, stage, or commit an allocation reservation.
 #[derive(Clone, Debug, Eq, thiserror::Error, PartialEq)]
-pub enum BootstrapReservationError<C, P> {
+pub enum BootstrapReservationError<P> {
     /// Ledger recovery or protected commit failed.
     #[error(transparent)]
-    Ledger(LedgerCommitError<C>),
+    Ledger(LedgerCommitError),
     /// Policy adapter rejected a reservation declaration.
     #[error("allocation policy rejected a reservation")]
     Policy(P),
@@ -270,10 +249,10 @@ pub enum BootstrapReservationError<C, P> {
 ///
 /// Failure to stage or commit an explicit allocation retirement.
 #[derive(Clone, Debug, Eq, thiserror::Error, PartialEq)]
-pub enum BootstrapRetirementError<C> {
+pub enum BootstrapRetirementError {
     /// Ledger recovery or protected commit failed.
     #[error(transparent)]
-    Ledger(LedgerCommitError<C>),
+    Ledger(LedgerCommitError),
     /// Retirement conflicted with historical allocation facts.
     #[error(transparent)]
     Retirement(AllocationRetirementError),
@@ -288,28 +267,6 @@ mod tests {
         schema::SchemaMetadata,
         slot::AllocationSlotDescriptor,
     };
-    use std::cell::RefCell;
-
-    #[derive(Debug, Default)]
-    struct TestCodec {
-        encoded: RefCell<Option<AllocationLedger>>,
-    }
-
-    impl LedgerCodec for TestCodec {
-        type Error = &'static str;
-
-        fn encode(&self, ledger: &AllocationLedger) -> Result<Vec<u8>, Self::Error> {
-            *self.encoded.borrow_mut() = Some(ledger.clone());
-            Ok(ledger.current_generation.to_le_bytes().to_vec())
-        }
-
-        fn decode(&self, _bytes: &[u8]) -> Result<AllocationLedger, Self::Error> {
-            self.encoded
-                .borrow()
-                .clone()
-                .ok_or("ledger was not encoded")
-        }
-    }
 
     #[derive(Debug, Eq, PartialEq)]
     struct TestPolicy;
@@ -413,13 +370,12 @@ mod tests {
 
     #[test]
     fn validate_and_commit_publishes_committed_generation() {
-        let codec = TestCodec::default();
         let mut store = LedgerCommitStore::default();
-        store.commit(&ledger(), &codec).expect("initial ledger");
+        store.commit(&ledger()).expect("initial ledger");
         let snapshot = DeclarationSnapshot::new(vec![declaration()]).expect("snapshot");
 
         let commit = AllocationBootstrap::new(&mut store)
-            .validate_and_commit(&codec, snapshot, &TestPolicy, Some(42))
+            .validate_and_commit(snapshot, &TestPolicy, Some(42))
             .expect("bootstrap commit");
 
         assert_eq!(commit.ledger.current_generation, 1);
@@ -430,12 +386,11 @@ mod tests {
 
     #[test]
     fn initialize_validate_and_commit_seeds_empty_ledger_store() {
-        let codec = TestCodec::default();
         let mut store = LedgerCommitStore::default();
         let snapshot = DeclarationSnapshot::new(vec![declaration()]).expect("snapshot");
 
         let commit = AllocationBootstrap::new(&mut store)
-            .initialize_validate_and_commit(&codec, &ledger(), snapshot, &TestPolicy, Some(42))
+            .initialize_validate_and_commit(&ledger(), snapshot, &TestPolicy, Some(42))
             .expect("bootstrap commit");
 
         assert_eq!(commit.ledger.current_generation, 1);
@@ -445,15 +400,14 @@ mod tests {
 
     #[test]
     fn initialize_validate_and_commit_fails_closed_on_corrupt_store() {
-        let codec = TestCodec::default();
         let mut store = LedgerCommitStore::default();
         store
-            .write_corrupt_inactive_ledger(&ledger(), &codec)
+            .write_corrupt_inactive_ledger(&ledger())
             .expect("corrupt ledger");
         let snapshot = DeclarationSnapshot::new(vec![declaration()]).expect("snapshot");
 
         let err = AllocationBootstrap::new(&mut store)
-            .initialize_validate_and_commit(&codec, &ledger(), snapshot, &TestPolicy, Some(42))
+            .initialize_validate_and_commit(&ledger(), snapshot, &TestPolicy, Some(42))
             .expect_err("corrupt state");
 
         assert!(matches!(err, BootstrapError::Ledger(_)));
@@ -461,13 +415,12 @@ mod tests {
 
     #[test]
     fn reserve_and_commit_policy_checks_and_commits_reservation() {
-        let codec = TestCodec::default();
         let mut store = LedgerCommitStore::default();
-        store.commit(&ledger(), &codec).expect("initial ledger");
+        store.commit(&ledger()).expect("initial ledger");
         let reservation = declaration();
 
         let committed = AllocationBootstrap::new(&mut store)
-            .reserve_and_commit(&codec, &[reservation], &TestPolicy, Some(42))
+            .reserve_and_commit(&[reservation], &TestPolicy, Some(42))
             .expect("reservation commit");
 
         assert_eq!(committed.current_generation, 1);
@@ -480,12 +433,11 @@ mod tests {
 
     #[test]
     fn initialize_reserve_and_commit_seeds_empty_store() {
-        let codec = TestCodec::default();
         let mut store = LedgerCommitStore::default();
         let reservation = declaration();
 
         let committed = AllocationBootstrap::new(&mut store)
-            .initialize_reserve_and_commit(&codec, &ledger(), &[reservation], &TestPolicy, Some(42))
+            .initialize_reserve_and_commit(&ledger(), &[reservation], &TestPolicy, Some(42))
             .expect("reservation commit");
 
         assert_eq!(committed.current_generation, 1);
@@ -497,55 +449,52 @@ mod tests {
 
     #[test]
     fn reserve_and_commit_rejects_policy_failure_before_commit() {
-        let codec = TestCodec::default();
         let mut store = LedgerCommitStore::default();
-        store.commit(&ledger(), &codec).expect("initial ledger");
+        store.commit(&ledger()).expect("initial ledger");
         let reservation = declaration();
 
         let err = AllocationBootstrap::new(&mut store)
-            .reserve_and_commit(&codec, &[reservation], &RejectReservedPolicy, Some(42))
+            .reserve_and_commit(&[reservation], &RejectReservedPolicy, Some(42))
             .expect_err("policy failure");
-        let recovered = store.recover(&codec).expect("recovered");
+        let recovered = store.recover().expect("recovered");
 
         assert!(matches!(err, BootstrapReservationError::Policy(_)));
-        assert_eq!(recovered.current_generation, 0);
-        assert!(recovered.allocation_history.records().is_empty());
+        assert_eq!(recovered.current_generation(), 0);
+        assert!(recovered.ledger().allocation_history().records().is_empty());
     }
 
     #[test]
     fn reservation_policy_alone_does_not_activate_reserved_allocation() {
-        let codec = TestCodec::default();
         let mut store = LedgerCommitStore::default();
-        store.commit(&ledger(), &codec).expect("initial ledger");
+        store.commit(&ledger()).expect("initial ledger");
         let reservation = declaration();
         AllocationBootstrap::new(&mut store)
-            .reserve_and_commit(&codec, &[reservation], &TestPolicy, Some(42))
+            .reserve_and_commit(&[reservation], &TestPolicy, Some(42))
             .expect("reservation commit");
         let snapshot = DeclarationSnapshot::new(vec![declaration()]).expect("snapshot");
 
         let err = AllocationBootstrap::new(&mut store)
-            .validate_and_commit(&codec, snapshot, &RejectActivePolicy, Some(43))
+            .validate_and_commit(snapshot, &RejectActivePolicy, Some(43))
             .expect_err("active validation must run");
-        let recovered = store.recover(&codec).expect("recovered");
+        let recovered = store.recover().expect("recovered");
 
-        assert_eq!(
+        assert!(matches!(
             err,
             BootstrapError::Validation(AllocationValidationError::Policy("active slot rejected"))
-        );
+        ));
         assert_eq!(
-            recovered.allocation_history.records()[0].state(),
+            recovered.ledger().allocation_history().records()[0].state(),
             AllocationState::Reserved
         );
     }
 
     #[test]
     fn retire_and_commit_tombstones_through_protected_commit() {
-        let codec = TestCodec::default();
         let mut store = LedgerCommitStore::default();
-        store.commit(&ledger(), &codec).expect("initial ledger");
+        store.commit(&ledger()).expect("initial ledger");
         let snapshot = DeclarationSnapshot::new(vec![declaration()]).expect("snapshot");
         AllocationBootstrap::new(&mut store)
-            .validate_and_commit(&codec, snapshot, &TestPolicy, Some(42))
+            .validate_and_commit(snapshot, &TestPolicy, Some(42))
             .expect("active commit");
         let retirement = AllocationRetirement::new(
             "app.users.v1",
@@ -554,7 +503,7 @@ mod tests {
         .expect("retirement");
 
         let committed = AllocationBootstrap::new(&mut store)
-            .retire_and_commit(&codec, &retirement, Some(43))
+            .retire_and_commit(&retirement, Some(43))
             .expect("retirement commit");
 
         assert_eq!(committed.current_generation, 2);
@@ -570,9 +519,8 @@ mod tests {
 
     #[test]
     fn retire_and_commit_rejects_unknown_key_before_commit() {
-        let codec = TestCodec::default();
         let mut store = LedgerCommitStore::default();
-        store.commit(&ledger(), &codec).expect("initial ledger");
+        store.commit(&ledger()).expect("initial ledger");
         let retirement = AllocationRetirement::new(
             "app.users.v1",
             AllocationSlotDescriptor::memory_manager(100).expect("usable slot"),
@@ -580,12 +528,12 @@ mod tests {
         .expect("retirement");
 
         let err = AllocationBootstrap::new(&mut store)
-            .retire_and_commit(&codec, &retirement, Some(43))
+            .retire_and_commit(&retirement, Some(43))
             .expect_err("unknown key");
-        let recovered = store.recover(&codec).expect("recovered");
+        let recovered = store.recover().expect("recovered");
 
         assert!(matches!(err, BootstrapRetirementError::Retirement(_)));
-        assert_eq!(recovered.current_generation, 0);
-        assert!(recovered.allocation_history.records().is_empty());
+        assert_eq!(recovered.current_generation(), 0);
+        assert!(recovered.ledger().allocation_history().records().is_empty());
     }
 }

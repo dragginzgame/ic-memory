@@ -12,6 +12,7 @@ const DIAGNOSTIC_STRING_MAX_BYTES: usize = 256;
 ///
 /// Inclusive range of usable `MemoryManager` virtual memory IDs.
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct MemoryManagerIdRange {
     pub(crate) start: u8,
     pub(crate) end: u8,
@@ -105,6 +106,7 @@ pub enum MemoryManagerRangeMode {
 ///
 /// Ordered diagnostic authority record for a `MemoryManager` ID range.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct MemoryManagerAuthorityRecord {
     /// Inclusive range governed by this authority.
     pub range: MemoryManagerIdRange,
@@ -150,6 +152,7 @@ impl MemoryManagerAuthorityRecord {
 /// [`crate::AllocationPolicy`]. Frameworks that want their own policy to own
 /// application space should avoid registering ranges for that space.
 #[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct MemoryManagerRangeAuthority {
     authorities: Vec<MemoryManagerAuthorityRecord>,
 }

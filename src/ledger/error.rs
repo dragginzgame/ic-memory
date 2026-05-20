@@ -1,6 +1,7 @@
 use crate::{
     declaration::DeclarationSnapshotError,
     key::{StableKey, StableKeyError},
+    ledger::LedgerPayloadEnvelopeError,
     physical::CommitRecoveryError,
     schema::SchemaMetadataError,
     slot::{AllocationSlotDescriptor, AllocationSlotDescriptorError},
@@ -196,10 +197,23 @@ pub enum LedgerIntegrityError {
 ///
 /// Failure to recover or commit a logical allocation ledger.
 #[derive(Clone, Debug, Eq, thiserror::Error, PartialEq)]
-pub enum LedgerCommitError<E> {
+pub enum LedgerCommitError {
     /// Protected physical commit recovery failed.
     #[error(transparent)]
     Recovery(CommitRecoveryError),
+    /// Logical ledger payload envelope could not be decoded.
+    #[error(transparent)]
+    PayloadEnvelope(LedgerPayloadEnvelopeError),
+    /// Logical ledger payload envelope version is unsupported.
+    #[error(
+        "ledger payload envelope version {found} is unsupported; supported version is {supported}"
+    )]
+    UnsupportedEnvelopeVersion {
+        /// Version found in the envelope.
+        found: u16,
+        /// Supported version.
+        supported: u16,
+    },
     /// Physical slot generation and decoded logical ledger generation disagree.
     #[error(
         "physical generation {physical_generation} does not match logical ledger generation {logical_generation}"
@@ -210,9 +224,21 @@ pub enum LedgerCommitError<E> {
         /// Generation decoded from the logical allocation ledger.
         logical_generation: u64,
     },
-    /// Integration-supplied codec failed.
+    /// Logical payload envelope and decoded ledger headers disagree.
+    #[error("ledger payload envelope metadata does not match decoded ledger metadata")]
+    PayloadEnvelopeLedgerMismatch {
+        /// Schema version declared by the envelope.
+        envelope_ledger_schema_version: u32,
+        /// Schema version decoded from the ledger.
+        ledger_schema_version: u32,
+        /// Physical format ID declared by the envelope.
+        envelope_physical_format_id: u32,
+        /// Physical format ID decoded from the ledger.
+        ledger_physical_format_id: u32,
+    },
+    /// Built-in ledger codec failed.
     #[error("allocation ledger codec failed")]
-    Codec(E),
+    Codec(String),
     /// Decoded ledger format is not compatible with this reader.
     #[error(transparent)]
     Compatibility(LedgerCompatibilityError),

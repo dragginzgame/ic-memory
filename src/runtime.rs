@@ -1,7 +1,7 @@
 use crate::{
     AllocationBootstrap, AllocationDeclaration, AllocationHistory, AllocationLedger,
-    AllocationPolicy, AllocationSlotDescriptor, CborLedgerCodec, DeclarationSnapshot,
-    StableCellLedgerError, StableCellLedgerRecord, StableKey, ValidatedAllocations,
+    AllocationPolicy, AllocationSlotDescriptor, DeclarationSnapshot, StableCellLedgerError,
+    StableCellLedgerRecord, StableKey, ValidatedAllocations,
     registry::{
         StaticMemoryDeclaration, StaticMemoryDeclarationError, StaticMemoryRangeDeclaration,
         seal_static_memory_registry, static_memory_declarations, static_memory_range_declarations,
@@ -58,7 +58,7 @@ pub enum RuntimeBootstrapError<P> {
     LedgerIntegrity(#[from] crate::LedgerIntegrityError),
     /// Protected ledger recovery or commit failed.
     #[error(transparent)]
-    LedgerCommit(#[from] crate::LedgerCommitError<serde_cbor::Error>),
+    LedgerCommit(#[from] crate::LedgerCommitError),
     /// Stable-cell ledger storage is corrupt before protected recovery can run.
     #[error(transparent)]
     StableCellLedger(#[from] StableCellLedgerError),
@@ -213,7 +213,7 @@ pub fn bootstrap_default_memory_manager_with_policy<P: AllocationPolicy>(
             let mut record = cell.get().clone();
             let mut bootstrap = AllocationBootstrap::new(record.store_mut());
             let commit = bootstrap
-                .initialize_validate_and_commit(&CborLedgerCodec, &genesis, snapshot, &policy, None)
+                .initialize_validate_and_commit(&genesis, snapshot, &policy, None)
                 .map_err(runtime_bootstrap_error_from_bootstrap)?;
             cell.set(record);
             Ok(commit.validated)
@@ -349,7 +349,7 @@ fn internal_ledger_range() -> Result<MemoryManagerAuthorityRecord, MemoryManager
 }
 
 fn runtime_bootstrap_error_from_bootstrap<P>(
-    err: crate::BootstrapError<serde_cbor::Error, RuntimePolicyError<P>>,
+    err: crate::BootstrapError<RuntimePolicyError<P>>,
 ) -> RuntimeBootstrapError<P> {
     match err {
         crate::BootstrapError::Ledger(err) => RuntimeBootstrapError::LedgerCommit(err),

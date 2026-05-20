@@ -10,6 +10,7 @@ use serde::{Deserialize, Serialize};
 /// durable ledger encoding, but it does not perform application schema
 /// migrations or validate stable data semantics.
 #[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct SchemaMetadata {
     /// Optional in-place schema version.
     pub schema_version: Option<u32>,

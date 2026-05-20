@@ -9,9 +9,9 @@ const FNV_PRIME: u64 = 0x0000_0100_0000_01b3;
 ///
 /// One physical generation slot that can participate in protected recovery.
 ///
-/// This is an advanced low-level API for custom persistence/recovery
-/// integrations. Most callers should use the ledger commit/recovery flow
-/// instead of implementing physical slot recovery directly.
+/// This is an advanced low-level API for framework or stable-IO owners. Most
+/// callers should use the ledger commit/recovery flow instead of implementing
+/// physical slot recovery directly.
 pub trait ProtectedGenerationSlot: Eq {
     /// Generation encoded by this slot.
     fn generation(&self) -> u64;
@@ -25,9 +25,9 @@ pub trait ProtectedGenerationSlot: Eq {
 ///
 /// Physical store with two protected generation slots.
 ///
-/// This is an advanced low-level API for custom persistence/recovery
-/// integrations. Normal allocation flows recover and commit ledgers through the
-/// higher-level ledger commit APIs.
+/// This is an advanced low-level API for framework or stable-IO owners. Normal
+/// allocation flows recover and commit ledgers through the higher-level ledger
+/// commit APIs.
 pub trait DualProtectedCommitStore {
     /// Protected slot record type.
     type Slot: ProtectedGenerationSlot;
@@ -97,9 +97,9 @@ pub struct AuthoritativeSlot<'slot, T> {
 
 /// Select the highest-generation valid physical slot.
 ///
-/// This is an advanced recovery helper for custom dual-slot persistence
-/// integrations. It only selects among supplied protected slots; it does not
-/// decode or validate the allocation ledger payload.
+/// This is an advanced recovery helper for framework or stable-IO owners. It
+/// only selects among supplied protected slots; it does not decode or validate
+/// the allocation ledger payload.
 pub fn select_authoritative_slot<'slot, T: ProtectedGenerationSlot>(
     slot0: Option<&'slot T>,
     slot1: Option<&'slot T>,
@@ -140,10 +140,11 @@ pub fn select_authoritative_slot<'slot, T: ProtectedGenerationSlot>(
 ///
 /// Physically committed ledger generation payload protected by a checksum.
 ///
-/// This is an advanced low-level DTO for custom persistence/recovery
-/// integrations. Its recovered bytes are untrusted until marker/checksum
-/// validation and ledger decoding/integrity validation have both succeeded.
+/// This is an advanced low-level DTO for framework or stable-IO owners. Its
+/// recovered bytes are untrusted until marker/checksum validation and ledger
+/// decoding/integrity validation have both succeeded.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct CommittedGenerationBytes {
     /// Generation number represented by this payload.
     pub(crate) generation: u64,
@@ -222,10 +223,9 @@ impl ProtectedGenerationSlot for CommittedGenerationBytes {
 ///
 /// Dual-slot protected commit protocol for encoded ledger generations.
 ///
-/// This is an advanced low-level API for custom persistence/recovery
-/// integrations. Most applications should recover, validate, and commit through
-/// the allocation ledger flow rather than manipulating encoded physical commit
-/// slots directly.
+/// This is an advanced low-level API for framework or stable-IO owners. Most
+/// applications should recover, validate, and commit through the allocation
+/// ledger flow rather than manipulating encoded physical commit slots directly.
 ///
 /// Writers stage a complete generation record into the inactive slot. Readers
 /// recover by selecting the highest-generation valid slot. A torn or partial
@@ -235,6 +235,7 @@ impl ProtectedGenerationSlot for CommittedGenerationBytes {
 /// is not a cryptographic hash and does not provide adversarial tamper
 /// resistance.
 #[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct DualCommitStore {
     /// First physical commit slot.
     pub(crate) slot0: Option<CommittedGenerationBytes>,
@@ -380,6 +381,7 @@ impl DualProtectedCommitStore for DualCommitStore {
 ///
 /// Read-only diagnostic summary of protected commit recovery state.
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct CommitStoreDiagnostic {
     /// First physical commit slot diagnostic.
     pub slot0: CommitSlotDiagnostic,
@@ -413,6 +415,7 @@ impl CommitStoreDiagnostic {
 ///
 /// Read-only diagnostic summary for one protected commit slot.
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct CommitSlotDiagnostic {
     /// Whether a physical slot record is present.
     pub present: bool,

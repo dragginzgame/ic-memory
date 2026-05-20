@@ -33,18 +33,22 @@ mod tests {
     }
 
     #[test]
+    fn memory_manager_usable_domain_is_u8_with_255_sentinel() {
+        assert_eq!(MEMORY_MANAGER_MIN_ID, 0);
+        assert_eq!(MEMORY_MANAGER_MAX_ID, 254);
+        assert_eq!(MEMORY_MANAGER_INVALID_ID, 255);
+        assert_eq!(MEMORY_MANAGER_INVALID_ID, u8::MAX);
+
+        AllocationSlotDescriptor::memory_manager(MEMORY_MANAGER_MAX_ID)
+            .expect("254 is the last usable MemoryManager ID");
+        AllocationSlotDescriptor::memory_manager(MEMORY_MANAGER_INVALID_ID)
+            .expect_err("255 is always the unallocated sentinel");
+    }
+
+    #[test]
     fn memory_manager_id_validates_descriptor_shape() {
         let slot = AllocationSlotDescriptor::memory_manager(42).expect("usable slot");
         assert_eq!(slot.memory_manager_id().expect("usable ID"), 42);
-
-        let err = AllocationSlotDescriptor {
-            slot: AllocationSlot::NamedPartition("ledger".to_string()),
-            substrate: MEMORY_MANAGER_SUBSTRATE.to_string(),
-            descriptor_version: MEMORY_MANAGER_DESCRIPTOR_VERSION,
-        }
-        .memory_manager_id()
-        .expect_err("slot kind should fail");
-        assert_eq!(err, MemoryManagerSlotError::UnsupportedSlot);
 
         let err = AllocationSlotDescriptor {
             slot: AllocationSlot::MemoryManagerId(42),

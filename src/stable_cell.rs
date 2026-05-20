@@ -25,6 +25,7 @@ const WASM_PAGE_SIZE: u64 = 65_536;
 ///
 
 #[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct StableCellLedgerRecord {
     store: LedgerCommitStore,
 }
@@ -197,6 +198,21 @@ mod tests {
     use super::*;
     use ic_stable_structures::{Cell, VectorMemory};
 
+    fn hex_fixture(contents: &str) -> Vec<u8> {
+        let hex = contents
+            .chars()
+            .filter(|char| !char.is_whitespace())
+            .collect::<String>();
+        assert_eq!(hex.len() % 2, 0, "fixture hex must have byte pairs");
+        hex.as_bytes()
+            .chunks_exact(2)
+            .map(|pair| {
+                let pair = std::str::from_utf8(pair).expect("fixture hex is utf8");
+                u8::from_str_radix(pair, 16).expect("fixture hex byte")
+            })
+            .collect()
+    }
+
     #[test]
     fn stable_cell_ledger_record_round_trips_through_cell() {
         let memory = VectorMemory::default();
@@ -207,6 +223,25 @@ mod tests {
         let payload = decode_stable_cell_payload(&memory).expect("decode stable cell payload");
         let decoded = StableCellLedgerRecord::from_bytes(Cow::Owned(payload));
         assert_eq!(decoded, record);
+    }
+
+    #[test]
+    fn v1_stable_cell_record_fixture_recovers() {
+        let bytes = hex_fixture(include_str!("../fixtures/v1/stable_cell_record.cbor.hex"));
+        let record = decode_stable_cell_ledger_record(&bytes).expect("stable-cell fixture");
+
+        assert_eq!(
+            bytes,
+            serde_cbor::to_vec(&record).expect("re-encoded stable-cell fixture")
+        );
+        assert_eq!(
+            record
+                .store()
+                .recover()
+                .expect("fixture store recovers")
+                .current_generation(),
+            1
+        );
     }
 
     #[test]

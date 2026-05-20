@@ -88,10 +88,7 @@ impl AllocationSlotDescriptor {
             });
         }
 
-        let AllocationSlot::MemoryManagerId(id) = self.slot else {
-            return Err(MemoryManagerSlotError::UnsupportedSlot);
-        };
-
+        let AllocationSlot::MemoryManagerId(id) = self.slot;
         validate_memory_manager_id(id)?;
         Ok(id)
     }
@@ -103,9 +100,6 @@ impl AllocationSlotDescriptor {
 /// Invalid or unsupported `MemoryManager` allocation slot descriptor.
 #[derive(Clone, Debug, Eq, thiserror::Error, PartialEq)]
 pub enum MemoryManagerSlotError {
-    /// Descriptor is not a `MemoryManagerId` slot.
-    #[error("allocation slot is not a MemoryManager virtual memory ID")]
-    UnsupportedSlot,
     /// Descriptor is attached to another substrate.
     #[error("allocation slot substrate '{substrate}' is not supported as a MemoryManager slot")]
     UnsupportedSubstrate {

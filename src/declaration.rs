@@ -19,6 +19,7 @@ const DIAGNOSTIC_STRING_MAX_BYTES: usize = 256;
 /// metadata, but a declaration is not authoritative until it has been validated
 /// against the recovered ledger and committed as part of a generation.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct AllocationDeclaration {
     /// Durable stable key.
     pub(crate) stable_key: StableKey,
@@ -277,6 +278,7 @@ impl DeclarationCollector {
 /// Integrations should call [`crate::validate_allocations`], commit the staged
 /// generation, and only then expose an [`crate::AllocationSession`].
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct DeclarationSnapshot {
     /// Runtime declarations.
     declarations: Vec<AllocationDeclaration>,

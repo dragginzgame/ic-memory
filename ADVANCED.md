@@ -16,14 +16,18 @@ The native IC ledger anchor is:
 MemoryManager ID 0
   -> ic-stable-structures::Cell<StableCellLedgerRecord, _>
   -> LedgerCommitStore
-  -> dual protected committed AllocationLedger payloads
+  -> dual protected committed generation bytes
+  -> LedgerPayloadEnvelope
+  -> RecoveredLedger
+  -> ValidatedAllocations
 ```
 
-`CborLedgerCodec` is the built-in codec for those committed ledger payloads.
+The logical payload inside the `LedgerPayloadEnvelope` is the built-in
+`ic-memory` CBOR ledger format. Callers do not provide a custom codec.
 
 A typical framework flow is:
 
-1. Recover the saved allocation ledger.
+1. Recover the saved allocation ledger into `RecoveredLedger`.
 2. Declare the stores this binary expects.
 3. Validate those declarations against history and policy.
 4. Commit the new generation.
@@ -45,7 +49,7 @@ can be that owner.
 All crates using the default runtime compose into one bootstrap authority.
 
 If multiple layers need separate allocation domains, they should use distinct
-ledger stores and custom integration code.
+ledger stores with an explicit bootstrap owner for each domain.
 
 ## Policy Authority
 
@@ -103,7 +107,7 @@ bootstrap with `runtime::bootstrap_default_memory_manager_with_policy(...)`.
 ## Manual Bootstrap
 
 The macro runtime is built on the lower-level ledger API. Frameworks that need
-to own a custom ledger substrate can still drive that API directly.
+to own stable-memory IO or endpoint lifecycle can still drive that API directly.
 
 The safe order is fixed:
 
@@ -116,10 +120,11 @@ only then open stable-memory handles
 ```
 
 Decoded ledger and declaration DTOs are not trusted just because serde accepted
-them. The validation boundary rechecks ledger compatibility, committed-ledger
-integrity, stable-key grammar, slot descriptor shape, schema metadata,
-duplicate claims, policy, and historical ownership before a
-`ValidatedAllocations` capability is produced.
+them. Recovery first selects a valid physical generation, decodes the logical
+payload envelope, decodes the current `ic-memory` CBOR ledger payload, checks
+compatibility, and validates committed ledger integrity. Only the resulting
+`RecoveredLedger` proof can be passed to declaration validation to produce a
+`ValidatedAllocations` capability.
 
 Manual sketch:
 
@@ -129,7 +134,6 @@ let declarations = DeclarationCollector::new()
     .seal()?;
 
 let commit = AllocationBootstrap::new(record.store_mut()).initialize_validate_and_commit(
-    &CborLedgerCodec,
     &genesis_ledger,
     declarations,
     &policy,

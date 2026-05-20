@@ -1,5 +1,41 @@
 # Changelog
 
+## 0.6.0
+
+### Protocol authority boundary
+
+- Added a logical ledger payload envelope inside each physically committed
+  generation. Physical dual-slot recovery still selects the highest valid
+  committed generation first; only then does `ic-memory` decode the logical
+  envelope and route the ledger payload by schema/format metadata.
+- Added `RecoveredLedger` as the crate-owned proof that a ledger crossed
+  physical recovery, payload-envelope routing, compatibility checks, and
+  committed-integrity validation.
+- Changed `validate_allocations()` to require `RecoveredLedger` instead of raw
+  `AllocationLedger`, so untrusted/manual ledger DTOs cannot mint
+  `ValidatedAllocations`.
+- Removed the public caller-supplied compatibility range surface from normal
+  recovery and commit APIs. `LedgerCommitStore` now uses the crate-owned current
+  protocol path.
+- Added recovery tests for payload-envelope classification, unsupported
+  envelope versions, and envelope/ledger metadata drift.
+- Added reviewable v1 hex wire fixtures for payload envelopes, full commit
+  stores, dual-slot recovery states, stable-cell records, and slot descriptors,
+  with tests that decode, validate, recover, and re-encode them.
+- Marked authority-bearing durable DTO structs with `serde(deny_unknown_fields)`
+  so future fields fail closed instead of being silently ignored by older
+  readers.
+- Removed the custom payload encoding namespace. The logical ledger payload is
+  the current `ic-memory` CBOR format inside the logical envelope.
+- Removed custom allocation-slot substrates from the 0.6 authority model.
+  Allocation slots are `ic-stable-structures::MemoryManager` `u8` IDs only,
+  with ID 255 rejected as the sentinel.
+- Removed public codec selection from the commit/bootstrap path. The durable
+  ledger codec is crate-owned CBOR, so downstream crates cannot introduce a
+  parallel ledger format.
+
+---
+
 ## 0.5.1
 
 ### Audit hardening

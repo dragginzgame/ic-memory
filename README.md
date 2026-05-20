@@ -133,6 +133,10 @@ when your code first touches the `thread_local!`.
 Duplicate stable keys, duplicate MemoryManager IDs, overlapping ranges, and
 out-of-range declarations fail before stable structures open.
 
+`ic-memory` follows the `ic-stable-structures::MemoryManager` ID domain exactly:
+IDs `0..=254` are usable, and ID `255` is always the unallocated sentinel. It is
+not an application slot and cannot be declared or reserved.
+
 Range claims are authoritative in the default runtime. If a crate registers
 `ic_memory_range!`, its declared memories must stay inside that range. Framework
 adapters that want their own range policy, such as Canic, should register only
