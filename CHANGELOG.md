@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.4.1
+## 0.5.0
 
 ### Ledger hardening
 
@@ -13,6 +13,10 @@
 - Documented and tested reserved-record retirement semantics.
 - Documented the expected allocation-ledger size bounds behind the current
   clone-on-stage implementation.
+- Added a generic multi-crate runtime registration layer for downstream crates
+  such as IcyDB, including range declarations, `ic_memory_key!`,
+  `ic_memory_range!`, `eager_init!`, default `MemoryManager` bootstrap, and
+  validated runtime opening without Canic.
 
 ---
 

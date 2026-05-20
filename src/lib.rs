@@ -60,6 +60,8 @@ pub mod key;
 pub mod ledger;
 pub mod physical;
 pub mod policy;
+pub mod registry;
+pub mod runtime;
 pub mod schema;
 pub mod session;
 pub mod slot;
@@ -91,6 +93,18 @@ pub use physical::{
     ProtectedGenerationSlot, select_authoritative_slot,
 };
 pub use policy::AllocationPolicy;
+pub use registry::{
+    StaticMemoryDeclaration, StaticMemoryDeclarationError, StaticMemoryRangeDeclaration,
+    collect_static_memory_declarations, register_static_memory_declaration,
+    register_static_memory_manager_declaration,
+    register_static_memory_manager_declaration_with_schema, register_static_memory_manager_range,
+    register_static_memory_range_declaration, static_memory_declaration_snapshot,
+    static_memory_declarations, static_memory_range_authority, static_memory_range_declarations,
+};
+pub use runtime::{
+    RuntimeBootstrapError, RuntimeOpenError, RuntimePolicyError, bootstrap_default_memory_manager,
+    bootstrap_default_memory_manager_with_policy,
+};
 pub use schema::{SchemaMetadata, SchemaMetadataError};
 pub use session::{AllocationSession, AllocationSessionError, ValidatedAllocations};
 pub use slot::{
@@ -111,3 +125,111 @@ pub use stable_cell::{
 };
 pub use substrate::{LedgerAnchor, StorageSubstrate};
 pub use validation::{AllocationValidationError, validate_allocations};
+
+#[doc(hidden)]
+pub mod __reexports {
+    pub use ctor;
+}
+
+/// Register a `MemoryManager` allocation declaration during static initialization.
+///
+/// This macro only registers declaration metadata. It does not open stable
+/// memory. The bootstrap owner still has to collect/seal declarations, validate
+/// them against the ledger, commit the generation, and then open memory handles.
+#[macro_export]
+macro_rules! ic_memory_declaration {
+    (key = $stable_key:literal, ty = $label:path, id = $id:expr $(,)?) => {
+        const _: () = {
+            #[allow(dead_code)]
+            type IcMemoryTypeCheck = $label;
+
+            #[ $crate::__reexports::ctor::ctor(unsafe, anonymous, crate_path = $crate::__reexports::ctor) ]
+            fn __ic_memory_register_static_declaration() {
+                $crate::register_static_memory_manager_declaration(
+                    $id,
+                    env!("CARGO_PKG_NAME"),
+                    stringify!($label),
+                    $stable_key,
+                )
+                .expect("ic-memory static memory declaration failed");
+            }
+        };
+    };
+    (key = $stable_key:literal, label = $label:literal, id = $id:expr $(,)?) => {
+        const _: () = {
+            #[ $crate::__reexports::ctor::ctor(unsafe, anonymous, crate_path = $crate::__reexports::ctor) ]
+            fn __ic_memory_register_static_declaration() {
+                $crate::register_static_memory_manager_declaration(
+                    $id,
+                    env!("CARGO_PKG_NAME"),
+                    $label,
+                    $stable_key,
+                )
+                .expect("ic-memory static memory declaration failed");
+            }
+        };
+    };
+}
+
+/// Declare a `MemoryManager` allocation range during static initialization.
+#[macro_export]
+macro_rules! ic_memory_range {
+    (start = $start:expr, end = $end:expr $(,)?) => {
+        $crate::ic_memory_range!(
+            start = $start,
+            end = $end,
+            mode = Reserved,
+        );
+    };
+    (start = $start:expr, end = $end:expr, mode = $mode:ident $(,)?) => {
+        const _: () = {
+            #[ $crate::__reexports::ctor::ctor(unsafe, anonymous, crate_path = $crate::__reexports::ctor) ]
+            fn __ic_memory_register_static_range() {
+                $crate::register_static_memory_manager_range(
+                    $start,
+                    $end,
+                    env!("CARGO_PKG_NAME"),
+                    $crate::MemoryManagerRangeMode::$mode,
+                    None,
+                )
+                .expect("ic-memory static memory range declaration failed");
+            }
+        };
+    };
+}
+
+/// Declare and open a validated `MemoryManager` slot by stable key.
+///
+/// The macro registers declaration metadata during static initialization and
+/// returns the validated default-runtime memory handle at expression use time.
+#[macro_export]
+macro_rules! ic_memory_key {
+    ($stable_key:literal, $label:path, $id:expr $(,)?) => {{
+        $crate::ic_memory_declaration!(key = $stable_key, ty = $label, id = $id,);
+        $crate::runtime::open_default_memory_manager_memory($stable_key, $id)
+            .expect("ic-memory stable memory opened before runtime bootstrap")
+    }};
+    (key = $stable_key:literal, ty = $label:path, id = $id:expr $(,)?) => {{ $crate::ic_memory_key!($stable_key, $label, $id) }};
+    (key = $stable_key:literal, label = $label:literal, id = $id:expr $(,)?) => {{
+        $crate::ic_memory_declaration!(key = $stable_key, label = $label, id = $id,);
+        $crate::runtime::open_default_memory_manager_memory($stable_key, $id)
+            .expect("ic-memory stable memory opened before runtime bootstrap")
+    }};
+}
+
+/// Register one pre-bootstrap hook.
+#[macro_export]
+macro_rules! eager_init {
+    ($body:block) => {
+        const _: () = {
+            fn __ic_memory_registered_eager_init_body() {
+                $body
+            }
+
+            #[ $crate::__reexports::ctor::ctor(unsafe, anonymous, crate_path = $crate::__reexports::ctor) ]
+            fn __ic_memory_register_eager_init() {
+                $crate::runtime::defer_eager_init(__ic_memory_registered_eager_init_body);
+            }
+        };
+    };
+}
