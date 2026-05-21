@@ -78,6 +78,7 @@ impl LedgerCodec for CborLedgerCodec {
 /// stable-memory handles and does not allocate application slots.
 ///
 #[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct LedgerCommitStore {
     /// Protected physical commit slots.
     physical: DualCommitStore,
@@ -153,6 +154,9 @@ impl LedgerCommitStore {
     /// Initialization is allowed only when no physical commit slot has ever
     /// been written. Corrupt or partially written stores fail closed even when
     /// a genesis ledger is supplied.
+    ///
+    /// Supplying a non-empty `genesis` is a privileged import/migration action.
+    /// Normal runtime bootstraps should seed an empty current-format ledger.
     pub fn recover_or_initialize(
         &mut self,
         genesis: &AllocationLedger,
@@ -419,6 +423,25 @@ mod tests {
         let err = CborLedgerCodec
             .decode(&bytes)
             .expect_err("unknown ledger field must fail closed");
+
+        assert!(err.to_string().contains("future_field"));
+    }
+
+    #[test]
+    fn ledger_commit_store_rejects_unknown_top_level_fields() {
+        use serde_cbor::Value;
+        use std::collections::BTreeMap;
+
+        let mut map = BTreeMap::new();
+        map.insert(
+            Value::Text("physical".to_string()),
+            serde_cbor::value::to_value(DualCommitStore::default()).expect("physical value"),
+        );
+        map.insert(Value::Text("future_field".to_string()), Value::Bool(true));
+        let bytes = serde_cbor::to_vec(&Value::Map(map)).expect("unknown-field store");
+
+        let err = serde_cbor::from_slice::<LedgerCommitStore>(&bytes)
+            .expect_err("unknown store field must fail closed");
 
         assert!(err.to_string().contains("future_field"));
     }

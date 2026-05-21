@@ -217,13 +217,13 @@ macro_rules! ic_memory_key {
     ($stable_key:literal, $label:path, $id:expr $(,)?) => {{
         $crate::ic_memory_declaration!(key = $stable_key, ty = $label, id = $id,);
         $crate::runtime::open_default_memory_manager_memory($stable_key, $id)
-            .expect("ic-memory stable memory opened before runtime bootstrap")
+            .expect("ic-memory failed to open validated stable memory; bootstrap must run first and the stable key/id must match the validated declaration")
     }};
     (key = $stable_key:literal, ty = $label:path, id = $id:expr $(,)?) => {{ $crate::ic_memory_key!($stable_key, $label, $id) }};
     (key = $stable_key:literal, label = $label:literal, id = $id:expr $(,)?) => {{
         $crate::ic_memory_declaration!(key = $stable_key, label = $label, id = $id,);
         $crate::runtime::open_default_memory_manager_memory($stable_key, $id)
-            .expect("ic-memory stable memory opened before runtime bootstrap")
+            .expect("ic-memory failed to open validated stable memory; bootstrap must run first and the stable key/id must match the validated declaration")
     }};
 }
 

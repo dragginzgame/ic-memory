@@ -135,6 +135,10 @@ pub enum RuntimePolicyError<P> {
 
 /// Register a pre-bootstrap declaration hook.
 pub fn defer_eager_init(f: fn()) {
+    assert!(
+        !is_default_memory_manager_bootstrapped(),
+        "ic-memory eager-init registration attempted after runtime bootstrap"
+    );
     EAGER_INIT_HOOKS
         .lock()
         .expect("ic-memory eager-init queue poisoned")
@@ -664,6 +668,25 @@ mod tests {
         )
         .expect_err("late registration must fail");
         assert_eq!(err, StaticMemoryDeclarationError::RegistrySealed);
+    }
+
+    #[test]
+    fn late_eager_init_registration_after_bootstrap_fails() {
+        let _guard = TEST_REGISTRY_LOCK.lock().expect("test lock poisoned");
+        reset_for_tests();
+        register_static_memory_manager_declaration(100, "crate_a", "users", "crate_a.users.v1")
+            .expect("declaration");
+        bootstrap_default_memory_manager().expect("bootstrap");
+
+        let err = std::panic::catch_unwind(|| defer_eager_init(mark_eager_init))
+            .expect_err("late eager-init registration must fail");
+
+        let message = err
+            .downcast_ref::<String>()
+            .map(String::as_str)
+            .or_else(|| err.downcast_ref::<&str>().copied())
+            .expect("panic message");
+        assert!(message.contains("after runtime bootstrap"));
     }
 
     #[test]

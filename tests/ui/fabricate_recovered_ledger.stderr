@@ -1,0 +1,14 @@
+error[E0624]: associated function `from_trusted_parts` is private
+  --> tests/ui/fabricate_recovered_ledger.rs:15:39
+   |
+15 |       let _recovered = RecoveredLedger::from_trusted_parts(ledger, 0, 1);
+   |                                         ^^^^^^^^^^^^^^^^^^ private associated function
+   |
+  ::: src/ledger/record.rs
+   |
+   | /     pub(crate) const fn from_trusted_parts(
+   | |         ledger: AllocationLedger,
+   | |         physical_generation: u64,
+   | |         envelope_version: u16,
+   | |     ) -> Self {
+   | |_____________- private associated function defined here

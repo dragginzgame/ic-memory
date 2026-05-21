@@ -1,5 +1,27 @@
 # Changelog
 
+## 0.6.1
+
+### Audit hardening
+
+- Added `serde(deny_unknown_fields)` to `LedgerCommitStore`, closing the last
+  authority-bearing durable DTO wrapper that could otherwise ignore future
+  top-level CBOR fields during rollback.
+- Added a regression test that mutates the `LedgerCommitStore` CBOR shape with
+  an unknown top-level field and verifies that decode fails closed.
+- Added compile-fail tests that lock the public API boundary around
+  `RecoveredLedger` and `ValidatedAllocations`, proving downstream safe Rust
+  cannot call their crate-private constructors.
+- Made late `eager_init` registration fail closed after default runtime
+  bootstrap instead of silently queueing a hook that will never run.
+- Clarified that explicit genesis initialization APIs are privileged
+  empty-store/import paths; normal users should prefer the default runtime or
+  the golden bootstrap flow.
+- Improved `ic_memory_key!` open failure text so it covers missing bootstrap,
+  unvalidated keys, and key/id mismatches.
+
+---
+
 ## 0.6.0
 
 ### Protocol authority boundary

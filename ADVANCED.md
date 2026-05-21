@@ -137,17 +137,22 @@ let commit = AllocationBootstrap::new(record.store_mut()).initialize_validate_an
     &genesis_ledger,
     declarations,
     &policy,
-    runtime_fingerprint,
+    committed_at,
 )?;
 
 let orders =
     AllocationSession::new(storage, commit.validated).open(&StableKey::parse("app.orders.v1")?)?;
 ```
 
-The helper names for `record`, `genesis_ledger`, `policy`,
-`runtime_fingerprint`, and `storage` are placeholders. Frameworks and libraries
-wire those to their own stable-memory persistence and collection construction.
-The ordering is the contract.
+The helper names for `record`, `genesis_ledger`, `policy`, `committed_at`, and
+`storage` are placeholders. Frameworks and libraries wire those to their own
+stable-memory persistence and collection construction. The ordering is the
+contract.
+
+Supplying `genesis_ledger` is privileged. Normal empty-store bootstraps should
+use an empty current-format ledger, like the default runtime does. A non-empty
+genesis ledger is an import or migration decision owned by the layer that owns
+the ledger store.
 
 `AllocationLedger::new(...)` builds a structurally valid ledger DTO. Use
 `AllocationLedger::new_committed(...)` only when you are manually constructing

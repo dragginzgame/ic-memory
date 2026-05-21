@@ -1,0 +1,14 @@
+error[E0624]: associated function `new` is private
+ --> tests/ui/fabricate_validated_allocations.rs:4:44
+  |
+4 |       let _validated = ValidatedAllocations::new(0, Vec::new(), None);
+  |                                              ^^^ private associated function
+  |
+ ::: src/session.rs
+  |
+  | /     pub(crate) fn new(
+  | |         generation: u64,
+  | |         declarations: Vec<AllocationDeclaration>,
+  | |         runtime_fingerprint: Option<String>,
+  | |     ) -> Self {
+  | |_____________- private associated function defined here

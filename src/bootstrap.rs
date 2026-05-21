@@ -61,10 +61,14 @@ impl<'store> AllocationBootstrap<'store> {
 
     /// Initialize an empty ledger store explicitly, then validate and commit.
     ///
-    /// This is the generic genesis path. The supplied `genesis` ledger is a
-    /// framework decision; the generic crate only guarantees that it is used
-    /// when the protected physical store is empty, never when recovery sees
-    /// corrupt or partially written state.
+    /// This is the privileged genesis/import path. Normal default-runtime users
+    /// should use [`crate::bootstrap_default_memory_manager`], which supplies an
+    /// empty current-format genesis ledger. A non-empty `genesis` should only be
+    /// supplied by the layer that owns migration or import for this ledger store.
+    ///
+    /// The generic crate guarantees only that `genesis` is used when the
+    /// protected physical store is empty, never when recovery sees corrupt or
+    /// partially written state.
     pub fn initialize_validate_and_commit<P>(
         &mut self,
         genesis: &AllocationLedger,
@@ -100,6 +104,10 @@ impl<'store> AllocationBootstrap<'store> {
     }
 
     /// Initialize an empty ledger store, then reserve and commit.
+    ///
+    /// This is the privileged genesis/import path for reservation staging. A
+    /// non-empty `genesis` should only be supplied by the owner of migration or
+    /// import for this ledger store.
     pub fn initialize_reserve_and_commit<P>(
         &mut self,
         genesis: &AllocationLedger,
