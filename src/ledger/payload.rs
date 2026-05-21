@@ -12,6 +12,12 @@ pub const CURRENT_LEDGER_PAYLOAD_ENVELOPE_VERSION: u16 = 1;
 /// Logical ledger payload envelope embedded inside one physically committed
 /// generation. This layer is decoded after physical dual-slot recovery selects
 /// a committed generation and before any allocation-ledger DTO is decoded.
+///
+/// This is an advanced protocol byte wrapper, not an authority token. Decoding
+/// an envelope only classifies the logical payload; authority is established
+/// later when [`crate::LedgerCommitStore`] routes the payload, checks
+/// compatibility, validates committed ledger integrity, and returns
+/// [`crate::RecoveredLedger`].
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct LedgerPayloadEnvelope {
     envelope_version: u16,

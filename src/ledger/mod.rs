@@ -357,6 +357,59 @@ mod tests {
         store
     }
 
+    fn active_committed_ledger() -> AllocationLedger {
+        AllocationLedger {
+            ledger_schema_version: CURRENT_LEDGER_SCHEMA_VERSION,
+            physical_format_id: CURRENT_PHYSICAL_FORMAT_ID,
+            current_generation: 1,
+            allocation_history: AllocationHistory::from_parts(
+                vec![active_record("app.users.v1", 100)],
+                vec![GenerationRecord {
+                    generation: 1,
+                    parent_generation: Some(0),
+                    runtime_fingerprint: None,
+                    declaration_count: 1,
+                    committed_at: None,
+                }],
+            ),
+        }
+    }
+
+    fn active_ledger_value() -> serde_cbor::Value {
+        serde_cbor::value::to_value(active_committed_ledger()).expect("ledger value")
+    }
+
+    fn value_map_mut(
+        value: &mut serde_cbor::Value,
+    ) -> &mut std::collections::BTreeMap<serde_cbor::Value, serde_cbor::Value> {
+        let serde_cbor::Value::Map(map) = value else {
+            panic!("expected CBOR map");
+        };
+        map
+    }
+
+    fn map_field_mut<'map>(
+        map: &'map mut std::collections::BTreeMap<serde_cbor::Value, serde_cbor::Value>,
+        field: &str,
+    ) -> &'map mut serde_cbor::Value {
+        map.get_mut(&serde_cbor::Value::Text(field.to_string()))
+            .expect("CBOR map field")
+    }
+
+    fn value_array_mut(value: &mut serde_cbor::Value) -> &mut Vec<serde_cbor::Value> {
+        let serde_cbor::Value::Array(values) = value else {
+            panic!("expected CBOR array");
+        };
+        values
+    }
+
+    fn decode_mutated_ledger(value: serde_cbor::Value) -> serde_cbor::Error {
+        let bytes = serde_cbor::to_vec(&value).expect("mutated ledger bytes");
+        CborLedgerCodec
+            .decode(&bytes)
+            .expect_err("mutated ledger must fail closed")
+    }
+
     #[test]
     fn allocation_history_accessors_expose_read_only_views() {
         let history = AllocationHistory::from_parts(
@@ -425,6 +478,75 @@ mod tests {
             .expect_err("unknown ledger field must fail closed");
 
         assert!(err.to_string().contains("future_field"));
+    }
+
+    #[test]
+    fn cbor_ledger_codec_rejects_unknown_nested_history_fields() {
+        let mut value = active_ledger_value();
+        let history = map_field_mut(value_map_mut(&mut value), "allocation_history");
+        value_map_mut(history).insert(
+            serde_cbor::Value::Text("future_history_field".to_string()),
+            serde_cbor::Value::Bool(true),
+        );
+
+        let err = decode_mutated_ledger(value);
+
+        assert!(err.to_string().contains("future_history_field"));
+    }
+
+    #[test]
+    fn cbor_ledger_codec_rejects_unknown_nested_record_fields() {
+        let mut value = active_ledger_value();
+        let history = map_field_mut(value_map_mut(&mut value), "allocation_history");
+        let records = map_field_mut(value_map_mut(history), "records");
+        let record = value_array_mut(records)
+            .first_mut()
+            .expect("allocation record");
+        value_map_mut(record).insert(
+            serde_cbor::Value::Text("future_record_field".to_string()),
+            serde_cbor::Value::Bool(true),
+        );
+
+        let err = decode_mutated_ledger(value);
+
+        assert!(err.to_string().contains("future_record_field"));
+    }
+
+    #[test]
+    fn cbor_ledger_codec_rejects_unknown_nested_slot_descriptor_fields() {
+        let mut value = active_ledger_value();
+        let history = map_field_mut(value_map_mut(&mut value), "allocation_history");
+        let records = map_field_mut(value_map_mut(history), "records");
+        let record = value_array_mut(records)
+            .first_mut()
+            .expect("allocation record");
+        let slot = map_field_mut(value_map_mut(record), "slot");
+        value_map_mut(slot).insert(
+            serde_cbor::Value::Text("future_slot_field".to_string()),
+            serde_cbor::Value::Bool(true),
+        );
+
+        let err = decode_mutated_ledger(value);
+
+        assert!(err.to_string().contains("future_slot_field"));
+    }
+
+    #[test]
+    fn cbor_ledger_codec_rejects_unknown_nested_generation_fields() {
+        let mut value = active_ledger_value();
+        let history = map_field_mut(value_map_mut(&mut value), "allocation_history");
+        let generations = map_field_mut(value_map_mut(history), "generations");
+        let generation = value_array_mut(generations)
+            .first_mut()
+            .expect("generation record");
+        value_map_mut(generation).insert(
+            serde_cbor::Value::Text("future_generation_field".to_string()),
+            serde_cbor::Value::Bool(true),
+        );
+
+        let err = decode_mutated_ledger(value);
+
+        assert!(err.to_string().contains("future_generation_field"));
     }
 
     #[test]

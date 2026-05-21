@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.6.2
+
+### Protocol mutation coverage
+
+- Added nested CBOR unknown-field regression tests for decoded
+  `AllocationHistory`, `AllocationRecord`, `AllocationSlotDescriptor`, and
+  `GenerationRecord` values inside the crate-owned ledger payload.
+- Added a stable-cell wrapper regression test proving unknown top-level fields
+  in `StableCellLedgerRecord` decode fail closed before the record can be used
+  as a ledger anchor DTO.
+- Clarified `LedgerPayloadEnvelope` rustdoc: decoding the envelope classifies
+  protocol bytes only and does not establish allocation authority.
+
+---
+
 ## 0.6.1
 
 ### Audit hardening

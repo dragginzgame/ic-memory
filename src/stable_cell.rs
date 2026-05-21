@@ -245,6 +245,25 @@ mod tests {
     }
 
     #[test]
+    fn stable_cell_ledger_record_rejects_unknown_top_level_fields() {
+        use serde_cbor::Value;
+        use std::collections::BTreeMap;
+
+        let mut map = BTreeMap::new();
+        map.insert(
+            Value::Text("store".to_string()),
+            serde_cbor::value::to_value(LedgerCommitStore::default()).expect("store value"),
+        );
+        map.insert(Value::Text("future_field".to_string()), Value::Bool(true));
+        let bytes = serde_cbor::to_vec(&Value::Map(map)).expect("unknown-field stable cell");
+
+        let err = decode_stable_cell_ledger_record(&bytes)
+            .expect_err("unknown stable-cell record field must fail closed");
+
+        assert!(err.to_string().contains("future_field"));
+    }
+
+    #[test]
     fn stable_cell_payload_rejects_non_cell_memory() {
         let memory = VectorMemory::default();
         memory.grow(1);
