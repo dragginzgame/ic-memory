@@ -11,10 +11,6 @@ use serde::{Deserialize, Serialize};
 /// Read-only machine-readable allocation ledger export.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct DiagnosticExport {
-    /// Ledger schema version.
-    pub ledger_schema_version: u32,
-    /// Physical format identifier.
-    pub physical_format_id: u32,
     /// Current committed generation.
     pub current_generation: u64,
     /// Ledger anchor descriptor.
@@ -42,8 +38,6 @@ impl DiagnosticExport {
         commit_recovery: Option<CommitStoreDiagnostic>,
     ) -> Self {
         Self {
-            ledger_schema_version: ledger.ledger_schema_version,
-            physical_format_id: ledger.physical_format_id,
             current_generation: ledger.current_generation,
             ledger_anchor,
             records: ledger
@@ -105,8 +99,6 @@ mod tests {
         )
         .expect("declaration");
         let ledger = AllocationLedger {
-            ledger_schema_version: 1,
-            physical_format_id: 1,
             current_generation: 3,
             allocation_history: AllocationHistory::from_parts(
                 vec![AllocationRecord::from_declaration(
@@ -116,7 +108,7 @@ mod tests {
                 )],
                 vec![GenerationRecord {
                     generation: 3,
-                    parent_generation: Some(2),
+                    parent_generation: 2,
                     runtime_fingerprint: Some("wasm:abc123".to_string()),
                     declaration_count: 1,
                     committed_at: None,
@@ -142,8 +134,6 @@ mod tests {
     #[test]
     fn diagnostic_export_can_include_commit_recovery_state() {
         let ledger = AllocationLedger {
-            ledger_schema_version: 1,
-            physical_format_id: 1,
             current_generation: 3,
             allocation_history: AllocationHistory::default(),
         };
@@ -174,8 +164,6 @@ mod tests {
     #[test]
     fn diagnostic_export_can_report_recovery_failure() {
         let ledger = AllocationLedger {
-            ledger_schema_version: 1,
-            physical_format_id: 1,
             current_generation: 0,
             allocation_history: AllocationHistory::default(),
         };

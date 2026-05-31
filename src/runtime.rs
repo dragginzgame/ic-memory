@@ -205,12 +205,7 @@ pub fn bootstrap_default_memory_manager_with_policy<P: AllocationPolicy>(
         declaration_metadata,
         custom_policy: policy,
     };
-    let genesis = AllocationLedger::new(
-        crate::CURRENT_LEDGER_SCHEMA_VERSION,
-        crate::CURRENT_PHYSICAL_FORMAT_ID,
-        0,
-        AllocationHistory::default(),
-    )?;
+    let genesis = AllocationLedger::new(0, AllocationHistory::default())?;
 
     let validated = with_default_ledger_cell(
         |cell| -> Result<ValidatedAllocations, RuntimeBootstrapError<P::Error>> {

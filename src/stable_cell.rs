@@ -82,9 +82,9 @@ pub enum StableCellPayloadError {
     /// Memory contents do not start with the stable-cell marker.
     #[error("memory is not an ic-stable-structures Cell")]
     NotStableCell,
-    /// Stable-cell format version is not supported.
-    #[error("unsupported stable-cell layout version {version}")]
-    UnsupportedVersion {
+    /// Stable-cell layout version does not match the adapter's current shape.
+    #[error("unexpected stable-cell layout version {version}")]
+    UnexpectedLayoutVersion {
         /// Observed stable-cell version.
         version: u8,
     },
@@ -110,7 +110,7 @@ pub enum StableCellPayloadError {
 /// Stable-cell ledger record validation failure.
 #[derive(Debug, Error)]
 pub enum StableCellLedgerError {
-    /// Stable-cell envelope is corrupt or unsupported.
+    /// Stable-cell envelope is corrupt or unexpected.
     #[error(transparent)]
     Payload(#[from] StableCellPayloadError),
     /// Stable-cell value bytes are not a valid ledger record.
@@ -132,7 +132,7 @@ pub fn decode_stable_cell_payload<M: Memory>(
         return Err(StableCellPayloadError::NotStableCell);
     }
     if header[3] != STABLE_CELL_LAYOUT_VERSION {
-        return Err(StableCellPayloadError::UnsupportedVersion { version: header[3] });
+        return Err(StableCellPayloadError::UnexpectedLayoutVersion { version: header[3] });
     }
 
     let value_len = u64::from(u32::from_le_bytes([
@@ -226,8 +226,10 @@ mod tests {
     }
 
     #[test]
-    fn v1_stable_cell_record_fixture_recovers() {
-        let bytes = hex_fixture(include_str!("../fixtures/v1/stable_cell_record.cbor.hex"));
+    fn current_stable_cell_record_fixture_recovers() {
+        let bytes = hex_fixture(include_str!(
+            "../fixtures/current/stable_cell_record.cbor.hex"
+        ));
         let record = decode_stable_cell_ledger_record(&bytes).expect("stable-cell fixture");
 
         assert_eq!(

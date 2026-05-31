@@ -359,8 +359,6 @@ mod tests {
 
     fn ledger() -> AllocationLedger {
         AllocationLedger {
-            ledger_schema_version: 1,
-            physical_format_id: 1,
             current_generation: 0,
             allocation_history: AllocationHistory::default(),
         }

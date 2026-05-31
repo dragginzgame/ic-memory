@@ -60,7 +60,7 @@ authorization, or endpoint safety.
 - Identical duplicate physical slots at the same generation are recoverable
   deterministically.
 - A newer corrupt slot cannot override an older valid slot.
-- Recovered ledgers are untrusted until compatibility and committed-integrity
+- Recovered ledgers are untrusted until current-format and committed-integrity
   checks succeed.
 - Stable-cell ledger storage used by the default runtime must be preflighted
   before opening it through `ic-stable-structures::Cell`, so envelope or record
@@ -87,7 +87,7 @@ default-constructible, or publicly constructible. Only validation and bootstrap
 paths may produce it.
 
 Allocation sessions may open storage only from a `ValidatedAllocations` value
-that was produced after ledger compatibility, committed-ledger integrity,
+that was produced after current-format, committed-ledger integrity,
 declaration validation, and committed generation staging checks. Diagnostics and
 durable DTOs are not authority.
 
@@ -109,7 +109,7 @@ detection. It is non-cryptographic and does not provide adversarial tamper
 resistance, authenticity, or authorization.
 
 Public durable structs are DTOs. Decoded, deserialized, and diagnostic values
-are untrusted until the relevant recovery, compatibility, integrity,
+are untrusted until the relevant recovery, current-format, integrity,
 validation, or commit path has accepted them.
 
 Serde decode is not validation. Constructor-backed invariants such as stable-key

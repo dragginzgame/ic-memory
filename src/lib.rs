@@ -92,9 +92,8 @@ pub use key::{StableKey, StableKeyError};
 pub use ledger::{
     AllocationHistory, AllocationLedger, AllocationRecord, AllocationReservationError,
     AllocationRetirement, AllocationRetirementError, AllocationStageError, AllocationState,
-    CURRENT_LEDGER_SCHEMA_VERSION, CURRENT_PHYSICAL_FORMAT_ID, GenerationRecord, LedgerCommitError,
-    LedgerCommitStore, LedgerCompatibilityError, LedgerIntegrityError, LedgerPayloadEnvelope,
-    LedgerPayloadEnvelopeError, RecoveredLedger, SchemaMetadataRecord,
+    GenerationRecord, LedgerCommitError, LedgerCommitStore, LedgerIntegrityError,
+    LedgerPayloadEnvelope, LedgerPayloadEnvelopeError, RecoveredLedger, SchemaMetadataRecord,
 };
 pub use physical::{
     AuthoritativeSlot, CommitRecoveryError, CommitSlotDiagnostic, CommitSlotIndex,
@@ -117,11 +116,10 @@ pub use runtime::{
 pub use schema::{SchemaMetadata, SchemaMetadataError};
 pub use session::{AllocationSession, AllocationSessionError, ValidatedAllocations};
 pub use slot::{
-    AllocationSlot, AllocationSlotDescriptor, AllocationSlotDescriptorError,
-    IC_MEMORY_AUTHORITY_OWNER, IC_MEMORY_AUTHORITY_PURPOSE, IC_MEMORY_LEDGER_LABEL,
-    IC_MEMORY_LEDGER_STABLE_KEY, IC_MEMORY_STABLE_KEY_PREFIX, MEMORY_MANAGER_DESCRIPTOR_VERSION,
-    MEMORY_MANAGER_GOVERNANCE_MAX_ID, MEMORY_MANAGER_INVALID_ID, MEMORY_MANAGER_LEDGER_ID,
-    MEMORY_MANAGER_MAX_ID, MEMORY_MANAGER_MIN_ID, MEMORY_MANAGER_SUBSTRATE,
+    AllocationSlot, AllocationSlotDescriptor, IC_MEMORY_AUTHORITY_OWNER,
+    IC_MEMORY_AUTHORITY_PURPOSE, IC_MEMORY_LEDGER_LABEL, IC_MEMORY_LEDGER_STABLE_KEY,
+    IC_MEMORY_STABLE_KEY_PREFIX, MEMORY_MANAGER_GOVERNANCE_MAX_ID, MEMORY_MANAGER_INVALID_ID,
+    MEMORY_MANAGER_LEDGER_ID, MEMORY_MANAGER_MAX_ID, MEMORY_MANAGER_MIN_ID,
     MemoryManagerAuthorityRecord, MemoryManagerIdRange, MemoryManagerRangeAuthority,
     MemoryManagerRangeAuthorityError, MemoryManagerRangeError, MemoryManagerRangeMode,
     MemoryManagerSlotError, is_ic_memory_stable_key, memory_manager_governance_range,

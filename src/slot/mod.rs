@@ -2,13 +2,13 @@ mod descriptor;
 mod memory_manager;
 mod range_authority;
 
-pub use descriptor::{AllocationSlot, AllocationSlotDescriptor, AllocationSlotDescriptorError};
+pub use descriptor::{AllocationSlot, AllocationSlotDescriptor};
 pub use memory_manager::{
     IC_MEMORY_AUTHORITY_OWNER, IC_MEMORY_AUTHORITY_PURPOSE, IC_MEMORY_LEDGER_LABEL,
-    IC_MEMORY_LEDGER_STABLE_KEY, IC_MEMORY_STABLE_KEY_PREFIX, MEMORY_MANAGER_DESCRIPTOR_VERSION,
-    MEMORY_MANAGER_GOVERNANCE_MAX_ID, MEMORY_MANAGER_INVALID_ID, MEMORY_MANAGER_LEDGER_ID,
-    MEMORY_MANAGER_MAX_ID, MEMORY_MANAGER_MIN_ID, MEMORY_MANAGER_SUBSTRATE, MemoryManagerSlotError,
-    is_ic_memory_stable_key, memory_manager_governance_range, validate_memory_manager_id,
+    IC_MEMORY_LEDGER_STABLE_KEY, IC_MEMORY_STABLE_KEY_PREFIX, MEMORY_MANAGER_GOVERNANCE_MAX_ID,
+    MEMORY_MANAGER_INVALID_ID, MEMORY_MANAGER_LEDGER_ID, MEMORY_MANAGER_MAX_ID,
+    MEMORY_MANAGER_MIN_ID, MemoryManagerSlotError, is_ic_memory_stable_key,
+    memory_manager_governance_range, validate_memory_manager_id,
 };
 pub use range_authority::{
     MemoryManagerAuthorityRecord, MemoryManagerIdRange, MemoryManagerRangeAuthority,
@@ -46,35 +46,19 @@ mod tests {
     }
 
     #[test]
-    fn memory_manager_id_validates_descriptor_shape() {
+    fn memory_manager_id_validates_sentinel() {
         let slot = AllocationSlotDescriptor::memory_manager(42).expect("usable slot");
         assert_eq!(slot.memory_manager_id().expect("usable ID"), 42);
 
         let err = AllocationSlotDescriptor {
-            slot: AllocationSlot::MemoryManagerId(42),
-            substrate: "other".to_string(),
-            descriptor_version: MEMORY_MANAGER_DESCRIPTOR_VERSION,
+            slot: AllocationSlot::MemoryManagerId(MEMORY_MANAGER_INVALID_ID),
         }
         .memory_manager_id()
-        .expect_err("substrate should fail");
+        .expect_err("sentinel should fail");
         assert_eq!(
             err,
-            MemoryManagerSlotError::UnsupportedSubstrate {
-                substrate: "other".to_string()
-            }
-        );
-
-        let err = AllocationSlotDescriptor {
-            slot: AllocationSlot::MemoryManagerId(42),
-            substrate: MEMORY_MANAGER_SUBSTRATE.to_string(),
-            descriptor_version: MEMORY_MANAGER_DESCRIPTOR_VERSION + 1,
-        }
-        .memory_manager_id()
-        .expect_err("version should fail");
-        assert_eq!(
-            err,
-            MemoryManagerSlotError::UnsupportedDescriptorVersion {
-                version: MEMORY_MANAGER_DESCRIPTOR_VERSION + 1
+            MemoryManagerSlotError::InvalidMemoryManagerId {
+                id: MEMORY_MANAGER_INVALID_ID
             }
         );
     }

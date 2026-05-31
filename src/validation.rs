@@ -2,7 +2,7 @@ use crate::{
     declaration::{DeclarationSnapshot, DeclarationSnapshotError},
     key::StableKey,
     ledger::{
-        AllocationLedger, LedgerCompatibilityError, LedgerIntegrityError, RecoveredLedger,
+        AllocationLedger, LedgerIntegrityError, RecoveredLedger,
         claim::{ClaimConflict, validate_declaration_claim},
     },
     policy::AllocationPolicy,
@@ -29,9 +29,6 @@ pub trait Validate {
 /// Failure to validate declarations against policy and historical ledger facts.
 #[derive(Clone, Debug, Eq, thiserror::Error, PartialEq)]
 pub enum AllocationValidationError<P> {
-    /// Historical ledger format is not supported by this validator.
-    #[error(transparent)]
-    Compatibility(LedgerCompatibilityError),
     /// Historical ledger was decoded or assembled with invalid committed state.
     #[error(transparent)]
     LedgerIntegrity(LedgerIntegrityError),
@@ -74,10 +71,10 @@ pub enum AllocationValidationError<P> {
 /// Validate a committed ledger and current declarations before opening.
 ///
 /// This is the authority boundary for [`ValidatedAllocations`]: the historical
-/// ledger must pass compatibility and committed-integrity checks before current
+/// ledger must pass current-format and committed-integrity checks before current
 /// declarations are checked against framework policy and ledger history. This
 /// proves allocation ABI safety only. It does not prove store-level schema
-/// compatibility.
+/// support.
 pub fn validate_allocations<P: AllocationPolicy>(
     recovered: &RecoveredLedger,
     snapshot: DeclarationSnapshot,
@@ -158,10 +155,7 @@ mod tests {
     use super::*;
     use crate::{
         declaration::AllocationDeclaration,
-        ledger::{
-            AllocationHistory, AllocationRecord, AllocationState,
-            CURRENT_LEDGER_PAYLOAD_ENVELOPE_VERSION, GenerationRecord,
-        },
+        ledger::{AllocationHistory, AllocationRecord, AllocationState, GenerationRecord},
         schema::SchemaMetadata,
         slot::AllocationSlotDescriptor,
     };
@@ -208,11 +202,7 @@ mod tests {
             .map(|generation| {
                 GenerationRecord::new(
                     generation,
-                    if generation == 1 {
-                        Some(0)
-                    } else {
-                        Some(generation - 1)
-                    },
+                    if generation == 1 { 0 } else { generation - 1 },
                     None,
                     0,
                     None,
@@ -222,8 +212,6 @@ mod tests {
             .collect();
 
         AllocationLedger {
-            ledger_schema_version: 1,
-            physical_format_id: 1,
             current_generation: 7,
             allocation_history: AllocationHistory::from_parts(records, generations),
         }
@@ -244,11 +232,7 @@ mod tests {
     }
 
     fn recovered(records: Vec<AllocationRecord>) -> RecoveredLedger {
-        RecoveredLedger::from_trusted_parts(
-            ledger(records),
-            7,
-            CURRENT_LEDGER_PAYLOAD_ENVELOPE_VERSION,
-        )
+        RecoveredLedger::from_trusted_parts(ledger(records), 7)
     }
 
     #[test]

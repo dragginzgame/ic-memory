@@ -1,4 +1,4 @@
-# ic-memory v1 Wire Fixtures
+# ic-memory Current Wire Fixtures
 
 These fixtures pin the 0.6 durable wire shape.
 

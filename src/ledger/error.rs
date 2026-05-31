@@ -4,36 +4,8 @@ use crate::{
     ledger::LedgerPayloadEnvelopeError,
     physical::CommitRecoveryError,
     schema::SchemaMetadataError,
-    slot::{AllocationSlotDescriptor, AllocationSlotDescriptorError},
+    slot::{AllocationSlotDescriptor, MemoryManagerSlotError},
 };
-
-///
-/// LedgerCompatibilityError
-///
-/// Decoded ledger format is unsupported by this reader.
-#[derive(Clone, Copy, Debug, Eq, thiserror::Error, PartialEq)]
-pub enum LedgerCompatibilityError {
-    /// Ledger schema version is outside the supported range.
-    #[error(
-        "ledger_schema_version {found} is unsupported; supported range is {min_supported}-{max_supported}"
-    )]
-    UnsupportedLedgerSchemaVersion {
-        /// Version found in the ledger.
-        found: u32,
-        /// Minimum supported version.
-        min_supported: u32,
-        /// Maximum supported version.
-        max_supported: u32,
-    },
-    /// Physical format ID is not supported by this reader.
-    #[error("physical_format_id {found} is unsupported; supported format is {supported}")]
-    UnsupportedPhysicalFormat {
-        /// Format found in the ledger.
-        found: u32,
-        /// Supported format ID.
-        supported: u32,
-    },
-}
 
 ///
 /// LedgerIntegrityError
@@ -46,7 +18,7 @@ pub enum LedgerIntegrityError {
     InvalidStableKey(StableKeyError),
     /// Allocation slot descriptor was invalid after durable decode.
     #[error(transparent)]
-    InvalidSlotDescriptor(AllocationSlotDescriptorError),
+    InvalidSlotDescriptor(MemoryManagerSlotError),
     /// Stable key appears in more than one allocation record.
     #[error("stable key '{stable_key}' appears in more than one allocation record")]
     DuplicateStableKey {
@@ -148,12 +120,12 @@ pub enum LedgerIntegrityError {
         current_generation: u64,
     },
     /// Generation parent does not precede the child generation.
-    #[error("generation {generation} has invalid parent generation {parent_generation:?}")]
+    #[error("generation {generation} has invalid parent generation {parent_generation}")]
     InvalidParentGeneration {
         /// Generation record value.
         generation: u64,
         /// Invalid parent generation.
-        parent_generation: Option<u64>,
+        parent_generation: u64,
     },
     /// Current ledger generation has no committed generation record.
     #[error("current generation {current_generation} has no committed generation record")]
@@ -169,15 +141,15 @@ pub enum LedgerIntegrityError {
     },
     /// Generation record parent does not match the previous committed generation.
     #[error(
-        "generation {generation} does not link to previous committed generation {expected_parent:?}"
+        "generation {generation} does not link to previous committed generation {expected_parent}"
     )]
     BrokenGenerationChain {
         /// Generation whose parent link is invalid.
         generation: u64,
         /// Expected parent generation.
-        expected_parent: Option<u64>,
+        expected_parent: u64,
         /// Actual parent generation.
-        actual_parent: Option<u64>,
+        actual_parent: u64,
     },
     /// Allocation record refers to a generation absent from committed history.
     #[error("stable key '{stable_key}' references unknown generation {generation}")]
@@ -204,16 +176,6 @@ pub enum LedgerCommitError {
     /// Logical ledger payload envelope could not be decoded.
     #[error(transparent)]
     PayloadEnvelope(LedgerPayloadEnvelopeError),
-    /// Logical ledger payload envelope version is unsupported.
-    #[error(
-        "ledger payload envelope version {found} is unsupported; supported version is {supported}"
-    )]
-    UnsupportedEnvelopeVersion {
-        /// Version found in the envelope.
-        found: u16,
-        /// Supported version.
-        supported: u16,
-    },
     /// Physical slot generation and decoded logical ledger generation disagree.
     #[error(
         "physical generation {physical_generation} does not match logical ledger generation {logical_generation}"
@@ -224,24 +186,9 @@ pub enum LedgerCommitError {
         /// Generation decoded from the logical allocation ledger.
         logical_generation: u64,
     },
-    /// Logical payload envelope and decoded ledger headers disagree.
-    #[error("ledger payload envelope metadata does not match decoded ledger metadata")]
-    PayloadEnvelopeLedgerMismatch {
-        /// Schema version declared by the envelope.
-        envelope_ledger_schema_version: u32,
-        /// Schema version decoded from the ledger.
-        ledger_schema_version: u32,
-        /// Physical format ID declared by the envelope.
-        envelope_physical_format_id: u32,
-        /// Physical format ID decoded from the ledger.
-        ledger_physical_format_id: u32,
-    },
     /// Built-in ledger codec failed.
     #[error("allocation ledger codec failed")]
     Codec(String),
-    /// Decoded ledger format is not compatible with this reader.
-    #[error(transparent)]
-    Compatibility(LedgerCompatibilityError),
     /// Decoded ledger violates structural allocation-history invariants.
     #[error(transparent)]
     Integrity(LedgerIntegrityError),

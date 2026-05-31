@@ -308,7 +308,7 @@ impl DualCommitStore {
     /// This is the low-level physical-slot primitive used by
     /// [`crate::LedgerCommitStore`]. Normal ledger commits should use
     /// [`crate::LedgerCommitStore::commit`] or [`crate::AllocationBootstrap`] so
-    /// payloads are decoded, compatibility-checked, and integrity-validated
+    /// payloads are decoded, current-format checked, and integrity-validated
     /// before they can become authoritative.
     ///
     /// The physical slot generation is checked against the recovered physical

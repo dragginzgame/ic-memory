@@ -1,7 +1,7 @@
 use crate::{
     key::{StableKey, StableKeyError},
     schema::{SchemaMetadata, SchemaMetadataError},
-    slot::{AllocationSlotDescriptor, AllocationSlotDescriptorError, MemoryManagerSlotError},
+    slot::{AllocationSlotDescriptor, MemoryManagerSlotError},
     validation::Validate,
 };
 use serde::{Deserialize, Serialize};
@@ -41,7 +41,7 @@ impl AllocationDeclaration {
     ) -> Result<Self, DeclarationSnapshotError> {
         let stable_key = StableKey::parse(stable_key).map_err(DeclarationSnapshotError::Key)?;
         slot.validate()
-            .map_err(DeclarationSnapshotError::SlotDescriptor)?;
+            .map_err(DeclarationSnapshotError::MemoryManagerSlot)?;
         validate_label(label.as_deref())?;
         schema
             .validate()
@@ -125,7 +125,7 @@ impl AllocationDeclaration {
             .map_err(DeclarationSnapshotError::Key)?;
         self.slot
             .validate()
-            .map_err(DeclarationSnapshotError::SlotDescriptor)?;
+            .map_err(DeclarationSnapshotError::MemoryManagerSlot)?;
         validate_label(self.label.as_deref())?;
         self.schema
             .validate()
@@ -139,7 +139,7 @@ impl AllocationDeclaration {
 /// Mutable builder for this binary's allocation declarations.
 ///
 /// The collector is transient runtime state. Sealing rejects duplicate stable
-/// keys and duplicate slots within one binary snapshot; historical compatibility
+/// keys and duplicate slots within one binary snapshot; historical allocation
 /// is checked later by [`crate::validate_allocations`].
 #[derive(Clone, Debug, Default)]
 pub struct DeclarationCollector {
@@ -356,9 +356,6 @@ pub enum DeclarationSnapshotError {
     /// `MemoryManager` slot validation failure.
     #[error(transparent)]
     MemoryManagerSlot(MemoryManagerSlotError),
-    /// Allocation slot descriptor validation failure.
-    #[error(transparent)]
-    SlotDescriptor(AllocationSlotDescriptorError),
     /// Schema metadata encoding failure.
     #[error(transparent)]
     SchemaMetadata(SchemaMetadataError),
@@ -528,9 +525,9 @@ mod tests {
 
         assert!(matches!(
             err,
-            DeclarationSnapshotError::SlotDescriptor(AllocationSlotDescriptorError::MemoryManager(
+            DeclarationSnapshotError::MemoryManagerSlot(
                 MemoryManagerSlotError::InvalidMemoryManagerId { id }
-            )) if id == crate::MEMORY_MANAGER_INVALID_ID
+            ) if id == crate::MEMORY_MANAGER_INVALID_ID
         ));
     }
 

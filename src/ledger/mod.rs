@@ -10,16 +10,12 @@ use serde::{Deserialize, Serialize};
 
 pub use error::{
     AllocationReservationError, AllocationRetirementError, AllocationStageError, LedgerCommitError,
-    LedgerCompatibilityError, LedgerIntegrityError,
+    LedgerIntegrityError,
 };
-pub use payload::{
-    CURRENT_LEDGER_PAYLOAD_ENVELOPE_VERSION, LedgerPayloadEnvelope, LedgerPayloadEnvelopeError,
-};
-use record::LedgerCompatibility;
+pub use payload::{LedgerPayloadEnvelope, LedgerPayloadEnvelopeError};
 pub use record::{
     AllocationHistory, AllocationLedger, AllocationRecord, AllocationRetirement, AllocationState,
-    CURRENT_LEDGER_SCHEMA_VERSION, CURRENT_PHYSICAL_FORMAT_ID, GenerationRecord, RecoveredLedger,
-    SchemaMetadataRecord,
+    GenerationRecord, RecoveredLedger, SchemaMetadataRecord,
 };
 
 mod private {
@@ -91,11 +87,6 @@ impl LedgerCommitStore {
         &self.physical
     }
 
-    #[cfg(test)]
-    pub(crate) const fn physical_mut(&mut self) -> &mut DualCommitStore {
-        &mut self.physical
-    }
-
     /// Recover the authoritative allocation ledger using the native CBOR ledger codec.
     pub fn recover(&self) -> Result<RecoveredLedger, LedgerCommitError> {
         let committed = self
@@ -104,18 +95,6 @@ impl LedgerCommitStore {
             .map_err(LedgerCommitError::Recovery)?;
         let envelope = LedgerPayloadEnvelope::decode(committed.payload())
             .map_err(LedgerCommitError::PayloadEnvelope)?;
-        if envelope.envelope_version() != CURRENT_LEDGER_PAYLOAD_ENVELOPE_VERSION {
-            return Err(LedgerCommitError::UnsupportedEnvelopeVersion {
-                found: envelope.envelope_version(),
-                supported: CURRENT_LEDGER_PAYLOAD_ENVELOPE_VERSION,
-            });
-        }
-        LedgerCompatibility::current()
-            .validate_versions(
-                envelope.ledger_schema_version(),
-                envelope.physical_format_id(),
-            )
-            .map_err(LedgerCommitError::Compatibility)?;
         let codec = CborLedgerCodec;
         let ledger = codec
             .decode(envelope.payload())
@@ -126,26 +105,12 @@ impl LedgerCommitStore {
                 logical_generation: ledger.current_generation,
             });
         }
-        if envelope.ledger_schema_version() != ledger.ledger_schema_version
-            || envelope.physical_format_id() != ledger.physical_format_id
-        {
-            return Err(LedgerCommitError::PayloadEnvelopeLedgerMismatch {
-                envelope_ledger_schema_version: envelope.ledger_schema_version(),
-                ledger_schema_version: ledger.ledger_schema_version,
-                envelope_physical_format_id: envelope.physical_format_id(),
-                ledger_physical_format_id: ledger.physical_format_id,
-            });
-        }
-        LedgerCompatibility::current()
-            .validate(&ledger)
-            .map_err(LedgerCommitError::Compatibility)?;
         ledger
             .validate_committed_integrity()
             .map_err(LedgerCommitError::Integrity)?;
         Ok(RecoveredLedger::from_trusted_parts(
             ledger,
             committed.generation(),
-            envelope.envelope_version(),
         ))
     }
 
@@ -177,9 +142,6 @@ impl LedgerCommitStore {
         &mut self,
         ledger: &AllocationLedger,
     ) -> Result<RecoveredLedger, LedgerCommitError> {
-        LedgerCompatibility::current()
-            .validate(ledger)
-            .map_err(LedgerCommitError::Compatibility)?;
         ledger
             .validate_committed_integrity()
             .map_err(LedgerCommitError::Integrity)?;
@@ -231,10 +193,7 @@ mod tests {
             key,
             AllocationSlotDescriptor::memory_manager(id).expect("usable slot"),
             None,
-            SchemaMetadata {
-                schema_version,
-                schema_fingerprint: None,
-            },
+            SchemaMetadata { schema_version },
         )
         .expect("declaration")
     }
@@ -242,7 +201,6 @@ mod tests {
     fn invalid_schema_metadata() -> SchemaMetadata {
         SchemaMetadata {
             schema_version: Some(0),
-            schema_fingerprint: None,
         }
     }
 
@@ -254,8 +212,6 @@ mod tests {
 
     fn ledger() -> AllocationLedger {
         AllocationLedger {
-            ledger_schema_version: CURRENT_LEDGER_SCHEMA_VERSION,
-            physical_format_id: CURRENT_PHYSICAL_FORMAT_ID,
             current_generation: 3,
             allocation_history: AllocationHistory::default(),
         }
@@ -263,19 +219,13 @@ mod tests {
 
     fn committed_ledger(current_generation: u64) -> AllocationLedger {
         AllocationLedger {
-            ledger_schema_version: CURRENT_LEDGER_SCHEMA_VERSION,
-            physical_format_id: CURRENT_PHYSICAL_FORMAT_ID,
             current_generation,
             allocation_history: AllocationHistory::from_parts(
                 Vec::new(),
                 (1..=current_generation)
                     .map(|generation| GenerationRecord {
                         generation,
-                        parent_generation: if generation == 1 {
-                            Some(0)
-                        } else {
-                            Some(generation - 1)
-                        },
+                        parent_generation: if generation == 1 { 0 } else { generation - 1 },
                         runtime_fingerprint: None,
                         declaration_count: 0,
                         committed_at: None,
@@ -310,6 +260,22 @@ mod tests {
             .encode()
     }
 
+    fn old_versioned_enveloped_payload(ledger: &AllocationLedger) -> Vec<u8> {
+        let payload = CborLedgerCodec.encode(ledger).expect("CBOR payload");
+        let mut bytes = Vec::with_capacity(8 + 2 + 4 + 4 + 8 + payload.len());
+        bytes.extend_from_slice(b"ICMEMLED");
+        bytes.extend_from_slice(&1u16.to_le_bytes());
+        bytes.extend_from_slice(&1u32.to_le_bytes());
+        bytes.extend_from_slice(&1u32.to_le_bytes());
+        bytes.extend_from_slice(
+            &u64::try_from(payload.len())
+                .expect("payload length")
+                .to_le_bytes(),
+        );
+        bytes.extend_from_slice(&payload);
+        bytes
+    }
+
     fn hex_fixture(contents: &str) -> Vec<u8> {
         let hex = contents
             .chars()
@@ -328,15 +294,6 @@ mod tests {
     fn ledger_from_payload_fixture(contents: &str) -> AllocationLedger {
         let bytes = hex_fixture(contents);
         let envelope = LedgerPayloadEnvelope::decode(&bytes).expect("fixture envelope");
-        assert_eq!(
-            envelope.envelope_version(),
-            CURRENT_LEDGER_PAYLOAD_ENVELOPE_VERSION
-        );
-        assert_eq!(
-            envelope.ledger_schema_version(),
-            CURRENT_LEDGER_SCHEMA_VERSION
-        );
-        assert_eq!(envelope.physical_format_id(), CURRENT_PHYSICAL_FORMAT_ID);
 
         let codec = CborLedgerCodec;
         let ledger = codec.decode(envelope.payload()).expect("fixture ledger");
@@ -359,14 +316,12 @@ mod tests {
 
     fn active_committed_ledger() -> AllocationLedger {
         AllocationLedger {
-            ledger_schema_version: CURRENT_LEDGER_SCHEMA_VERSION,
-            physical_format_id: CURRENT_PHYSICAL_FORMAT_ID,
             current_generation: 1,
             allocation_history: AllocationHistory::from_parts(
                 vec![active_record("app.users.v1", 100)],
                 vec![GenerationRecord {
                     generation: 1,
-                    parent_generation: Some(0),
+                    parent_generation: 0,
                     runtime_fingerprint: None,
                     declaration_count: 1,
                     committed_at: None,
@@ -414,7 +369,7 @@ mod tests {
     fn allocation_history_accessors_expose_read_only_views() {
         let history = AllocationHistory::from_parts(
             vec![active_record("app.users.v1", 100)],
-            vec![GenerationRecord::new(1, Some(0), None, 1, Some(42)).expect("generation record")],
+            vec![GenerationRecord::new(1, 0, None, 1, Some(42)).expect("generation record")],
         );
 
         assert!(!history.is_empty());
@@ -429,7 +384,7 @@ mod tests {
             .expect_err("invalid schema must fail");
         assert_eq!(schema_err, SchemaMetadataError::InvalidVersion);
 
-        let generation_err = GenerationRecord::new(1, Some(0), Some(String::new()), 0, None)
+        let generation_err = GenerationRecord::new(1, 0, Some(String::new()), 0, None)
             .expect_err("empty fingerprint must fail");
         assert_eq!(
             generation_err,
@@ -454,14 +409,6 @@ mod tests {
         use std::collections::BTreeMap;
 
         let mut map = BTreeMap::new();
-        map.insert(
-            Value::Text("ledger_schema_version".to_string()),
-            Value::Integer(1),
-        );
-        map.insert(
-            Value::Text("physical_format_id".to_string()),
-            Value::Integer(1),
-        );
         map.insert(
             Value::Text("current_generation".to_string()),
             Value::Integer(0),
@@ -569,9 +516,9 @@ mod tests {
     }
 
     #[test]
-    fn v1_empty_genesis_payload_fixture_recovers() {
+    fn current_empty_genesis_payload_fixture_recovers() {
         let ledger = ledger_from_payload_fixture(include_str!(
-            "../../fixtures/v1/empty_genesis_payload_envelope.hex"
+            "../../fixtures/current/empty_genesis_payload_envelope.hex"
         ));
 
         assert_eq!(ledger.current_generation, 0);
@@ -580,9 +527,9 @@ mod tests {
     }
 
     #[test]
-    fn v1_single_active_payload_fixture_recovers() {
+    fn current_single_active_payload_fixture_recovers() {
         let ledger = ledger_from_payload_fixture(include_str!(
-            "../../fixtures/v1/single_active_allocation_payload_envelope.hex"
+            "../../fixtures/current/single_active_allocation_payload_envelope.hex"
         ));
         let record = record(&ledger, "app.users.v1");
 
@@ -594,9 +541,9 @@ mod tests {
     }
 
     #[test]
-    fn v1_reserved_payload_fixture_recovers() {
+    fn current_reserved_payload_fixture_recovers() {
         let ledger = ledger_from_payload_fixture(include_str!(
-            "../../fixtures/v1/reserved_allocation_payload_envelope.hex"
+            "../../fixtures/current/reserved_allocation_payload_envelope.hex"
         ));
         let record = record(&ledger, "app.future_store.v1");
 
@@ -606,9 +553,9 @@ mod tests {
     }
 
     #[test]
-    fn v1_retired_payload_fixture_recovers() {
+    fn current_retired_payload_fixture_recovers() {
         let ledger = ledger_from_payload_fixture(include_str!(
-            "../../fixtures/v1/retired_allocation_payload_envelope.hex"
+            "../../fixtures/current/retired_allocation_payload_envelope.hex"
         ));
         let record = record(&ledger, "app.users.v1");
 
@@ -618,9 +565,9 @@ mod tests {
     }
 
     #[test]
-    fn v1_memory_manager_descriptor_fixture_validates() {
+    fn current_memory_manager_descriptor_fixture_validates() {
         let bytes = hex_fixture(include_str!(
-            "../../fixtures/v1/memory_manager_descriptor.cbor.hex"
+            "../../fixtures/current/memory_manager_descriptor.cbor.hex"
         ));
         let descriptor: AllocationSlotDescriptor =
             serde_cbor::from_slice(&bytes).expect("descriptor fixture");
@@ -634,9 +581,9 @@ mod tests {
     }
 
     #[test]
-    fn v1_ledger_commit_store_single_active_fixture_recovers() {
+    fn current_ledger_commit_store_single_active_fixture_recovers() {
         let store = store_from_fixture(include_str!(
-            "../../fixtures/v1/ledger_commit_store_single_active.cbor.hex"
+            "../../fixtures/current/ledger_commit_store_single_active.cbor.hex"
         ));
 
         let recovered = store.recover().expect("fixture store recovers");
@@ -650,9 +597,9 @@ mod tests {
     }
 
     #[test]
-    fn v1_dual_slot_valid_newer_fixture_recovers_newer() {
+    fn current_dual_slot_valid_newer_fixture_recovers_newer() {
         let store = store_from_fixture(include_str!(
-            "../../fixtures/v1/dual_slot_store_valid_newer.cbor.hex"
+            "../../fixtures/current/dual_slot_store_valid_newer.cbor.hex"
         ));
 
         assert_eq!(
@@ -664,9 +611,9 @@ mod tests {
     }
 
     #[test]
-    fn v1_dual_slot_corrupt_newer_fixture_recovers_prior() {
+    fn current_dual_slot_corrupt_newer_fixture_recovers_prior() {
         let store = store_from_fixture(include_str!(
-            "../../fixtures/v1/dual_slot_store_corrupt_newer.cbor.hex"
+            "../../fixtures/current/dual_slot_store_corrupt_newer.cbor.hex"
         ));
 
         let diagnostic = store.physical().diagnostic();
@@ -714,7 +661,7 @@ mod tests {
         assert_eq!(staged.allocation_history.generations()[0].generation(), 4);
         assert_eq!(
             staged.allocation_history.generations()[0].parent_generation(),
-            Some(3)
+            3
         );
         assert_eq!(
             staged.allocation_history.generations()[0].runtime_fingerprint(),
@@ -1309,23 +1256,13 @@ mod tests {
 
     #[test]
     fn new_committed_requires_strict_generation_history() {
-        let structurally_valid = AllocationLedger::new(
-            CURRENT_LEDGER_SCHEMA_VERSION,
-            CURRENT_PHYSICAL_FORMAT_ID,
-            3,
-            AllocationHistory::default(),
-        )
-        .expect("structurally valid DTO");
+        let structurally_valid =
+            AllocationLedger::new(3, AllocationHistory::default()).expect("structurally valid DTO");
 
         assert_eq!(structurally_valid.current_generation, 3);
 
-        let err = AllocationLedger::new_committed(
-            CURRENT_LEDGER_SCHEMA_VERSION,
-            CURRENT_PHYSICAL_FORMAT_ID,
-            3,
-            AllocationHistory::default(),
-        )
-        .expect_err("committed ledger needs generation history");
+        let err = AllocationLedger::new_committed(3, AllocationHistory::default())
+            .expect_err("committed ledger needs generation history");
 
         assert_eq!(
             err,
@@ -1400,9 +1337,7 @@ mod tests {
         assert!(matches!(
             err,
             LedgerIntegrityError::InvalidSlotDescriptor(
-                crate::slot::AllocationSlotDescriptorError::MemoryManager(
-                    MemoryManagerSlotError::InvalidMemoryManagerId { id }
-                )
+                MemoryManagerSlotError::InvalidMemoryManagerId { id }
             ) if id == MEMORY_MANAGER_INVALID_ID
         ));
     }
@@ -1551,12 +1486,10 @@ mod tests {
 
         let committed = store.physical().authoritative().expect("authoritative");
         let envelope = LedgerPayloadEnvelope::decode(committed.payload()).expect("envelope");
-        assert_eq!(envelope.envelope_version(), 1);
         assert_eq!(
-            envelope.ledger_schema_version(),
-            CURRENT_LEDGER_SCHEMA_VERSION
+            envelope.payload(),
+            CborLedgerCodec.encode(&ledger).expect("payload")
         );
-        assert_eq!(envelope.physical_format_id(), CURRENT_PHYSICAL_FORMAT_ID);
     }
 
     #[test]
@@ -1578,70 +1511,36 @@ mod tests {
     }
 
     #[test]
-    fn ledger_commit_store_rejects_unsupported_payload_envelope_version() {
-        let ledger = committed_ledger(1);
-        let payload = LedgerPayloadEnvelope::from_parts(
-            CURRENT_LEDGER_PAYLOAD_ENVELOPE_VERSION + 1,
-            CURRENT_LEDGER_SCHEMA_VERSION,
-            CURRENT_PHYSICAL_FORMAT_ID,
-            CborLedgerCodec.encode(&ledger).expect("payload"),
-        )
-        .encode();
+    fn ledger_commit_store_rejects_old_versioned_payload_envelope_shape() {
         let store = LedgerCommitStore {
             physical: DualCommitStore {
-                slot0: Some(CommittedGenerationBytes::new(1, payload)),
+                slot0: Some(CommittedGenerationBytes::new(
+                    1,
+                    old_versioned_enveloped_payload(&committed_ledger(1)),
+                )),
                 slot1: None,
             },
         };
 
-        let err = store.recover().expect_err("unsupported envelope");
+        let err = store.recover().expect_err("old envelope shape must fail");
 
-        assert_eq!(
+        assert!(matches!(
             err,
-            LedgerCommitError::UnsupportedEnvelopeVersion {
-                found: CURRENT_LEDGER_PAYLOAD_ENVELOPE_VERSION + 1,
-                supported: CURRENT_LEDGER_PAYLOAD_ENVELOPE_VERSION,
-            }
-        );
+            LedgerCommitError::PayloadEnvelope(
+                LedgerPayloadEnvelopeError::PayloadLengthOverflow { .. }
+                    | LedgerPayloadEnvelopeError::LengthMismatch { .. }
+            )
+        ));
     }
 
     #[test]
-    fn ledger_commit_store_rejects_envelope_ledger_header_mismatch() {
-        let incompatible = AllocationLedger {
-            physical_format_id: CURRENT_PHYSICAL_FORMAT_ID + 1,
-            ..committed_ledger(1)
-        };
-        let payload =
-            LedgerPayloadEnvelope::current(CborLedgerCodec.encode(&incompatible).expect("payload"))
-                .encode();
-        let store = LedgerCommitStore {
-            physical: DualCommitStore {
-                slot0: Some(CommittedGenerationBytes::new(1, payload)),
-                slot1: None,
-            },
-        };
-
-        let err = store.recover().expect_err("header mismatch");
-
-        assert_eq!(
-            err,
-            LedgerCommitError::PayloadEnvelopeLedgerMismatch {
-                envelope_ledger_schema_version: CURRENT_LEDGER_SCHEMA_VERSION,
-                ledger_schema_version: CURRENT_LEDGER_SCHEMA_VERSION,
-                envelope_physical_format_id: CURRENT_PHYSICAL_FORMAT_ID,
-                ledger_physical_format_id: CURRENT_PHYSICAL_FORMAT_ID + 1,
-            }
-        );
-    }
-
-    #[test]
-    fn ledger_commit_store_recovers_compatible_genesis_and_first_real_commit() {
+    fn ledger_commit_store_recovers_current_format_genesis_and_first_real_commit() {
         let mut store = LedgerCommitStore::default();
         let genesis = committed_ledger(0);
 
         let recovered = store
             .recover_or_initialize(&genesis)
-            .expect("compatible genesis ledger");
+            .expect("current-format genesis ledger");
         assert_eq!(recovered.current_generation(), 0);
         assert!(
             recovered
@@ -1810,76 +1709,5 @@ mod tests {
             err,
             LedgerCommitError::Recovery(CommitRecoveryError::NoValidGeneration)
         ));
-    }
-
-    #[test]
-    fn ledger_commit_store_rejects_incompatible_schema_before_write() {
-        let mut store = LedgerCommitStore::default();
-        let incompatible = AllocationLedger {
-            ledger_schema_version: CURRENT_LEDGER_SCHEMA_VERSION + 1,
-            ..committed_ledger(0)
-        };
-
-        let err = store
-            .commit(&incompatible)
-            .expect_err("incompatible schema");
-
-        assert!(matches!(
-            err,
-            LedgerCommitError::Compatibility(
-                LedgerCompatibilityError::UnsupportedLedgerSchemaVersion { .. }
-            )
-        ));
-        assert!(store.physical().is_uninitialized());
-    }
-
-    #[test]
-    fn ledger_commit_store_rejects_incompatible_schema_on_recovery() {
-        let mut store = LedgerCommitStore::default();
-        let incompatible = AllocationLedger {
-            ledger_schema_version: CURRENT_LEDGER_SCHEMA_VERSION + 1,
-            ..committed_ledger(3)
-        };
-        let payload = LedgerPayloadEnvelope::from_parts(
-            CURRENT_LEDGER_PAYLOAD_ENVELOPE_VERSION,
-            incompatible.ledger_schema_version,
-            incompatible.physical_format_id,
-            CborLedgerCodec.encode(&incompatible).expect("payload"),
-        )
-        .encode();
-        store
-            .physical_mut()
-            .commit_payload_at_generation(incompatible.current_generation, payload)
-            .expect("physical commit");
-
-        let err = store.recover().expect_err("incompatible schema");
-
-        assert!(matches!(
-            err,
-            LedgerCommitError::Compatibility(
-                LedgerCompatibilityError::UnsupportedLedgerSchemaVersion { .. }
-            )
-        ));
-    }
-
-    #[test]
-    fn ledger_commit_store_rejects_incompatible_physical_format() {
-        let mut store = LedgerCommitStore::default();
-        let incompatible = AllocationLedger {
-            physical_format_id: CURRENT_PHYSICAL_FORMAT_ID + 1,
-            ..committed_ledger(0)
-        };
-
-        let err = store
-            .recover_or_initialize(&incompatible)
-            .expect_err("incompatible format");
-
-        assert!(matches!(
-            err,
-            LedgerCommitError::Compatibility(
-                LedgerCompatibilityError::UnsupportedPhysicalFormat { .. }
-            )
-        ));
-        assert!(store.physical().is_uninitialized());
     }
 }

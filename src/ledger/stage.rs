@@ -48,7 +48,7 @@ impl AllocationLedger {
 
         next.allocation_history.push_generation(GenerationRecord {
             generation: next_generation,
-            parent_generation: Some(self.current_generation),
+            parent_generation: self.current_generation,
             runtime_fingerprint: validated.runtime_fingerprint().map(str::to_string),
             declaration_count,
             committed_at,
@@ -92,7 +92,7 @@ impl AllocationLedger {
 
         next.allocation_history.push_generation(GenerationRecord {
             generation: next_generation,
-            parent_generation: Some(self.current_generation),
+            parent_generation: self.current_generation,
             runtime_fingerprint: None,
             declaration_count,
             committed_at,
@@ -141,7 +141,7 @@ impl AllocationLedger {
         next.current_generation = next_generation;
         next.allocation_history.push_generation(GenerationRecord {
             generation: next_generation,
-            parent_generation: Some(self.current_generation),
+            parent_generation: self.current_generation,
             runtime_fingerprint: None,
             declaration_count: 0,
             committed_at,

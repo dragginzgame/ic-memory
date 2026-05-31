@@ -1,12 +1,6 @@
 use super::descriptor::{AllocationSlot, AllocationSlotDescriptor};
 use super::range_authority::MemoryManagerIdRange;
 
-/// Substrate identifier for `ic-stable-structures::MemoryManager` slots.
-pub const MEMORY_MANAGER_SUBSTRATE: &str = "ic-stable-structures.memory_manager";
-
-/// Descriptor version for current `MemoryManagerId` slots.
-pub const MEMORY_MANAGER_DESCRIPTOR_VERSION: u32 = 1;
-
 /// First usable `MemoryManager` virtual memory ID.
 pub const MEMORY_MANAGER_MIN_ID: u8 = 0;
 
@@ -64,30 +58,16 @@ impl AllocationSlotDescriptor {
 
     /// Construct a descriptor for a `MemoryManager` virtual memory ID without validating it.
     #[must_use]
-    pub(crate) fn memory_manager_unchecked(id: u8) -> Self {
+    pub(crate) const fn memory_manager_unchecked(id: u8) -> Self {
         Self {
             slot: AllocationSlot::MemoryManagerId(id),
-            substrate: MEMORY_MANAGER_SUBSTRATE.to_string(),
-            descriptor_version: MEMORY_MANAGER_DESCRIPTOR_VERSION,
         }
     }
 
     /// Return the usable `MemoryManager` virtual memory ID represented by this descriptor.
     ///
-    /// This validates substrate, descriptor version, slot kind, and sentinel ID
-    /// rules before returning the numeric ID.
+    /// This validates sentinel ID rules before returning the numeric ID.
     pub fn memory_manager_id(&self) -> Result<u8, MemoryManagerSlotError> {
-        if self.substrate != MEMORY_MANAGER_SUBSTRATE {
-            return Err(MemoryManagerSlotError::UnsupportedSubstrate {
-                substrate: self.substrate.clone(),
-            });
-        }
-        if self.descriptor_version != MEMORY_MANAGER_DESCRIPTOR_VERSION {
-            return Err(MemoryManagerSlotError::UnsupportedDescriptorVersion {
-                version: self.descriptor_version,
-            });
-        }
-
         let AllocationSlot::MemoryManagerId(id) = self.slot;
         validate_memory_manager_id(id)?;
         Ok(id)
@@ -97,21 +77,9 @@ impl AllocationSlotDescriptor {
 ///
 /// MemoryManagerSlotError
 ///
-/// Invalid or unsupported `MemoryManager` allocation slot descriptor.
+/// Invalid `MemoryManager` allocation slot descriptor.
 #[derive(Clone, Debug, Eq, thiserror::Error, PartialEq)]
 pub enum MemoryManagerSlotError {
-    /// Descriptor is attached to another substrate.
-    #[error("allocation slot substrate '{substrate}' is not supported as a MemoryManager slot")]
-    UnsupportedSubstrate {
-        /// Unsupported substrate identifier.
-        substrate: String,
-    },
-    /// Descriptor uses an unsupported encoding version.
-    #[error("MemoryManager slot descriptor version {version} is unsupported")]
-    UnsupportedDescriptorVersion {
-        /// Unsupported descriptor version.
-        version: u32,
-    },
     /// ID 255 is the unallocated-bucket sentinel.
     #[error("MemoryManager ID {id} is not a usable allocation slot")]
     InvalidMemoryManagerId {

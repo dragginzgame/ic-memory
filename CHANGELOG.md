@@ -1,5 +1,32 @@
 # Changelog
 
+## 0.7.0
+
+### Whitepaper and Lean model
+
+- Added the `ic-memory` whitepaper, covering the stable-memory allocation
+  governance problem, protocol model, allocation invariants, durable commit
+  protocol, operational guidance, and current non-goals.
+- Added a compact Lean model for the core allocation-safety argument, including
+  checked lemmas for stable-key slot uniqueness, physical-slot key uniqueness,
+  retired allocation tombstones, post-commit open authority, and generation
+  monotonicity.
+- Added mdBook/Nix/Lake scaffolding for building the Markdown whitepaper and
+  Lean model without committing a PDF artifact.
+
+### Protocol cleanup
+
+- Removed the current-version compatibility range abstraction and the remaining
+  ledger/envelope version-routing scaffold from recovery and commit.
+- Simplified the durable ledger, envelope, diagnostics, slot descriptor, and
+  schema metadata shapes by dropping unused physical-format, ledger schema,
+  envelope version, descriptor substrate/version, and schema-fingerprint fields.
+- Made committed generation parent links mandatory, using `0` for the first
+  generation instead of accepting an absent parent value.
+- Refreshed the current golden wire fixtures for the cut-down durable format.
+
+---
+
 ## 0.6.2
 
 ### Protocol mutation coverage

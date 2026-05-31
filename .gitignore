@@ -34,5 +34,5 @@ result
 result-*
 
 # Whitepaper local build output
-whitepaper/latex.out/
+whitepaper/book/
 whitepaper/lean/.lake/

@@ -1,0 +1,16 @@
+[book]
+authors = ["Adam Powell", "@Jordan"]
+language = "en"
+multilingual = false
+src = "src"
+title = "ic-memory Whitepaper"
+
+[build]
+build-dir = "book"
+
+[preprocessor.katex]
+after = ["links"]
+
+[output.html]
+git-repository-url = "https://github.com/dragginzgame/ic-memory"
+edit-url-template = "https://github.com/dragginzgame/ic-memory/edit/main/whitepaper/{path}"

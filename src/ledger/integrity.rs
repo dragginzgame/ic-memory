@@ -35,10 +35,7 @@ impl AllocationLedger {
                     current_generation: self.current_generation,
                 });
             }
-            if generation
-                .parent_generation
-                .is_some_and(|parent| parent >= generation.generation)
-            {
+            if generation.parent_generation >= generation.generation {
                 return Err(LedgerIntegrityError::InvalidParentGeneration {
                     generation: generation.generation,
                     parent_generation: generation.parent_generation,
@@ -81,8 +78,7 @@ impl AllocationLedger {
                 });
             }
 
-            let expected_parent =
-                previous.or_else(|| (generation.parent_generation == Some(0)).then_some(0));
+            let expected_parent = previous.unwrap_or(0);
             if generation.parent_generation != expected_parent {
                 return Err(LedgerIntegrityError::BrokenGenerationChain {
                     generation: generation.generation,

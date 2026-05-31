@@ -140,9 +140,9 @@ the output to build a short inventory and then identify only actionable issues.
      errors over panics.
 
 4. Build an error inventory.
-   - Confirm errors distinguish corruption, unsupported versions, invalid input,
-     policy rejection, and not-yet-bootstrapped state where that distinction
-     affects operator action.
+   - Confirm errors distinguish corruption, malformed current-format bytes,
+     invalid input, policy rejection, and not-yet-bootstrapped state where that
+     distinction affects operator action.
 
 5. Build a test inventory.
    - For each recent fix, identify its regression test.

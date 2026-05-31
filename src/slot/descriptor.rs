@@ -26,10 +26,6 @@ pub enum AllocationSlot {
 pub struct AllocationSlotDescriptor {
     /// Durable allocation slot.
     pub(crate) slot: AllocationSlot,
-    /// Fixed substrate marker for the current `MemoryManager` slot protocol.
-    pub(crate) substrate: String,
-    /// Descriptor encoding version.
-    pub(crate) descriptor_version: u32,
 }
 
 impl AllocationSlotDescriptor {
@@ -38,37 +34,12 @@ impl AllocationSlotDescriptor {
     pub const fn slot(&self) -> &AllocationSlot {
         &self.slot
     }
-
-    /// Return the fixed substrate marker for this slot protocol.
-    #[must_use]
-    pub fn substrate(&self) -> &str {
-        &self.substrate
-    }
-
-    /// Return the descriptor encoding version.
-    #[must_use]
-    pub const fn descriptor_version(&self) -> u32 {
-        self.descriptor_version
-    }
 }
 
 impl Validate for AllocationSlotDescriptor {
-    type Error = AllocationSlotDescriptorError;
+    type Error = super::memory_manager::MemoryManagerSlotError;
 
     fn validate(&self) -> Result<(), Self::Error> {
-        self.memory_manager_id()
-            .map(|_| ())
-            .map_err(AllocationSlotDescriptorError::MemoryManager)
+        self.memory_manager_id().map(|_| ())
     }
-}
-
-///
-/// AllocationSlotDescriptorError
-///
-/// Allocation slot descriptor validation failure.
-#[derive(Clone, Debug, Eq, thiserror::Error, PartialEq)]
-pub enum AllocationSlotDescriptorError {
-    /// `MemoryManager` descriptor invariants failed.
-    #[error(transparent)]
-    MemoryManager(super::memory_manager::MemoryManagerSlotError),
 }
