@@ -4,6 +4,11 @@
 
 Risk score: **3/10**.
 
+Post-0.7 note: this report is a dated audit artifact. Wording about
+compatibility ranges, ledger schema versions, or future schema-version fixtures
+should now be read in light of the 0.7 cleanup, which removed that scaffold and
+kept only the current-format envelope/CBOR ledger path.
+
 The crate is in good hygiene shape for the current release. Formatting,
 tests, clippy, docs, feature checks, and whitespace checks all pass. The main
 trust boundaries are now named clearly, `ValidatedAllocations` is not
@@ -83,8 +88,8 @@ Reference: `src/physical.rs:305`
 
 Issue: `DualCommitStore::commit_payload_at_generation` says it is "the
 preferred API for logical ledger commits", but the function accepts arbitrary
-bytes and does not decode, run compatibility checks, or validate committed
-ledger integrity.
+bytes and does not decode the current-format ledger payload or validate
+committed ledger integrity.
 
 Why it matters: The implementation is correct for a low-level physical commit
 primitive, but the wording is too inviting. A future framework adapter or
@@ -106,12 +111,13 @@ Reference: `src/ledger/mod.rs:110`, `src/ledger/mod.rs:155`,
 Status: Resolved during the 0.6 protocol-boundary work.
 
 Resolution: The caller-supplied compatibility APIs were removed from the
-public recovery and commit path. `LedgerCommitStore` now uses crate-owned
-current compatibility checks internally, and callers cannot widen acceptable
-ledger schema ranges.
+public recovery and commit path. `LedgerCommitStore` now uses the crate-owned
+current-format recovery path internally, and callers cannot widen acceptable
+durable ledger formats.
 
-Suggested regression test: Keep fixture tests for unsupported future envelope
-and ledger schema versions, and keep API inventory checks in recurring audits.
+Suggested regression test: Keep fixture tests for unsupported envelope shapes
+and malformed current-format payloads, and keep API inventory checks in
+recurring audits.
 
 ## Low Findings
 
@@ -176,8 +182,9 @@ the macro surface changes.
 
 - No public constructor can fabricate `ValidatedAllocations`.
 - No serde path currently deserializes authority.
-- `validate_allocations()` validates ledger compatibility and committed
-  integrity before producing authority.
+- `validate_allocations()` consumes `RecoveredLedger`, so current-format
+  recovery and committed integrity have already succeeded before it can produce
+  authority.
 - Declaration snapshots revalidate decoded declaration DTOs.
 - Runtime late registration fails closed after bootstrap seals the registry.
 - Default runtime bootstrap publishes validated allocations only after staging
@@ -186,14 +193,14 @@ the macro surface changes.
 ## Quick Fix Checklist
 
 - Tighten `DualCommitStore::commit_payload_at_generation` rustdoc.
-- Add advanced-only warnings to explicit compatibility APIs.
+- Confirm removed compatibility APIs stay absent from the public surface.
 - Mark `decode_stable_cell_ledger_record` output as inert decoded DTO state.
 - Resolve or remove the stale `ledger::commit` TODO.
 
 ## Deferred Design Work
 
-- Versioned golden-wire fixtures for durable CBOR formats.
-- A formal migration policy for future ledger schema versions.
+- Golden-wire fixtures for the current durable CBOR format.
+- A formal migration policy for any future durable format.
 - A narrower advanced API shape for custom physical commit integrations.
 
 ## Audit Quality
@@ -207,5 +214,5 @@ in depth. Those are separate audits and should remain separate so this recurring
 pass stays small and repeatable.
 
 The next pass would be stronger with generated public API docs or `cargo public-api`
-style output committed as an audit artifact, plus golden wire fixtures for the
-durable DTO inventory.
+style output committed as an audit artifact, plus golden wire fixture coverage
+for the durable DTO inventory.

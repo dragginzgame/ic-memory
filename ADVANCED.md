@@ -121,10 +121,10 @@ only then open stable-memory handles
 
 Decoded ledger and declaration DTOs are not trusted just because serde accepted
 them. Recovery first selects a valid physical generation, decodes the logical
-payload envelope, decodes the current `ic-memory` CBOR ledger payload, checks
-the current ledger schema, and validates committed ledger integrity. Only the
-resulting `RecoveredLedger` proof can be passed to declaration validation to
-produce a `ValidatedAllocations` capability.
+payload envelope, decodes the current-format `ic-memory` CBOR ledger payload,
+checks the physical/logical generation binding, and validates committed ledger
+integrity. Only the resulting `RecoveredLedger` proof can be passed to
+declaration validation to produce a `ValidatedAllocations` capability.
 
 Manual sketch:
 

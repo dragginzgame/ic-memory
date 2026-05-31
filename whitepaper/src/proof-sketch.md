@@ -46,5 +46,6 @@ $$
 
 The generation counter advances by successor in the model. The Rust
 implementation has additional failure cases for stale validated generations,
-declaration-count limits, and `u64` overflow; this theorem should not be read
-as a verification of those checks.
+declaration-count limits, broken parent links, unknown record-generation
+references, and `u64` overflow; this theorem should not be read as a
+verification of those checks.

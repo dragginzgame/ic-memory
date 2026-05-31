@@ -16,6 +16,11 @@ verification of the Rust implementation.
 
 Its checksum protects against torn writes and accidental corruption only.
 
+The current durable format is intentionally current-only. The 0.7 cleanup
+removed earlier compatibility-range and envelope version-routing scaffolding;
+older or future envelope shapes fail closed unless the crate explicitly learns
+to decode them.
+
 The present native slot model follows `ic-stable-structures` `MemoryManager`
 IDs exactly. Moving beyond 255 virtual memories would require a different slot
 descriptor and memory-manager layout, not merely a different `ic-memory`

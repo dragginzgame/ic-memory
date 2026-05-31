@@ -39,10 +39,10 @@ $$
 L = [r_1,\ldots,r_n]
 $$
 
-Each record has:
+Each allocation record has:
 
 $$
-r = (k, s, state, first, last, retiredAt)
+r = (k, s, state, first, last, retiredAt, schemaHistory)
 $$
 
 where `k` is in `K`, `s` is in `S`, and:
@@ -50,6 +50,17 @@ where `k` is in `K`, `s` is in `S`, and:
 $$
 state \in \{\mathsf{Reserved}, \mathsf{Active}, \mathsf{Retired}\}
 $$
+
+`schemaHistory` is diagnostic metadata observed across committed generations.
+Today it records an optional nonzero in-place schema version. It helps humans
+and framework tooling understand which schema was declared when, but it is not
+used to prove application data compatibility.
+
+Committed ledgers also carry generation records. Each generation record stores
+the committed generation number, its mandatory parent generation, an optional
+runtime fingerprint, a declaration count, and an optional integration-supplied
+commit timestamp. The first real staged generation has parent `0`; an empty
+genesis ledger is generation `0` and has no generation record.
 
 ## Active Binding
 

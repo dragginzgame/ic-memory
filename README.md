@@ -182,7 +182,7 @@ only then open stable memory
 Framework authors and policy adapters should read [ADVANCED.md](ADVANCED.md).
 The non-negotiable invariants are recorded in [SAFETY.md](SAFETY.md). The
 protocol whitepaper lives in [whitepaper/src/SUMMARY.md](whitepaper/src/SUMMARY.md)
-and builds as an mdBook.
+and builds as an mdBook with `make maintainer-build`.
 
 `ic-memory` is early infrastructure extracted from Canic. It owns allocation
 governance, not schema migration, endpoint routing, authorization, or data

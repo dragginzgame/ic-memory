@@ -48,5 +48,5 @@ $$
 $$
 
 A future binary may reopen the same key on the same slot, or it may introduce a
-new key. It may not move an existing key to a new slot, and it may not reuse an
-existing slot for another active key.
+new key. It may not move an existing key to a new slot, and it may not reuse a
+historical slot for another key.

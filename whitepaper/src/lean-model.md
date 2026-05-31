@@ -11,9 +11,10 @@ captures the authority boundary that the Rust code must maintain:
 
 The model is intentionally protocol-level. It avoids Rust-specific
 implementation details such as CBOR decoding, physical dual-slot recovery,
-runtime registration, declaration-count limits, and `u64` overflow. In
-particular, the Lean `OpenAuthority` type is a post-commit model object, not a
-field carried inside Rust's `ValidatedAllocations` struct.
+runtime registration, declaration-count limits, schema metadata history,
+mandatory generation parent links, and `u64` overflow. In particular, the Lean
+`OpenAuthority` type is a post-commit model object, not a field carried inside
+Rust's `ValidatedAllocations` struct.
 
 The current model also encodes several safety facts as assumptions on
 `SafeLedger`, `TombstoneLedger`, and `OpenAuthority`. The checked theorems then

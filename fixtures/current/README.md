@@ -1,6 +1,6 @@
 # ic-memory Current Wire Fixtures
 
-These fixtures pin the 0.6 durable wire shape.
+These fixtures pin the current 0.7 durable wire shape.
 
 Files ending in `.hex` contain lowercase hexadecimal bytes. Tests decode the
 hex into the actual durable bytes, recover or validate them, and re-encode the

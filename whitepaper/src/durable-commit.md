@@ -18,14 +18,18 @@ The logical payload is wrapped in a small envelope before ledger decode:
 
 ```text
 ICMEMLED
-  || envelopeVersion
-  || ledgerSchemaVersion
-  || physicalFormatId
   || payloadLength
   || CBOR(AllocationLedger)
 ```
 
-This ordering matters: version routing happens before deserializing the ledger
-DTO. The decoded DTO still is not authority. It becomes useful for allocation
-authority only after compatibility checks, committed-integrity validation, and
-`RecoveredLedger` construction succeed.
+The 0.7 protocol deliberately removed the earlier version-routing scaffold from
+this envelope. The only logical payload accepted by the current crate is the
+current crate-owned CBOR `AllocationLedger` DTO, guarded by the envelope magic
+and payload length.
+
+This ordering still matters: physical recovery selects a valid committed slot
+before the logical envelope is decoded, and the envelope is classified before
+CBOR ledger decode. The decoded DTO still is not authority. It becomes useful
+for allocation authority only after the physical generation matches the logical
+ledger generation, committed-integrity validation succeeds, and
+`RecoveredLedger` construction succeeds.

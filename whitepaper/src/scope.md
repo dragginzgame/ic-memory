@@ -24,12 +24,14 @@ default runtime must enforce equivalent policy themselves.
 ## Substrate Correspondence
 
 The allocation slot model is intentionally aligned with the current
-`ic-stable-structures` `MemoryManager` implementation. The upstream manager
-defines `MemoryId` as a one-byte value, uses `255` as the unallocated-bucket
-marker, and stores each bucket owner as one byte in the manager metadata.
+`ic-stable-structures` `MemoryManager` implementation used by this crate. The
+upstream manager defines `MemoryId` as a one-byte value, uses `255` as the
+unallocated-bucket marker, and stores each bucket owner as one byte in the
+manager metadata.
 
-Therefore `ic-memory`'s current slot descriptor is not an arbitrary namespace.
-It is the exact durable ID domain that the underlying manager can distinguish.
+Therefore `ic-memory`'s current slot descriptor is intentionally small: it is a
+`MemoryManagerId(u8)` in the same durable ID domain that the underlying manager
+can distinguish.
 
 The same implementation reserves the first stable-memory page for manager
 metadata. Its V1 header stores the magic value `MGR`, a layout version, the

@@ -59,3 +59,23 @@ $$
 
 The Rust implementation refines this with explicit checks for stale validated
 generations, declaration-count bounds, and `u64` overflow.
+
+## Committed Generation Chain
+
+Committed generation records form a strict parent-linked chain:
+
+$$
+generation_i = i \quad \land \quad parent_i = i - 1
+$$
+
+The first real staged generation uses parent `0`. A committed ledger whose
+current generation is nonzero must contain the generation record for that
+current generation, and every allocation record generation reference must point
+to a known generation record.
+
+## Schema Metadata Is Diagnostic
+
+Schema metadata attached to declarations, reservations, and allocation records
+must validate before it is persisted. It may help a framework diagnose or route
+migration decisions, but `ic-memory` does not use it as proof that application
+bytes can be decoded under a new schema.
