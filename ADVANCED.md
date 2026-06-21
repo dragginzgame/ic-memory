@@ -104,6 +104,20 @@ Frameworks or libraries that need custom policy metadata can inspect
 `static_memory_declarations()` and `static_memory_range_declarations()`, then
 bootstrap with `runtime::bootstrap_default_memory_manager_with_policy(...)`.
 
+## Default Runtime Diagnostics
+
+`default_memory_manager_doctor_report()` builds a serializable report for the
+default `MemoryManager` runtime before or after bootstrap. It includes
+stable-cell status, protected commit recovery, recovered ledger export,
+registered declarations, registered and effective range authority, generic
+validation preflight, and live memory sizes for recovered ledger records.
+
+Before bootstrap, the doctor runs deferred `eager_init!` hooks so the report
+matches the declaration set bootstrap would see. The validation field covers
+the default runtime's generic range/declaration checks. Frameworks that pass a
+custom policy to `bootstrap_default_memory_manager_with_policy(...)` should
+still diagnose that policy in their own adapter layer.
+
 ## Manual Bootstrap
 
 The macro runtime is built on the lower-level ledger API. Frameworks that need

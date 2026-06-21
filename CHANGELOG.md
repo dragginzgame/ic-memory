@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.7.2
+
+### Diagnostics
+
+- Added a default `MemoryManager` doctor report that combines stable-cell
+  status, commit recovery, recovered ledger export, registered declarations,
+  range authority, validation preflight, and live memory sizes.
+- Documented default-runtime diagnostic behavior, including the fact that the
+  doctor runs deferred `eager_init!` hooks before bootstrap and that custom
+  policy diagnostics remain the framework adapter's responsibility.
+
+---
+
 ## 0.7.1
 
 ### Diagnostics

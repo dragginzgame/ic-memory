@@ -90,7 +90,9 @@ pub use declaration::{
     AllocationDeclaration, DeclarationCollector, DeclarationSnapshot, DeclarationSnapshotError,
 };
 pub use diagnostics::{
-    DiagnosticExport, DiagnosticGeneration, DiagnosticMemorySize, DiagnosticRecord,
+    DefaultMemoryManagerDoctorReport, DiagnosticCheck, DiagnosticCheckStatus,
+    DiagnosticDeclaration, DiagnosticExport, DiagnosticGeneration, DiagnosticMemorySize,
+    DiagnosticRangeAuthority, DiagnosticRecord, DiagnosticStableCell, DiagnosticStableCellStatus,
 };
 pub use key::{StableKey, StableKeyError};
 pub use ledger::{
@@ -117,6 +119,7 @@ pub use runtime::{
     RuntimeBootstrapError, RuntimeDiagnosticError, RuntimeOpenError, RuntimePolicyError,
     bootstrap_default_memory_manager, bootstrap_default_memory_manager_with_policy,
     default_memory_manager_commit_recovery_diagnostic, default_memory_manager_diagnostic_export,
+    default_memory_manager_doctor_report,
 };
 pub use schema::{SchemaMetadata, SchemaMetadataError};
 pub use session::{AllocationSession, AllocationSessionError, ValidatedAllocations};

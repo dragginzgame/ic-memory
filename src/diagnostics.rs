@@ -1,8 +1,9 @@
 use crate::{
     constants::WASM_PAGE_SIZE_BYTES,
+    declaration::AllocationDeclaration,
     ledger::{AllocationLedger, AllocationRecord, GenerationRecord},
     physical::CommitStoreDiagnostic,
-    slot::AllocationSlotDescriptor,
+    slot::{AllocationSlotDescriptor, MemoryManagerAuthorityRecord, MemoryManagerRangeAuthority},
 };
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
@@ -23,6 +24,216 @@ pub struct DiagnosticExport {
     pub generations: Vec<DiagnosticGeneration>,
     /// Optional protected commit recovery diagnostic.
     pub commit_recovery: Option<CommitStoreDiagnostic>,
+}
+
+///
+/// DefaultMemoryManagerDoctorReport
+///
+/// Preflight and runtime diagnostic report for the default `MemoryManager`
+/// integration.
+///
+/// This report is intended for operator-facing diagnostics. Recoverable
+/// runtime problems, such as corrupt stable-cell bytes or commit recovery
+/// failure, are represented as fields instead of aborting report construction.
+///
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct DefaultMemoryManagerDoctorReport {
+    /// Whether the default runtime has completed bootstrap validation.
+    pub bootstrapped: bool,
+    /// Ledger anchor descriptor used by the default runtime.
+    pub ledger_anchor: AllocationSlotDescriptor,
+    /// Stable-cell ledger storage status.
+    pub stable_cell: DiagnosticStableCell,
+    /// Protected commit recovery status when a ledger record was readable.
+    pub commit_recovery: Option<CommitStoreDiagnostic>,
+    /// Recovered allocation ledger export when protected recovery succeeded.
+    pub ledger: Option<DiagnosticExport>,
+    /// Static declarations registered by linked crates.
+    pub registered_declarations: Vec<DiagnosticDeclaration>,
+    /// Static range authority registered by linked crates and the effective
+    /// authority table used by the default runtime.
+    pub range_authority: DiagnosticRangeAuthority,
+    /// Current generic default-runtime declaration validation preflight result.
+    ///
+    /// Caller-supplied policies passed to
+    /// [`crate::bootstrap_default_memory_manager_with_policy`] are not
+    /// represented in this check.
+    pub validation: DiagnosticCheck,
+}
+
+///
+/// DiagnosticDeclaration
+///
+/// Read-only diagnostic view of one static allocation declaration.
+///
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct DiagnosticDeclaration {
+    /// Crate or integration authority that registered the declaration.
+    pub declaring_crate: String,
+    /// Allocation declaration registered by that authority.
+    pub declaration: AllocationDeclaration,
+}
+
+impl DiagnosticDeclaration {
+    /// Build a diagnostic declaration record.
+    #[must_use]
+    pub fn new(declaring_crate: impl Into<String>, declaration: AllocationDeclaration) -> Self {
+        Self {
+            declaring_crate: declaring_crate.into(),
+            declaration,
+        }
+    }
+}
+
+///
+/// DiagnosticRangeAuthority
+///
+/// Read-only diagnostic view of registered and effective range authority.
+///
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct DiagnosticRangeAuthority {
+    /// Range records registered directly by linked crates.
+    pub registered_records: Vec<MemoryManagerAuthorityRecord>,
+    /// Effective range authority table, including runtime-owned internal
+    /// records, when the table validated successfully.
+    pub effective_authority: Option<MemoryManagerRangeAuthority>,
+    /// Validation error when the effective authority table could not be built.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
+}
+
+impl DiagnosticRangeAuthority {
+    /// Build a range-authority diagnostic.
+    #[must_use]
+    pub const fn new(
+        registered_records: Vec<MemoryManagerAuthorityRecord>,
+        effective_authority: Option<MemoryManagerRangeAuthority>,
+        error: Option<String>,
+    ) -> Self {
+        Self {
+            registered_records,
+            effective_authority,
+            error,
+        }
+    }
+}
+
+///
+/// DiagnosticStableCell
+///
+/// Read-only diagnostic view of the stable-cell ledger storage envelope.
+///
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct DiagnosticStableCell {
+    /// Stable-cell status.
+    pub status: DiagnosticStableCellStatus,
+    /// Backing memory size for the ledger cell.
+    pub memory_size: DiagnosticMemorySize,
+    /// Decode error when the stable cell was not readable.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
+}
+
+impl DiagnosticStableCell {
+    /// Build a stable-cell diagnostic.
+    #[must_use]
+    pub const fn new(
+        status: DiagnosticStableCellStatus,
+        memory_size: DiagnosticMemorySize,
+        error: Option<String>,
+    ) -> Self {
+        Self {
+            status,
+            memory_size,
+            error,
+        }
+    }
+}
+
+///
+/// DiagnosticStableCellStatus
+///
+/// Stable-cell ledger storage status.
+///
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub enum DiagnosticStableCellStatus {
+    /// The ledger memory is empty and can be initialized.
+    Empty,
+    /// The stable-cell envelope and ledger record decoded successfully.
+    Readable,
+    /// The ledger memory is present but could not be decoded as the expected
+    /// stable-cell ledger record.
+    Corrupt,
+}
+
+///
+/// DiagnosticCheck
+///
+/// Read-only diagnostic status for a preflight check.
+///
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct DiagnosticCheck {
+    /// Check status.
+    pub status: DiagnosticCheckStatus,
+    /// Failure or skip reason.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub message: Option<String>,
+}
+
+impl DiagnosticCheck {
+    /// Build a passed diagnostic check.
+    #[must_use]
+    pub const fn passed() -> Self {
+        Self {
+            status: DiagnosticCheckStatus::Passed,
+            message: None,
+        }
+    }
+
+    /// Build a failed diagnostic check.
+    #[must_use]
+    pub fn failed(message: impl Into<String>) -> Self {
+        Self {
+            status: DiagnosticCheckStatus::Failed,
+            message: Some(message.into()),
+        }
+    }
+
+    /// Build a skipped diagnostic check.
+    #[must_use]
+    pub fn not_run(message: impl Into<String>) -> Self {
+        Self {
+            status: DiagnosticCheckStatus::NotRun,
+            message: Some(message.into()),
+        }
+    }
+}
+
+///
+/// DiagnosticCheckStatus
+///
+/// Status for one diagnostic preflight check.
+///
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub enum DiagnosticCheckStatus {
+    /// The check could not run because prerequisite state was unavailable.
+    NotRun,
+    /// The check completed successfully.
+    Passed,
+    /// The check ran and found a problem.
+    Failed,
 }
 
 impl DiagnosticExport {

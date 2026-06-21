@@ -1,7 +1,9 @@
 use crate::{
     AllocationBootstrap, AllocationDeclaration, AllocationHistory, AllocationLedger,
-    AllocationPolicy, AllocationSlotDescriptor, DeclarationSnapshot, DiagnosticExport,
-    DiagnosticMemorySize, LedgerCommitError, StableCellLedgerError, StableCellLedgerRecord,
+    AllocationPolicy, AllocationSlotDescriptor, DeclarationSnapshot,
+    DefaultMemoryManagerDoctorReport, DiagnosticCheck, DiagnosticDeclaration, DiagnosticExport,
+    DiagnosticMemorySize, DiagnosticRangeAuthority, DiagnosticStableCell,
+    DiagnosticStableCellStatus, LedgerCommitError, StableCellLedgerError, StableCellLedgerRecord,
     StableKey, ValidatedAllocations, decode_stable_cell_ledger_record, decode_stable_cell_payload,
     physical::CommitStoreDiagnostic,
     registry::{
@@ -304,6 +306,75 @@ pub fn default_memory_manager_commit_recovery_diagnostic()
     Ok(record.store().physical().diagnostic())
 }
 
+/// Build a preflight and runtime diagnostic report for the default runtime.
+///
+/// The doctor report can be collected before bootstrap, after bootstrap, or
+/// after a failed bootstrap attempt. Stable-cell, commit-recovery, declaration,
+/// range-authority, validation, ledger, and live memory-size status are
+/// collected into one serializable report. Recoverable problems are reported in
+/// fields rather than returned as errors.
+#[must_use]
+pub fn default_memory_manager_doctor_report() -> DefaultMemoryManagerDoctorReport {
+    if !is_default_memory_manager_bootstrapped() {
+        run_eager_init_hooks();
+    }
+
+    let stable_cell = default_memory_manager_stable_cell_diagnostic();
+    let commit_recovery = stable_cell
+        .record
+        .as_ref()
+        .map(|record| record.store().physical().diagnostic());
+    let recovered = stable_cell
+        .record
+        .as_ref()
+        .map(|record| record.store().recover());
+    let recovered_for_export = recovered.as_ref().and_then(|result| result.as_ref().ok());
+    let ledger_anchor = default_ledger_anchor_descriptor();
+    let ledger = recovered_for_export.map(|recovered| {
+        DiagnosticExport::from_ledger_with_commit_recovery_and_memory_sizes(
+            recovered.ledger(),
+            ledger_anchor.clone(),
+            commit_recovery,
+            default_memory_manager_memory_sizes_lossy(recovered.ledger()),
+        )
+    });
+
+    let registered_declarations = static_memory_declarations();
+    let registered_ranges = static_memory_range_declarations();
+    let diagnostic_declarations = registered_declarations
+        .as_ref()
+        .map(|declarations| {
+            declarations
+                .iter()
+                .map(|registration| {
+                    DiagnosticDeclaration::new(
+                        registration.declaring_crate(),
+                        registration.declaration().clone(),
+                    )
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+    let range_authority = diagnostic_range_authority(&registered_ranges);
+    let validation = diagnostic_validation(
+        &registered_declarations,
+        &registered_ranges,
+        stable_cell.record.as_ref(),
+        recovered.as_ref(),
+    );
+
+    DefaultMemoryManagerDoctorReport {
+        bootstrapped: is_default_memory_manager_bootstrapped(),
+        ledger_anchor,
+        stable_cell: stable_cell.diagnostic,
+        commit_recovery,
+        ledger,
+        registered_declarations: diagnostic_declarations,
+        range_authority,
+        validation,
+    }
+}
+
 fn run_eager_init_hooks() {
     let hooks = {
         let mut hooks = EAGER_INIT_HOOKS
@@ -333,6 +404,10 @@ fn with_default_ledger_cell<P, T>(
 
 fn default_memory_manager_memory(id: u8) -> VirtualMemory<DefaultMemoryImpl> {
     DEFAULT_MEMORY_MANAGER.with(|manager| manager.get(MemoryId::new(id)))
+}
+
+const fn default_ledger_anchor_descriptor() -> AllocationSlotDescriptor {
+    AllocationSlotDescriptor::memory_manager_unchecked(MEMORY_MANAGER_LEDGER_ID)
 }
 
 fn default_ledger_record_for_diagnostics() -> Result<StableCellLedgerRecord, RuntimeDiagnosticError>
@@ -370,6 +445,142 @@ fn default_memory_manager_memory_sizes(
             ))
         })
         .collect()
+}
+
+fn default_memory_manager_memory_sizes_lossy(
+    ledger: &AllocationLedger,
+) -> Vec<(AllocationSlotDescriptor, DiagnosticMemorySize)> {
+    default_memory_manager_memory_sizes(ledger).unwrap_or_default()
+}
+
+struct DefaultStableCellDiagnostic {
+    diagnostic: DiagnosticStableCell,
+    record: Option<StableCellLedgerRecord>,
+}
+
+fn default_memory_manager_stable_cell_diagnostic() -> DefaultStableCellDiagnostic {
+    let memory = default_memory_manager_memory(MEMORY_MANAGER_LEDGER_ID);
+    let memory_size = DiagnosticMemorySize::from_wasm_pages(memory.size());
+    if memory.size() == 0 {
+        return DefaultStableCellDiagnostic {
+            diagnostic: DiagnosticStableCell::new(
+                DiagnosticStableCellStatus::Empty,
+                memory_size,
+                None,
+            ),
+            record: Some(StableCellLedgerRecord::default()),
+        };
+    }
+
+    let record = decode_stable_cell_payload(&memory)
+        .map_err(StableCellLedgerError::Payload)
+        .and_then(|payload| {
+            decode_stable_cell_ledger_record(&payload).map_err(StableCellLedgerError::Record)
+        });
+    match record {
+        Ok(record) => DefaultStableCellDiagnostic {
+            diagnostic: DiagnosticStableCell::new(
+                DiagnosticStableCellStatus::Readable,
+                memory_size,
+                None,
+            ),
+            record: Some(record),
+        },
+        Err(err) => DefaultStableCellDiagnostic {
+            diagnostic: DiagnosticStableCell::new(
+                DiagnosticStableCellStatus::Corrupt,
+                memory_size,
+                Some(err.to_string()),
+            ),
+            record: None,
+        },
+    }
+}
+
+fn diagnostic_range_authority(
+    registered_ranges: &Result<Vec<StaticMemoryRangeDeclaration>, StaticMemoryDeclarationError>,
+) -> DiagnosticRangeAuthority {
+    match registered_ranges {
+        Ok(ranges) => {
+            let registered_records = ranges
+                .iter()
+                .map(|registration| registration.record().clone())
+                .collect();
+            match range_authority(ranges.clone()) {
+                Ok(authority) => {
+                    DiagnosticRangeAuthority::new(registered_records, Some(authority), None)
+                }
+                Err(err) => {
+                    DiagnosticRangeAuthority::new(registered_records, None, Some(err.to_string()))
+                }
+            }
+        }
+        Err(err) => DiagnosticRangeAuthority::new(Vec::new(), None, Some(err.to_string())),
+    }
+}
+
+fn diagnostic_validation(
+    registered_declarations: &Result<Vec<StaticMemoryDeclaration>, StaticMemoryDeclarationError>,
+    registered_ranges: &Result<Vec<StaticMemoryRangeDeclaration>, StaticMemoryDeclarationError>,
+    stable_cell_record: Option<&StableCellLedgerRecord>,
+    recovered: Option<&Result<crate::RecoveredLedger, LedgerCommitError>>,
+) -> DiagnosticCheck {
+    let registered_declarations = match registered_declarations {
+        Ok(declarations) => declarations.clone(),
+        Err(err) => return DiagnosticCheck::failed(format!("declaration registry: {err}")),
+    };
+    let registered_ranges = match registered_ranges {
+        Ok(ranges) => ranges.clone(),
+        Err(err) => return DiagnosticCheck::failed(format!("range registry: {err}")),
+    };
+    let range_authority = match range_authority(registered_ranges.clone()) {
+        Ok(authority) => authority,
+        Err(err) => return DiagnosticCheck::failed(format!("range authority: {err}")),
+    };
+    let snapshot = match declaration_snapshot(registered_declarations.clone()) {
+        Ok(snapshot) => snapshot,
+        Err(err) => return DiagnosticCheck::failed(format!("declaration snapshot: {err}")),
+    };
+    let recovered = match diagnostic_validation_ledger(stable_cell_record, recovered) {
+        Ok(recovered) => recovered,
+        Err(reason) => return DiagnosticCheck::not_run(reason),
+    };
+    let policy = RuntimeMemoryManagerPolicy {
+        range_authority,
+        user_ranges_registered: !registered_ranges.is_empty(),
+        declaration_metadata: declaration_metadata(&registered_declarations),
+        custom_policy: &NoopPolicy,
+    };
+
+    match crate::validate_allocations(&recovered, snapshot, &policy) {
+        Ok(_) => DiagnosticCheck::passed(),
+        Err(err) => DiagnosticCheck::failed(err.to_string()),
+    }
+}
+
+fn diagnostic_validation_ledger(
+    stable_cell_record: Option<&StableCellLedgerRecord>,
+    recovered: Option<&Result<crate::RecoveredLedger, LedgerCommitError>>,
+) -> Result<crate::RecoveredLedger, String> {
+    if let Some(Ok(recovered)) = recovered {
+        return Ok(recovered.clone());
+    }
+    if let Some(Err(err)) = recovered {
+        if stable_cell_record.is_some_and(|record| record.store().physical().is_uninitialized()) {
+            return diagnostic_genesis_recovered_ledger();
+        }
+        return Err(format!("protected ledger recovery: {err}"));
+    }
+    if stable_cell_record.is_some() {
+        return diagnostic_genesis_recovered_ledger();
+    }
+    Err("stable-cell ledger record is not readable".to_string())
+}
+
+fn diagnostic_genesis_recovered_ledger() -> Result<crate::RecoveredLedger, String> {
+    AllocationLedger::new(0, AllocationHistory::default())
+        .map(|ledger| crate::RecoveredLedger::from_trusted_parts(ledger, 0))
+        .map_err(|err| format!("genesis ledger: {err}"))
 }
 
 fn publish_validated_allocations<P>(
@@ -867,6 +1078,125 @@ mod tests {
         assert_eq!(
             record.memory_size,
             Some(DiagnosticMemorySize::from_wasm_pages(old_size + 2))
+        );
+    }
+
+    #[test]
+    fn doctor_report_preflights_before_bootstrap() {
+        let _guard = TEST_REGISTRY_LOCK.lock().expect("test lock poisoned");
+        reset_for_tests();
+        register_static_memory_manager_range(
+            240,
+            240,
+            "doctor_preflight",
+            MemoryManagerRangeMode::Reserved,
+            None,
+        )
+        .expect("doctor range");
+        register_static_memory_manager_declaration(
+            240,
+            "doctor_preflight",
+            "users",
+            "doctor_preflight.users.v1",
+        )
+        .expect("doctor declaration");
+
+        let report = default_memory_manager_doctor_report();
+
+        assert!(!report.bootstrapped);
+        assert_eq!(report.registered_declarations.len(), 1);
+        assert!(report.range_authority.effective_authority.is_some());
+        assert_eq!(
+            report.validation.status,
+            crate::DiagnosticCheckStatus::Passed
+        );
+        assert!(report.commit_recovery.is_some());
+        assert!(matches!(
+            report.stable_cell.status,
+            crate::DiagnosticStableCellStatus::Empty | crate::DiagnosticStableCellStatus::Readable
+        ));
+    }
+
+    #[test]
+    fn doctor_report_includes_recovered_ledger_and_memory_sizes_after_bootstrap() {
+        let _guard = TEST_REGISTRY_LOCK.lock().expect("test lock poisoned");
+        reset_for_tests();
+        register_static_memory_manager_range(
+            241,
+            241,
+            "doctor_runtime",
+            MemoryManagerRangeMode::Reserved,
+            None,
+        )
+        .expect("doctor range");
+        register_static_memory_manager_declaration(
+            241,
+            "doctor_runtime",
+            "orders",
+            "doctor_runtime.orders.v1",
+        )
+        .expect("doctor declaration");
+
+        bootstrap_default_memory_manager().expect("bootstrap");
+        let memory = open_default_memory_manager_memory("doctor_runtime.orders.v1", 241)
+            .expect("open memory");
+        let old_size = memory.size();
+        memory.grow(1);
+
+        let report = default_memory_manager_doctor_report();
+        let ledger = report.ledger.expect("recovered ledger export");
+        let record = ledger
+            .records
+            .iter()
+            .find(|record| record.allocation.stable_key().as_str() == "doctor_runtime.orders.v1")
+            .expect("doctor allocation");
+
+        assert!(report.bootstrapped);
+        assert_eq!(
+            report.stable_cell.status,
+            crate::DiagnosticStableCellStatus::Readable
+        );
+        assert_eq!(
+            report.validation.status,
+            crate::DiagnosticCheckStatus::Passed
+        );
+        assert_eq!(
+            record.memory_size,
+            Some(DiagnosticMemorySize::from_wasm_pages(old_size + 1))
+        );
+    }
+
+    #[test]
+    fn doctor_report_captures_validation_failure() {
+        let _guard = TEST_REGISTRY_LOCK.lock().expect("test lock poisoned");
+        reset_for_tests();
+        register_static_memory_manager_declaration(
+            242,
+            "doctor_failure_a",
+            "users",
+            "doctor_failure.users.v1",
+        )
+        .expect("first declaration");
+        register_static_memory_manager_declaration(
+            243,
+            "doctor_failure_b",
+            "orders",
+            "doctor_failure.users.v1",
+        )
+        .expect("second declaration");
+
+        let report = default_memory_manager_doctor_report();
+
+        assert_eq!(
+            report.validation.status,
+            crate::DiagnosticCheckStatus::Failed
+        );
+        assert!(
+            report
+                .validation
+                .message
+                .expect("validation failure message")
+                .contains("declared more than once")
         );
     }
 }
