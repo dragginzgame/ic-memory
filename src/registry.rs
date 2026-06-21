@@ -65,7 +65,6 @@ impl StaticMemoryDeclaration {
 /// caller-supplied policy runs.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct StaticMemoryRangeDeclaration {
-    declaring_crate: String,
     record: MemoryManagerAuthorityRecord,
 }
 
@@ -73,16 +72,15 @@ impl StaticMemoryRangeDeclaration {
     /// Build one static range declaration.
     #[must_use]
     pub fn new(declaring_crate: impl Into<String>, record: MemoryManagerAuthorityRecord) -> Self {
-        Self {
-            declaring_crate: declaring_crate.into(),
-            record,
-        }
+        let declaring_crate = declaring_crate.into();
+        debug_assert_eq!(declaring_crate, record.authority);
+        Self { record }
     }
 
     /// Return the crate that registered this range.
     #[must_use]
     pub fn declaring_crate(&self) -> &str {
-        &self.declaring_crate
+        &self.record.authority
     }
 
     /// Borrow the authority record.

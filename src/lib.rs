@@ -63,6 +63,7 @@
 //! does not wrap typed stores such as `StableBTreeMap`.
 
 pub mod bootstrap;
+mod constants;
 pub mod declaration;
 pub mod diagnostics;
 pub mod key;
@@ -84,10 +85,13 @@ pub use bootstrap::{
     AllocationBootstrap, BootstrapCommit, BootstrapError, BootstrapReservationError,
     BootstrapRetirementError,
 };
+pub use constants::WASM_PAGE_SIZE_BYTES;
 pub use declaration::{
     AllocationDeclaration, DeclarationCollector, DeclarationSnapshot, DeclarationSnapshotError,
 };
-pub use diagnostics::{DiagnosticExport, DiagnosticGeneration, DiagnosticRecord};
+pub use diagnostics::{
+    DiagnosticExport, DiagnosticGeneration, DiagnosticMemorySize, DiagnosticRecord,
+};
 pub use key::{StableKey, StableKeyError};
 pub use ledger::{
     AllocationHistory, AllocationLedger, AllocationRecord, AllocationReservationError,
@@ -110,8 +114,9 @@ pub use registry::{
     static_memory_declarations, static_memory_range_authority, static_memory_range_declarations,
 };
 pub use runtime::{
-    RuntimeBootstrapError, RuntimeOpenError, RuntimePolicyError, bootstrap_default_memory_manager,
-    bootstrap_default_memory_manager_with_policy,
+    RuntimeBootstrapError, RuntimeDiagnosticError, RuntimeOpenError, RuntimePolicyError,
+    bootstrap_default_memory_manager, bootstrap_default_memory_manager_with_policy,
+    default_memory_manager_commit_recovery_diagnostic, default_memory_manager_diagnostic_export,
 };
 pub use schema::{SchemaMetadata, SchemaMetadataError};
 pub use session::{AllocationSession, AllocationSessionError, ValidatedAllocations};

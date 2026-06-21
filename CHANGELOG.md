@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.7.1
+
+### Diagnostics
+
+- Added optional live backing-memory size diagnostics for allocation records,
+  including a default `MemoryManager` export helper that reports each
+  `VirtualMemory::size()` in WebAssembly pages and bytes.
+- Added a default `MemoryManager` commit-recovery diagnostic helper that can
+  inspect protected ledger slots without requiring successful bootstrap.
+- Revalidated decoded `MemoryManager` range-authority records so reversed
+  ranges and the `255` sentinel cannot enter imported authority tables.
+- Made raw stable-cell payload decoding classify empty memory as `NotStableCell`
+  instead of relying on callers to preflight it.
+- Removed duplicated internal constants for diagnostic metadata bounds and
+  WebAssembly page size.
+
+---
+
 ## 0.7.0
 
 ### Whitepaper and Lean model

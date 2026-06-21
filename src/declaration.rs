@@ -1,4 +1,5 @@
 use crate::{
+    constants::DIAGNOSTIC_STRING_MAX_BYTES,
     key::{StableKey, StableKeyError},
     schema::{SchemaMetadata, SchemaMetadataError},
     slot::{AllocationSlotDescriptor, MemoryManagerSlotError},
@@ -6,8 +7,6 @@ use crate::{
 };
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeSet;
-
-const DIAGNOSTIC_STRING_MAX_BYTES: usize = 256;
 
 ///
 /// AllocationDeclaration

@@ -156,6 +156,51 @@ mod tests {
     }
 
     #[test]
+    fn memory_manager_range_authority_from_records_rejects_decoded_reversed_range() {
+        let err = MemoryManagerRangeAuthority::from_records(vec![MemoryManagerAuthorityRecord {
+            range: MemoryManagerIdRange {
+                start: 100,
+                end: 99,
+            },
+            authority: "applications".to_string(),
+            mode: MemoryManagerRangeMode::Allowed,
+            purpose: None,
+        }])
+        .expect_err("decoded reversed range must fail");
+
+        assert_eq!(
+            err,
+            MemoryManagerRangeAuthorityError::Range(MemoryManagerRangeError::InvalidRange {
+                start: 100,
+                end: 99,
+            })
+        );
+    }
+
+    #[test]
+    fn memory_manager_range_authority_from_records_rejects_decoded_sentinel_range() {
+        let err = MemoryManagerRangeAuthority::from_records(vec![MemoryManagerAuthorityRecord {
+            range: MemoryManagerIdRange {
+                start: 100,
+                end: MEMORY_MANAGER_INVALID_ID,
+            },
+            authority: "applications".to_string(),
+            mode: MemoryManagerRangeMode::Allowed,
+            purpose: None,
+        }])
+        .expect_err("decoded sentinel range must fail");
+
+        assert_eq!(
+            err,
+            MemoryManagerRangeAuthorityError::Range(
+                MemoryManagerRangeError::InvalidMemoryManagerId {
+                    id: MEMORY_MANAGER_INVALID_ID,
+                }
+            )
+        );
+    }
+
+    #[test]
     fn memory_manager_range_authority_rejects_overlap() {
         let err = MemoryManagerRangeAuthority::new()
             .reserve(

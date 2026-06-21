@@ -3,9 +3,8 @@ use super::memory_manager::{
     MEMORY_MANAGER_INVALID_ID, MEMORY_MANAGER_MAX_ID, MEMORY_MANAGER_MIN_ID,
     MemoryManagerSlotError, validate_memory_manager_id,
 };
+use crate::constants::DIAGNOSTIC_STRING_MAX_BYTES;
 use serde::{Deserialize, Serialize};
-
-const DIAGNOSTIC_STRING_MAX_BYTES: usize = 256;
 
 ///
 /// MemoryManagerIdRange
@@ -46,6 +45,14 @@ impl MemoryManagerIdRange {
     #[must_use]
     pub const fn contains(&self, id: u8) -> bool {
         id >= self.start && id <= self.end
+    }
+
+    /// Validate this range's decoded bounds.
+    pub const fn validate(&self) -> Result<(), MemoryManagerRangeError> {
+        match Self::new(self.start, self.end) {
+            Ok(_) => Ok(()),
+            Err(err) => Err(err),
+        }
     }
 
     /// First usable ID in the range.
@@ -479,6 +486,7 @@ impl MemoryManagerRangeAuthority {
 fn validate_authority_record(
     record: &MemoryManagerAuthorityRecord,
 ) -> Result<(), MemoryManagerRangeAuthorityError> {
+    record.range.validate()?;
     validate_diagnostic_string("authority", &record.authority)?;
     if let Some(purpose) = &record.purpose {
         validate_diagnostic_string("purpose", purpose)?;

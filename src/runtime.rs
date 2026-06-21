@@ -1,7 +1,9 @@
 use crate::{
     AllocationBootstrap, AllocationDeclaration, AllocationHistory, AllocationLedger,
-    AllocationPolicy, AllocationSlotDescriptor, DeclarationSnapshot, StableCellLedgerError,
-    StableCellLedgerRecord, StableKey, ValidatedAllocations,
+    AllocationPolicy, AllocationSlotDescriptor, DeclarationSnapshot, DiagnosticExport,
+    DiagnosticMemorySize, LedgerCommitError, StableCellLedgerError, StableCellLedgerRecord,
+    StableKey, ValidatedAllocations, decode_stable_cell_ledger_record, decode_stable_cell_payload,
+    physical::CommitStoreDiagnostic,
     registry::{
         StaticMemoryDeclaration, StaticMemoryDeclarationError, StaticMemoryRangeDeclaration,
         seal_static_memory_registry, static_memory_declarations, static_memory_range_declarations,
@@ -14,7 +16,7 @@ use crate::{
     },
 };
 use ic_stable_structures::{
-    Cell, DefaultMemoryImpl,
+    Cell, DefaultMemoryImpl, Memory,
     memory_manager::{MemoryId, MemoryManager, VirtualMemory},
 };
 use std::{
@@ -106,6 +108,28 @@ pub enum RuntimeOpenError {
         /// Requested MemoryManager ID.
         requested_id: u8,
     },
+}
+
+///
+/// RuntimeDiagnosticError
+///
+/// Failure to build diagnostics for the default `MemoryManager` runtime.
+///
+
+#[derive(Debug, thiserror::Error)]
+pub enum RuntimeDiagnosticError {
+    /// Runtime bootstrap has not opened and validated the ledger cell.
+    #[error("ic-memory runtime has not completed bootstrap validation")]
+    NotBootstrapped,
+    /// The recovered allocation ledger failed protected commit validation.
+    #[error(transparent)]
+    LedgerCommit(#[from] LedgerCommitError),
+    /// Stable-cell ledger storage is corrupt before protected recovery can run.
+    #[error(transparent)]
+    StableCellLedger(#[from] StableCellLedgerError),
+    /// A committed allocation slot was not a usable `MemoryManager` ID.
+    #[error(transparent)]
+    MemoryManagerSlot(#[from] MemoryManagerSlotError),
 }
 
 ///
@@ -245,6 +269,41 @@ pub fn open_default_memory_manager_memory(
     Ok(default_memory_manager_memory(id))
 }
 
+/// Build a diagnostic export for the default `MemoryManager` runtime.
+///
+/// Each allocation record includes the live `VirtualMemory::size()` for its
+/// slot when the committed ledger can be recovered. The reported size is the
+/// virtual memory size in WebAssembly pages and bytes, not logical data bytes
+/// stored by a particular stable-structure collection.
+pub fn default_memory_manager_diagnostic_export() -> Result<DiagnosticExport, RuntimeDiagnosticError>
+{
+    let record = default_ledger_record_for_diagnostics()?;
+    let recovered = record.store().recover()?;
+    let ledger = recovered.ledger();
+    let memory_sizes = default_memory_manager_memory_sizes(ledger)?;
+
+    Ok(
+        DiagnosticExport::from_ledger_with_commit_recovery_and_memory_sizes(
+            ledger,
+            AllocationSlotDescriptor::memory_manager(MEMORY_MANAGER_LEDGER_ID)?,
+            Some(record.store().physical().diagnostic()),
+            memory_sizes,
+        ),
+    )
+}
+
+/// Build a protected commit recovery diagnostic for the default ledger store.
+///
+/// Unlike [`default_memory_manager_diagnostic_export`], this helper does not
+/// require successful bootstrap. It can diagnose empty or partially corrupt
+/// dual-slot commit state as long as the enclosing stable-cell ledger record is
+/// readable.
+pub fn default_memory_manager_commit_recovery_diagnostic()
+-> Result<CommitStoreDiagnostic, RuntimeDiagnosticError> {
+    let record = default_ledger_record_from_memory()?;
+    Ok(record.store().physical().diagnostic())
+}
+
 fn run_eager_init_hooks() {
     let hooks = {
         let mut hooks = EAGER_INIT_HOOKS
@@ -274,6 +333,43 @@ fn with_default_ledger_cell<P, T>(
 
 fn default_memory_manager_memory(id: u8) -> VirtualMemory<DefaultMemoryImpl> {
     DEFAULT_MEMORY_MANAGER.with(|manager| manager.get(MemoryId::new(id)))
+}
+
+fn default_ledger_record_for_diagnostics() -> Result<StableCellLedgerRecord, RuntimeDiagnosticError>
+{
+    if !is_default_memory_manager_bootstrapped() {
+        return Err(RuntimeDiagnosticError::NotBootstrapped);
+    }
+
+    default_ledger_record_from_memory().map_err(RuntimeDiagnosticError::StableCellLedger)
+}
+
+fn default_ledger_record_from_memory() -> Result<StableCellLedgerRecord, StableCellLedgerError> {
+    let memory = default_memory_manager_memory(MEMORY_MANAGER_LEDGER_ID);
+    if memory.size() == 0 {
+        return Ok(StableCellLedgerRecord::default());
+    }
+
+    let payload = decode_stable_cell_payload(&memory)?;
+    decode_stable_cell_ledger_record(&payload).map_err(StableCellLedgerError::Record)
+}
+
+fn default_memory_manager_memory_sizes(
+    ledger: &AllocationLedger,
+) -> Result<Vec<(AllocationSlotDescriptor, DiagnosticMemorySize)>, RuntimeDiagnosticError> {
+    ledger
+        .allocation_history()
+        .records()
+        .iter()
+        .map(|record| {
+            let id = record.slot().memory_manager_id()?;
+            let memory = default_memory_manager_memory(id);
+            Ok((
+                record.slot().clone(),
+                DiagnosticMemorySize::from_wasm_pages(memory.size()),
+            ))
+        })
+        .collect()
 }
 
 fn publish_validated_allocations<P>(
@@ -727,5 +823,50 @@ mod tests {
 
         bootstrap_default_memory_manager().expect("bootstrap");
         open_default_memory_manager_memory("icydb.users.data.v1", 120).expect("open memory");
+    }
+
+    #[test]
+    fn diagnostic_export_reports_default_memory_manager_sizes() {
+        let _guard = TEST_REGISTRY_LOCK.lock().expect("test lock poisoned");
+        reset_for_tests();
+        register_static_memory_manager_range(
+            130,
+            139,
+            "diagnostics",
+            MemoryManagerRangeMode::Reserved,
+            None,
+        )
+        .expect("diagnostics range");
+        register_static_memory_manager_declaration(
+            130,
+            "diagnostics",
+            "users",
+            "diagnostics.users.v1",
+        )
+        .expect("diagnostics declaration");
+
+        bootstrap_default_memory_manager().expect("bootstrap");
+        let memory =
+            open_default_memory_manager_memory("diagnostics.users.v1", 130).expect("open memory");
+        let old_size = memory.size();
+        memory.grow(2);
+
+        let export = default_memory_manager_diagnostic_export().expect("diagnostic export");
+        let recovery =
+            default_memory_manager_commit_recovery_diagnostic().expect("recovery diagnostic");
+        let record = export
+            .records
+            .iter()
+            .find(|record| record.allocation.stable_key().as_str() == "diagnostics.users.v1")
+            .expect("diagnostic allocation");
+
+        assert_eq!(
+            recovery.authoritative_generation,
+            Some(export.current_generation)
+        );
+        assert_eq!(
+            record.memory_size,
+            Some(DiagnosticMemorySize::from_wasm_pages(old_size + 2))
+        );
     }
 }

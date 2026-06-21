@@ -1,4 +1,4 @@
-use crate::LedgerCommitStore;
+use crate::{LedgerCommitStore, constants::WASM_PAGE_SIZE_BYTES};
 use ic_stable_structures::{Memory, Storable, storable::Bound};
 use serde::{Deserialize, Serialize};
 use std::borrow::Cow;
@@ -12,7 +12,6 @@ pub const STABLE_CELL_LAYOUT_VERSION: u8 = 1;
 pub const STABLE_CELL_HEADER_SIZE: usize = 8;
 /// Byte offset where the stable-cell value payload starts.
 pub const STABLE_CELL_VALUE_OFFSET: u64 = 8;
-const WASM_PAGE_SIZE: u64 = 65_536;
 
 ///
 /// StableCellLedgerRecord
@@ -126,6 +125,10 @@ pub enum StableCellLedgerError {
 pub fn decode_stable_cell_payload<M: Memory>(
     memory: &M,
 ) -> Result<Vec<u8>, StableCellPayloadError> {
+    if memory.size() == 0 {
+        return Err(StableCellPayloadError::NotStableCell);
+    }
+
     let mut header = [0; STABLE_CELL_HEADER_SIZE];
     memory.read(0, &mut header);
     if &header[0..3] != STABLE_CELL_MAGIC {
@@ -138,7 +141,7 @@ pub fn decode_stable_cell_payload<M: Memory>(
     let value_len = u64::from(u32::from_le_bytes([
         header[4], header[5], header[6], header[7],
     ]));
-    let available_bytes = memory.size().saturating_mul(WASM_PAGE_SIZE);
+    let available_bytes = memory.size().saturating_mul(WASM_PAGE_SIZE_BYTES);
     let payload_capacity = available_bytes.saturating_sub(STABLE_CELL_VALUE_OFFSET);
     if value_len > payload_capacity {
         return Err(StableCellPayloadError::InvalidLength {
@@ -270,6 +273,16 @@ mod tests {
         let memory = VectorMemory::default();
         memory.grow(1);
         memory.write(0, b"BAD");
+
+        assert_eq!(
+            decode_stable_cell_payload(&memory),
+            Err(StableCellPayloadError::NotStableCell)
+        );
+    }
+
+    #[test]
+    fn stable_cell_payload_rejects_empty_memory_without_panic() {
+        let memory = VectorMemory::default();
 
         assert_eq!(
             decode_stable_cell_payload(&memory),
