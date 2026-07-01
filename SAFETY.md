@@ -66,6 +66,9 @@ authorization, or endpoint safety.
   before opening it through `ic-stable-structures::Cell`, so envelope or record
   corruption is classified as a bootstrap error instead of escaping as a decode
   panic.
+- The default runtime's internal `ic_memory.*` governance allocations must stay
+  recoverable in the durable ledger, but must not be published or opened through
+  public application-memory helpers.
 
 ## Validation-Before-Open Invariant
 

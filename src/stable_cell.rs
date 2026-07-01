@@ -173,7 +173,7 @@ pub fn decode_stable_cell_ledger_record(
     serde_cbor::from_slice(bytes)
 }
 
-pub(crate) fn decode_stable_cell_ledger_record_from_memory<M: Memory>(
+pub fn decode_stable_cell_ledger_record_from_memory<M: Memory>(
     memory: &M,
 ) -> Result<StableCellLedgerRecord, StableCellLedgerError> {
     if memory.size() == 0 {

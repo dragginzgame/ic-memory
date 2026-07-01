@@ -16,7 +16,7 @@ ic_memory::eager_init!({
 
 thread_local! {
     static MACRO_MEMORY: RefCell<Option<VirtualMemory<DefaultMemoryImpl>>> = {
-        assert!(ic_memory::runtime::is_default_memory_manager_bootstrapped());
+        assert!(ic_memory::is_default_memory_manager_bootstrapped());
         RefCell::new(Some(ic_memory::ic_memory_key!(
             "macro.integration.users.v1",
             MacroStore,
@@ -37,6 +37,6 @@ fn downstream_style_range_and_key_macros_register_then_open_memory() {
             .any(|declaration| declaration.stable_key().as_str() == "macro.integration.users.v1")
     );
     MACRO_MEMORY.with(|memory| assert!(memory.borrow().is_some()));
-    ic_memory::runtime::open_default_memory_manager_memory("macro.integration.users.v1", 130)
+    ic_memory::open_default_memory_manager_memory("macro.integration.users.v1", 130)
         .expect("open macro memory");
 }

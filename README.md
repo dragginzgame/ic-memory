@@ -99,6 +99,12 @@ fn post_upgrade() {
 
 That is the normal path.
 
+The default runtime API is exported from the crate root. Use helpers such as
+`ic_memory::bootstrap_default_memory_manager()`,
+`ic_memory::bootstrap_default_memory_manager_with_policy(...)`,
+`ic_memory::open_default_memory_manager_memory(...)`, and the macros shown
+above; implementation modules are private.
+
 ## Multi-Crate Composition
 
 Every crate registers into the same linked `ic-memory` runtime. Crates do not
@@ -137,6 +143,11 @@ out-of-range declarations fail before stable structures open.
 IDs `0..=254` are usable, and ID `255` is always the unallocated sentinel. It is
 not an application slot and cannot be declared or reserved.
 
+The default runtime reserves `MemoryManager` IDs `0..=9` and stable keys under
+`ic_memory.*` for allocation-governance records. The ledger itself lives at ID
+`0`; it remains in the durable ledger for recovery, but public runtime helpers
+do not publish or open that internal allocation as application memory.
+
 Range claims are authoritative in the default runtime. If a crate registers
 `ic_memory_range!`, its declared memories must stay inside that range. Framework
 adapters that want their own range policy, such as Canic, should register only
@@ -145,6 +156,18 @@ adapter.
 
 The validated allocation state is an in-memory capability produced by bootstrap;
 it is not a serde payload and should not be treated as configuration.
+
+## Diagnostics
+
+Use `default_memory_manager_doctor_report()` for operator-facing preflight and
+runtime diagnostics. It can be called before or after bootstrap and reports the
+stable-cell status, protected commit recovery state, recovered ledger export,
+registered declarations, range authority, validation preflight, and live
+`MemoryManager` slot sizes when they can be recovered.
+
+Use `default_memory_manager_commit_recovery_diagnostic()` when you only need the
+dual-slot protected commit status, including empty, corrupt, ambiguous, or
+recoverable physical ledger state.
 
 ## Stable Keys
 
@@ -167,6 +190,10 @@ StableKey::parse("icydb.test_db.users.data.v1").expect("database key");
 
 Changing a key creates a new logical allocation identity. If the durable store
 is the same, keep the stable key and update schema metadata instead.
+
+Schema metadata is optional diagnostic metadata for the in-place store schema.
+Construct it with `SchemaMetadata::new(Some(version))`; version `0` is reserved
+for absence and is rejected.
 
 ## More Detail
 

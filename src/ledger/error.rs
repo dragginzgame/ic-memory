@@ -261,6 +261,15 @@ pub enum AllocationStageError {
         /// Retired allocation slot.
         slot: Box<AllocationSlotDescriptor>,
     },
+    /// Internal claim validation reported an active-allocation conflict where
+    /// declaration staging expected only move, reuse, or tombstone conflicts.
+    #[error("stable key '{stable_key}' produced an unexpected active-allocation conflict")]
+    UnexpectedActiveAllocationConflict {
+        /// Active stable key.
+        stable_key: StableKey,
+        /// Active allocation slot.
+        slot: Box<AllocationSlotDescriptor>,
+    },
 }
 
 ///

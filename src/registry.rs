@@ -9,7 +9,7 @@ use crate::{
 use std::sync::{Mutex, MutexGuard};
 
 #[cfg(test)]
-pub(crate) static TEST_REGISTRY_LOCK: Mutex<()> = Mutex::new(());
+pub static TEST_REGISTRY_LOCK: Mutex<()> = Mutex::new(());
 
 ///
 /// StaticMemoryDeclaration
@@ -247,7 +247,7 @@ pub fn static_memory_range_authority()
 }
 
 /// Seal the static memory registry so later registration attempts fail closed.
-pub(crate) fn seal_static_memory_registry() -> Result<(), StaticMemoryDeclarationError> {
+pub fn seal_static_memory_registry() -> Result<(), StaticMemoryDeclarationError> {
     let mut registry = lock_registry()?;
     registry.sealed = true;
     Ok(())
@@ -283,7 +283,7 @@ pub fn static_memory_declaration_snapshot()
 }
 
 #[cfg(test)]
-pub(crate) fn reset_static_memory_declarations_for_tests() {
+pub fn reset_static_memory_declarations_for_tests() {
     let mut registry = STATIC_MEMORY_DECLARATIONS
         .lock()
         .expect("static memory declaration registry poisoned");

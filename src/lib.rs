@@ -62,22 +62,22 @@
 //! `ic-memory` is not a replacement for `ic-stable-structures` collections and
 //! does not wrap typed stores such as `StableBTreeMap`.
 
-pub mod bootstrap;
+mod bootstrap;
 mod constants;
-pub mod declaration;
-pub mod diagnostics;
-pub mod key;
-pub mod ledger;
-pub mod physical;
-pub mod policy;
-pub mod registry;
-pub mod runtime;
-pub mod schema;
-pub mod session;
-pub mod slot;
-pub mod stable_cell;
-pub mod substrate;
-pub mod validation;
+mod declaration;
+mod diagnostics;
+mod key;
+mod ledger;
+mod physical;
+mod policy;
+mod registry;
+mod runtime;
+mod schema;
+mod session;
+mod slot;
+mod stable_cell;
+mod substrate;
+mod validation;
 
 pub use ic_stable_structures as stable_structures;
 
@@ -119,7 +119,8 @@ pub use runtime::{
     RuntimeBootstrapError, RuntimeDiagnosticError, RuntimeOpenError, RuntimePolicyError,
     bootstrap_default_memory_manager, bootstrap_default_memory_manager_with_policy,
     default_memory_manager_commit_recovery_diagnostic, default_memory_manager_diagnostic_export,
-    default_memory_manager_doctor_report,
+    default_memory_manager_doctor_report, is_default_memory_manager_bootstrapped,
+    open_default_memory_manager_memory, validated_allocations,
 };
 pub use schema::{SchemaMetadata, SchemaMetadataError};
 pub use session::{AllocationSession, AllocationSessionError, ValidatedAllocations};
@@ -141,6 +142,9 @@ pub use stable_cell::{
 };
 pub use substrate::{LedgerAnchor, StorageSubstrate};
 pub use validation::{AllocationValidationError, Validate, validate_allocations};
+
+#[doc(hidden)]
+pub use runtime::defer_eager_init;
 
 #[doc(hidden)]
 pub mod __reexports {
@@ -222,13 +226,13 @@ macro_rules! ic_memory_range {
 macro_rules! ic_memory_key {
     ($stable_key:literal, $label:path, $id:expr $(,)?) => {{
         $crate::ic_memory_declaration!(key = $stable_key, ty = $label, id = $id,);
-        $crate::runtime::open_default_memory_manager_memory($stable_key, $id)
+        $crate::open_default_memory_manager_memory($stable_key, $id)
             .expect("ic-memory failed to open validated stable memory; bootstrap must run first and the stable key/id must match the validated declaration")
     }};
     (key = $stable_key:literal, ty = $label:path, id = $id:expr $(,)?) => {{ $crate::ic_memory_key!($stable_key, $label, $id) }};
     (key = $stable_key:literal, label = $label:literal, id = $id:expr $(,)?) => {{
         $crate::ic_memory_declaration!(key = $stable_key, label = $label, id = $id,);
-        $crate::runtime::open_default_memory_manager_memory($stable_key, $id)
+        $crate::open_default_memory_manager_memory($stable_key, $id)
             .expect("ic-memory failed to open validated stable memory; bootstrap must run first and the stable key/id must match the validated declaration")
     }};
 }
@@ -244,7 +248,7 @@ macro_rules! eager_init {
 
             #[ $crate::__reexports::ctor::ctor(unsafe, anonymous, crate_path = $crate::__reexports::ctor) ]
             fn __ic_memory_register_eager_init() {
-                $crate::runtime::defer_eager_init(__ic_memory_registered_eager_init_body);
+                $crate::defer_eager_init(__ic_memory_registered_eager_init_body);
             }
         };
     };

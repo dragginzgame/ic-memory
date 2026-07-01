@@ -158,17 +158,24 @@ fn record_declaration(
     match validate_declaration_claim(ledger, declaration) {
         Ok(ClaimOutcome::Existing { record_index }) => {
             ledger.allocation_history.records_mut()[record_index]
-                .observe_declaration(generation, declaration);
+                .observe_declaration(generation, declaration)
+                .map_err(|error| AllocationStageError::InvalidSchemaMetadata {
+                    stable_key: declaration.stable_key.clone(),
+                    error,
+                })?;
             Ok(())
         }
         Ok(ClaimOutcome::New) => {
-            ledger
-                .allocation_history
-                .push_record(AllocationRecord::from_declaration(
-                    generation,
-                    declaration.clone(),
-                    AllocationState::Active,
-                ));
+            let record = AllocationRecord::from_declaration(
+                generation,
+                declaration.clone(),
+                AllocationState::Active,
+            )
+            .map_err(|error| AllocationStageError::InvalidSchemaMetadata {
+                stable_key: declaration.stable_key.clone(),
+                error,
+            })?;
+            ledger.allocation_history.push_record(record);
             Ok(())
         }
         Err(conflict) => Err(map_declaration_stage_conflict(
@@ -187,13 +194,22 @@ fn record_reservation(
     match validate_reservation_claim(ledger, reservation) {
         Ok(ClaimOutcome::Existing { record_index }) => {
             ledger.allocation_history.records_mut()[record_index]
-                .observe_reservation(generation, reservation);
+                .observe_reservation(generation, reservation)
+                .map_err(|error| AllocationReservationError::InvalidSchemaMetadata {
+                    stable_key: reservation.stable_key.clone(),
+                    error,
+                })?;
             Ok(())
         }
         Ok(ClaimOutcome::New) => {
-            ledger
-                .allocation_history
-                .push_record(AllocationRecord::reserved(generation, reservation.clone()));
+            let record =
+                AllocationRecord::reserved(generation, reservation.clone()).map_err(|error| {
+                    AllocationReservationError::InvalidSchemaMetadata {
+                        stable_key: reservation.stable_key.clone(),
+                        error,
+                    }
+                })?;
+            ledger.allocation_history.push_record(record);
             Ok(())
         }
         Err(conflict) => Err(map_reservation_stage_conflict(
@@ -251,7 +267,10 @@ fn map_declaration_stage_conflict(
             slot: Box::new(record.slot.clone()),
         },
         ClaimConflict::ActiveAllocation { .. } => {
-            unreachable!("active allocation conflicts are reservation-only")
+            AllocationStageError::UnexpectedActiveAllocationConflict {
+                stable_key: record.stable_key.clone(),
+                slot: Box::new(record.slot.clone()),
+            }
         }
     }
 }

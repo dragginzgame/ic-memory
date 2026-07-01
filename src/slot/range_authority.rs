@@ -438,8 +438,14 @@ impl MemoryManagerRangeAuthority {
             let record_end = u16::from(record.range.end());
 
             if record_start > next_uncovered {
+                let start = u8::try_from(next_uncovered).map_err(|_| {
+                    MemoryManagerRangeAuthorityError::MissingCoverage {
+                        start: target.start(),
+                        end: target.end(),
+                    }
+                })?;
                 return Err(MemoryManagerRangeAuthorityError::MissingCoverage {
-                    start: u8::try_from(next_uncovered).expect("valid MemoryManager ID"),
+                    start,
                     end: record.range.start() - 1,
                 });
             }
@@ -450,8 +456,14 @@ impl MemoryManagerRangeAuthority {
         }
 
         if next_uncovered <= target_end {
+            let start = u8::try_from(next_uncovered).map_err(|_| {
+                MemoryManagerRangeAuthorityError::MissingCoverage {
+                    start: target.start(),
+                    end: target.end(),
+                }
+            })?;
             return Err(MemoryManagerRangeAuthorityError::MissingCoverage {
-                start: u8::try_from(next_uncovered).expect("valid MemoryManager ID"),
+                start,
                 end: target.end(),
             });
         }

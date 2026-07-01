@@ -26,17 +26,35 @@ impl LedgerPayloadEnvelope {
     }
 
     /// Manually encode the logical payload envelope.
+    ///
+    /// # Panics
+    ///
+    /// Panics only on a platform where an in-memory payload length cannot fit
+    /// into the envelope's `u64` length field.
     #[must_use]
     pub fn encode(&self) -> Vec<u8> {
-        let mut bytes = Vec::with_capacity(LEDGER_PAYLOAD_HEADER_LEN + self.payload.len());
+        self.try_encode()
+            .expect("payload length does not fit in the ledger envelope")
+    }
+
+    /// Try to encode the logical payload envelope.
+    pub fn try_encode(&self) -> Result<Vec<u8>, LedgerPayloadEnvelopeError> {
+        let total_len = LEDGER_PAYLOAD_HEADER_LEN
+            .checked_add(self.payload.len())
+            .ok_or(LedgerPayloadEnvelopeError::PayloadLengthOverflow {
+                len: self.payload.len(),
+            })?;
+        let payload_len = u64::try_from(self.payload.len()).map_err(|_| {
+            LedgerPayloadEnvelopeError::PayloadLengthOverflow {
+                len: self.payload.len(),
+            }
+        })?;
+
+        let mut bytes = Vec::with_capacity(total_len);
         bytes.extend_from_slice(LEDGER_PAYLOAD_MAGIC);
-        bytes.extend_from_slice(
-            &u64::try_from(self.payload.len())
-                .expect("payload length does not fit in u64")
-                .to_le_bytes(),
-        );
+        bytes.extend_from_slice(&payload_len.to_le_bytes());
         bytes.extend_from_slice(&self.payload);
-        bytes
+        Ok(bytes)
     }
 
     /// Manually decode the logical payload envelope.
@@ -48,12 +66,23 @@ impl LedgerPayloadEnvelope {
             });
         }
 
-        let magic = <[u8; 8]>::try_from(&bytes[0..8]).expect("magic slice length");
+        let Some(magic) = bytes.get(0..8).and_then(|bytes| bytes.try_into().ok()) else {
+            return Err(LedgerPayloadEnvelopeError::Truncated {
+                actual: bytes.len(),
+                minimum: LEDGER_PAYLOAD_HEADER_LEN,
+            });
+        };
         if &magic != LEDGER_PAYLOAD_MAGIC {
             return Err(LedgerPayloadEnvelopeError::BadMagic { found: magic });
         }
 
-        let payload_len = u64::from_le_bytes(bytes[8..16].try_into().expect("u64 slice"));
+        let Some(payload_len) = bytes.get(8..16).and_then(|bytes| bytes.try_into().ok()) else {
+            return Err(LedgerPayloadEnvelopeError::Truncated {
+                actual: bytes.len(),
+                minimum: LEDGER_PAYLOAD_HEADER_LEN,
+            });
+        };
+        let payload_len = u64::from_le_bytes(payload_len);
         let payload_len = usize::try_from(payload_len)
             .map_err(|_| LedgerPayloadEnvelopeError::PayloadTooLarge { len: payload_len })?;
         let expected_len = LEDGER_PAYLOAD_HEADER_LEN

@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.7.5
+
+### Runtime hardening
+
+- Made default-runtime bootstrap return `RuntimeLockPoisoned` if the deferred
+  eager-init hook queue lock is poisoned, instead of panicking.
+- Made the default doctor report surface eager-init hook lock failures as a
+  failed diagnostic check instead of panicking.
+- Removed reachable production `expect(...)` paths from default ledger-cell
+  initialization, stable-cell capacity sizing, and ledger schema-history
+  staging.
+- Added fallible `LedgerPayloadEnvelope::try_encode()` and used it from ledger
+  commit paths so envelope length failures return `LedgerCommitError`.
+- Replaced internal declaration-claim `unreachable!` arms with explicit
+  validation and staging errors.
+
+---
+
 ## 0.7.4
 
 ### Public API hygiene
@@ -9,8 +27,8 @@
   read accessors.
 - Simplified `StaticMemoryRangeDeclaration::new` so the range authority comes
   only from the validated `MemoryManagerAuthorityRecord`.
-- Hid the internal `ledger::claim` module while keeping crate-internal claim
-  helpers available to validation and staging code.
+- Made implementation modules private, keeping the intended public API on the
+  crate root and updating exported macros to use root-level helpers.
 
 ### Code hygiene
 
@@ -19,6 +37,8 @@
 - Consolidated static registry lock and sealed-state handling.
 - Shared claim-conflict record lookup between validation and staging.
 - Added strict unknown-field rejection to diagnostic export DTOs.
+- Added a deterministic transition matrix test that checks committed ledger
+  invariants across many declaration, reservation, and retirement sequences.
 
 ---
 

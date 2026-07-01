@@ -419,7 +419,7 @@ fn validate_declarations(
     Ok(())
 }
 
-pub(crate) fn validate_runtime_fingerprint(
+pub fn validate_runtime_fingerprint(
     fingerprint: Option<&str>,
 ) -> Result<(), DeclarationSnapshotError> {
     let Some(fingerprint) = fingerprint else {

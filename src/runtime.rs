@@ -46,6 +46,13 @@ static EAGER_INIT_HOOKS: Mutex<Vec<fn()>> = Mutex::new(Vec::new());
 static VALIDATED_ALLOCATIONS: Mutex<Option<ValidatedAllocations>> = Mutex::new(None);
 static BOOTSTRAPPED: AtomicBool = AtomicBool::new(false);
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct RuntimeLockPoisoned;
+
+impl RuntimeLockPoisoned {
+    const MESSAGE: &'static str = "ic-memory runtime lock poisoned";
+}
+
 ///
 /// RuntimeBootstrapError
 ///
@@ -234,7 +241,7 @@ pub fn bootstrap_default_memory_manager_with_policy<P: AllocationPolicy>(
         return Ok(validated);
     }
 
-    run_eager_init_hooks();
+    run_eager_init_hooks().map_err(|_err| RuntimeBootstrapError::RuntimeLockPoisoned)?;
 
     let registered_declarations = static_memory_declarations()?;
     let registered_ranges = static_memory_range_declarations()?;
@@ -338,9 +345,14 @@ pub fn default_memory_manager_commit_recovery_diagnostic()
 /// fields rather than returned as errors.
 #[must_use]
 pub fn default_memory_manager_doctor_report() -> DefaultMemoryManagerDoctorReport {
-    if !is_default_memory_manager_bootstrapped() {
-        run_eager_init_hooks();
-    }
+    let bootstrapped = is_default_memory_manager_bootstrapped();
+    let eager_init_error = if bootstrapped {
+        None
+    } else {
+        run_eager_init_hooks()
+            .err()
+            .map(|_err| format!("eager-init hooks: {}", RuntimeLockPoisoned::MESSAGE))
+    };
 
     let stable_cell = default_memory_manager_stable_cell_diagnostic();
     let commit_recovery = stable_cell
@@ -379,15 +391,20 @@ pub fn default_memory_manager_doctor_report() -> DefaultMemoryManagerDoctorRepor
         })
         .unwrap_or_default();
     let range_authority = diagnostic_range_authority(&registered_ranges);
-    let validation = diagnostic_validation(
-        &registered_declarations,
-        &registered_ranges,
-        stable_cell.record.as_ref(),
-        recovered.as_ref(),
+    let validation = eager_init_error.map_or_else(
+        || {
+            diagnostic_validation(
+                &registered_declarations,
+                &registered_ranges,
+                stable_cell.record.as_ref(),
+                recovered.as_ref(),
+            )
+        },
+        DiagnosticCheck::failed,
     );
 
     DefaultMemoryManagerDoctorReport {
-        bootstrapped: is_default_memory_manager_bootstrapped(),
+        bootstrapped: BOOTSTRAPPED.load(Ordering::SeqCst),
         ledger_anchor,
         stable_cell: stable_cell.diagnostic,
         commit_recovery,
@@ -398,17 +415,16 @@ pub fn default_memory_manager_doctor_report() -> DefaultMemoryManagerDoctorRepor
     }
 }
 
-fn run_eager_init_hooks() {
+fn run_eager_init_hooks() -> Result<(), RuntimeLockPoisoned> {
     let hooks = {
-        let mut hooks = EAGER_INIT_HOOKS
-            .lock()
-            .expect("ic-memory eager-init queue poisoned");
+        let mut hooks = EAGER_INIT_HOOKS.lock().map_err(|_| RuntimeLockPoisoned)?;
         std::mem::take(&mut *hooks)
     };
 
     for hook in hooks {
         hook();
     }
+    Ok(())
 }
 
 fn with_default_ledger_cell<P, T>(
@@ -421,7 +437,10 @@ fn with_default_ledger_cell<P, T>(
             crate::validate_stable_cell_ledger_memory(&memory)?;
             *cell = Some(Cell::init(memory, StableCellLedgerRecord::default()));
         }
-        op(cell.as_mut().expect("default ledger cell initialized"))
+        let Some(cell) = cell.as_mut() else {
+            return Err(RuntimeBootstrapError::RuntimeLockPoisoned);
+        };
+        op(cell)
     })
 }
 
@@ -443,7 +462,9 @@ fn ensure_default_ledger_cell_capacity<P>(
         return Err(RuntimeBootstrapError::StableCellLedgerWriteTooLarge { value_size });
     }
 
-    let value_size_u64 = u64::try_from(value_size).expect("u32-sized value length fits u64");
+    let value_size_u32 = u32::try_from(value_size)
+        .map_err(|_| RuntimeBootstrapError::StableCellLedgerWriteTooLarge { value_size })?;
+    let value_size_u64 = u64::from(value_size_u32);
     let required_bytes = STABLE_CELL_VALUE_OFFSET
         .checked_add(value_size_u64)
         .ok_or(RuntimeBootstrapError::StableCellLedgerWriteTooLarge { value_size })?;
@@ -835,7 +856,7 @@ impl AllocationPolicy for NoopPolicy {
 }
 
 #[cfg(test)]
-pub(crate) fn reset_for_tests() {
+pub fn reset_for_tests() {
     crate::registry::reset_static_memory_declarations_for_tests();
     EAGER_INIT_HOOKS
         .lock()

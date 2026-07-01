@@ -341,29 +341,27 @@ impl GenerationRecord {
 
 impl AllocationRecord {
     /// Create a new allocation record from a declaration.
-    #[must_use]
     pub(crate) fn from_declaration(
         generation: u64,
         declaration: AllocationDeclaration,
         state: AllocationState,
-    ) -> Self {
-        Self {
+    ) -> Result<Self, SchemaMetadataError> {
+        Ok(Self {
             stable_key: declaration.stable_key,
             slot: declaration.slot,
             state,
             first_generation: generation,
             last_seen_generation: generation,
             retired_generation: None,
-            schema_history: vec![
-                SchemaMetadataRecord::new(generation, declaration.schema)
-                    .expect("declarations validate schema metadata"),
-            ],
-        }
+            schema_history: vec![SchemaMetadataRecord::new(generation, declaration.schema)?],
+        })
     }
 
     /// Create a new reserved allocation record from a declaration.
-    #[must_use]
-    pub(crate) fn reserved(generation: u64, declaration: AllocationDeclaration) -> Self {
+    pub(crate) fn reserved(
+        generation: u64,
+        declaration: AllocationDeclaration,
+    ) -> Result<Self, SchemaMetadataError> {
         Self::from_declaration(generation, declaration, AllocationState::Reserved)
     }
 
@@ -413,7 +411,7 @@ impl AllocationRecord {
         &mut self,
         generation: u64,
         declaration: &AllocationDeclaration,
-    ) {
+    ) -> Result<(), SchemaMetadataError> {
         self.last_seen_generation = generation;
         if self.state == AllocationState::Reserved {
             self.state = AllocationState::Active;
@@ -421,27 +419,29 @@ impl AllocationRecord {
 
         let latest_schema = self.schema_history.last().map(|record| &record.schema);
         if latest_schema != Some(&declaration.schema) {
-            self.schema_history.push(
-                SchemaMetadataRecord::new(generation, declaration.schema.clone())
-                    .expect("declarations validate schema metadata"),
-            );
+            self.schema_history.push(SchemaMetadataRecord::new(
+                generation,
+                declaration.schema.clone(),
+            )?);
         }
+        Ok(())
     }
 
     pub(crate) fn observe_reservation(
         &mut self,
         generation: u64,
         reservation: &AllocationDeclaration,
-    ) {
+    ) -> Result<(), SchemaMetadataError> {
         self.last_seen_generation = generation;
 
         let latest_schema = self.schema_history.last().map(|record| &record.schema);
         if latest_schema != Some(&reservation.schema) {
-            self.schema_history.push(
-                SchemaMetadataRecord::new(generation, reservation.schema.clone())
-                    .expect("reservations validate schema metadata"),
-            );
+            self.schema_history.push(SchemaMetadataRecord::new(
+                generation,
+                reservation.schema.clone(),
+            )?);
         }
+        Ok(())
     }
 }
 

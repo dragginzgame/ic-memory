@@ -25,6 +25,11 @@ MemoryManager ID 0
 The logical payload inside the `LedgerPayloadEnvelope` is the built-in
 `ic-memory` CBOR ledger format. Callers do not provide a custom codec.
 
+The default runtime keeps this internal ledger allocation in durable history,
+but it removes `ic_memory.*` governance keys from the validated allocations it
+publishes for application opens. Public default-runtime open helpers reject
+those reserved keys.
+
 A typical framework flow is:
 
 1. Recover the saved allocation ledger into `RecoveredLedger`.
@@ -47,6 +52,13 @@ canister. Canic can be that owner, IcyDB can be that owner, or the application
 can be that owner.
 
 All crates using the default runtime compose into one bootstrap authority.
+
+The intended public API is exported from `ic_memory::...` at the crate root.
+Implementation modules such as the runtime, ledger, registry, and validation
+modules are private. Frameworks should call root exports such as
+`bootstrap_default_memory_manager_with_policy(...)`,
+`default_memory_manager_doctor_report()`, and
+`open_default_memory_manager_memory(...)`.
 
 If multiple layers need separate allocation domains, they should use distinct
 ledger stores with an explicit bootstrap owner for each domain.
@@ -102,7 +114,7 @@ allocations to be published first.
 
 Frameworks or libraries that need custom policy metadata can inspect
 `static_memory_declarations()` and `static_memory_range_declarations()`, then
-bootstrap with `runtime::bootstrap_default_memory_manager_with_policy(...)`.
+bootstrap with `bootstrap_default_memory_manager_with_policy(...)`.
 
 ## Default Runtime Diagnostics
 
@@ -301,6 +313,8 @@ For the built-in `ic-stable-structures::MemoryManager` slot descriptor:
 - ID `255` is rejected because it is the unallocated sentinel.
 - IDs `0..=9` are reserved for `ic-memory` governance.
 - ID `0` is assigned to the allocation ledger.
+- Stable keys under `ic_memory.*` are reserved for `ic-memory` governance and
+  cannot be opened through the public default runtime.
 
 The crate also exposes range-authority helpers for frameworks that want to split
 ID ranges between infrastructure and application stores.

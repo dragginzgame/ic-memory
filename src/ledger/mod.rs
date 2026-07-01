@@ -8,7 +8,7 @@ mod stage;
 use crate::physical::{CommitRecoveryError, DualCommitStore};
 use serde::{Deserialize, Serialize};
 
-pub(crate) use claim::{
+pub use claim::{
     ClaimConflict, ClaimOutcome, claim_conflict_record, validate_declaration_claim,
     validate_reservation_claim,
 };
@@ -155,7 +155,8 @@ impl LedgerCommitStore {
                 .encode(ledger)
                 .map_err(|err| LedgerCommitError::Codec(err.to_string()))?,
         )
-        .encode();
+        .try_encode()
+        .map_err(LedgerCommitError::PayloadEnvelope)?;
         self.physical
             .commit_payload_at_generation(ledger.current_generation, payload)
             .map_err(LedgerCommitError::Recovery)?;
@@ -174,7 +175,8 @@ impl LedgerCommitStore {
                 .encode(ledger)
                 .map_err(|err| LedgerCommitError::Codec(err.to_string()))?,
         )
-        .encode();
+        .try_encode()
+        .map_err(LedgerCommitError::PayloadEnvelope)?;
         self.physical
             .write_corrupt_inactive_slot(ledger.current_generation, payload);
         Ok(())
@@ -241,6 +243,7 @@ mod tests {
 
     fn active_record(key: &str, id: u8) -> AllocationRecord {
         AllocationRecord::from_declaration(1, declaration(key, id, None), AllocationState::Active)
+            .expect("valid schema metadata")
     }
 
     fn validated(
@@ -967,10 +970,10 @@ mod tests {
     #[test]
     fn stage_reservation_generation_rejects_same_key_different_slot() {
         let mut ledger = ledger();
-        *ledger.allocation_history.records_mut() = vec![AllocationRecord::reserved(
-            3,
-            declaration("app.future_store.v1", 100, None),
-        )];
+        *ledger.allocation_history.records_mut() = vec![
+            AllocationRecord::reserved(3, declaration("app.future_store.v1", 100, None))
+                .expect("valid schema metadata"),
+        ];
         let reservations = vec![declaration("app.future_store.v1", 101, None)];
 
         let err = ledger
@@ -986,10 +989,10 @@ mod tests {
     #[test]
     fn stage_reservation_generation_rejects_same_slot_different_key() {
         let mut ledger = ledger();
-        *ledger.allocation_history.records_mut() = vec![AllocationRecord::reserved(
-            3,
-            declaration("app.future_store.v1", 100, None),
-        )];
+        *ledger.allocation_history.records_mut() = vec![
+            AllocationRecord::reserved(3, declaration("app.future_store.v1", 100, None))
+                .expect("valid schema metadata"),
+        ];
         let reservations = vec![declaration("app.other_future_store.v1", 100, None)];
 
         let err = ledger
@@ -1276,6 +1279,126 @@ mod tests {
             record(&ledger, "app.future_store.v1").last_seen_generation,
             5
         );
+    }
+
+    #[derive(Clone, Copy, Debug)]
+    enum Transition {
+        DeclareUsers,
+        DeclareOrders,
+        ReserveAudit,
+        ActivateAudit,
+        RetireUsers,
+        RetireAudit,
+        EmptyValidated,
+        EmptyReservation,
+    }
+
+    const TRANSITIONS: [Transition; 8] = [
+        Transition::DeclareUsers,
+        Transition::DeclareOrders,
+        Transition::ReserveAudit,
+        Transition::ActivateAudit,
+        Transition::RetireUsers,
+        Transition::RetireAudit,
+        Transition::EmptyValidated,
+        Transition::EmptyReservation,
+    ];
+
+    fn apply_transition(
+        ledger: &AllocationLedger,
+        transition: Transition,
+        committed_at: u64,
+    ) -> Result<AllocationLedger, String> {
+        match transition {
+            Transition::DeclareUsers => ledger
+                .stage_validated_generation(
+                    &validated(
+                        ledger.current_generation,
+                        vec![declaration("app.users.v1", 100, Some(1))],
+                    ),
+                    Some(committed_at),
+                )
+                .map_err(|err| err.to_string()),
+            Transition::DeclareOrders => ledger
+                .stage_validated_generation(
+                    &validated(
+                        ledger.current_generation,
+                        vec![declaration("app.orders.v1", 101, Some(1))],
+                    ),
+                    Some(committed_at),
+                )
+                .map_err(|err| err.to_string()),
+            Transition::ReserveAudit => ledger
+                .stage_reservation_generation(
+                    &[declaration("app.audit.v1", 102, Some(1))],
+                    Some(committed_at),
+                )
+                .map_err(|err| err.to_string()),
+            Transition::ActivateAudit => ledger
+                .stage_validated_generation(
+                    &validated(
+                        ledger.current_generation,
+                        vec![declaration("app.audit.v1", 102, Some(1))],
+                    ),
+                    Some(committed_at),
+                )
+                .map_err(|err| err.to_string()),
+            Transition::RetireUsers => ledger
+                .stage_retirement_generation(
+                    &AllocationRetirement::new(
+                        "app.users.v1",
+                        AllocationSlotDescriptor::memory_manager(100).expect("usable slot"),
+                    )
+                    .expect("retirement"),
+                    Some(committed_at),
+                )
+                .map_err(|err| err.to_string()),
+            Transition::RetireAudit => ledger
+                .stage_retirement_generation(
+                    &AllocationRetirement::new(
+                        "app.audit.v1",
+                        AllocationSlotDescriptor::memory_manager(102).expect("usable slot"),
+                    )
+                    .expect("retirement"),
+                    Some(committed_at),
+                )
+                .map_err(|err| err.to_string()),
+            Transition::EmptyValidated => ledger
+                .stage_validated_generation(
+                    &validated(ledger.current_generation, Vec::new()),
+                    Some(committed_at),
+                )
+                .map_err(|err| err.to_string()),
+            Transition::EmptyReservation => ledger
+                .stage_reservation_generation(&[], Some(committed_at))
+                .map_err(|err| err.to_string()),
+        }
+    }
+
+    fn check_transition_sequences(
+        ledger: AllocationLedger,
+        depth: usize,
+        sequence: &mut Vec<Transition>,
+    ) {
+        ledger
+            .validate_committed_integrity()
+            .unwrap_or_else(|err| panic!("sequence {sequence:?} violated integrity: {err}"));
+        if depth == 0 {
+            return;
+        }
+
+        for transition in TRANSITIONS {
+            sequence.push(transition);
+            let next = apply_transition(&ledger, transition, sequence.len() as u64)
+                .unwrap_or_else(|_| ledger.clone());
+            check_transition_sequences(next, depth - 1, sequence);
+            sequence.pop();
+        }
+    }
+
+    #[test]
+    fn transition_matrix_preserves_committed_invariants() {
+        check_transition_sequences(committed_ledger(0), 4, &mut Vec::new());
     }
 
     #[test]
