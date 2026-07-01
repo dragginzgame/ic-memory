@@ -446,6 +446,7 @@ impl CommitSlotDiagnostic {
 /// CommitRecoveryError
 ///
 /// Protected commit recovery failure.
+#[non_exhaustive]
 #[derive(Clone, Copy, Debug, Deserialize, Eq, thiserror::Error, PartialEq, Serialize)]
 pub enum CommitRecoveryError {
     /// No committed slot passed marker and checksum validation.

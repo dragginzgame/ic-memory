@@ -6,7 +6,7 @@ use crate::{
         MemoryManagerRangeAuthorityError, MemoryManagerRangeMode,
     },
 };
-use std::sync::Mutex;
+use std::sync::{Mutex, MutexGuard};
 
 #[cfg(test)]
 pub(crate) static TEST_REGISTRY_LOCK: Mutex<()> = Mutex::new(());
@@ -69,18 +69,16 @@ pub struct StaticMemoryRangeDeclaration {
 }
 
 impl StaticMemoryRangeDeclaration {
-    /// Build one static range declaration.
+    /// Build one static range declaration from a validated authority record.
     #[must_use]
-    pub fn new(declaring_crate: impl Into<String>, record: MemoryManagerAuthorityRecord) -> Self {
-        let declaring_crate = declaring_crate.into();
-        debug_assert_eq!(declaring_crate, record.authority);
+    pub const fn new(record: MemoryManagerAuthorityRecord) -> Self {
         Self { record }
     }
 
     /// Return the crate that registered this range.
     #[must_use]
     pub fn declaring_crate(&self) -> &str {
-        &self.record.authority
+        self.record.authority()
     }
 
     /// Borrow the authority record.
@@ -100,6 +98,7 @@ impl StaticMemoryRangeDeclaration {
 /// StaticMemoryDeclarationError
 ///
 /// Failure to register or collect static allocation declarations.
+#[non_exhaustive]
 #[derive(Clone, Debug, Eq, thiserror::Error, PartialEq)]
 pub enum StaticMemoryDeclarationError {
     /// Static declaration registry lock was poisoned.
@@ -130,21 +129,41 @@ static STATIC_MEMORY_DECLARATIONS: Mutex<StaticMemoryDeclarationRegistry> =
         sealed: false,
     });
 
+fn lock_registry()
+-> Result<MutexGuard<'static, StaticMemoryDeclarationRegistry>, StaticMemoryDeclarationError> {
+    STATIC_MEMORY_DECLARATIONS
+        .lock()
+        .map_err(|_| StaticMemoryDeclarationError::RegistryPoisoned)
+}
+
+const fn ensure_unsealed(
+    registry: &StaticMemoryDeclarationRegistry,
+) -> Result<(), StaticMemoryDeclarationError> {
+    if registry.sealed {
+        return Err(StaticMemoryDeclarationError::RegistrySealed);
+    }
+    Ok(())
+}
+
+fn with_unsealed_registry(
+    op: impl FnOnce(&mut StaticMemoryDeclarationRegistry),
+) -> Result<(), StaticMemoryDeclarationError> {
+    let mut registry = lock_registry()?;
+    ensure_unsealed(&registry)?;
+    op(&mut registry);
+    Ok(())
+}
+
 /// Register one allocation declaration before bootstrap seals the snapshot.
 pub fn register_static_memory_declaration(
     declaring_crate: impl Into<String>,
     declaration: AllocationDeclaration,
 ) -> Result<(), StaticMemoryDeclarationError> {
-    let mut registry = STATIC_MEMORY_DECLARATIONS
-        .lock()
-        .map_err(|_| StaticMemoryDeclarationError::RegistryPoisoned)?;
-    if registry.sealed {
-        return Err(StaticMemoryDeclarationError::RegistrySealed);
-    }
-    registry
-        .declarations
-        .push(StaticMemoryDeclaration::new(declaring_crate, declaration));
-    Ok(())
+    with_unsealed_registry(|registry| {
+        registry
+            .declarations
+            .push(StaticMemoryDeclaration::new(declaring_crate, declaration));
+    })
 }
 
 /// Register one `MemoryManager` authority range before bootstrap seals the snapshot.
@@ -158,28 +177,20 @@ pub fn register_static_memory_manager_range(
     let declaring_crate = declaring_crate.into();
     let record = MemoryManagerAuthorityRecord::new(
         MemoryManagerIdRange::new(start, end).map_err(MemoryManagerRangeAuthorityError::Range)?,
-        declaring_crate.clone(),
+        declaring_crate,
         mode,
         purpose,
     )?;
-    register_static_memory_range_declaration(StaticMemoryRangeDeclaration::new(
-        declaring_crate,
-        record,
-    ))
+    register_static_memory_range_declaration(StaticMemoryRangeDeclaration::new(record))
 }
 
 /// Register one authority range declaration before bootstrap seals the snapshot.
 pub fn register_static_memory_range_declaration(
     declaration: StaticMemoryRangeDeclaration,
 ) -> Result<(), StaticMemoryDeclarationError> {
-    let mut registry = STATIC_MEMORY_DECLARATIONS
-        .lock()
-        .map_err(|_| StaticMemoryDeclarationError::RegistryPoisoned)?;
-    if registry.sealed {
-        return Err(StaticMemoryDeclarationError::RegistrySealed);
-    }
-    registry.ranges.push(declaration);
-    Ok(())
+    with_unsealed_registry(|registry| {
+        registry.ranges.push(declaration);
+    })
 }
 
 /// Register one `MemoryManager` declaration before bootstrap seals the snapshot.
@@ -214,19 +225,13 @@ pub fn register_static_memory_manager_declaration_with_schema(
 /// Return the currently registered static allocation declarations.
 pub fn static_memory_declarations()
 -> Result<Vec<StaticMemoryDeclaration>, StaticMemoryDeclarationError> {
-    STATIC_MEMORY_DECLARATIONS
-        .lock()
-        .map_err(|_| StaticMemoryDeclarationError::RegistryPoisoned)
-        .map(|registry| registry.declarations.clone())
+    Ok(lock_registry()?.declarations.clone())
 }
 
 /// Return the currently registered static range declarations.
 pub fn static_memory_range_declarations()
 -> Result<Vec<StaticMemoryRangeDeclaration>, StaticMemoryDeclarationError> {
-    STATIC_MEMORY_DECLARATIONS
-        .lock()
-        .map_err(|_| StaticMemoryDeclarationError::RegistryPoisoned)
-        .map(|registry| registry.ranges.clone())
+    Ok(lock_registry()?.ranges.clone())
 }
 
 /// Return the currently registered static range declarations as an authority table.
@@ -243,9 +248,7 @@ pub fn static_memory_range_authority()
 
 /// Seal the static memory registry so later registration attempts fail closed.
 pub(crate) fn seal_static_memory_registry() -> Result<(), StaticMemoryDeclarationError> {
-    let mut registry = STATIC_MEMORY_DECLARATIONS
-        .lock()
-        .map_err(|_| StaticMemoryDeclarationError::RegistryPoisoned)?;
+    let mut registry = lock_registry()?;
     registry.sealed = true;
     Ok(())
 }
@@ -268,9 +271,7 @@ pub fn collect_static_memory_declarations(
 pub fn static_memory_declaration_snapshot()
 -> Result<DeclarationSnapshot, StaticMemoryDeclarationError> {
     let declarations = {
-        let mut registry = STATIC_MEMORY_DECLARATIONS
-            .lock()
-            .map_err(|_| StaticMemoryDeclarationError::RegistryPoisoned)?;
+        let mut registry = lock_registry()?;
         registry.sealed = true;
         registry
             .declarations
@@ -337,8 +338,23 @@ mod tests {
         let ranges = static_memory_range_declarations().expect("ranges");
         assert_eq!(ranges.len(), 1);
         assert_eq!(ranges[0].declaring_crate(), "crate_a");
-        assert_eq!(ranges[0].record().range.start(), 100);
-        assert_eq!(ranges[0].record().range.end(), 109);
+        assert_eq!(ranges[0].record().range().start(), 100);
+        assert_eq!(ranges[0].record().range().end(), 109);
+    }
+
+    #[test]
+    fn static_range_declaration_uses_record_authority() {
+        let record = MemoryManagerAuthorityRecord::new(
+            MemoryManagerIdRange::new(100, 109).expect("range"),
+            "record_authority",
+            MemoryManagerRangeMode::Reserved,
+            None,
+        )
+        .expect("record");
+
+        let range = StaticMemoryRangeDeclaration::new(record);
+
+        assert_eq!(range.declaring_crate(), "record_authority");
     }
 
     #[test]

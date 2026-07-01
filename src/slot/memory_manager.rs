@@ -78,6 +78,7 @@ impl AllocationSlotDescriptor {
 /// MemoryManagerSlotError
 ///
 /// Invalid `MemoryManager` allocation slot descriptor.
+#[non_exhaustive]
 #[derive(Clone, Debug, Eq, thiserror::Error, PartialEq)]
 pub enum MemoryManagerSlotError {
     /// ID 255 is the unallocated-bucket sentinel.

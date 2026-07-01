@@ -1,5 +1,44 @@
 # Changelog
 
+## 0.7.4
+
+### Public API hygiene
+
+- Hid constructor-bypassing fields on `AllocationRetirement`,
+  `MemoryManagerAuthorityRecord`, and `SchemaMetadata`, replacing them with
+  read accessors.
+- Simplified `StaticMemoryRangeDeclaration::new` so the range authority comes
+  only from the validated `MemoryManagerAuthorityRecord`.
+- Hid the internal `ledger::claim` module while keeping crate-internal claim
+  helpers available to validation and staging code.
+
+### Code hygiene
+
+- Centralized stable-cell ledger-record decoding for runtime reads and
+  diagnostics.
+- Consolidated static registry lock and sealed-state handling.
+- Shared claim-conflict record lookup between validation and staging.
+- Added strict unknown-field rejection to diagnostic export DTOs.
+
+---
+
+## 0.7.3
+
+### Runtime hardening
+
+- Kept the default runtime's internal ledger allocation in the durable ledger
+  while removing it from the published/openable validated allocation set.
+- Made public default-runtime opens reject `ic_memory.*` governance stable keys.
+- Preflighted default ledger-cell writes so oversized records or failed stable
+  memory growth return a bootstrap error before calling `Cell::set`.
+- Revalidated full reservation declarations before staging reservation
+  generations.
+- Made static range declaration authority mismatches fail in release builds.
+- Marked public error enums as non-exhaustive so future patch releases can add
+  variants without breaking downstream wildcard matches.
+
+---
+
 ## 0.7.2
 
 ### Diagnostics

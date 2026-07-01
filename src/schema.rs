@@ -15,7 +15,7 @@ use serde::{Deserialize, Serialize};
 #[serde(deny_unknown_fields)]
 pub struct SchemaMetadata {
     /// Optional in-place schema version.
-    pub schema_version: Option<u32>,
+    pub(crate) schema_version: Option<u32>,
 }
 
 impl SchemaMetadata {
@@ -33,6 +33,12 @@ impl SchemaMetadata {
         }
         Ok(())
     }
+
+    /// Return the optional in-place schema version.
+    #[must_use]
+    pub const fn schema_version(&self) -> Option<u32> {
+        self.schema_version
+    }
 }
 
 ///
@@ -41,6 +47,7 @@ impl SchemaMetadata {
 /// Schema metadata validation failure.
 ///
 
+#[non_exhaustive]
 #[derive(Clone, Debug, Eq, thiserror::Error, PartialEq)]
 pub enum SchemaMetadataError {
     /// Schema version zero is reserved for absence.

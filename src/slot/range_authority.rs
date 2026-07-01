@@ -72,6 +72,7 @@ impl MemoryManagerIdRange {
 /// MemoryManagerRangeError
 ///
 /// Invalid `MemoryManager` virtual memory ID range.
+#[non_exhaustive]
 #[derive(Clone, Copy, Debug, Eq, thiserror::Error, PartialEq)]
 pub enum MemoryManagerRangeError {
     /// Range bounds are reversed.
@@ -116,13 +117,13 @@ pub enum MemoryManagerRangeMode {
 #[serde(deny_unknown_fields)]
 pub struct MemoryManagerAuthorityRecord {
     /// Inclusive range governed by this authority.
-    pub range: MemoryManagerIdRange,
+    pub(crate) range: MemoryManagerIdRange,
     /// Stable printable ASCII authority identifier.
-    pub authority: String,
+    pub(crate) authority: String,
     /// Policy mode for this authority range.
-    pub mode: MemoryManagerRangeMode,
+    pub(crate) mode: MemoryManagerRangeMode,
     /// Optional stable printable ASCII diagnostic purpose.
-    pub purpose: Option<String>,
+    pub(crate) purpose: Option<String>,
 }
 
 impl MemoryManagerAuthorityRecord {
@@ -141,6 +142,30 @@ impl MemoryManagerAuthorityRecord {
         };
         validate_authority_record(&record)?;
         Ok(record)
+    }
+
+    /// Return the inclusive range governed by this authority.
+    #[must_use]
+    pub const fn range(&self) -> MemoryManagerIdRange {
+        self.range
+    }
+
+    /// Return the stable printable ASCII authority identifier.
+    #[must_use]
+    pub fn authority(&self) -> &str {
+        &self.authority
+    }
+
+    /// Return the policy mode for this authority range.
+    #[must_use]
+    pub const fn mode(&self) -> MemoryManagerRangeMode {
+        self.mode
+    }
+
+    /// Return the optional stable printable ASCII diagnostic purpose.
+    #[must_use]
+    pub fn purpose(&self) -> Option<&str> {
+        self.purpose.as_deref()
     }
 }
 
@@ -498,6 +523,7 @@ fn validate_authority_record(
 /// MemoryManagerRangeAuthorityError
 ///
 /// Invalid `MemoryManager` range authority policy.
+#[non_exhaustive]
 #[derive(Clone, Debug, Eq, thiserror::Error, PartialEq)]
 pub enum MemoryManagerRangeAuthorityError {
     /// Authority range bounds are invalid.

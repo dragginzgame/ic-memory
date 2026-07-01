@@ -347,6 +347,7 @@ impl DeclarationSnapshot {
 /// DeclarationSnapshotError
 ///
 /// Declaration snapshot validation failure.
+#[non_exhaustive]
 #[derive(Clone, Debug, Eq, thiserror::Error, PartialEq)]
 pub enum DeclarationSnapshotError {
     /// Stable-key grammar failure.

@@ -2,8 +2,8 @@ use crate::{
     declaration::{DeclarationSnapshot, DeclarationSnapshotError},
     key::StableKey,
     ledger::{
-        AllocationLedger, LedgerIntegrityError, RecoveredLedger,
-        claim::{ClaimConflict, validate_declaration_claim},
+        AllocationLedger, ClaimConflict, LedgerIntegrityError, RecoveredLedger,
+        claim_conflict_record, validate_declaration_claim,
     },
     policy::AllocationPolicy,
     session::ValidatedAllocations,
@@ -27,6 +27,7 @@ pub trait Validate {
 /// AllocationValidationError
 ///
 /// Failure to validate declarations against policy and historical ledger facts.
+#[non_exhaustive]
 #[derive(Clone, Debug, Eq, thiserror::Error, PartialEq)]
 pub enum AllocationValidationError<P> {
     /// Historical ledger was decoded or assembled with invalid committed state.
@@ -120,30 +121,22 @@ fn map_validation_claim_conflict<P>(
     declaration: &crate::declaration::AllocationDeclaration,
     conflict: ClaimConflict,
 ) -> AllocationValidationError<P> {
+    let record = claim_conflict_record(ledger, conflict);
     match conflict {
-        ClaimConflict::StableKeyMoved { record_index } => {
-            let record = &ledger.allocation_history().records()[record_index];
-            AllocationValidationError::StableKeySlotConflict {
-                stable_key: declaration.stable_key.clone(),
-                historical_slot: Box::new(record.slot.clone()),
-                declared_slot: Box::new(declaration.slot.clone()),
-            }
-        }
-        ClaimConflict::SlotReused { record_index } => {
-            let record = &ledger.allocation_history().records()[record_index];
-            AllocationValidationError::SlotStableKeyConflict {
-                slot: Box::new(declaration.slot.clone()),
-                historical_key: record.stable_key.clone(),
-                declared_key: declaration.stable_key.clone(),
-            }
-        }
-        ClaimConflict::Tombstoned { record_index } => {
-            let record = &ledger.allocation_history().records()[record_index];
-            AllocationValidationError::RetiredAllocation {
-                stable_key: declaration.stable_key.clone(),
-                slot: Box::new(record.slot.clone()),
-            }
-        }
+        ClaimConflict::StableKeyMoved { .. } => AllocationValidationError::StableKeySlotConflict {
+            stable_key: declaration.stable_key.clone(),
+            historical_slot: Box::new(record.slot.clone()),
+            declared_slot: Box::new(declaration.slot.clone()),
+        },
+        ClaimConflict::SlotReused { .. } => AllocationValidationError::SlotStableKeyConflict {
+            slot: Box::new(declaration.slot.clone()),
+            historical_key: record.stable_key.clone(),
+            declared_key: declaration.stable_key.clone(),
+        },
+        ClaimConflict::Tombstoned { .. } => AllocationValidationError::RetiredAllocation {
+            stable_key: declaration.stable_key.clone(),
+            slot: Box::new(record.slot.clone()),
+        },
         ClaimConflict::ActiveAllocation { .. } => {
             unreachable!("active allocation conflicts are reservation-only")
         }

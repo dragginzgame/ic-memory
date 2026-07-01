@@ -13,6 +13,7 @@ use std::collections::BTreeMap;
 ///
 /// Read-only machine-readable allocation ledger export.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct DiagnosticExport {
     /// Current committed generation.
     pub current_generation: u64,
@@ -315,6 +316,7 @@ impl DiagnosticExport {
 ///
 /// Read-only diagnostic allocation record.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct DiagnosticRecord {
     /// Allocation record.
     pub allocation: AllocationRecord,
@@ -357,6 +359,7 @@ impl DiagnosticMemorySize {
 ///
 /// Read-only diagnostic generation record.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct DiagnosticGeneration {
     /// Generation record.
     pub generation: GenerationRecord,
@@ -413,6 +416,30 @@ mod tests {
             AllocationSlotDescriptor::memory_manager(0).expect("usable slot")
         );
         assert_eq!(export.commit_recovery, None);
+    }
+
+    #[test]
+    fn diagnostic_export_rejects_unknown_top_level_fields() {
+        use serde_cbor::Value;
+
+        let export = DiagnosticExport {
+            current_generation: 0,
+            ledger_anchor: AllocationSlotDescriptor::memory_manager(0).expect("usable slot"),
+            records: Vec::new(),
+            generations: Vec::new(),
+            commit_recovery: None,
+        };
+        let Value::Map(mut map) = serde_cbor::value::to_value(export).expect("diagnostic value")
+        else {
+            panic!("diagnostic export encodes as a map");
+        };
+        map.insert(Value::Text("future_field".to_string()), Value::Bool(true));
+        let bytes = serde_cbor::to_vec(&Value::Map(map)).expect("diagnostic bytes");
+
+        let err = serde_cbor::from_slice::<DiagnosticExport>(&bytes)
+            .expect_err("unknown diagnostic field must fail closed");
+
+        assert!(err.to_string().contains("future_field"));
     }
 
     #[test]

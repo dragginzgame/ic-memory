@@ -11,6 +11,7 @@ use crate::{
 /// LedgerIntegrityError
 ///
 /// Decoded ledger violates structural allocation-history invariants.
+#[non_exhaustive]
 #[derive(Clone, Debug, Eq, thiserror::Error, PartialEq)]
 pub enum LedgerIntegrityError {
     /// Stable-key grammar was invalid after durable decode.
@@ -168,6 +169,7 @@ pub enum LedgerIntegrityError {
 /// LedgerCommitError
 ///
 /// Failure to recover or commit a logical allocation ledger.
+#[non_exhaustive]
 #[derive(Clone, Debug, Eq, thiserror::Error, PartialEq)]
 pub enum LedgerCommitError {
     /// Protected physical commit recovery failed.
@@ -198,6 +200,7 @@ pub enum LedgerCommitError {
 /// AllocationStageError
 ///
 /// Failure to stage a validated allocation generation.
+#[non_exhaustive]
 #[derive(Clone, Debug, Eq, thiserror::Error, PartialEq)]
 pub enum AllocationStageError {
     /// Validated declarations were produced against a different ledger generation.
@@ -264,6 +267,7 @@ pub enum AllocationStageError {
 /// AllocationReservationError
 ///
 /// Failure to stage a reservation generation.
+#[non_exhaustive]
 #[derive(Clone, Debug, Eq, thiserror::Error, PartialEq)]
 pub enum AllocationReservationError {
     /// Ledger generation cannot be advanced without overflow.
@@ -286,6 +290,9 @@ pub enum AllocationReservationError {
         /// Schema metadata validation error.
         error: SchemaMetadataError,
     },
+    /// A staged reservation declaration violates declaration invariants.
+    #[error("reservation declaration is invalid")]
+    InvalidDeclaration(#[source] DeclarationSnapshotError),
     /// Stable key was historically bound to a different slot.
     #[error("stable key '{stable_key}' was historically bound to a different allocation slot")]
     StableKeySlotConflict {
@@ -328,6 +335,7 @@ pub enum AllocationReservationError {
 /// AllocationRetirementError
 ///
 /// Failure to stage an explicit retirement generation.
+#[non_exhaustive]
 #[derive(Clone, Debug, Eq, thiserror::Error, PartialEq)]
 pub enum AllocationRetirementError {
     /// Stable-key grammar failure.

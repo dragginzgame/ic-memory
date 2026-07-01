@@ -76,6 +76,7 @@ impl Storable for StableCellLedgerRecord {
 /// StableCellPayloadError
 ///
 /// Stable-cell payload decode failure.
+#[non_exhaustive]
 #[derive(Clone, Debug, Eq, Error, PartialEq)]
 pub enum StableCellPayloadError {
     /// Memory contents do not start with the stable-cell marker.
@@ -107,6 +108,7 @@ pub enum StableCellPayloadError {
 /// StableCellLedgerError
 ///
 /// Stable-cell ledger record validation failure.
+#[non_exhaustive]
 #[derive(Debug, Error)]
 pub enum StableCellLedgerError {
     /// Stable-cell envelope is corrupt or unexpected.
@@ -171,6 +173,17 @@ pub fn decode_stable_cell_ledger_record(
     serde_cbor::from_slice(bytes)
 }
 
+pub(crate) fn decode_stable_cell_ledger_record_from_memory<M: Memory>(
+    memory: &M,
+) -> Result<StableCellLedgerRecord, StableCellLedgerError> {
+    if memory.size() == 0 {
+        return Ok(StableCellLedgerRecord::default());
+    }
+
+    let payload = decode_stable_cell_payload(memory)?;
+    decode_stable_cell_ledger_record(&payload).map_err(StableCellLedgerError::Record)
+}
+
 /// Validate an existing stable-cell ledger record before opening it with
 /// `ic-stable-structures::Cell`.
 ///
@@ -181,12 +194,7 @@ pub fn decode_stable_cell_ledger_record(
 pub fn validate_stable_cell_ledger_memory<M: Memory>(
     memory: &M,
 ) -> Result<(), StableCellLedgerError> {
-    if memory.size() == 0 {
-        return Ok(());
-    }
-
-    let payload = decode_stable_cell_payload(memory)?;
-    decode_stable_cell_ledger_record(&payload).map_err(StableCellLedgerError::Record)?;
+    decode_stable_cell_ledger_record_from_memory(memory)?;
     Ok(())
 }
 

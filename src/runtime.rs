@@ -3,8 +3,8 @@ use crate::{
     AllocationPolicy, AllocationSlotDescriptor, DeclarationSnapshot,
     DefaultMemoryManagerDoctorReport, DiagnosticCheck, DiagnosticDeclaration, DiagnosticExport,
     DiagnosticMemorySize, DiagnosticRangeAuthority, DiagnosticStableCell,
-    DiagnosticStableCellStatus, LedgerCommitError, StableCellLedgerError, StableCellLedgerRecord,
-    StableKey, ValidatedAllocations, decode_stable_cell_ledger_record, decode_stable_cell_payload,
+    DiagnosticStableCellStatus, LedgerCommitError, STABLE_CELL_VALUE_OFFSET, StableCellLedgerError,
+    StableCellLedgerRecord, StableKey, ValidatedAllocations,
     physical::CommitStoreDiagnostic,
     registry::{
         StaticMemoryDeclaration, StaticMemoryDeclarationError, StaticMemoryRangeDeclaration,
@@ -16,9 +16,10 @@ use crate::{
         MemoryManagerIdRange, MemoryManagerRangeAuthority, MemoryManagerRangeAuthorityError,
         MemoryManagerRangeMode, MemoryManagerSlotError,
     },
+    stable_cell::decode_stable_cell_ledger_record_from_memory,
 };
 use ic_stable_structures::{
-    Cell, DefaultMemoryImpl, Memory,
+    Cell, DefaultMemoryImpl, Memory, Storable,
     memory_manager::{MemoryId, MemoryManager, VirtualMemory},
 };
 use std::{
@@ -49,6 +50,7 @@ static BOOTSTRAPPED: AtomicBool = AtomicBool::new(false);
 /// RuntimeBootstrapError
 ///
 /// Failure to bootstrap the generic `ic-memory` runtime layer.
+#[non_exhaustive]
 #[derive(Debug, thiserror::Error)]
 pub enum RuntimeBootstrapError<P> {
     /// Runtime registration or snapshot collection failed.
@@ -66,6 +68,12 @@ pub enum RuntimeBootstrapError<P> {
     /// Stable-cell ledger storage is corrupt before protected recovery can run.
     #[error(transparent)]
     StableCellLedger(#[from] StableCellLedgerError),
+    /// Stable-cell ledger storage cannot fit the next protected ledger record.
+    #[error("stable-cell ledger record size {value_size} cannot be written to stable memory")]
+    StableCellLedgerWriteTooLarge {
+        /// Encoded stable-cell ledger record size in bytes.
+        value_size: usize,
+    },
     /// Declaration validation failed.
     #[error(transparent)]
     Validation(#[from] crate::AllocationValidationError<RuntimePolicyError<P>>),
@@ -81,6 +89,7 @@ pub enum RuntimeBootstrapError<P> {
 /// RuntimeOpenError
 ///
 /// Failure to open a validated allocation through the default runtime substrate.
+#[non_exhaustive]
 #[derive(Clone, Debug, Eq, thiserror::Error, PartialEq)]
 pub enum RuntimeOpenError {
     /// Runtime bootstrap has not published validated allocations.
@@ -95,6 +104,12 @@ pub enum RuntimeOpenError {
     /// The stable key was not present in the validated declaration set.
     #[error("stable key '{0}' was not validated by ic-memory runtime bootstrap")]
     StableKeyNotValidated(String),
+    /// Runtime governance stable keys are internal and cannot be opened through the public runtime.
+    #[error("stable key '{stable_key}' is reserved for ic-memory runtime governance")]
+    ReservedStableKey {
+        /// Reserved stable key.
+        stable_key: String,
+    },
     /// The validated slot is not a usable `MemoryManager` ID.
     #[error(transparent)]
     MemoryManagerSlot(#[from] MemoryManagerSlotError),
@@ -118,6 +133,7 @@ pub enum RuntimeOpenError {
 /// Failure to build diagnostics for the default `MemoryManager` runtime.
 ///
 
+#[non_exhaustive]
 #[derive(Debug, thiserror::Error)]
 pub enum RuntimeDiagnosticError {
     /// Runtime bootstrap has not opened and validated the ledger cell.
@@ -138,6 +154,7 @@ pub enum RuntimeDiagnosticError {
 /// RuntimePolicyError
 ///
 /// Failure in generic runtime range policy or caller-supplied policy.
+#[non_exhaustive]
 #[derive(Clone, Debug, Eq, thiserror::Error, PartialEq)]
 pub enum RuntimePolicyError<P> {
     /// Runtime range authority rejected the declaration.
@@ -160,6 +177,7 @@ pub enum RuntimePolicyError<P> {
 }
 
 /// Register a pre-bootstrap declaration hook.
+#[doc(hidden)]
 pub fn defer_eager_init(f: fn()) {
     assert!(
         !is_default_memory_manager_bootstrapped(),
@@ -240,8 +258,8 @@ pub fn bootstrap_default_memory_manager_with_policy<P: AllocationPolicy>(
             let commit = bootstrap
                 .initialize_validate_and_commit(&genesis, snapshot, &policy, None)
                 .map_err(runtime_bootstrap_error_from_bootstrap)?;
-            cell.set(record);
-            Ok(commit.validated)
+            set_default_ledger_cell(cell, record)?;
+            Ok(external_runtime_allocations(commit.validated))
         },
     )?;
 
@@ -256,6 +274,11 @@ pub fn open_default_memory_manager_memory(
     id: u8,
 ) -> Result<VirtualMemory<DefaultMemoryImpl>, RuntimeOpenError> {
     let key = StableKey::parse(stable_key)?;
+    if crate::is_ic_memory_stable_key(key.as_str()) {
+        return Err(RuntimeOpenError::ReservedStableKey {
+            stable_key: stable_key.to_string(),
+        });
+    }
     let validated = validated_allocations()?;
     let slot = validated
         .slot_for(&key)
@@ -402,6 +425,47 @@ fn with_default_ledger_cell<P, T>(
     })
 }
 
+fn set_default_ledger_cell<P>(
+    cell: &mut DefaultLedgerCell,
+    record: StableCellLedgerRecord,
+) -> Result<(), RuntimeBootstrapError<P>> {
+    ensure_default_ledger_cell_capacity(&record)?;
+    let _previous = cell.set(record);
+    Ok(())
+}
+
+fn ensure_default_ledger_cell_capacity<P>(
+    record: &StableCellLedgerRecord,
+) -> Result<(), RuntimeBootstrapError<P>> {
+    let encoded = record.to_bytes();
+    let value_size = encoded.len();
+    if value_size > u32::MAX as usize {
+        return Err(RuntimeBootstrapError::StableCellLedgerWriteTooLarge { value_size });
+    }
+
+    let value_size_u64 = u64::try_from(value_size).expect("u32-sized value length fits u64");
+    let required_bytes = STABLE_CELL_VALUE_OFFSET
+        .checked_add(value_size_u64)
+        .ok_or(RuntimeBootstrapError::StableCellLedgerWriteTooLarge { value_size })?;
+    let memory = default_memory_manager_memory(MEMORY_MANAGER_LEDGER_ID);
+    let available_bytes = memory.size().saturating_mul(crate::WASM_PAGE_SIZE_BYTES);
+    if required_bytes <= available_bytes {
+        return Ok(());
+    }
+
+    let grow_by = required_bytes
+        .saturating_sub(available_bytes)
+        .div_ceil(crate::WASM_PAGE_SIZE_BYTES);
+    if memory.grow(grow_by) < 0 {
+        return Err(RuntimeBootstrapError::StableCellLedgerWriteTooLarge { value_size });
+    }
+    Ok(())
+}
+
+fn external_runtime_allocations(validated: ValidatedAllocations) -> ValidatedAllocations {
+    validated.without_stable_key(IC_MEMORY_LEDGER_STABLE_KEY)
+}
+
 fn default_memory_manager_memory(id: u8) -> VirtualMemory<DefaultMemoryImpl> {
     DEFAULT_MEMORY_MANAGER.with(|manager| manager.get(MemoryId::new(id)))
 }
@@ -421,12 +485,7 @@ fn default_ledger_record_for_diagnostics() -> Result<StableCellLedgerRecord, Run
 
 fn default_ledger_record_from_memory() -> Result<StableCellLedgerRecord, StableCellLedgerError> {
     let memory = default_memory_manager_memory(MEMORY_MANAGER_LEDGER_ID);
-    if memory.size() == 0 {
-        return Ok(StableCellLedgerRecord::default());
-    }
-
-    let payload = decode_stable_cell_payload(&memory)?;
-    decode_stable_cell_ledger_record(&payload).map_err(StableCellLedgerError::Record)
+    decode_stable_cell_ledger_record_from_memory(&memory)
 }
 
 fn default_memory_manager_memory_sizes(
@@ -472,11 +531,7 @@ fn default_memory_manager_stable_cell_diagnostic() -> DefaultStableCellDiagnosti
         };
     }
 
-    let record = decode_stable_cell_payload(&memory)
-        .map_err(StableCellLedgerError::Payload)
-        .and_then(|payload| {
-            decode_stable_cell_ledger_record(&payload).map_err(StableCellLedgerError::Record)
-        });
+    let record = decode_stable_cell_ledger_record_from_memory(&memory);
     match record {
         Ok(record) => DefaultStableCellDiagnostic {
             diagnostic: DiagnosticStableCell::new(
@@ -847,7 +902,7 @@ mod tests {
 
         let validated = bootstrap_default_memory_manager().expect("bootstrap");
 
-        assert_eq!(validated.declarations().len(), 3);
+        assert_eq!(validated.declarations().len(), 2);
         assert!(
             validated
                 .declarations()
@@ -860,6 +915,29 @@ mod tests {
                 .iter()
                 .any(|declaration| declaration.stable_key().as_str() == "crate_b.orders.v1")
         );
+    }
+
+    #[test]
+    fn default_runtime_keeps_internal_ledger_slot_private() {
+        let _guard = TEST_REGISTRY_LOCK.lock().expect("test lock poisoned");
+        reset_for_tests();
+
+        let validated = bootstrap_default_memory_manager().expect("bootstrap");
+
+        assert!(validated.declarations().is_empty());
+        assert!(
+            validated_allocations()
+                .expect("published allocations")
+                .declarations()
+                .is_empty()
+        );
+        let Err(err) = open_default_memory_manager_memory(
+            IC_MEMORY_LEDGER_STABLE_KEY,
+            MEMORY_MANAGER_LEDGER_ID,
+        ) else {
+            panic!("internal ledger slot must stay private");
+        };
+        assert!(matches!(err, RuntimeOpenError::ReservedStableKey { .. }));
     }
 
     #[test]

@@ -1,0 +1,29 @@
+error[E0451]: fields `stable_key` and `slot` of struct `AllocationRetirement` are private
+  --> tests/ui/fabricate_allocation_records.rs:10:46
+   |
+10 |     let _retirement = AllocationRetirement { stable_key, slot };
+   |                                              ^^^^^^^^^^  ^^^^ private field
+   |                                              |
+   |                                              private field
+
+error[E0451]: fields `range`, `authority`, `mode` and `purpose` of struct `MemoryManagerAuthorityRecord` are private
+  --> tests/ui/fabricate_allocation_records.rs:14:9
+   |
+13 |     let _authority = MemoryManagerAuthorityRecord {
+   |                      ---------------------------- in this type
+14 |         range,
+   |         ^^^^^ private field
+15 |         authority: "app".to_string(),
+   |         ^^^^^^^^^ private field
+16 |         mode: MemoryManagerRangeMode::Allowed,
+   |         ^^^^ private field
+17 |         purpose: None,
+   |         ^^^^^^^ private field
+
+error[E0451]: field `schema_version` of struct `ic_memory::SchemaMetadata` is private
+  --> tests/ui/fabricate_allocation_records.rs:21:9
+   |
+20 |     let _schema = SchemaMetadata {
+   |                   -------------- in this type
+21 |         schema_version: Some(0),
+   |         ^^^^^^^^^^^^^^ private field

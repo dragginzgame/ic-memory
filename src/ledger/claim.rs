@@ -1,4 +1,4 @@
-use super::{AllocationLedger, AllocationState};
+use super::{AllocationLedger, AllocationRecord, AllocationState};
 use crate::declaration::AllocationDeclaration;
 use crate::key::StableKey;
 use crate::slot::AllocationSlotDescriptor;
@@ -15,6 +15,24 @@ pub enum ClaimConflict {
     SlotReused { record_index: usize },
     Tombstoned { record_index: usize },
     ActiveAllocation { record_index: usize },
+}
+
+impl ClaimConflict {
+    pub const fn record_index(self) -> usize {
+        match self {
+            Self::StableKeyMoved { record_index }
+            | Self::SlotReused { record_index }
+            | Self::Tombstoned { record_index }
+            | Self::ActiveAllocation { record_index } => record_index,
+        }
+    }
+}
+
+pub fn claim_conflict_record(
+    ledger: &AllocationLedger,
+    conflict: ClaimConflict,
+) -> &AllocationRecord {
+    &ledger.allocation_history.records()[conflict.record_index()]
 }
 
 pub fn validate_declaration_claim(

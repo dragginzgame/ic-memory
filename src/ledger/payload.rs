@@ -82,6 +82,7 @@ impl LedgerPayloadEnvelope {
 /// LedgerPayloadEnvelopeError
 ///
 /// Logical payload envelope could not be classified before ledger decode.
+#[non_exhaustive]
 #[derive(Clone, Debug, Eq, thiserror::Error, PartialEq)]
 pub enum LedgerPayloadEnvelopeError {
     /// Not enough bytes for an envelope header.

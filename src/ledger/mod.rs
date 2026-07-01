@@ -1,4 +1,4 @@
-pub(crate) mod claim;
+mod claim;
 mod error;
 mod integrity;
 mod payload;
@@ -8,6 +8,10 @@ mod stage;
 use crate::physical::{CommitRecoveryError, DualCommitStore};
 use serde::{Deserialize, Serialize};
 
+pub(crate) use claim::{
+    ClaimConflict, ClaimOutcome, claim_conflict_record, validate_declaration_claim,
+    validate_reservation_claim,
+};
 pub use error::{
     AllocationReservationError, AllocationRetirementError, AllocationStageError, LedgerCommitError,
     LedgerIntegrityError,
@@ -938,6 +942,26 @@ mod tests {
                 error: SchemaMetadataError::InvalidVersion,
             }
         );
+    }
+
+    #[test]
+    fn stage_reservation_generation_rejects_invalid_decoded_slot() {
+        let mut reservation = declaration("ic_memory.generation_log.v1", 1, None);
+        reservation.slot =
+            AllocationSlotDescriptor::memory_manager_unchecked(MEMORY_MANAGER_INVALID_ID);
+
+        let err = ledger()
+            .stage_reservation_generation(&[reservation], None)
+            .expect_err("invalid decoded reservation slot");
+
+        assert!(matches!(
+            err,
+            AllocationReservationError::InvalidDeclaration(
+                DeclarationSnapshotError::MemoryManagerSlot(
+                    MemoryManagerSlotError::InvalidMemoryManagerId { id }
+                )
+            ) if id == MEMORY_MANAGER_INVALID_ID
+        ));
     }
 
     #[test]

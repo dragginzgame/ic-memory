@@ -222,6 +222,7 @@ pub struct BootstrapCommit {
 /// BootstrapError
 ///
 /// Failure to recover, validate, or commit an allocation generation.
+#[non_exhaustive]
 #[derive(Clone, Debug, Eq, thiserror::Error, PartialEq)]
 pub enum BootstrapError<P> {
     /// Ledger recovery or protected commit failed.
@@ -239,6 +240,7 @@ pub enum BootstrapError<P> {
 /// BootstrapReservationError
 ///
 /// Failure to policy-check, stage, or commit an allocation reservation.
+#[non_exhaustive]
 #[derive(Clone, Debug, Eq, thiserror::Error, PartialEq)]
 pub enum BootstrapReservationError<P> {
     /// Ledger recovery or protected commit failed.
@@ -256,6 +258,7 @@ pub enum BootstrapReservationError<P> {
 /// BootstrapRetirementError
 ///
 /// Failure to stage or commit an explicit allocation retirement.
+#[non_exhaustive]
 #[derive(Clone, Debug, Eq, thiserror::Error, PartialEq)]
 pub enum BootstrapRetirementError {
     /// Ledger recovery or protected commit failed.

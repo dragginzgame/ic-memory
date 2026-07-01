@@ -87,9 +87,9 @@ pub struct AllocationRecord {
 #[serde(deny_unknown_fields)]
 pub struct AllocationRetirement {
     /// Stable key being retired.
-    pub stable_key: StableKey,
+    pub(crate) stable_key: StableKey,
     /// Allocation slot historically owned by the stable key.
-    pub slot: AllocationSlotDescriptor,
+    pub(crate) slot: AllocationSlotDescriptor,
 }
 
 impl AllocationRetirement {
@@ -102,6 +102,18 @@ impl AllocationRetirement {
             stable_key: StableKey::parse(stable_key).map_err(AllocationRetirementError::Key)?,
             slot,
         })
+    }
+
+    /// Return the stable key being retired.
+    #[must_use]
+    pub const fn stable_key(&self) -> &StableKey {
+        &self.stable_key
+    }
+
+    /// Return the allocation slot historically owned by the stable key.
+    #[must_use]
+    pub const fn slot(&self) -> &AllocationSlotDescriptor {
+        &self.slot
     }
 }
 

@@ -59,6 +59,17 @@ impl ValidatedAllocations {
         }
     }
 
+    pub(crate) fn without_stable_key(self, stable_key: &str) -> Self {
+        let mut state = (*self.inner).clone();
+        state
+            .declarations
+            .retain(|declaration| declaration.stable_key.as_str() != stable_key);
+        Self {
+            inner: Arc::new(state),
+            _private: (),
+        }
+    }
+
     /// Return the committed generation that validated these allocations.
     #[must_use]
     pub fn generation(&self) -> u64 {
@@ -136,6 +147,7 @@ impl<S: StorageSubstrate> AllocationSession<S> {
 /// AllocationSessionError
 ///
 /// Failure to open through a validated allocation session.
+#[non_exhaustive]
 #[derive(Clone, Debug, Eq, thiserror::Error, PartialEq)]
 pub enum AllocationSessionError<E> {
     /// Stable key was not part of the validated allocation snapshot.

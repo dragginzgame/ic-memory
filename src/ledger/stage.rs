@@ -1,9 +1,13 @@
 use super::{
     AllocationLedger, AllocationRecord, AllocationReservationError, AllocationRetirement,
-    AllocationRetirementError, AllocationStageError, AllocationState, GenerationRecord,
-    claim::{ClaimConflict, ClaimOutcome, validate_declaration_claim, validate_reservation_claim},
+    AllocationRetirementError, AllocationStageError, AllocationState, ClaimConflict, ClaimOutcome,
+    GenerationRecord, claim_conflict_record, validate_declaration_claim,
+    validate_reservation_claim,
 };
-use crate::{declaration::AllocationDeclaration, session::ValidatedAllocations};
+use crate::{
+    declaration::{AllocationDeclaration, DeclarationSnapshotError},
+    session::ValidatedAllocations,
+};
 
 impl AllocationLedger {
     /// Return a copy of the ledger with `validated` recorded as the next generation.
@@ -81,12 +85,7 @@ impl AllocationLedger {
         next.current_generation = next_generation;
 
         for reservation in reservations {
-            reservation.schema.validate().map_err(|error| {
-                AllocationReservationError::InvalidSchemaMetadata {
-                    stable_key: reservation.stable_key.clone(),
-                    error,
-                }
-            })?;
+            validate_reservation_declaration(reservation)?;
             record_reservation(&mut next, next_generation, reservation)?;
         }
 
@@ -205,6 +204,20 @@ fn record_reservation(
     }
 }
 
+fn validate_reservation_declaration(
+    reservation: &AllocationDeclaration,
+) -> Result<(), AllocationReservationError> {
+    reservation.validate().map_err(|err| match err {
+        DeclarationSnapshotError::SchemaMetadata(error) => {
+            AllocationReservationError::InvalidSchemaMetadata {
+                stable_key: reservation.stable_key.clone(),
+                error,
+            }
+        }
+        err => AllocationReservationError::InvalidDeclaration(err),
+    })
+}
+
 const fn checked_next_generation(current_generation: u64) -> Result<u64, u64> {
     match current_generation.checked_add(1) {
         Some(next_generation) => Ok(next_generation),
@@ -221,30 +234,22 @@ fn map_declaration_stage_conflict(
     declaration: &AllocationDeclaration,
     conflict: ClaimConflict,
 ) -> AllocationStageError {
+    let record = claim_conflict_record(ledger, conflict);
     match conflict {
-        ClaimConflict::StableKeyMoved { record_index } => {
-            let record = &ledger.allocation_history.records()[record_index];
-            AllocationStageError::StableKeySlotConflict {
-                stable_key: declaration.stable_key.clone(),
-                historical_slot: Box::new(record.slot.clone()),
-                declared_slot: Box::new(declaration.slot.clone()),
-            }
-        }
-        ClaimConflict::SlotReused { record_index } => {
-            let record = &ledger.allocation_history.records()[record_index];
-            AllocationStageError::SlotStableKeyConflict {
-                slot: Box::new(declaration.slot.clone()),
-                historical_key: record.stable_key.clone(),
-                declared_key: declaration.stable_key.clone(),
-            }
-        }
-        ClaimConflict::Tombstoned { record_index } => {
-            let record = &ledger.allocation_history.records()[record_index];
-            AllocationStageError::RetiredAllocation {
-                stable_key: declaration.stable_key.clone(),
-                slot: Box::new(record.slot.clone()),
-            }
-        }
+        ClaimConflict::StableKeyMoved { .. } => AllocationStageError::StableKeySlotConflict {
+            stable_key: declaration.stable_key.clone(),
+            historical_slot: Box::new(record.slot.clone()),
+            declared_slot: Box::new(declaration.slot.clone()),
+        },
+        ClaimConflict::SlotReused { .. } => AllocationStageError::SlotStableKeyConflict {
+            slot: Box::new(declaration.slot.clone()),
+            historical_key: record.stable_key.clone(),
+            declared_key: declaration.stable_key.clone(),
+        },
+        ClaimConflict::Tombstoned { .. } => AllocationStageError::RetiredAllocation {
+            stable_key: declaration.stable_key.clone(),
+            slot: Box::new(record.slot.clone()),
+        },
         ClaimConflict::ActiveAllocation { .. } => {
             unreachable!("active allocation conflicts are reservation-only")
         }
@@ -256,37 +261,26 @@ fn map_reservation_stage_conflict(
     reservation: &AllocationDeclaration,
     conflict: ClaimConflict,
 ) -> AllocationReservationError {
+    let record = claim_conflict_record(ledger, conflict);
     match conflict {
-        ClaimConflict::StableKeyMoved { record_index } => {
-            let record = &ledger.allocation_history.records()[record_index];
-            AllocationReservationError::StableKeySlotConflict {
-                stable_key: reservation.stable_key.clone(),
-                historical_slot: Box::new(record.slot.clone()),
-                reserved_slot: Box::new(reservation.slot.clone()),
-            }
-        }
-        ClaimConflict::SlotReused { record_index } => {
-            let record = &ledger.allocation_history.records()[record_index];
-            AllocationReservationError::SlotStableKeyConflict {
-                slot: Box::new(reservation.slot.clone()),
-                historical_key: record.stable_key.clone(),
-                reserved_key: reservation.stable_key.clone(),
-            }
-        }
-        ClaimConflict::Tombstoned { record_index } => {
-            let record = &ledger.allocation_history.records()[record_index];
-            AllocationReservationError::RetiredAllocation {
-                stable_key: reservation.stable_key.clone(),
-                slot: Box::new(record.slot.clone()),
-            }
-        }
-        ClaimConflict::ActiveAllocation { record_index } => {
-            let record = &ledger.allocation_history.records()[record_index];
-            AllocationReservationError::ActiveAllocation {
-                stable_key: reservation.stable_key.clone(),
-                slot: Box::new(record.slot.clone()),
-            }
-        }
+        ClaimConflict::StableKeyMoved { .. } => AllocationReservationError::StableKeySlotConflict {
+            stable_key: reservation.stable_key.clone(),
+            historical_slot: Box::new(record.slot.clone()),
+            reserved_slot: Box::new(reservation.slot.clone()),
+        },
+        ClaimConflict::SlotReused { .. } => AllocationReservationError::SlotStableKeyConflict {
+            slot: Box::new(reservation.slot.clone()),
+            historical_key: record.stable_key.clone(),
+            reserved_key: reservation.stable_key.clone(),
+        },
+        ClaimConflict::Tombstoned { .. } => AllocationReservationError::RetiredAllocation {
+            stable_key: reservation.stable_key.clone(),
+            slot: Box::new(record.slot.clone()),
+        },
+        ClaimConflict::ActiveAllocation { .. } => AllocationReservationError::ActiveAllocation {
+            stable_key: reservation.stable_key.clone(),
+            slot: Box::new(record.slot.clone()),
+        },
     }
 }
 

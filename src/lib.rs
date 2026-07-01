@@ -156,7 +156,7 @@ pub mod __reexports {
 macro_rules! ic_memory_declaration {
     (key = $stable_key:literal, ty = $label:path, id = $id:expr $(,)?) => {
         const _: () = {
-            #[allow(dead_code)]
+            #[expect(dead_code, reason = "type alias exists only to validate the macro type path")]
             type IcMemoryTypeCheck = $label;
 
             #[ $crate::__reexports::ctor::ctor(unsafe, anonymous, crate_path = $crate::__reexports::ctor) ]
