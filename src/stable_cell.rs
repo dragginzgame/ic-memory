@@ -170,7 +170,7 @@ pub fn decode_stable_cell_payload<M: Memory>(
 pub fn decode_stable_cell_ledger_record(
     bytes: &[u8],
 ) -> Result<StableCellLedgerRecord, ciborium::de::Error<std::io::Error>> {
-    ciborium::from_reader(bytes)
+    crate::cbor::from_slice_exact(bytes)
 }
 
 pub fn decode_stable_cell_ledger_record_from_memory<M: Memory>(
@@ -257,6 +257,17 @@ mod tests {
                 .current_generation(),
             1
         );
+    }
+
+    #[test]
+    fn stable_cell_ledger_record_rejects_trailing_bytes() {
+        let mut bytes = serialize_record(&StableCellLedgerRecord::default());
+        bytes.push(0);
+
+        let err =
+            decode_stable_cell_ledger_record(&bytes).expect_err("trailing bytes must fail closed");
+
+        assert!(err.to_string().contains("trailing bytes"));
     }
 
     #[test]

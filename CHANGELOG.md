@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.8.1
+
+### Decode and ingestion hardening
+
+- Reject trailing bytes after persisted CBOR ledger payloads and stable-cell
+  ledger records instead of accepting a valid value prefix.
+- Revalidate decoded `AllocationDeclaration` values when they enter the static
+  declaration registry.
+- Revalidate decoded `MemoryManagerAuthorityRecord` values when they enter the
+  static range registry, and expose an explicit `validate()` method for other
+  ingestion boundaries.
+- Revalidate `AllocationRetirement` values before staging a retirement
+  generation, and expose an explicit `validate()` method for decoded requests.
+
 ## 0.8.0
 
 This is an intentional hard-cut release. It does not retain deprecated shims,

@@ -37,6 +37,7 @@ impl StaticMemoryDeclaration {
     ) -> Result<Self, StaticMemoryDeclarationError> {
         let authority = authority.into();
         validate_external_authority(&authority)?;
+        declaration.validate()?;
         if is_ic_memory_stable_key(declaration.stable_key().as_str()) {
             return Err(StaticMemoryDeclarationError::ReservedStableKey {
                 stable_key: declaration.stable_key().as_str().to_string(),
@@ -84,6 +85,7 @@ impl StaticMemoryRangeDeclaration {
     /// Build one static range declaration from a validated authority record.
     pub fn new(record: MemoryManagerAuthorityRecord) -> Result<Self, StaticMemoryDeclarationError> {
         validate_external_authority(record.authority())?;
+        record.validate()?;
         Ok(Self { record })
     }
 
@@ -414,6 +416,50 @@ mod tests {
         let range = StaticMemoryRangeDeclaration::new(record).expect("external range");
 
         assert_eq!(range.authority(), "record_authority");
+    }
+
+    #[test]
+    fn static_declaration_rejects_invalid_decoded_declaration() {
+        let mut declaration = AllocationDeclaration::memory_manager("app.users.v1", 100, "users")
+            .expect("declaration");
+        declaration.slot = crate::AllocationSlotDescriptor::memory_manager_unchecked(
+            crate::MEMORY_MANAGER_INVALID_ID,
+        );
+
+        let err = StaticMemoryDeclaration::new("app", declaration)
+            .expect_err("decoded invalid declaration must fail at the registry boundary");
+
+        assert!(matches!(
+            err,
+            StaticMemoryDeclarationError::Declaration(
+                crate::DeclarationSnapshotError::MemoryManagerSlot(
+                    crate::MemoryManagerSlotError::InvalidMemoryManagerId { id }
+                )
+            ) if id == crate::MEMORY_MANAGER_INVALID_ID
+        ));
+    }
+
+    #[test]
+    fn static_range_declaration_rejects_invalid_decoded_record() {
+        let mut record = MemoryManagerAuthorityRecord::new(
+            MemoryManagerIdRange::new(100, 109).expect("range"),
+            "app",
+            MemoryManagerRangeMode::Reserved,
+            None,
+        )
+        .expect("record");
+        record.range = MemoryManagerIdRange {
+            start: 109,
+            end: 100,
+        };
+
+        let err = StaticMemoryRangeDeclaration::new(record)
+            .expect_err("decoded invalid range record must fail at the registry boundary");
+
+        assert!(matches!(
+            err,
+            StaticMemoryDeclarationError::Range(MemoryManagerRangeAuthorityError::Range(_))
+        ));
     }
 
     #[test]

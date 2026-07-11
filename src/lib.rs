@@ -64,6 +64,7 @@
 //! does not wrap typed stores such as `StableBTreeMap`.
 
 mod bootstrap;
+mod cbor;
 mod constants;
 mod declaration;
 mod diagnostics;
@@ -97,7 +98,7 @@ mod test_cbor {
     pub fn from_slice<T: DeserializeOwned>(
         bytes: &[u8],
     ) -> Result<T, ciborium::de::Error<std::io::Error>> {
-        ciborium::from_reader(bytes)
+        crate::cbor::from_slice_exact(bytes)
     }
 
     pub fn to_value<T: Serialize>(value: T) -> Result<Value, ciborium::value::Error> {

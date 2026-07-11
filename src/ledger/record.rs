@@ -99,12 +99,12 @@ impl AllocationRetirement {
         stable_key: impl AsRef<str>,
         slot: AllocationSlotDescriptor,
     ) -> Result<Self, AllocationRetirementError> {
-        slot.validate()
-            .map_err(AllocationRetirementError::MemoryManagerSlot)?;
-        Ok(Self {
+        let retirement = Self {
             stable_key: StableKey::parse(stable_key).map_err(AllocationRetirementError::Key)?,
             slot,
-        })
+        };
+        retirement.validate()?;
+        Ok(retirement)
     }
 
     /// Return the stable key being retired.
@@ -117,6 +117,16 @@ impl AllocationRetirement {
     #[must_use]
     pub const fn slot(&self) -> &AllocationSlotDescriptor {
         &self.slot
+    }
+
+    /// Validate constructor invariants after decode or manual assembly.
+    pub fn validate(&self) -> Result<(), AllocationRetirementError> {
+        self.stable_key
+            .validate()
+            .map_err(AllocationRetirementError::Key)?;
+        self.slot
+            .validate()
+            .map_err(AllocationRetirementError::MemoryManagerSlot)
     }
 }
 

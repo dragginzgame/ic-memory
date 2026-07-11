@@ -167,6 +167,11 @@ impl MemoryManagerAuthorityRecord {
     pub fn purpose(&self) -> Option<&str> {
         self.purpose.as_deref()
     }
+
+    /// Validate constructor invariants after decode or manual assembly.
+    pub fn validate(&self) -> Result<(), MemoryManagerRangeAuthorityError> {
+        validate_authority_record(self)
+    }
 }
 
 ///

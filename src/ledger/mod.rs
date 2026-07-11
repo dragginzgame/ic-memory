@@ -64,7 +64,7 @@ impl LedgerCodec for CborLedgerCodec {
     }
 
     fn decode(&self, bytes: &[u8]) -> Result<AllocationLedger, Self::Error> {
-        ciborium::from_reader(bytes).map_err(|err| err.to_string())
+        crate::cbor::from_slice_exact(bytes).map_err(|err| err.to_string())
     }
 }
 
@@ -407,6 +407,20 @@ mod tests {
         let decoded = codec.decode(&encoded).expect("decode ledger");
 
         assert_eq!(decoded, ledger);
+    }
+
+    #[test]
+    fn cbor_ledger_codec_rejects_trailing_bytes() {
+        let mut encoded = CborLedgerCodec
+            .encode(&committed_ledger(2))
+            .expect("encode ledger");
+        encoded.push(0);
+
+        let err = CborLedgerCodec
+            .decode(&encoded)
+            .expect_err("trailing bytes must fail closed");
+
+        assert!(err.contains("trailing bytes"));
     }
 
     #[test]
@@ -1185,6 +1199,53 @@ mod tests {
                 MemoryManagerSlotError::InvalidMemoryManagerId { id }
             ) if id == MEMORY_MANAGER_INVALID_ID
         ));
+    }
+
+    #[test]
+    fn stage_retirement_generation_rejects_invalid_decoded_slot() {
+        let mut ledger = ledger();
+        *ledger.allocation_history.records_mut() = vec![active_record("app.users.v1", 100)];
+        let mut retirement = AllocationRetirement::new(
+            "app.users.v1",
+            AllocationSlotDescriptor::memory_manager(100).expect("usable slot"),
+        )
+        .expect("retirement");
+        retirement.slot =
+            AllocationSlotDescriptor::memory_manager_unchecked(MEMORY_MANAGER_INVALID_ID);
+
+        let err = ledger
+            .stage_retirement_generation(&retirement, None)
+            .expect_err("decoded invalid retirement must fail at the boundary");
+
+        assert!(matches!(
+            err,
+            AllocationRetirementError::MemoryManagerSlot(
+                MemoryManagerSlotError::InvalidMemoryManagerId { id }
+            ) if id == MEMORY_MANAGER_INVALID_ID
+        ));
+    }
+
+    #[test]
+    fn stage_retirement_generation_rejects_invalid_decoded_stable_key() {
+        let mut ledger = ledger();
+        *ledger.allocation_history.records_mut() = vec![active_record("app.users.v1", 100)];
+        let retirement = AllocationRetirement::new(
+            "app.users.v1",
+            AllocationSlotDescriptor::memory_manager(100).expect("usable slot"),
+        )
+        .expect("retirement");
+        let mut value = crate::test_cbor::to_value(retirement).expect("retirement value");
+        *map_field_mut(value_map_mut(&mut value), "stable_key") =
+            crate::test_cbor::Value::Text("App.users.v1".to_string());
+        let bytes = crate::test_cbor::to_vec(&value).expect("retirement bytes");
+        let retirement: AllocationRetirement =
+            crate::test_cbor::from_slice(&bytes).expect("decoded DTO");
+
+        let err = ledger
+            .stage_retirement_generation(&retirement, None)
+            .expect_err("decoded invalid stable key must fail at the boundary");
+
+        assert!(matches!(err, AllocationRetirementError::Key(_)));
     }
 
     #[test]

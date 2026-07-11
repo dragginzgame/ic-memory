@@ -109,6 +109,7 @@ impl AllocationLedger {
         retirement: &AllocationRetirement,
         committed_at: Option<u64>,
     ) -> Result<Self, AllocationRetirementError> {
+        retirement.validate()?;
         let next_generation = checked_next_generation(self.current_generation)
             .map_err(|generation| AllocationRetirementError::GenerationOverflow { generation })?;
         let mut next = self.clone();
