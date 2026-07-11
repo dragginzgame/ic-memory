@@ -4,7 +4,7 @@ use super::memory_manager::{
     MemoryManagerSlotError, validate_memory_manager_id,
 };
 use crate::constants::DIAGNOSTIC_STRING_MAX_BYTES;
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize, de::Error as _};
 
 ///
 /// MemoryManagerIdRange
@@ -183,10 +183,23 @@ impl MemoryManagerAuthorityRecord {
 /// authoritative generic policy and are checked before caller-supplied
 /// [`crate::AllocationPolicy`]. Frameworks that want their own policy to own
 /// application space should avoid registering ranges for that space.
-#[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct MemoryManagerRangeAuthority {
     authorities: Vec<MemoryManagerAuthorityRecord>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct MemoryManagerRangeAuthorityDto {
+    authorities: Vec<MemoryManagerAuthorityRecord>,
+}
+
+impl<'de> Deserialize<'de> for MemoryManagerRangeAuthority {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let dto = MemoryManagerRangeAuthorityDto::deserialize(deserializer)?;
+        Self::from_records(dto.authorities).map_err(D::Error::custom)
+    }
 }
 
 impl MemoryManagerRangeAuthority {

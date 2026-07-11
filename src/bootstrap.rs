@@ -4,9 +4,10 @@ use crate::{
     ledger::{
         AllocationLedger, AllocationReservationError, AllocationRetirement,
         AllocationRetirementError, AllocationStageError, LedgerCommitError, LedgerCommitStore,
+        validate_reservation_declaration,
     },
     policy::AllocationPolicy,
-    session::ValidatedAllocations,
+    session::{CommittedAllocations, ValidatedAllocations},
     validation::{AllocationValidationError, validate_allocations},
 };
 
@@ -18,7 +19,9 @@ use crate::{
 /// This type owns allocation-governance sequencing only: recover the persisted
 /// ledger, apply the owner layer's policy, validate current declarations
 /// against ledger history, stage and commit the next generation, and return
-/// [`ValidatedAllocations`] only after the commit succeeds.
+/// a pending [`PendingBootstrapCommit`] after the in-memory commit store advances.
+/// The persistence owner must durably write that state and explicitly confirm
+/// persistence before it can obtain [`CommittedAllocations`].
 ///
 /// `AllocationBootstrap` is for whichever layer owns a given `ic-memory`
 /// ledger store. That owner may be a framework such as Canic, a library such as
@@ -45,13 +48,13 @@ impl<'store> AllocationBootstrap<'store> {
         Self { store }
     }
 
-    /// Recover, validate, stage, commit, and publish one allocation generation.
+    /// Recover, validate, stage, and advance one pending allocation generation.
     pub fn validate_and_commit<P>(
         &mut self,
         snapshot: DeclarationSnapshot,
         policy: &P,
         committed_at: Option<u64>,
-    ) -> Result<BootstrapCommit, BootstrapError<P::Error>>
+    ) -> Result<PendingBootstrapCommit, BootstrapError<P::Error>>
     where
         P: AllocationPolicy,
     {
@@ -59,7 +62,7 @@ impl<'store> AllocationBootstrap<'store> {
         self.validate_against(prior, snapshot, policy, committed_at)
     }
 
-    /// Initialize an empty ledger store explicitly, then validate and commit.
+    /// Initialize an empty ledger store, then validate and advance a pending commit.
     ///
     /// This is the privileged genesis/import path. Normal default-runtime users
     /// should use [`crate::bootstrap_default_memory_manager`], which supplies an
@@ -75,7 +78,7 @@ impl<'store> AllocationBootstrap<'store> {
         snapshot: DeclarationSnapshot,
         policy: &P,
         committed_at: Option<u64>,
-    ) -> Result<BootstrapCommit, BootstrapError<P::Error>>
+    ) -> Result<PendingBootstrapCommit, BootstrapError<P::Error>>
     where
         P: AllocationPolicy,
     {
@@ -149,6 +152,8 @@ impl<'store> AllocationBootstrap<'store> {
         P: AllocationPolicy,
     {
         for reservation in reservations {
+            validate_reservation_declaration(reservation)
+                .map_err(BootstrapReservationError::Reservation)?;
             policy
                 .validate_key(&reservation.stable_key)
                 .map_err(BootstrapReservationError::Policy)?;
@@ -187,7 +192,7 @@ impl<'store> AllocationBootstrap<'store> {
         snapshot: DeclarationSnapshot,
         policy: &P,
         committed_at: Option<u64>,
-    ) -> Result<BootstrapCommit, BootstrapError<P::Error>>
+    ) -> Result<PendingBootstrapCommit, BootstrapError<P::Error>>
     where
         P: AllocationPolicy,
     {
@@ -199,23 +204,63 @@ impl<'store> AllocationBootstrap<'store> {
             .map_err(BootstrapError::Staging)?;
         let committed = self.store.commit(&staged).map_err(BootstrapError::Ledger)?;
 
-        Ok(BootstrapCommit {
-            validated: validated.with_generation(committed.current_generation()),
+        Ok(PendingBootstrapCommit {
+            validated,
             ledger: committed.into_ledger(),
         })
     }
 }
 
 ///
-/// BootstrapCommit
+/// PendingBootstrapCommit
 ///
-/// Result of a successful generic allocation bootstrap commit.
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct BootstrapCommit {
+/// Pending result of a successful generic allocation bootstrap commit.
+///
+/// The embedded [`crate::LedgerCommitStore`] has advanced, but this generic
+/// layer does not own stable-memory IO. Persist the owning record first, then
+/// call [`PendingBootstrapCommit::confirm_persisted`] to mint the allocation-open
+/// capability.
+///
+
+#[derive(Debug, Eq, PartialEq)]
+pub struct PendingBootstrapCommit {
     /// Ledger recovered after the protected generation commit.
-    pub ledger: AllocationLedger,
-    /// Validated allocation declarations tied to the committed generation.
-    pub validated: ValidatedAllocations,
+    ledger: AllocationLedger,
+    /// Validated allocation declarations awaiting persistence confirmation.
+    validated: ValidatedAllocations,
+}
+
+impl PendingBootstrapCommit {
+    /// Borrow the committed logical ledger for diagnostics.
+    ///
+    /// The persistence owner must write the owning record that contains the
+    /// mutated [`crate::LedgerCommitStore`], not serialize this ledger DTO as a
+    /// replacement protocol.
+    #[must_use]
+    pub const fn ledger(&self) -> &AllocationLedger {
+        &self.ledger
+    }
+
+    /// Borrow the pre-commit validation result for diagnostics.
+    #[must_use]
+    pub const fn validated(&self) -> &ValidatedAllocations {
+        &self.validated
+    }
+
+    /// Confirm that the owning integration durably persisted this commit.
+    ///
+    /// Calling this method before the stable-memory write succeeds violates the
+    /// allocation protocol. The default runtime performs its stable-cell write
+    /// before confirmation.
+    #[must_use]
+    pub fn confirm_persisted(self) -> CommittedAllocations {
+        self.validated
+            .confirm_persisted(self.ledger.current_generation())
+    }
+
+    pub(crate) fn into_parts(self) -> (AllocationLedger, ValidatedAllocations) {
+        (self.ledger, self.validated)
+    }
 }
 
 ///
@@ -360,6 +405,32 @@ mod tests {
         }
     }
 
+    struct PolicyMustNotRun;
+
+    impl AllocationPolicy for PolicyMustNotRun {
+        type Error = &'static str;
+
+        fn validate_key(&self, _key: &crate::StableKey) -> Result<(), Self::Error> {
+            panic!("policy received an invalid reservation")
+        }
+
+        fn validate_slot(
+            &self,
+            _key: &crate::StableKey,
+            _slot: &AllocationSlotDescriptor,
+        ) -> Result<(), Self::Error> {
+            panic!("policy received an invalid reservation")
+        }
+
+        fn validate_reserved_slot(
+            &self,
+            _key: &crate::StableKey,
+            _slot: &AllocationSlotDescriptor,
+        ) -> Result<(), Self::Error> {
+            panic!("policy received an invalid reservation")
+        }
+    }
+
     fn ledger() -> AllocationLedger {
         AllocationLedger {
             current_generation: 0,
@@ -387,10 +458,10 @@ mod tests {
             .validate_and_commit(snapshot, &TestPolicy, Some(42))
             .expect("bootstrap commit");
 
-        assert_eq!(commit.ledger.current_generation, 1);
-        assert_eq!(commit.validated.generation(), 1);
-        assert_eq!(commit.ledger.allocation_history.records().len(), 1);
-        assert_eq!(commit.ledger.allocation_history.generations().len(), 1);
+        assert_eq!(commit.ledger().current_generation, 1);
+        assert_eq!(commit.ledger().allocation_history.records().len(), 1);
+        assert_eq!(commit.ledger().allocation_history.generations().len(), 1);
+        assert_eq!(commit.confirm_persisted().generation(), 1);
     }
 
     #[test]
@@ -402,9 +473,9 @@ mod tests {
             .initialize_validate_and_commit(&ledger(), snapshot, &TestPolicy, Some(42))
             .expect("bootstrap commit");
 
-        assert_eq!(commit.ledger.current_generation, 1);
-        assert_eq!(commit.validated.generation(), 1);
-        assert_eq!(commit.ledger.allocation_history.records().len(), 1);
+        assert_eq!(commit.ledger().current_generation, 1);
+        assert_eq!(commit.ledger().allocation_history.records().len(), 1);
+        assert_eq!(commit.confirm_persisted().generation(), 1);
     }
 
     #[test]
@@ -470,6 +541,26 @@ mod tests {
         assert!(matches!(err, BootstrapReservationError::Policy(_)));
         assert_eq!(recovered.current_generation(), 0);
         assert!(recovered.ledger().allocation_history().records().is_empty());
+    }
+
+    #[test]
+    fn reserve_and_commit_validates_reservation_before_policy() {
+        let mut store = LedgerCommitStore::default();
+        store.commit(&ledger()).expect("initial ledger");
+        let mut reservation = declaration();
+        reservation.slot =
+            AllocationSlotDescriptor::memory_manager_unchecked(crate::MEMORY_MANAGER_INVALID_ID);
+
+        let err = AllocationBootstrap::new(&mut store)
+            .reserve_and_commit(&[reservation], &PolicyMustNotRun, Some(42))
+            .expect_err("invalid reservation must fail before policy");
+
+        assert!(matches!(
+            err,
+            BootstrapReservationError::Reservation(AllocationReservationError::InvalidDeclaration(
+                _
+            ))
+        ));
     }
 
     #[test]

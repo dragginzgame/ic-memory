@@ -76,11 +76,33 @@ pub enum LedgerIntegrityError {
         /// Retired generation in the record.
         retired_generation: u64,
     },
+    /// Retirement does not occur after the record's final observation.
+    #[error("stable key '{stable_key}' has retired_generation at or before last_seen_generation")]
+    RetirementNotAfterLastSeen {
+        /// Stable key whose record is invalid.
+        stable_key: StableKey,
+        /// Latest generation that observed the allocation.
+        last_seen_generation: u64,
+        /// Generation that retired the allocation.
+        retired_generation: u64,
+    },
     /// Allocation record has no schema metadata history.
     #[error("stable key '{stable_key}' has empty schema metadata history")]
     EmptySchemaHistory {
         /// Stable key whose record is invalid.
         stable_key: StableKey,
+    },
+    /// First schema metadata record does not begin with the allocation record.
+    #[error(
+        "stable key '{stable_key}' has schema metadata that does not begin at first_generation"
+    )]
+    SchemaHistoryStartMismatch {
+        /// Stable key whose record is invalid.
+        stable_key: StableKey,
+        /// Allocation's first committed generation.
+        first_generation: u64,
+        /// First schema metadata generation.
+        schema_generation: u64,
     },
     /// Schema metadata generation history is not strictly increasing.
     #[error("stable key '{stable_key}' has non-increasing schema metadata generation history")]
@@ -95,6 +117,16 @@ pub enum LedgerIntegrityError {
         stable_key: StableKey,
         /// Schema metadata generation.
         generation: u64,
+    },
+    /// Schema metadata was recorded after the allocation was last observed.
+    #[error("stable key '{stable_key}' has schema metadata after last_seen_generation")]
+    SchemaHistoryAfterLastSeen {
+        /// Stable key whose record is invalid.
+        stable_key: StableKey,
+        /// Schema metadata generation.
+        generation: u64,
+        /// Latest generation that observed the allocation.
+        last_seen_generation: u64,
     },
     /// Schema metadata in committed allocation history is invalid.
     #[error("stable key '{stable_key}' has invalid schema metadata at generation {generation}")]
@@ -350,6 +382,9 @@ pub enum AllocationRetirementError {
     /// Stable-key grammar failure.
     #[error(transparent)]
     Key(StableKeyError),
+    /// Allocation slot validation failure.
+    #[error(transparent)]
+    MemoryManagerSlot(MemoryManagerSlotError),
     /// Ledger generation cannot be advanced without overflow.
     #[error("ledger generation {generation} cannot be advanced without overflow")]
     GenerationOverflow {

@@ -22,7 +22,7 @@
 //! 3. Validate those declarations against ledger history and any framework
 //!    policy.
 //! 4. Commit the next generation.
-//! 5. Only then open stable-memory handles through a validated allocation
+//! 5. Only then open stable-memory handles through a committed allocation
 //!    session.
 //!
 //! This crate owns allocation invariants, not framework policy. Namespace
@@ -39,7 +39,7 @@
 //! Use these primitives before opening stable-memory handles. Integrations
 //! should recover the historical ledger, declare the stores expected by the
 //! current binary, validate declarations against history and policy, commit a
-//! new generation, and only then publish a validated allocation session that can
+//! new generation, and only then publish a committed allocation session that can
 //! open slots through a storage substrate.
 //!
 //! [`AllocationBootstrap`] is the golden path for whichever layer owns a given
@@ -57,7 +57,8 @@
 //! diagnostics, but the native IC path is
 //! `MemoryManager` ID 0 -> `ic-stable-structures::Cell<StableCellLedgerRecord,
 //! _>` -> [`LedgerCommitStore`] -> [`CommittedGenerationBytes`] ->
-//! [`LedgerPayloadEnvelope`] -> [`RecoveredLedger`] -> [`ValidatedAllocations`].
+//! [`LedgerPayloadEnvelope`] -> [`RecoveredLedger`] -> [`ValidatedAllocations`]
+//! -> [`CommittedAllocations`].
 //!
 //! `ic-memory` is not a replacement for `ic-stable-structures` collections and
 //! does not wrap typed stores such as `StableBTreeMap`.
@@ -79,11 +80,38 @@ mod stable_cell;
 mod substrate;
 mod validation;
 
-pub use ic_stable_structures as stable_structures;
+#[cfg(test)]
+mod test_cbor {
+    use serde::{Serialize, de::DeserializeOwned};
+
+    pub use ciborium::Value;
+
+    pub fn to_vec<T: Serialize>(
+        value: &T,
+    ) -> Result<Vec<u8>, ciborium::ser::Error<std::io::Error>> {
+        let mut bytes = Vec::new();
+        ciborium::into_writer(value, &mut bytes)?;
+        Ok(bytes)
+    }
+
+    pub fn from_slice<T: DeserializeOwned>(
+        bytes: &[u8],
+    ) -> Result<T, ciborium::de::Error<std::io::Error>> {
+        ciborium::from_reader(bytes)
+    }
+
+    pub fn to_value<T: Serialize>(value: T) -> Result<Value, ciborium::value::Error> {
+        Value::serialized(&value)
+    }
+
+    pub fn map_insert(map: &mut Vec<(Value, Value)>, key: Value, value: Value) {
+        map.push((key, value));
+    }
+}
 
 pub use bootstrap::{
-    AllocationBootstrap, BootstrapCommit, BootstrapError, BootstrapReservationError,
-    BootstrapRetirementError,
+    AllocationBootstrap, BootstrapError, BootstrapReservationError, BootstrapRetirementError,
+    PendingBootstrapCommit,
 };
 pub use constants::WASM_PAGE_SIZE_BYTES;
 pub use declaration::{
@@ -118,12 +146,14 @@ pub use registry::{
 pub use runtime::{
     RuntimeBootstrapError, RuntimeDiagnosticError, RuntimeOpenError, RuntimePolicyError,
     bootstrap_default_memory_manager, bootstrap_default_memory_manager_with_policy,
-    default_memory_manager_commit_recovery_diagnostic, default_memory_manager_diagnostic_export,
-    default_memory_manager_doctor_report, is_default_memory_manager_bootstrapped,
-    open_default_memory_manager_memory, validated_allocations,
+    committed_allocations, default_memory_manager_commit_recovery_diagnostic,
+    default_memory_manager_diagnostic_export, default_memory_manager_doctor_report,
+    is_default_memory_manager_bootstrapped, open_default_memory_manager_memory,
 };
 pub use schema::{SchemaMetadata, SchemaMetadataError};
-pub use session::{AllocationSession, AllocationSessionError, ValidatedAllocations};
+pub use session::{
+    AllocationSession, AllocationSessionError, CommittedAllocations, ValidatedAllocations,
+};
 pub use slot::{
     AllocationSlot, AllocationSlotDescriptor, IC_MEMORY_AUTHORITY_OWNER,
     IC_MEMORY_AUTHORITY_PURPOSE, IC_MEMORY_LEDGER_LABEL, IC_MEMORY_LEDGER_STABLE_KEY,
@@ -153,21 +183,22 @@ pub mod __reexports {
 
 /// Register a `MemoryManager` allocation declaration during static initialization.
 ///
+/// The explicit authority is stable policy identity shared with the matching
+/// range declaration. Internal `ic-memory` authority is unavailable to callers.
+///
 /// This macro only registers declaration metadata. It does not open stable
 /// memory. The bootstrap owner still has to collect/seal declarations, validate
 /// them against the ledger, commit the generation, and then open memory handles.
 #[macro_export]
 macro_rules! ic_memory_declaration {
-    (key = $stable_key:literal, ty = $label:path, id = $id:expr $(,)?) => {
+    (authority = $authority:literal, key = $stable_key:literal, ty = $label:path, id = $id:expr $(,)?) => {
         const _: () = {
-            #[expect(dead_code, reason = "type alias exists only to validate the macro type path")]
-            type IcMemoryTypeCheck = $label;
-
             #[ $crate::__reexports::ctor::ctor(unsafe, anonymous, crate_path = $crate::__reexports::ctor) ]
             fn __ic_memory_register_static_declaration() {
+                let _ = core::marker::PhantomData::<$label>;
                 $crate::register_static_memory_manager_declaration(
                     $id,
-                    env!("CARGO_PKG_NAME"),
+                    $authority,
                     stringify!($label),
                     $stable_key,
                 )
@@ -175,13 +206,13 @@ macro_rules! ic_memory_declaration {
             }
         };
     };
-    (key = $stable_key:literal, label = $label:literal, id = $id:expr $(,)?) => {
+    (authority = $authority:literal, key = $stable_key:literal, label = $label:literal, id = $id:expr $(,)?) => {
         const _: () = {
             #[ $crate::__reexports::ctor::ctor(unsafe, anonymous, crate_path = $crate::__reexports::ctor) ]
             fn __ic_memory_register_static_declaration() {
                 $crate::register_static_memory_manager_declaration(
                     $id,
-                    env!("CARGO_PKG_NAME"),
+                    $authority,
                     $label,
                     $stable_key,
                 )
@@ -192,23 +223,26 @@ macro_rules! ic_memory_declaration {
 }
 
 /// Declare a `MemoryManager` allocation range during static initialization.
+///
+/// The explicit authority must match every declaration that uses this range.
 #[macro_export]
 macro_rules! ic_memory_range {
-    (start = $start:expr, end = $end:expr $(,)?) => {
+    (authority = $authority:literal, start = $start:expr, end = $end:expr $(,)?) => {
         $crate::ic_memory_range!(
+            authority = $authority,
             start = $start,
             end = $end,
             mode = Reserved,
         );
     };
-    (start = $start:expr, end = $end:expr, mode = $mode:ident $(,)?) => {
+    (authority = $authority:literal, start = $start:expr, end = $end:expr, mode = $mode:ident $(,)?) => {
         const _: () = {
             #[ $crate::__reexports::ctor::ctor(unsafe, anonymous, crate_path = $crate::__reexports::ctor) ]
             fn __ic_memory_register_static_range() {
                 $crate::register_static_memory_manager_range(
                     $start,
                     $end,
-                    env!("CARGO_PKG_NAME"),
+                    $authority,
                     $crate::MemoryManagerRangeMode::$mode,
                     None,
                 )
@@ -218,22 +252,21 @@ macro_rules! ic_memory_range {
     };
 }
 
-/// Declare and open a validated `MemoryManager` slot by stable key.
+/// Declare and open a committed `MemoryManager` slot by stable key.
 ///
 /// The macro registers declaration metadata during static initialization and
-/// returns the validated default-runtime memory handle at expression use time.
+/// returns the committed default-runtime memory handle at expression use time.
 #[macro_export]
 macro_rules! ic_memory_key {
-    ($stable_key:literal, $label:path, $id:expr $(,)?) => {{
-        $crate::ic_memory_declaration!(key = $stable_key, ty = $label, id = $id,);
+    (authority = $authority:literal, key = $stable_key:literal, ty = $label:path, id = $id:expr $(,)?) => {{
+        $crate::ic_memory_declaration!(authority = $authority, key = $stable_key, ty = $label, id = $id,);
         $crate::open_default_memory_manager_memory($stable_key, $id)
-            .expect("ic-memory failed to open validated stable memory; bootstrap must run first and the stable key/id must match the validated declaration")
+            .expect("ic-memory failed to open committed stable memory; bootstrap must run first and the stable key/id must match the committed declaration")
     }};
-    (key = $stable_key:literal, ty = $label:path, id = $id:expr $(,)?) => {{ $crate::ic_memory_key!($stable_key, $label, $id) }};
-    (key = $stable_key:literal, label = $label:literal, id = $id:expr $(,)?) => {{
-        $crate::ic_memory_declaration!(key = $stable_key, label = $label, id = $id,);
+    (authority = $authority:literal, key = $stable_key:literal, label = $label:literal, id = $id:expr $(,)?) => {{
+        $crate::ic_memory_declaration!(authority = $authority, key = $stable_key, label = $label, id = $id,);
         $crate::open_default_memory_manager_memory($stable_key, $id)
-            .expect("ic-memory failed to open validated stable memory; bootstrap must run first and the stable key/id must match the validated declaration")
+            .expect("ic-memory failed to open committed stable memory; bootstrap must run first and the stable key/id must match the committed declaration")
     }};
 }
 

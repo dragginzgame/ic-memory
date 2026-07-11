@@ -64,8 +64,12 @@ orders data. `ic-memory` catches that mismatch first.
 Declare the MemoryManager IDs your crate owns:
 
 ```rust,ignore
-ic_memory::ic_memory_range!(start = 120, end = 129);
+ic_memory::ic_memory_range!(authority = "icydb.test_db", start = 120, end = 129);
 ```
+
+The authority string is explicit durable policy identity. Use the same stable
+value for the package's range and key declarations; do not derive it from a
+Cargo package name or module path.
 
 Open stable structures through `ic_memory_key!`:
 
@@ -75,9 +79,10 @@ use std::cell::RefCell;
 thread_local! {
     pub static USERS: RefCell<UsersStore> = RefCell::new(UsersStore::init(
         ic_memory::ic_memory_key!(
-            "icydb.test_db.users.data.v1",
-            UsersStore,
-            120,
+            authority = "icydb.test_db",
+            key = "icydb.test_db.users.data.v1",
+            ty = UsersStore,
+            id = 120,
         )
     ));
 }
@@ -102,6 +107,7 @@ That is the normal path.
 The default runtime API is exported from the crate root. Use helpers such as
 `ic_memory::bootstrap_default_memory_manager()`,
 `ic_memory::bootstrap_default_memory_manager_with_policy(...)`,
+`ic_memory::committed_allocations()`,
 `ic_memory::open_default_memory_manager_memory(...)`, and the macros shown
 above; implementation modules are private.
 
@@ -112,28 +118,38 @@ need to import or name each other:
 
 ```rust,ignore
 mod package_a {
-    ic_memory::ic_memory_range!(start = 100, end = 109);
+    ic_memory::ic_memory_range!(authority = "package_a", start = 100, end = 109);
 
     thread_local! {
         pub static USERS: RefCell<UsersStore> = RefCell::new(UsersStore::init(
-            ic_memory::ic_memory_key!("package_a.users.v1", UsersStore, 100)
+            ic_memory::ic_memory_key!(
+                authority = "package_a",
+                key = "package_a.users.v1",
+                ty = UsersStore,
+                id = 100,
+            )
         ));
     }
 }
 
 mod package_b {
-    ic_memory::ic_memory_range!(start = 110, end = 119);
+    ic_memory::ic_memory_range!(authority = "package_b", start = 110, end = 119);
 
     thread_local! {
         pub static ORDERS: RefCell<OrdersStore> = RefCell::new(OrdersStore::init(
-            ic_memory::ic_memory_key!("package_b.orders.v1", OrdersStore, 110)
+            ic_memory::ic_memory_key!(
+                authority = "package_b",
+                key = "package_b.orders.v1",
+                ty = OrdersStore,
+                id = 110,
+            )
         ));
     }
 }
 ```
 
 Bootstrap validates the complete layout from every linked crate, commits the
-allocation ledger, and publishes validated allocations. TLS-backed stores open
+allocation ledger, and publishes committed allocations. TLS-backed stores open
 when your code first touches the `thread_local!`.
 
 Duplicate stable keys, duplicate MemoryManager IDs, overlapping ranges, and
@@ -154,8 +170,9 @@ adapters that want their own range policy, such as Canic, should register only
 the ranges they want `ic-memory` to enforce and put the rest in their policy
 adapter.
 
-The validated allocation state is an in-memory capability produced by bootstrap;
-it is not a serde payload and should not be treated as configuration.
+The committed allocation state is an in-memory capability published only after
+bootstrap persistence succeeds; it is not a serde payload and should not be
+treated as configuration.
 
 ## Diagnostics
 
@@ -214,7 +231,3 @@ and builds as an mdBook with `make maintainer-build`.
 `ic-memory` is early infrastructure extracted from Canic. It owns allocation
 governance, not schema migration, endpoint routing, authorization, or data
 semantics.
-
-<p align="center">
-  <img src="images/dont-overwrite.png" alt="Retro computer warning: don't overwrite your memory" width="500">
-</p>

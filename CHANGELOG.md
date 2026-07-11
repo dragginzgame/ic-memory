@@ -1,5 +1,106 @@
 # Changelog
 
+## 0.8.0
+
+This is an intentional hard-cut release. It does not retain deprecated shims,
+legacy macro forms, compatibility aliases, or renamed API forwarding methods.
+
+### Breaking authority model
+
+- Split allocation state into two distinct opaque types:
+  - `ValidatedAllocations` is pre-commit validation state and cannot open
+    storage. Its generation accessor is now `base_generation()`.
+  - `CommittedAllocations` is the post-persistence capability accepted by
+    `AllocationSession` and the default runtime's open path.
+- Replaced `BootstrapCommit` with `PendingBootstrapCommit`. Generic persistence
+  owners must durably write the mutated ledger record before calling
+  `confirm_persisted()` to obtain `CommittedAllocations`.
+- Removed `validated_allocations()`. The default runtime now exposes only
+  `committed_allocations()`, published after its stable-cell write succeeds.
+- Changed `AllocationSession::new` to require `CommittedAllocations` and renamed
+  its state accessor from `validated()` to `committed()`.
+- Renamed `RuntimeOpenError::StableKeyNotValidated` to
+  `StableKeyNotCommitted`. `MemoryIdMismatch::validated_id` is now
+  `committed_id`.
+
+### Explicit authority registration
+
+- Removed every implicit-authority form of `ic_memory_range!`,
+  `ic_memory_declaration!`, and `ic_memory_key!`. Range and key declarations now
+  require the same explicit stable `authority = "..."` value.
+- Rejected all external `ic_memory.*` declarations and external attempts to use
+  the reserved `ic-memory` authority identity.
+- Replaced caller-controlled internal authority strings with private runtime
+  provenance.
+- Renamed `declaring_crate` fields and accessors to `authority` on static and
+  diagnostic declaration APIs. No serde field alias is retained.
+- Changed `StaticMemoryDeclaration::new` and
+  `StaticMemoryRangeDeclaration::new` to return validation errors.
+
+Before:
+
+```rust,ignore
+ic_memory::ic_memory_range!(start = 120, end = 129);
+ic_memory::ic_memory_key!("app.users.v1", UsersStore, 120);
+```
+
+After:
+
+```rust,ignore
+ic_memory::ic_memory_range!(
+    authority = "app",
+    start = 120,
+    end = 129,
+);
+
+ic_memory::ic_memory_key!(
+    authority = "app",
+    key = "app.users.v1",
+    ty = UsersStore,
+    id = 120,
+);
+```
+
+### Manual bootstrap migration
+
+Manual persistence owners must now make persistence confirmation explicit:
+
+```rust,ignore
+let pending = AllocationBootstrap::new(record.store_mut())
+    .initialize_validate_and_commit(&genesis, declarations, &policy, committed_at)?;
+
+persist_record(&record)?;
+let committed = pending.confirm_persisted();
+let session = AllocationSession::new(storage, committed);
+```
+
+Calling `confirm_persisted()` before the owning record is durably written
+violates the protocol.
+
+### Validation and storage hardening
+
+- Validated reservation DTO invariants before invoking caller policy.
+- Made `MemoryManagerRangeAuthority` deserialization validate every imported
+  record and reject overlaps.
+- Tightened committed ledger chronology: retirement must follow the final
+  observation, schema history must begin at allocation creation, and schema
+  changes cannot postdate the final observation.
+- Validated retirement slot descriptors in `AllocationRetirement::new`.
+- Removed all `ic_memory.*` governance allocations from published application
+  capabilities while preserving them in durable ledger recovery state.
+
+### Dependencies and packaging
+
+- Replaced the unmaintained `serde_cbor` dependency with maintained `ciborium`.
+  Current CBOR fixtures remain byte-for-byte stable without a compatibility
+  decoder or legacy format path.
+- Removed the `stable_structures` dependency re-export. Downstream code now
+  imports `ic-stable-structures` directly.
+- Reduced the published package from roughly 2.1 MiB compressed to about
+  203 KiB by excluding an unused large decorative image.
+
+---
+
 ## 0.7.5
 
 ### Runtime hardening

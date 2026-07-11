@@ -1,9 +1,11 @@
 use crate::{
+    constants::DIAGNOSTIC_STRING_MAX_BYTES,
     declaration::{AllocationDeclaration, DeclarationCollector, DeclarationSnapshot},
     schema::SchemaMetadata,
     slot::{
-        MemoryManagerAuthorityRecord, MemoryManagerIdRange, MemoryManagerRangeAuthority,
-        MemoryManagerRangeAuthorityError, MemoryManagerRangeMode,
+        IC_MEMORY_AUTHORITY_OWNER, MemoryManagerAuthorityRecord, MemoryManagerIdRange,
+        MemoryManagerRangeAuthority, MemoryManagerRangeAuthorityError, MemoryManagerRangeMode,
+        is_ic_memory_stable_key,
     },
 };
 use std::sync::{Mutex, MutexGuard};
@@ -17,29 +19,39 @@ pub static TEST_REGISTRY_LOCK: Mutex<()> = Mutex::new(());
 /// One allocation declaration registered by crate-level generated or macro
 /// code before bootstrap seals the declaration snapshot.
 ///
-/// The `declaring_crate` field is policy metadata for integration layers such
-/// as Canic or IcyDB. The default runtime uses it to match declarations against
+/// The `authority` field is policy metadata for integration layers such as
+/// Canic or IcyDB. The default runtime uses it to match declarations against
 /// registered range claims before it calls the caller's
 /// [`crate::AllocationPolicy`].
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct StaticMemoryDeclaration {
-    declaring_crate: String,
+    authority: String,
     declaration: AllocationDeclaration,
 }
 
 impl StaticMemoryDeclaration {
     /// Build one static declaration from raw parts.
-    pub fn new(declaring_crate: impl Into<String>, declaration: AllocationDeclaration) -> Self {
-        Self {
-            declaring_crate: declaring_crate.into(),
-            declaration,
+    pub fn new(
+        authority: impl Into<String>,
+        declaration: AllocationDeclaration,
+    ) -> Result<Self, StaticMemoryDeclarationError> {
+        let authority = authority.into();
+        validate_external_authority(&authority)?;
+        if is_ic_memory_stable_key(declaration.stable_key().as_str()) {
+            return Err(StaticMemoryDeclarationError::ReservedStableKey {
+                stable_key: declaration.stable_key().as_str().to_string(),
+            });
         }
+        Ok(Self {
+            authority,
+            declaration,
+        })
     }
 
-    /// Return the crate that registered this declaration.
+    /// Return the authority that registered this declaration.
     #[must_use]
-    pub fn declaring_crate(&self) -> &str {
-        &self.declaring_crate
+    pub fn authority(&self) -> &str {
+        &self.authority
     }
 
     /// Borrow the allocation declaration.
@@ -61,7 +73,7 @@ impl StaticMemoryDeclaration {
 /// One `MemoryManager` authority range registered by crate-level generated or
 /// macro code before bootstrap seals the declaration snapshot. In the default
 /// runtime, registered user ranges are authoritative generic range policy:
-/// declarations must stay inside the declaring crate's claimed range before
+/// declarations must stay inside the authority's claimed range before
 /// caller-supplied policy runs.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct StaticMemoryRangeDeclaration {
@@ -70,14 +82,14 @@ pub struct StaticMemoryRangeDeclaration {
 
 impl StaticMemoryRangeDeclaration {
     /// Build one static range declaration from a validated authority record.
-    #[must_use]
-    pub const fn new(record: MemoryManagerAuthorityRecord) -> Self {
-        Self { record }
+    pub fn new(record: MemoryManagerAuthorityRecord) -> Result<Self, StaticMemoryDeclarationError> {
+        validate_external_authority(record.authority())?;
+        Ok(Self { record })
     }
 
-    /// Return the crate that registered this range.
+    /// Return the authority that registered this range.
     #[must_use]
-    pub fn declaring_crate(&self) -> &str {
+    pub fn authority(&self) -> &str {
         self.record.authority()
     }
 
@@ -113,6 +125,24 @@ pub enum StaticMemoryDeclarationError {
     /// Range authority validation failed.
     #[error(transparent)]
     Range(#[from] MemoryManagerRangeAuthorityError),
+    /// External registration attempted to use an invalid authority identifier.
+    #[error("authority {reason}")]
+    InvalidAuthority {
+        /// Validation failure.
+        reason: &'static str,
+    },
+    /// External registration attempted to impersonate the internal authority.
+    #[error("authority '{authority}' is reserved for ic-memory runtime internals")]
+    ReservedAuthority {
+        /// Reserved authority identifier.
+        authority: String,
+    },
+    /// External registration attempted to claim the internal stable-key namespace.
+    #[error("stable key '{stable_key}' is reserved for ic-memory runtime internals")]
+    ReservedStableKey {
+        /// Reserved stable key.
+        stable_key: String,
+    },
 }
 
 #[derive(Debug, Default)]
@@ -156,13 +186,12 @@ fn with_unsealed_registry(
 
 /// Register one allocation declaration before bootstrap seals the snapshot.
 pub fn register_static_memory_declaration(
-    declaring_crate: impl Into<String>,
+    authority: impl Into<String>,
     declaration: AllocationDeclaration,
 ) -> Result<(), StaticMemoryDeclarationError> {
+    let registration = StaticMemoryDeclaration::new(authority, declaration)?;
     with_unsealed_registry(|registry| {
-        registry
-            .declarations
-            .push(StaticMemoryDeclaration::new(declaring_crate, declaration));
+        registry.declarations.push(registration);
     })
 }
 
@@ -170,39 +199,69 @@ pub fn register_static_memory_declaration(
 pub fn register_static_memory_manager_range(
     start: u8,
     end: u8,
-    declaring_crate: impl Into<String>,
+    authority: impl Into<String>,
     mode: MemoryManagerRangeMode,
     purpose: Option<String>,
 ) -> Result<(), StaticMemoryDeclarationError> {
-    let declaring_crate = declaring_crate.into();
+    let authority = authority.into();
     let record = MemoryManagerAuthorityRecord::new(
         MemoryManagerIdRange::new(start, end).map_err(MemoryManagerRangeAuthorityError::Range)?,
-        declaring_crate,
+        authority,
         mode,
         purpose,
     )?;
-    register_static_memory_range_declaration(StaticMemoryRangeDeclaration::new(record))
+    register_static_memory_range_declaration(StaticMemoryRangeDeclaration::new(record)?)
 }
 
 /// Register one authority range declaration before bootstrap seals the snapshot.
 pub fn register_static_memory_range_declaration(
     declaration: StaticMemoryRangeDeclaration,
 ) -> Result<(), StaticMemoryDeclarationError> {
+    validate_external_authority(declaration.authority())?;
     with_unsealed_registry(|registry| {
         registry.ranges.push(declaration);
     })
 }
 
+fn validate_external_authority(value: &str) -> Result<(), StaticMemoryDeclarationError> {
+    if value == IC_MEMORY_AUTHORITY_OWNER {
+        return Err(StaticMemoryDeclarationError::ReservedAuthority {
+            authority: value.to_string(),
+        });
+    }
+    if value.is_empty() {
+        return Err(StaticMemoryDeclarationError::InvalidAuthority {
+            reason: "must not be empty",
+        });
+    }
+    if value.len() > DIAGNOSTIC_STRING_MAX_BYTES {
+        return Err(StaticMemoryDeclarationError::InvalidAuthority {
+            reason: "must be at most 256 bytes",
+        });
+    }
+    if !value.is_ascii() {
+        return Err(StaticMemoryDeclarationError::InvalidAuthority {
+            reason: "must be ASCII",
+        });
+    }
+    if value.bytes().any(|byte| byte.is_ascii_control()) {
+        return Err(StaticMemoryDeclarationError::InvalidAuthority {
+            reason: "must not contain ASCII control characters",
+        });
+    }
+    Ok(())
+}
+
 /// Register one `MemoryManager` declaration before bootstrap seals the snapshot.
 pub fn register_static_memory_manager_declaration(
     id: u8,
-    declaring_crate: impl Into<String>,
+    authority: impl Into<String>,
     label: impl Into<String>,
     stable_key: impl AsRef<str>,
 ) -> Result<(), StaticMemoryDeclarationError> {
     register_static_memory_manager_declaration_with_schema(
         id,
-        declaring_crate,
+        authority,
         label,
         stable_key,
         SchemaMetadata::default(),
@@ -212,14 +271,14 @@ pub fn register_static_memory_manager_declaration(
 /// Register one `MemoryManager` declaration with schema metadata.
 pub fn register_static_memory_manager_declaration_with_schema(
     id: u8,
-    declaring_crate: impl Into<String>,
+    authority: impl Into<String>,
     label: impl Into<String>,
     stable_key: impl AsRef<str>,
     schema: SchemaMetadata,
 ) -> Result<(), StaticMemoryDeclarationError> {
     let declaration =
         AllocationDeclaration::memory_manager_with_schema(stable_key, id, label, schema)?;
-    register_static_memory_declaration(declaring_crate, declaration)
+    register_static_memory_declaration(authority, declaration)
 }
 
 /// Return the currently registered static allocation declarations.
@@ -306,7 +365,7 @@ mod tests {
 
         let registrations = static_memory_declarations().expect("registrations");
         assert_eq!(registrations.len(), 1);
-        assert_eq!(registrations[0].declaring_crate(), "icydb");
+        assert_eq!(registrations[0].authority(), "icydb");
         assert_eq!(
             registrations[0].declaration().stable_key().as_str(),
             "icydb.users.data.v1"
@@ -337,7 +396,7 @@ mod tests {
 
         let ranges = static_memory_range_declarations().expect("ranges");
         assert_eq!(ranges.len(), 1);
-        assert_eq!(ranges[0].declaring_crate(), "crate_a");
+        assert_eq!(ranges[0].authority(), "crate_a");
         assert_eq!(ranges[0].record().range().start(), 100);
         assert_eq!(ranges[0].record().range().end(), 109);
     }
@@ -352,9 +411,9 @@ mod tests {
         )
         .expect("record");
 
-        let range = StaticMemoryRangeDeclaration::new(record);
+        let range = StaticMemoryRangeDeclaration::new(record).expect("external range");
 
-        assert_eq!(range.declaring_crate(), "record_authority");
+        assert_eq!(range.authority(), "record_authority");
     }
 
     #[test]
@@ -373,6 +432,57 @@ mod tests {
             StaticMemoryDeclarationError::Declaration(
                 crate::DeclarationSnapshotError::DuplicateSlot(_)
             )
+        ));
+    }
+
+    #[test]
+    fn external_registration_rejects_internal_stable_key_namespace() {
+        let _guard = TEST_REGISTRY_LOCK.lock().expect("test lock poisoned");
+        reset_static_memory_declarations_for_tests();
+
+        let err = register_static_memory_manager_declaration(
+            1,
+            "external",
+            "governance",
+            "ic_memory.spoof.v1",
+        )
+        .expect_err("internal stable key must be unavailable externally");
+
+        assert!(matches!(
+            err,
+            StaticMemoryDeclarationError::ReservedStableKey { stable_key }
+                if stable_key == "ic_memory.spoof.v1"
+        ));
+    }
+
+    #[test]
+    fn external_registration_rejects_internal_authority_identity() {
+        let _guard = TEST_REGISTRY_LOCK.lock().expect("test lock poisoned");
+        reset_static_memory_declarations_for_tests();
+
+        let declaration_err = register_static_memory_manager_declaration(
+            100,
+            IC_MEMORY_AUTHORITY_OWNER,
+            "users",
+            "app.users.v1",
+        )
+        .expect_err("internal declaration authority must be unavailable externally");
+        let range_err = register_static_memory_manager_range(
+            100,
+            109,
+            IC_MEMORY_AUTHORITY_OWNER,
+            MemoryManagerRangeMode::Reserved,
+            None,
+        )
+        .expect_err("internal range authority must be unavailable externally");
+
+        assert!(matches!(
+            declaration_err,
+            StaticMemoryDeclarationError::ReservedAuthority { .. }
+        ));
+        assert!(matches!(
+            range_err,
+            StaticMemoryDeclarationError::ReservedAuthority { .. }
         ));
     }
 }

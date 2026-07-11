@@ -116,7 +116,7 @@ pub enum StableCellLedgerError {
     Payload(#[from] StableCellPayloadError),
     /// Stable-cell value bytes are not a valid ledger record.
     #[error("stable-cell ledger record decode failed")]
-    Record(#[source] serde_cbor::Error),
+    Record(#[source] ciborium::de::Error<std::io::Error>),
 }
 
 /// Decode the raw value payload from an `ic-stable-structures::Cell` memory.
@@ -169,8 +169,8 @@ pub fn decode_stable_cell_payload<M: Memory>(
 /// embedded [`LedgerCommitStore`] before trusting any ledger payload.
 pub fn decode_stable_cell_ledger_record(
     bytes: &[u8],
-) -> Result<StableCellLedgerRecord, serde_cbor::Error> {
-    serde_cbor::from_slice(bytes)
+) -> Result<StableCellLedgerRecord, ciborium::de::Error<std::io::Error>> {
+    ciborium::from_reader(bytes)
 }
 
 pub fn decode_stable_cell_ledger_record_from_memory<M: Memory>(
@@ -199,9 +199,11 @@ pub fn validate_stable_cell_ledger_memory<M: Memory>(
 }
 
 fn serialize_record(record: &StableCellLedgerRecord) -> Vec<u8> {
-    serde_cbor::to_vec(record).unwrap_or_else(|err| {
+    let mut bytes = Vec::new();
+    ciborium::into_writer(record, &mut bytes).unwrap_or_else(|err| {
         panic!("StableCellLedgerRecord serialize failed: {err}");
-    })
+    });
+    bytes
 }
 
 #[cfg(test)]
@@ -245,7 +247,7 @@ mod tests {
 
         assert_eq!(
             bytes,
-            serde_cbor::to_vec(&record).expect("re-encoded stable-cell fixture")
+            crate::test_cbor::to_vec(&record).expect("re-encoded stable-cell fixture")
         );
         assert_eq!(
             record
@@ -259,16 +261,20 @@ mod tests {
 
     #[test]
     fn stable_cell_ledger_record_rejects_unknown_top_level_fields() {
-        use serde_cbor::Value;
-        use std::collections::BTreeMap;
+        use crate::test_cbor::Value;
 
-        let mut map = BTreeMap::new();
-        map.insert(
+        let mut map = Vec::new();
+        crate::test_cbor::map_insert(
+            &mut map,
             Value::Text("store".to_string()),
-            serde_cbor::value::to_value(LedgerCommitStore::default()).expect("store value"),
+            crate::test_cbor::to_value(LedgerCommitStore::default()).expect("store value"),
         );
-        map.insert(Value::Text("future_field".to_string()), Value::Bool(true));
-        let bytes = serde_cbor::to_vec(&Value::Map(map)).expect("unknown-field stable cell");
+        crate::test_cbor::map_insert(
+            &mut map,
+            Value::Text("future_field".to_string()),
+            Value::Bool(true),
+        );
+        let bytes = crate::test_cbor::to_vec(&Value::Map(map)).expect("unknown-field stable cell");
 
         let err = decode_stable_cell_ledger_record(&bytes)
             .expect_err("unknown stable-cell record field must fail closed");

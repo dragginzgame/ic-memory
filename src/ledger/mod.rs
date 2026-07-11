@@ -21,6 +21,7 @@ pub use record::{
     AllocationHistory, AllocationLedger, AllocationRecord, AllocationRetirement, AllocationState,
     GenerationRecord, RecoveredLedger, SchemaMetadataRecord,
 };
+pub use stage::validate_reservation_declaration;
 
 mod private {
     pub trait Sealed {}
@@ -54,14 +55,16 @@ struct CborLedgerCodec;
 impl private::Sealed for CborLedgerCodec {}
 
 impl LedgerCodec for CborLedgerCodec {
-    type Error = serde_cbor::Error;
+    type Error = String;
 
     fn encode(&self, ledger: &AllocationLedger) -> Result<Vec<u8>, Self::Error> {
-        serde_cbor::to_vec(ledger)
+        let mut bytes = Vec::new();
+        ciborium::into_writer(ledger, &mut bytes).map_err(|err| err.to_string())?;
+        Ok(bytes)
     }
 
     fn decode(&self, bytes: &[u8]) -> Result<AllocationLedger, Self::Error> {
-        serde_cbor::from_slice(bytes)
+        ciborium::from_reader(bytes).map_err(|err| err.to_string())
     }
 }
 
@@ -102,7 +105,7 @@ impl LedgerCommitStore {
         let codec = CborLedgerCodec;
         let ledger = codec
             .decode(envelope.payload())
-            .map_err(|err| LedgerCommitError::Codec(err.to_string()))?;
+            .map_err(LedgerCommitError::Codec)?;
         if committed.generation() != ledger.current_generation {
             return Err(LedgerCommitError::PhysicalLogicalGenerationMismatch {
                 physical_generation: committed.generation(),
@@ -150,13 +153,10 @@ impl LedgerCommitStore {
             .validate_committed_integrity()
             .map_err(LedgerCommitError::Integrity)?;
         let codec = CborLedgerCodec;
-        let payload = LedgerPayloadEnvelope::current(
-            codec
-                .encode(ledger)
-                .map_err(|err| LedgerCommitError::Codec(err.to_string()))?,
-        )
-        .try_encode()
-        .map_err(LedgerCommitError::PayloadEnvelope)?;
+        let payload =
+            LedgerPayloadEnvelope::current(codec.encode(ledger).map_err(LedgerCommitError::Codec)?)
+                .try_encode()
+                .map_err(LedgerCommitError::PayloadEnvelope)?;
         self.physical
             .commit_payload_at_generation(ledger.current_generation, payload)
             .map_err(LedgerCommitError::Recovery)?;
@@ -170,13 +170,10 @@ impl LedgerCommitStore {
         ledger: &AllocationLedger,
     ) -> Result<(), LedgerCommitError> {
         let codec = CborLedgerCodec;
-        let payload = LedgerPayloadEnvelope::current(
-            codec
-                .encode(ledger)
-                .map_err(|err| LedgerCommitError::Codec(err.to_string()))?,
-        )
-        .try_encode()
-        .map_err(LedgerCommitError::PayloadEnvelope)?;
+        let payload =
+            LedgerPayloadEnvelope::current(codec.encode(ledger).map_err(LedgerCommitError::Codec)?)
+                .try_encode()
+                .map_err(LedgerCommitError::PayloadEnvelope)?;
         self.physical
             .write_corrupt_inactive_slot(ledger.current_generation, payload);
         Ok(())
@@ -313,10 +310,10 @@ mod tests {
 
     fn store_from_fixture(contents: &str) -> LedgerCommitStore {
         let bytes = hex_fixture(contents);
-        let store: LedgerCommitStore = serde_cbor::from_slice(&bytes).expect("fixture store");
+        let store: LedgerCommitStore = crate::test_cbor::from_slice(&bytes).expect("fixture store");
         assert_eq!(
             bytes,
-            serde_cbor::to_vec(&store).expect("re-encoded fixture store")
+            crate::test_cbor::to_vec(&store).expect("re-encoded fixture store")
         );
         store
     }
@@ -337,36 +334,38 @@ mod tests {
         }
     }
 
-    fn active_ledger_value() -> serde_cbor::Value {
-        serde_cbor::value::to_value(active_committed_ledger()).expect("ledger value")
+    fn active_ledger_value() -> crate::test_cbor::Value {
+        crate::test_cbor::to_value(active_committed_ledger()).expect("ledger value")
     }
 
     fn value_map_mut(
-        value: &mut serde_cbor::Value,
-    ) -> &mut std::collections::BTreeMap<serde_cbor::Value, serde_cbor::Value> {
-        let serde_cbor::Value::Map(map) = value else {
+        value: &mut crate::test_cbor::Value,
+    ) -> &mut Vec<(crate::test_cbor::Value, crate::test_cbor::Value)> {
+        let crate::test_cbor::Value::Map(map) = value else {
             panic!("expected CBOR map");
         };
         map
     }
 
     fn map_field_mut<'map>(
-        map: &'map mut std::collections::BTreeMap<serde_cbor::Value, serde_cbor::Value>,
+        map: &'map mut [(crate::test_cbor::Value, crate::test_cbor::Value)],
         field: &str,
-    ) -> &'map mut serde_cbor::Value {
-        map.get_mut(&serde_cbor::Value::Text(field.to_string()))
+    ) -> &'map mut crate::test_cbor::Value {
+        map.iter_mut()
+            .find(|(key, _)| key == &crate::test_cbor::Value::Text(field.to_string()))
+            .map(|(_, value)| value)
             .expect("CBOR map field")
     }
 
-    fn value_array_mut(value: &mut serde_cbor::Value) -> &mut Vec<serde_cbor::Value> {
-        let serde_cbor::Value::Array(values) = value else {
+    fn value_array_mut(value: &mut crate::test_cbor::Value) -> &mut Vec<crate::test_cbor::Value> {
+        let crate::test_cbor::Value::Array(values) = value else {
             panic!("expected CBOR array");
         };
         values
     }
 
-    fn decode_mutated_ledger(value: serde_cbor::Value) -> serde_cbor::Error {
-        let bytes = serde_cbor::to_vec(&value).expect("mutated ledger bytes");
+    fn decode_mutated_ledger(value: crate::test_cbor::Value) -> String {
+        let bytes = crate::test_cbor::to_vec(&value).expect("mutated ledger bytes");
         CborLedgerCodec
             .decode(&bytes)
             .expect_err("mutated ledger must fail closed")
@@ -412,40 +411,46 @@ mod tests {
 
     #[test]
     fn cbor_ledger_codec_rejects_unknown_top_level_fields() {
-        use serde_cbor::Value;
-        use std::collections::BTreeMap;
+        use crate::test_cbor::Value;
 
-        let mut map = BTreeMap::new();
-        map.insert(
+        let mut map = Vec::new();
+        crate::test_cbor::map_insert(
+            &mut map,
             Value::Text("current_generation".to_string()),
-            Value::Integer(0),
+            Value::Integer(0.into()),
         );
-        map.insert(
+        crate::test_cbor::map_insert(
+            &mut map,
             Value::Text("allocation_history".to_string()),
-            serde_cbor::value::to_value(AllocationHistory::default()).expect("history value"),
+            crate::test_cbor::to_value(AllocationHistory::default()).expect("history value"),
         );
-        map.insert(Value::Text("future_field".to_string()), Value::Bool(true));
-        let bytes = serde_cbor::to_vec(&Value::Map(map)).expect("unknown-field ledger");
+        crate::test_cbor::map_insert(
+            &mut map,
+            Value::Text("future_field".to_string()),
+            Value::Bool(true),
+        );
+        let bytes = crate::test_cbor::to_vec(&Value::Map(map)).expect("unknown-field ledger");
 
         let err = CborLedgerCodec
             .decode(&bytes)
             .expect_err("unknown ledger field must fail closed");
 
-        assert!(err.to_string().contains("future_field"));
+        assert!(err.contains("future_field"));
     }
 
     #[test]
     fn cbor_ledger_codec_rejects_unknown_nested_history_fields() {
         let mut value = active_ledger_value();
         let history = map_field_mut(value_map_mut(&mut value), "allocation_history");
-        value_map_mut(history).insert(
-            serde_cbor::Value::Text("future_history_field".to_string()),
-            serde_cbor::Value::Bool(true),
+        crate::test_cbor::map_insert(
+            value_map_mut(history),
+            crate::test_cbor::Value::Text("future_history_field".to_string()),
+            crate::test_cbor::Value::Bool(true),
         );
 
         let err = decode_mutated_ledger(value);
 
-        assert!(err.to_string().contains("future_history_field"));
+        assert!(err.contains("future_history_field"));
     }
 
     #[test]
@@ -456,14 +461,15 @@ mod tests {
         let record = value_array_mut(records)
             .first_mut()
             .expect("allocation record");
-        value_map_mut(record).insert(
-            serde_cbor::Value::Text("future_record_field".to_string()),
-            serde_cbor::Value::Bool(true),
+        crate::test_cbor::map_insert(
+            value_map_mut(record),
+            crate::test_cbor::Value::Text("future_record_field".to_string()),
+            crate::test_cbor::Value::Bool(true),
         );
 
         let err = decode_mutated_ledger(value);
 
-        assert!(err.to_string().contains("future_record_field"));
+        assert!(err.contains("future_record_field"));
     }
 
     #[test]
@@ -475,14 +481,15 @@ mod tests {
             .first_mut()
             .expect("allocation record");
         let slot = map_field_mut(value_map_mut(record), "slot");
-        value_map_mut(slot).insert(
-            serde_cbor::Value::Text("future_slot_field".to_string()),
-            serde_cbor::Value::Bool(true),
+        crate::test_cbor::map_insert(
+            value_map_mut(slot),
+            crate::test_cbor::Value::Text("future_slot_field".to_string()),
+            crate::test_cbor::Value::Bool(true),
         );
 
         let err = decode_mutated_ledger(value);
 
-        assert!(err.to_string().contains("future_slot_field"));
+        assert!(err.contains("future_slot_field"));
     }
 
     #[test]
@@ -493,30 +500,35 @@ mod tests {
         let generation = value_array_mut(generations)
             .first_mut()
             .expect("generation record");
-        value_map_mut(generation).insert(
-            serde_cbor::Value::Text("future_generation_field".to_string()),
-            serde_cbor::Value::Bool(true),
+        crate::test_cbor::map_insert(
+            value_map_mut(generation),
+            crate::test_cbor::Value::Text("future_generation_field".to_string()),
+            crate::test_cbor::Value::Bool(true),
         );
 
         let err = decode_mutated_ledger(value);
 
-        assert!(err.to_string().contains("future_generation_field"));
+        assert!(err.contains("future_generation_field"));
     }
 
     #[test]
     fn ledger_commit_store_rejects_unknown_top_level_fields() {
-        use serde_cbor::Value;
-        use std::collections::BTreeMap;
+        use crate::test_cbor::Value;
 
-        let mut map = BTreeMap::new();
-        map.insert(
+        let mut map = Vec::new();
+        crate::test_cbor::map_insert(
+            &mut map,
             Value::Text("physical".to_string()),
-            serde_cbor::value::to_value(DualCommitStore::default()).expect("physical value"),
+            crate::test_cbor::to_value(DualCommitStore::default()).expect("physical value"),
         );
-        map.insert(Value::Text("future_field".to_string()), Value::Bool(true));
-        let bytes = serde_cbor::to_vec(&Value::Map(map)).expect("unknown-field store");
+        crate::test_cbor::map_insert(
+            &mut map,
+            Value::Text("future_field".to_string()),
+            Value::Bool(true),
+        );
+        let bytes = crate::test_cbor::to_vec(&Value::Map(map)).expect("unknown-field store");
 
-        let err = serde_cbor::from_slice::<LedgerCommitStore>(&bytes)
+        let err = crate::test_cbor::from_slice::<LedgerCommitStore>(&bytes)
             .expect_err("unknown store field must fail closed");
 
         assert!(err.to_string().contains("future_field"));
@@ -577,13 +589,13 @@ mod tests {
             "../../fixtures/current/memory_manager_descriptor.cbor.hex"
         ));
         let descriptor: AllocationSlotDescriptor =
-            serde_cbor::from_slice(&bytes).expect("descriptor fixture");
+            crate::test_cbor::from_slice(&bytes).expect("descriptor fixture");
 
         descriptor.validate().expect("valid descriptor");
         assert_eq!(descriptor.memory_manager_id().expect("memory id"), 100);
         assert_eq!(
             bytes,
-            serde_cbor::to_vec(&descriptor).expect("re-encoded descriptor")
+            crate::test_cbor::to_vec(&descriptor).expect("re-encoded descriptor")
         );
     }
 
@@ -1160,6 +1172,22 @@ mod tests {
     }
 
     #[test]
+    fn allocation_retirement_constructor_rejects_invalid_slot() {
+        let err = AllocationRetirement::new(
+            "app.users.v1",
+            AllocationSlotDescriptor::memory_manager_unchecked(MEMORY_MANAGER_INVALID_ID),
+        )
+        .expect_err("invalid retirement slot must fail at construction");
+
+        assert!(matches!(
+            err,
+            AllocationRetirementError::MemoryManagerSlot(
+                MemoryManagerSlotError::InvalidMemoryManagerId { id }
+            ) if id == MEMORY_MANAGER_INVALID_ID
+        ));
+    }
+
+    #[test]
     fn snapshot_can_feed_validated_generation() {
         let snapshot = DeclarationSnapshot::new(vec![declaration("app.users.v1", 100, None)])
             .expect("snapshot");
@@ -1455,13 +1483,14 @@ mod tests {
             .allocation_history
             .records
             .push(active_record("app.users.v1", 100));
-        let mut bytes = serde_cbor::to_vec(&ledger).expect("encode ledger");
+        let mut bytes = crate::test_cbor::to_vec(&ledger).expect("encode ledger");
         let key_start = bytes
             .windows(b"app.users.v1".len())
             .position(|window| window == b"app.users.v1")
             .expect("encoded stable key");
         bytes[key_start] = b'A';
-        let decoded: AllocationLedger = serde_cbor::from_slice(&bytes).expect("decode ledger");
+        let decoded: AllocationLedger =
+            crate::test_cbor::from_slice(&bytes).expect("decode ledger");
 
         let err = decoded
             .validate_committed_integrity()
@@ -1520,6 +1549,64 @@ mod tests {
         assert!(matches!(
             err,
             LedgerIntegrityError::UnexpectedRetiredGeneration { .. }
+        ));
+    }
+
+    #[test]
+    fn validate_integrity_rejects_retirement_before_last_observation() {
+        let mut ledger = committed_ledger(5);
+        let mut record = active_record("app.users.v1", 100);
+        record.last_seen_generation = 4;
+        record.state = AllocationState::Retired;
+        record.retired_generation = Some(3);
+        *ledger.allocation_history.records_mut() = vec![record];
+
+        let err = ledger
+            .validate_committed_integrity()
+            .expect_err("retirement must follow the last observation");
+
+        assert!(matches!(
+            err,
+            LedgerIntegrityError::RetirementNotAfterLastSeen { .. }
+        ));
+    }
+
+    #[test]
+    fn validate_integrity_requires_schema_history_at_first_generation() {
+        let mut ledger = committed_ledger(2);
+        let mut record = active_record("app.users.v1", 100);
+        record.last_seen_generation = 2;
+        record.schema_history[0].generation = 2;
+        *ledger.allocation_history.records_mut() = vec![record];
+
+        let err = ledger
+            .validate_committed_integrity()
+            .expect_err("schema history must begin with the allocation");
+
+        assert!(matches!(
+            err,
+            LedgerIntegrityError::SchemaHistoryStartMismatch { .. }
+        ));
+    }
+
+    #[test]
+    fn validate_integrity_rejects_schema_history_after_last_observation() {
+        let mut ledger = committed_ledger(3);
+        let mut record = active_record("app.users.v1", 100);
+        record.last_seen_generation = 2;
+        record.schema_history.push(
+            SchemaMetadataRecord::new(3, SchemaMetadata::new(Some(2)).expect("schema"))
+                .expect("schema record"),
+        );
+        *ledger.allocation_history.records_mut() = vec![record];
+
+        let err = ledger
+            .validate_committed_integrity()
+            .expect_err("schema metadata cannot postdate the last observation");
+
+        assert!(matches!(
+            err,
+            LedgerIntegrityError::SchemaHistoryAfterLastSeen { .. }
         ));
     }
 

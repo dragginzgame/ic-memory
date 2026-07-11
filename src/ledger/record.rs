@@ -4,6 +4,7 @@ use crate::{
     key::StableKey,
     schema::{SchemaMetadata, SchemaMetadataError},
     slot::AllocationSlotDescriptor,
+    validation::Validate,
 };
 use serde::{Deserialize, Serialize};
 
@@ -98,6 +99,8 @@ impl AllocationRetirement {
         stable_key: impl AsRef<str>,
         slot: AllocationSlotDescriptor,
     ) -> Result<Self, AllocationRetirementError> {
+        slot.validate()
+            .map_err(AllocationRetirementError::MemoryManagerSlot)?;
         Ok(Self {
             stable_key: StableKey::parse(stable_key).map_err(AllocationRetirementError::Key)?,
             slot,
@@ -175,7 +178,7 @@ pub struct GenerationRecord {
 /// integrity validation.
 ///
 /// This type is not serializable and has no public constructor. It is the
-/// provenance boundary required before declarations can mint
+/// provenance boundary required before declarations can mint pre-commit
 /// [`crate::ValidatedAllocations`].
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct RecoveredLedger {

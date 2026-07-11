@@ -1,0 +1,13 @@
+error[E0308]: mismatched types
+  --> tests/ui/open_with_precommit_allocations.rs:10:24
+   |
+10 |     requires_committed(validated());
+   |     ------------------ ^^^^^^^^^^^ expected `CommittedAllocations`, found `ValidatedAllocations`
+   |     |
+   |     arguments to this function are incorrect
+   |
+note: function defined here
+  --> tests/ui/open_with_precommit_allocations.rs:3:4
+   |
+ 3 | fn requires_committed(_allocations: CommittedAllocations) {}
+   |    ^^^^^^^^^^^^^^^^^^ ----------------------------------

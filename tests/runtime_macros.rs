@@ -8,7 +8,7 @@ struct MacroStore;
 
 static EAGER_INIT_RAN: AtomicBool = AtomicBool::new(false);
 
-ic_memory::ic_memory_range!(start = 130, end = 139);
+ic_memory::ic_memory_range!(authority = "runtime_macros", start = 130, end = 139);
 
 ic_memory::eager_init!({
     EAGER_INIT_RAN.store(true, Ordering::SeqCst);
@@ -18,9 +18,10 @@ thread_local! {
     static MACRO_MEMORY: RefCell<Option<VirtualMemory<DefaultMemoryImpl>>> = {
         assert!(ic_memory::is_default_memory_manager_bootstrapped());
         RefCell::new(Some(ic_memory::ic_memory_key!(
-            "macro.integration.users.v1",
-            MacroStore,
-            130,
+            authority = "runtime_macros",
+            key = "macro.integration.users.v1",
+            ty = MacroStore,
+            id = 130,
         )))
     };
 }

@@ -5,7 +5,7 @@ rust-version = "1.85.0"
 version = "0.7.5"
 license = "MIT"
 authors = ["borovan <84897664+borovan@users.noreply.github.com>"]
-description = "Memory ID registry wrapper for ic-stable-structures on Internet Computer canisters"
+description = "Durable stable-memory allocation governance for Internet Computer canisters"
 readme = "README.md"
 documentation = "https://docs.rs/ic-memory"
 homepage = "https://github.com/dragginzgame/ic-memory"
@@ -13,15 +13,16 @@ repository = "https://github.com/dragginzgame/ic-memory"
 keywords = ["ic-stable-structures", "memory-id", "registry", "canister", "icp"]
 categories = ["wasm", "data-structures"]
 publish = true
+exclude = ["images/dont-overwrite.png"]
 
 [dependencies]
+ciborium = "0.2.2"
 ctor = "1.0"
 ic-stable-structures = "0.7.2"
 serde = { version = "1.0", default-features = false, features = [
     "alloc",
     "derive",
 ] }
-serde_cbor = "0.11"
 thiserror = "2.0"
 
 [dev-dependencies]

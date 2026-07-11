@@ -85,14 +85,20 @@ crate.
 
 ## Capability Boundary
 
-`ValidatedAllocations` is an in-memory capability. It must not be deserializable,
-default-constructible, or publicly constructible. Only validation and bootstrap
-paths may produce it.
+`ValidatedAllocations` is an opaque, pre-commit validation result. It must not be
+deserializable, default-constructible, or publicly constructible, and it must
+not be accepted by allocation-opening APIs.
 
-Allocation sessions may open storage only from a `ValidatedAllocations` value
-that was produced after current-format, committed-ledger integrity,
-declaration validation, and committed generation staging checks. Diagnostics and
-durable DTOs are not authority.
+`CommittedAllocations` is the in-memory open capability. It must not be
+deserializable, default-constructible, or publicly constructible. The default
+runtime may produce it only after its stable-cell write succeeds. Generic
+persistence owners may confirm it only after durably writing the pending
+`PendingBootstrapCommit` state.
+
+Allocation sessions may open storage only from `CommittedAllocations` produced
+after current-format recovery, committed-ledger integrity, declaration
+validation, generation staging, commit, and durable persistence. Diagnostics,
+durable DTOs, and `ValidatedAllocations` are not open authority.
 
 ## Retirement Invariants
 

@@ -80,11 +80,11 @@ pub enum AllocationValidationError<P> {
 
 /// Validate a committed ledger and current declarations before opening.
 ///
-/// This is the authority boundary for [`ValidatedAllocations`]: the historical
+/// This produces a pre-commit [`ValidatedAllocations`] value: the historical
 /// ledger must pass current-format and committed-integrity checks before current
-/// declarations are checked against framework policy and ledger history. This
-/// proves allocation ABI safety only. It does not prove store-level schema
-/// support.
+/// declarations are checked against framework policy and ledger history. The
+/// result can be staged, but it cannot open storage. Open authority is granted
+/// only by [`crate::CommittedAllocations`] after persistence confirmation.
 pub fn validate_allocations<P: AllocationPolicy>(
     recovered: &RecoveredLedger,
     snapshot: DeclarationSnapshot,
@@ -253,7 +253,7 @@ mod tests {
         )
         .expect("validated");
 
-        assert_eq!(validated.generation(), 7);
+        assert_eq!(validated.base_generation(), 7);
     }
 
     #[test]

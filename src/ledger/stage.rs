@@ -23,9 +23,9 @@ impl AllocationLedger {
         validated: &ValidatedAllocations,
         committed_at: Option<u64>,
     ) -> Result<Self, AllocationStageError> {
-        if validated.generation() != self.current_generation {
+        if validated.base_generation() != self.current_generation {
             return Err(AllocationStageError::StaleValidatedAllocations {
-                validated_generation: validated.generation(),
+                validated_generation: validated.base_generation(),
                 ledger_generation: self.current_generation,
             });
         }
@@ -220,7 +220,7 @@ fn record_reservation(
     }
 }
 
-fn validate_reservation_declaration(
+pub fn validate_reservation_declaration(
     reservation: &AllocationDeclaration,
 ) -> Result<(), AllocationReservationError> {
     reservation.validate().map_err(|err| match err {

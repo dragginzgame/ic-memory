@@ -20,13 +20,15 @@ MemoryManager ID 0
   -> LedgerPayloadEnvelope
   -> RecoveredLedger
   -> ValidatedAllocations
+  -> PendingBootstrapCommit
+  -> CommittedAllocations
 ```
 
 The logical payload inside the `LedgerPayloadEnvelope` is the built-in
 `ic-memory` CBOR ledger format. Callers do not provide a custom codec.
 
 The default runtime keeps this internal ledger allocation in durable history,
-but it removes `ic_memory.*` governance keys from the validated allocations it
+but it removes `ic_memory.*` governance keys from the committed allocations it
 publishes for application opens. Public default-runtime open helpers reject
 those reserved keys.
 
@@ -36,7 +38,7 @@ A typical framework flow is:
 2. Declare the stores this binary expects.
 3. Validate those declarations against history and policy.
 4. Commit the new generation.
-5. Open stable-memory handles only after validation passes.
+5. Open stable-memory handles only after commit persistence succeeds.
 
 The important rule: validate layout before touching stable data.
 
@@ -100,7 +102,7 @@ without opening a TLS stable structure:
 ic_memory::eager_init!({
     ic_memory::register_static_memory_manager_declaration(
         121,
-        env!("CARGO_PKG_NAME"),
+        "icydb.test_db",
         "OrdersDataStore",
         "icydb.test_db.orders.data.v1",
     )
@@ -109,8 +111,10 @@ ic_memory::eager_init!({
 ```
 
 Hooks registered with `eager_init!` run before the declaration snapshot is
-sealed. Stable structures opened with `ic_memory_key!` require validated
-allocations to be published first.
+sealed. Stable structures opened with `ic_memory_key!` require committed
+allocations to be published first. Macro range and key declarations require an
+explicit stable `authority` string; it is policy identity and must not be
+derived implicitly from package metadata.
 
 Frameworks or libraries that need custom policy metadata can inspect
 `static_memory_declarations()` and `static_memory_range_declarations()`, then
@@ -150,7 +154,7 @@ them. Recovery first selects a valid physical generation, decodes the logical
 payload envelope, decodes the current-format `ic-memory` CBOR ledger payload,
 checks the physical/logical generation binding, and validates committed ledger
 integrity. Only the resulting `RecoveredLedger` proof can be passed to
-declaration validation to produce a `ValidatedAllocations` capability.
+declaration validation to produce pre-commit `ValidatedAllocations`.
 
 Manual sketch:
 
@@ -166,14 +170,17 @@ let commit = AllocationBootstrap::new(record.store_mut()).initialize_validate_an
     committed_at,
 )?;
 
-let orders =
-    AllocationSession::new(storage, commit.validated).open(&StableKey::parse("app.orders.v1")?)?;
+persist_record(&record)?;
+let committed = commit.confirm_persisted();
+let orders = AllocationSession::new(storage, committed)
+    .open(&StableKey::parse("app.orders.v1")?)?;
 ```
 
-The helper names for `record`, `genesis_ledger`, `policy`, `committed_at`, and
-`storage` are placeholders. Frameworks and libraries wire those to their own
-stable-memory persistence and collection construction. The ordering is the
-contract.
+The helper names for `record`, `persist_record`, `genesis_ledger`, `policy`,
+`committed_at`, and `storage` are placeholders. Frameworks and libraries wire
+those to their own stable-memory persistence and collection construction. The
+ordering is the contract. Calling `confirm_persisted()` before `persist_record`
+succeeds violates the protocol.
 
 Supplying `genesis_ledger` is privileged. Normal empty-store bootstraps should
 use an empty current-format ledger, like the default runtime does. A non-empty
@@ -186,9 +193,10 @@ committed ledger state and want the stricter committed-generation checks.
 Normal integrations should usually recover through the commit/recovery flow
 instead of hand-assembling committed state.
 
-`ValidatedAllocations` is intentionally opaque and non-serializable. It is a
-runtime capability produced by validation/bootstrap, not a durable record or a
-diagnostic export format.
+`ValidatedAllocations` is intentionally opaque and non-serializable pre-commit
+state. It can be staged but cannot open storage. `CommittedAllocations` is the
+separate non-serializable open capability produced only after persistence is
+confirmed. Neither is a durable record or diagnostic export format.
 
 ## Stable Key Rules
 
@@ -326,9 +334,9 @@ kind of range is Canic policy, not an `ic-memory` rule.
 
 `ic-memory` does not replace `ic-stable-structures`.
 
-It owns allocation governance. It re-exports the `ic-stable-structures`
-namespace for convenience, but it does not wrap collection types such as
-`StableBTreeMap` as `ic-memory` APIs.
+It owns allocation governance. Downstream code imports `ic-stable-structures`
+directly; `ic-memory` does not re-export or wrap collection types such as
+`StableBTreeMap`.
 
 It also does not handle:
 

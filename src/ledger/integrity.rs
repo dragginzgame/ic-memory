@@ -166,6 +166,13 @@ fn validate_record_integrity(
                     current_generation,
                 });
             }
+            if retired_generation <= record.last_seen_generation {
+                return Err(LedgerIntegrityError::RetirementNotAfterLastSeen {
+                    stable_key: record.stable_key.clone(),
+                    last_seen_generation: record.last_seen_generation,
+                    retired_generation,
+                });
+            }
         }
         (AllocationState::Retired, None) => {
             return Err(LedgerIntegrityError::MissingRetiredGeneration {
@@ -207,6 +214,15 @@ fn validate_schema_history_integrity(
         });
     }
 
+    let first_schema_generation = record.schema_history[0].generation;
+    if first_schema_generation != record.first_generation {
+        return Err(LedgerIntegrityError::SchemaHistoryStartMismatch {
+            stable_key: record.stable_key.clone(),
+            first_generation: record.first_generation,
+            schema_generation: first_schema_generation,
+        });
+    }
+
     let mut previous = None;
     for schema in &record.schema_history {
         schema
@@ -226,6 +242,13 @@ fn validate_schema_history_integrity(
             return Err(LedgerIntegrityError::SchemaHistoryOutOfBounds {
                 stable_key: record.stable_key.clone(),
                 generation: schema.generation,
+            });
+        }
+        if schema.generation > record.last_seen_generation {
+            return Err(LedgerIntegrityError::SchemaHistoryAfterLastSeen {
+                stable_key: record.stable_key.clone(),
+                generation: schema.generation,
+                last_seen_generation: record.last_seen_generation,
             });
         }
         previous = Some(schema.generation);

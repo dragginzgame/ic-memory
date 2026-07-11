@@ -74,7 +74,7 @@ pub struct DefaultMemoryManagerDoctorReport {
 #[serde(deny_unknown_fields)]
 pub struct DiagnosticDeclaration {
     /// Crate or integration authority that registered the declaration.
-    pub declaring_crate: String,
+    pub authority: String,
     /// Allocation declaration registered by that authority.
     pub declaration: AllocationDeclaration,
 }
@@ -82,9 +82,9 @@ pub struct DiagnosticDeclaration {
 impl DiagnosticDeclaration {
     /// Build a diagnostic declaration record.
     #[must_use]
-    pub fn new(declaring_crate: impl Into<String>, declaration: AllocationDeclaration) -> Self {
+    pub fn new(authority: impl Into<String>, declaration: AllocationDeclaration) -> Self {
         Self {
-            declaring_crate: declaring_crate.into(),
+            authority: authority.into(),
             declaration,
         }
     }
@@ -419,7 +419,7 @@ mod tests {
 
     #[test]
     fn diagnostic_export_rejects_unknown_top_level_fields() {
-        use serde_cbor::Value;
+        use crate::test_cbor::Value;
 
         let export = DiagnosticExport {
             current_generation: 0,
@@ -428,14 +428,18 @@ mod tests {
             generations: Vec::new(),
             commit_recovery: None,
         };
-        let Value::Map(mut map) = serde_cbor::value::to_value(export).expect("diagnostic value")
+        let Value::Map(mut map) = crate::test_cbor::to_value(export).expect("diagnostic value")
         else {
             panic!("diagnostic export encodes as a map");
         };
-        map.insert(Value::Text("future_field".to_string()), Value::Bool(true));
-        let bytes = serde_cbor::to_vec(&Value::Map(map)).expect("diagnostic bytes");
+        crate::test_cbor::map_insert(
+            &mut map,
+            Value::Text("future_field".to_string()),
+            Value::Bool(true),
+        );
+        let bytes = crate::test_cbor::to_vec(&Value::Map(map)).expect("diagnostic bytes");
 
-        let err = serde_cbor::from_slice::<DiagnosticExport>(&bytes)
+        let err = crate::test_cbor::from_slice::<DiagnosticExport>(&bytes)
             .expect_err("unknown diagnostic field must fail closed");
 
         assert!(err.to_string().contains("future_field"));

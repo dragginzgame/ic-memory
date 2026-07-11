@@ -653,6 +653,37 @@ mod tests {
     }
 
     #[test]
+    fn memory_manager_range_authority_deserialization_rejects_overlap() {
+        let first = MemoryManagerAuthorityRecord::new(
+            MemoryManagerIdRange::new(10, 99).expect("first range"),
+            "framework_a",
+            MemoryManagerRangeMode::Reserved,
+            None,
+        )
+        .expect("first record");
+        let second = MemoryManagerAuthorityRecord::new(
+            MemoryManagerIdRange::new(90, 120).expect("second range"),
+            "framework_b",
+            MemoryManagerRangeMode::Allowed,
+            None,
+        )
+        .expect("second record");
+        let value = crate::test_cbor::Value::Map(vec![(
+            crate::test_cbor::Value::Text("authorities".to_string()),
+            crate::test_cbor::Value::Array(vec![
+                crate::test_cbor::to_value(first).expect("first value"),
+                crate::test_cbor::to_value(second).expect("second value"),
+            ]),
+        )]);
+        let bytes = crate::test_cbor::to_vec(&value).expect("authority bytes");
+
+        let err = crate::test_cbor::from_slice::<MemoryManagerRangeAuthority>(&bytes)
+            .expect_err("decoded overlap must fail");
+
+        assert!(err.to_string().contains("overlaps"));
+    }
+
+    #[test]
     fn memory_manager_range_authority_diagnostic_export_is_stable() {
         let authority = MemoryManagerRangeAuthority::new()
             .allow_with_purpose(

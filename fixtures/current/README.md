@@ -6,9 +6,9 @@ Files ending in `.hex` contain lowercase hexadecimal bytes. Tests decode the
 hex into the actual durable bytes, recover or validate them, and re-encode the
 current output to catch accidental wire-format drift in reviewable text form.
 
-When a released durable shape must remain supported after a future format
-change, copy the relevant `current` fixtures into a versioned fixture directory
-before refreshing this directory.
+Intentional protocol hard cuts replace these fixtures in place. The repository
+does not retain versioned decoders, compatibility fixture directories, or
+legacy wire aliases.
 
 Fixture groups:
 

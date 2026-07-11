@@ -1,0 +1,11 @@
+error[E0599]: no function or associated item named `new` found for struct `CommittedAllocations` in the current scope
+ --> tests/ui/fabricate_committed_allocations.rs:4:44
+  |
+4 |     let _committed = CommittedAllocations::new(());
+  |                                            ^^^ function or associated item not found in `CommittedAllocations`
+  |
+help: there is a method `ne` with a similar name
+  |
+4 -     let _committed = CommittedAllocations::new(());
+4 +     let _committed = CommittedAllocations::ne(());
+  |

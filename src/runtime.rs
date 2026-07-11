@@ -1,10 +1,10 @@
 use crate::{
     AllocationBootstrap, AllocationDeclaration, AllocationHistory, AllocationLedger,
-    AllocationPolicy, AllocationSlotDescriptor, DeclarationSnapshot,
+    AllocationPolicy, AllocationSlotDescriptor, CommittedAllocations, DeclarationSnapshot,
     DefaultMemoryManagerDoctorReport, DiagnosticCheck, DiagnosticDeclaration, DiagnosticExport,
     DiagnosticMemorySize, DiagnosticRangeAuthority, DiagnosticStableCell,
     DiagnosticStableCellStatus, LedgerCommitError, STABLE_CELL_VALUE_OFFSET, StableCellLedgerError,
-    StableCellLedgerRecord, StableKey, ValidatedAllocations,
+    StableCellLedgerRecord, StableKey,
     physical::CommitStoreDiagnostic,
     registry::{
         StaticMemoryDeclaration, StaticMemoryDeclarationError, StaticMemoryRangeDeclaration,
@@ -43,7 +43,7 @@ thread_local! {
 }
 
 static EAGER_INIT_HOOKS: Mutex<Vec<fn()>> = Mutex::new(Vec::new());
-static VALIDATED_ALLOCATIONS: Mutex<Option<ValidatedAllocations>> = Mutex::new(None);
+static COMMITTED_ALLOCATIONS: Mutex<Option<CommittedAllocations>> = Mutex::new(None);
 static BOOTSTRAPPED: AtomicBool = AtomicBool::new(false);
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -95,11 +95,11 @@ pub enum RuntimeBootstrapError<P> {
 ///
 /// RuntimeOpenError
 ///
-/// Failure to open a validated allocation through the default runtime substrate.
+/// Failure to open a committed allocation through the default runtime substrate.
 #[non_exhaustive]
 #[derive(Clone, Debug, Eq, thiserror::Error, PartialEq)]
 pub enum RuntimeOpenError {
-    /// Runtime bootstrap has not published validated allocations.
+    /// Runtime bootstrap has not published committed allocations.
     #[error("ic-memory runtime has not completed bootstrap validation")]
     NotBootstrapped,
     /// Runtime state lock was poisoned.
@@ -108,27 +108,27 @@ pub enum RuntimeOpenError {
     /// Stable-key grammar failure.
     #[error(transparent)]
     StableKey(#[from] crate::StableKeyError),
-    /// The stable key was not present in the validated declaration set.
-    #[error("stable key '{0}' was not validated by ic-memory runtime bootstrap")]
-    StableKeyNotValidated(String),
+    /// The stable key was not present in the committed declaration set.
+    #[error("stable key '{0}' was not committed by ic-memory runtime bootstrap")]
+    StableKeyNotCommitted(String),
     /// Runtime governance stable keys are internal and cannot be opened through the public runtime.
     #[error("stable key '{stable_key}' is reserved for ic-memory runtime governance")]
     ReservedStableKey {
         /// Reserved stable key.
         stable_key: String,
     },
-    /// The validated slot is not a usable `MemoryManager` ID.
+    /// The committed slot is not a usable `MemoryManager` ID.
     #[error(transparent)]
     MemoryManagerSlot(#[from] MemoryManagerSlotError),
-    /// The requested memory ID does not match the validated stable-key binding.
+    /// The requested memory ID does not match the committed stable-key binding.
     #[error(
-        "stable key '{stable_key}' is validated for MemoryManager ID {validated_id}, not requested ID {requested_id}"
+        "stable key '{stable_key}' is committed for MemoryManager ID {committed_id}, not requested ID {requested_id}"
     )]
     MemoryIdMismatch {
         /// Stable key being opened.
         stable_key: String,
-        /// Validated MemoryManager ID.
-        validated_id: u8,
+        /// Committed MemoryManager ID.
+        committed_id: u8,
         /// Requested MemoryManager ID.
         requested_id: u8,
     },
@@ -202,12 +202,12 @@ pub fn is_default_memory_manager_bootstrapped() -> bool {
     BOOTSTRAPPED.load(Ordering::SeqCst)
 }
 
-/// Return the published validated allocations for the default runtime substrate.
-pub fn validated_allocations() -> Result<ValidatedAllocations, RuntimeOpenError> {
+/// Return the published committed allocations for the default runtime substrate.
+pub fn committed_allocations() -> Result<CommittedAllocations, RuntimeOpenError> {
     if !is_default_memory_manager_bootstrapped() {
         return Err(RuntimeOpenError::NotBootstrapped);
     }
-    VALIDATED_ALLOCATIONS
+    COMMITTED_ALLOCATIONS
         .lock()
         .map_err(|_| RuntimeOpenError::RuntimeLockPoisoned)?
         .clone()
@@ -216,7 +216,7 @@ pub fn validated_allocations() -> Result<ValidatedAllocations, RuntimeOpenError>
 
 /// Bootstrap the default `MemoryManager<DefaultMemoryImpl>` runtime using generic policy.
 pub fn bootstrap_default_memory_manager()
--> Result<ValidatedAllocations, RuntimeBootstrapError<Infallible>> {
+-> Result<CommittedAllocations, RuntimeBootstrapError<Infallible>> {
     bootstrap_default_memory_manager_with_policy(&NoopPolicy)
 }
 
@@ -226,7 +226,7 @@ pub fn bootstrap_default_memory_manager()
 ///
 /// 1. `ic-memory` always owns its governance range.
 /// 2. If any user range is registered, all `MemoryManager` declarations must
-///    belong to the range claimed by their declaring crate.
+///    belong to the range claimed by their authority.
 /// 3. The caller-supplied [`AllocationPolicy`] then applies framework-specific
 ///    namespace and lifecycle rules.
 ///
@@ -236,9 +236,9 @@ pub fn bootstrap_default_memory_manager()
 /// for that space and enforce the rule in its [`AllocationPolicy`].
 pub fn bootstrap_default_memory_manager_with_policy<P: AllocationPolicy>(
     policy: &P,
-) -> Result<ValidatedAllocations, RuntimeBootstrapError<P::Error>> {
-    if let Ok(validated) = validated_allocations() {
-        return Ok(validated);
+) -> Result<CommittedAllocations, RuntimeBootstrapError<P::Error>> {
+    if let Ok(committed) = committed_allocations() {
+        return Ok(committed);
     }
 
     run_eager_init_hooks().map_err(|_err| RuntimeBootstrapError::RuntimeLockPoisoned)?;
@@ -258,24 +258,27 @@ pub fn bootstrap_default_memory_manager_with_policy<P: AllocationPolicy>(
     };
     let genesis = AllocationLedger::new(0, AllocationHistory::default())?;
 
-    let validated = with_default_ledger_cell(
-        |cell| -> Result<ValidatedAllocations, RuntimeBootstrapError<P::Error>> {
+    let committed = with_default_ledger_cell(
+        |cell| -> Result<CommittedAllocations, RuntimeBootstrapError<P::Error>> {
             let mut record = cell.get().clone();
             let mut bootstrap = AllocationBootstrap::new(record.store_mut());
             let commit = bootstrap
                 .initialize_validate_and_commit(&genesis, snapshot, &policy, None)
                 .map_err(runtime_bootstrap_error_from_bootstrap)?;
+            let (ledger, validated) = commit.into_parts();
             set_default_ledger_cell(cell, record)?;
-            Ok(external_runtime_allocations(commit.validated))
+            Ok(external_runtime_allocations(
+                validated.confirm_persisted(ledger.current_generation()),
+            ))
         },
     )?;
 
-    publish_validated_allocations(validated.clone())?;
+    publish_committed_allocations(committed.clone())?;
     BOOTSTRAPPED.store(true, Ordering::SeqCst);
-    Ok(validated)
+    Ok(committed)
 }
 
-/// Open a validated `MemoryManager` memory by stable key and expected ID.
+/// Open a committed `MemoryManager` memory by stable key and expected ID.
 pub fn open_default_memory_manager_memory(
     stable_key: &str,
     id: u8,
@@ -286,15 +289,15 @@ pub fn open_default_memory_manager_memory(
             stable_key: stable_key.to_string(),
         });
     }
-    let validated = validated_allocations()?;
-    let slot = validated
+    let committed = committed_allocations()?;
+    let slot = committed
         .slot_for(&key)
-        .ok_or_else(|| RuntimeOpenError::StableKeyNotValidated(stable_key.to_string()))?;
-    let validated_id = slot.memory_manager_id()?;
-    if validated_id != id {
+        .ok_or_else(|| RuntimeOpenError::StableKeyNotCommitted(stable_key.to_string()))?;
+    let committed_id = slot.memory_manager_id()?;
+    if committed_id != id {
         return Err(RuntimeOpenError::MemoryIdMismatch {
             stable_key: stable_key.to_string(),
-            validated_id,
+            committed_id,
             requested_id: id,
         });
     }
@@ -383,7 +386,7 @@ pub fn default_memory_manager_doctor_report() -> DefaultMemoryManagerDoctorRepor
                 .iter()
                 .map(|registration| {
                     DiagnosticDeclaration::new(
-                        registration.declaring_crate(),
+                        registration.authority(),
                         registration.declaration().clone(),
                     )
                 })
@@ -483,8 +486,8 @@ fn ensure_default_ledger_cell_capacity<P>(
     Ok(())
 }
 
-fn external_runtime_allocations(validated: ValidatedAllocations) -> ValidatedAllocations {
-    validated.without_stable_key(IC_MEMORY_LEDGER_STABLE_KEY)
+fn external_runtime_allocations(committed: CommittedAllocations) -> CommittedAllocations {
+    committed.without_stable_key_prefix(crate::IC_MEMORY_STABLE_KEY_PREFIX)
 }
 
 fn default_memory_manager_memory(id: u8) -> VirtualMemory<DefaultMemoryImpl> {
@@ -659,12 +662,12 @@ fn diagnostic_genesis_recovered_ledger() -> Result<crate::RecoveredLedger, Strin
         .map_err(|err| format!("genesis ledger: {err}"))
 }
 
-fn publish_validated_allocations<P>(
-    validated: ValidatedAllocations,
+fn publish_committed_allocations<P>(
+    committed: CommittedAllocations,
 ) -> Result<(), RuntimeBootstrapError<P>> {
-    *VALIDATED_ALLOCATIONS
+    *COMMITTED_ALLOCATIONS
         .lock()
-        .map_err(|_| RuntimeBootstrapError::RuntimeLockPoisoned)? = Some(validated);
+        .map_err(|_| RuntimeBootstrapError::RuntimeLockPoisoned)? = Some(committed);
     Ok(())
 }
 
@@ -681,16 +684,18 @@ fn declaration_snapshot(
     DeclarationSnapshot::new(declarations).map_err(StaticMemoryDeclarationError::Declaration)
 }
 
-fn declaration_metadata(registrations: &[StaticMemoryDeclaration]) -> BTreeMap<String, String> {
+fn declaration_metadata(
+    registrations: &[StaticMemoryDeclaration],
+) -> BTreeMap<String, RuntimeDeclarationAuthority> {
     let mut metadata = BTreeMap::new();
     metadata.insert(
         IC_MEMORY_LEDGER_STABLE_KEY.to_string(),
-        IC_MEMORY_AUTHORITY_OWNER.to_string(),
+        RuntimeDeclarationAuthority::Internal,
     );
     for registration in registrations {
         metadata.insert(
             registration.declaration().stable_key().as_str().to_string(),
-            registration.declaring_crate().to_string(),
+            RuntimeDeclarationAuthority::External(registration.authority().to_string()),
         );
     }
     metadata
@@ -743,17 +748,22 @@ fn runtime_bootstrap_error_from_bootstrap<P>(
 struct RuntimeMemoryManagerPolicy<'a, P> {
     range_authority: MemoryManagerRangeAuthority,
     user_ranges_registered: bool,
-    declaration_metadata: BTreeMap<String, String>,
+    declaration_metadata: BTreeMap<String, RuntimeDeclarationAuthority>,
     custom_policy: &'a P,
+}
+
+enum RuntimeDeclarationAuthority {
+    Internal,
+    External(String),
 }
 
 impl<P: AllocationPolicy> AllocationPolicy for RuntimeMemoryManagerPolicy<'_, P> {
     type Error = RuntimePolicyError<P::Error>;
 
     fn validate_key(&self, key: &StableKey) -> Result<(), Self::Error> {
-        let declaring_crate = self.declaring_crate(key)?;
+        let authority = self.declaration_authority(key)?;
         if crate::is_ic_memory_stable_key(key.as_str())
-            && declaring_crate != IC_MEMORY_AUTHORITY_OWNER
+            && !matches!(authority, RuntimeDeclarationAuthority::Internal)
         {
             return Err(RuntimePolicyError::ReservedStableKeyAuthority {
                 stable_key: key.as_str().to_string(),
@@ -789,10 +799,12 @@ impl<P: AllocationPolicy> AllocationPolicy for RuntimeMemoryManagerPolicy<'_, P>
 }
 
 impl<P: AllocationPolicy> RuntimeMemoryManagerPolicy<'_, P> {
-    fn declaring_crate(&self, key: &StableKey) -> Result<&str, RuntimePolicyError<P::Error>> {
+    fn declaration_authority(
+        &self,
+        key: &StableKey,
+    ) -> Result<&RuntimeDeclarationAuthority, RuntimePolicyError<P::Error>> {
         self.declaration_metadata
             .get(key.as_str())
-            .map(String::as_str)
             .ok_or_else(|| RuntimePolicyError::MissingDeclarationMetadata(key.as_str().to_string()))
     }
 
@@ -801,15 +813,26 @@ impl<P: AllocationPolicy> RuntimeMemoryManagerPolicy<'_, P> {
         key: &StableKey,
         slot: &AllocationSlotDescriptor,
     ) -> Result<(), RuntimePolicyError<P::Error>> {
-        let declaring_crate = self.declaring_crate(key)?;
+        let authority = self.declaration_authority(key)?;
         // Range claims are authoritative generic policy in the default runtime.
         // Once any user range is registered, every user declaration must fit
-        // the declaring crate's claimed range. With no user ranges, only the
+        // the authority's claimed range. With no user ranges, only the
         // internal ic-memory governance range is enforced here and custom
         // policy may decide application-space ownership.
-        if declaring_crate == IC_MEMORY_AUTHORITY_OWNER || self.user_ranges_registered {
+        if matches!(authority, RuntimeDeclarationAuthority::Internal) {
             self.range_authority
-                .validate_slot_authority(slot, declaring_crate)?;
+                .validate_slot_authority(slot, IC_MEMORY_AUTHORITY_OWNER)?;
+            return Ok(());
+        }
+
+        let RuntimeDeclarationAuthority::External(authority) = authority else {
+            return Err(RuntimePolicyError::MissingDeclarationMetadata(
+                key.as_str().to_string(),
+            ));
+        };
+        if self.user_ranges_registered {
+            self.range_authority
+                .validate_slot_authority(slot, authority)?;
             return Ok(());
         }
 
@@ -823,7 +846,7 @@ impl<P: AllocationPolicy> RuntimeMemoryManagerPolicy<'_, P> {
             .is_some()
         {
             self.range_authority
-                .validate_slot_authority(slot, declaring_crate)?;
+                .validate_slot_authority(slot, authority)?;
         }
         Ok(())
     }
@@ -862,7 +885,7 @@ pub fn reset_for_tests() {
         .lock()
         .expect("ic-memory eager-init queue poisoned")
         .clear();
-    *VALIDATED_ALLOCATIONS
+    *COMMITTED_ALLOCATIONS
         .lock()
         .expect("ic-memory runtime validation state poisoned") = None;
     BOOTSTRAPPED.store(false, Ordering::SeqCst);
@@ -947,7 +970,7 @@ mod tests {
 
         assert!(validated.declarations().is_empty());
         assert!(
-            validated_allocations()
+            committed_allocations()
                 .expect("published allocations")
                 .declarations()
                 .is_empty()
