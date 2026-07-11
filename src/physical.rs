@@ -29,18 +29,23 @@ fn select_authoritative_slot<'slot>(
     slot0: Option<&'slot CommittedGenerationBytes>,
     slot1: Option<&'slot CommittedGenerationBytes>,
 ) -> Result<AuthoritativeSlot<'slot>, CommitRecoveryError> {
-    let slot0 = slot0
-        .filter(|slot| slot.validates())
-        .map(|record| AuthoritativeSlot {
-            index: CommitSlotIndex::Slot0,
-            record,
+    let slot0_invalid = slot0.is_some_and(|slot| !slot.validates());
+    let slot1_invalid = slot1.is_some_and(|slot| !slot.validates());
+    if slot0_invalid || slot1_invalid {
+        return Err(CommitRecoveryError::InvalidCommitSlots {
+            slot0_invalid,
+            slot1_invalid,
         });
-    let slot1 = slot1
-        .filter(|slot| slot.validates())
-        .map(|record| AuthoritativeSlot {
-            index: CommitSlotIndex::Slot1,
-            record,
-        });
+    }
+
+    let slot0 = slot0.map(|record| AuthoritativeSlot {
+        index: CommitSlotIndex::Slot0,
+        record,
+    });
+    let slot1 = slot1.map(|record| AuthoritativeSlot {
+        index: CommitSlotIndex::Slot1,
+        record,
+    });
 
     match (slot0, slot1) {
         (Some(left), Some(right))
@@ -143,21 +148,26 @@ impl CommittedGenerationBytes {
 /// ledger flow rather than manipulating encoded physical commit slots directly.
 ///
 /// Writers stage a complete generation record into the inactive slot. Readers
-/// recover by selecting the highest-generation valid slot. If the enclosing
-/// record remains decodable, a corrupt newer slot cannot override an older
-/// valid slot.
+/// recover by selecting the highest-generation slot after every present slot
+/// passes marker and checksum validation. Any present invalid slot fails
+/// closed; recovery never rolls durable allocation history back to an older
+/// generation.
 ///
 /// In the default runtime both slots are serialized together inside one
 /// `ic-stable-structures::Cell`; they are not independently atomic physical
 /// writes. ICP message execution supplies atomic stable-memory commit and
 /// rollback. The checksum is for accidental-corruption detection only. It is
 /// not a cryptographic hash and does not provide adversarial tamper resistance.
+///
+
 #[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct DualCommitStore {
     /// First commit slot.
+    #[serde(deserialize_with = "crate::cbor::deserialize_present_option")]
     pub(crate) slot0: Option<CommittedGenerationBytes>,
     /// Second commit slot.
+    #[serde(deserialize_with = "crate::cbor::deserialize_present_option")]
     pub(crate) slot1: Option<CommittedGenerationBytes>,
 }
 
@@ -193,11 +203,12 @@ impl DualCommitStore {
     fn inactive_slot_index(&self) -> CommitSlotIndex {
         match self.authoritative_slot() {
             Ok(authoritative) => authoritative.index.opposite(),
-            Err(_) => CommitSlotIndex::Slot0,
+            Err(_) if self.slot0.is_none() => CommitSlotIndex::Slot0,
+            Err(_) => CommitSlotIndex::Slot1,
         }
     }
 
-    /// Return the highest-generation valid committed record.
+    /// Return the authoritative committed record after validating present slots.
     pub fn authoritative(&self) -> Result<&CommittedGenerationBytes, CommitRecoveryError> {
         self.authoritative_slot()
             .map(|authoritative| authoritative.record)
@@ -296,6 +307,8 @@ impl DualCommitStore {
 /// CommitStoreDiagnostic
 ///
 /// Read-only diagnostic summary of protected commit recovery state.
+///
+
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct CommitStoreDiagnostic {
@@ -303,25 +316,20 @@ pub struct CommitStoreDiagnostic {
     pub slot0: CommitSlotDiagnostic,
     /// Second physical commit slot diagnostic.
     pub slot1: CommitSlotDiagnostic,
-    /// Highest valid generation selected by recovery.
-    pub authoritative_generation: Option<u64>,
-    /// Recovery error when no authoritative generation can be selected.
-    pub recovery_error: Option<CommitRecoveryError>,
+    /// Authoritative generation or the recovery error that prevented selection.
+    pub recovery: Result<u64, CommitRecoveryError>,
 }
 
 impl CommitStoreDiagnostic {
     /// Build a read-only recovery diagnostic from a dual commit store.
     #[must_use]
     pub fn from_store(store: &DualCommitStore) -> Self {
-        let (authoritative_generation, recovery_error) = match store.authoritative_slot() {
-            Ok(slot) => (Some(slot.record.generation()), None),
-            Err(err) => (None, Some(err)),
-        };
         Self {
             slot0: CommitSlotDiagnostic::from_slot(store.slot0()),
             slot1: CommitSlotDiagnostic::from_slot(store.slot1()),
-            authoritative_generation,
-            recovery_error,
+            recovery: store
+                .authoritative_slot()
+                .map(|slot| slot.record.generation()),
         }
     }
 }
@@ -330,30 +338,35 @@ impl CommitStoreDiagnostic {
 /// CommitSlotDiagnostic
 ///
 /// Read-only diagnostic summary for one protected commit slot.
+///
+
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
-pub struct CommitSlotDiagnostic {
-    /// Whether a physical slot record is present.
-    pub present: bool,
-    /// Generation encoded by the slot, if present.
-    pub generation: Option<u64>,
-    /// Whether marker and checksum validation succeeded.
-    pub valid: bool,
+pub enum CommitSlotDiagnostic {
+    /// No physical slot record is present.
+    Empty,
+    /// A present slot passed marker and checksum validation.
+    Valid {
+        /// Generation encoded by the valid slot.
+        generation: u64,
+    },
+    /// A present slot failed marker or checksum validation.
+    Invalid {
+        /// Generation encoded by the invalid slot.
+        generation: u64,
+    },
 }
 
 impl CommitSlotDiagnostic {
     fn from_slot(slot: Option<&CommittedGenerationBytes>) -> Self {
         match slot {
-            Some(record) => Self {
-                present: true,
-                generation: Some(record.generation()),
-                valid: record.validates(),
+            Some(record) if record.validates() => Self::Valid {
+                generation: record.generation(),
             },
-            None => Self {
-                present: false,
-                generation: None,
-                valid: false,
+            Some(record) => Self::Invalid {
+                generation: record.generation(),
             },
+            None => Self::Empty,
         }
     }
 }
@@ -362,12 +375,24 @@ impl CommitSlotDiagnostic {
 /// CommitRecoveryError
 ///
 /// Protected commit recovery failure.
+///
+
 #[non_exhaustive]
 #[derive(Clone, Copy, Debug, Deserialize, Eq, thiserror::Error, PartialEq, Serialize)]
 pub enum CommitRecoveryError {
-    /// No committed slot passed marker and checksum validation.
-    #[error("no valid committed ledger generation")]
+    /// No committed slot is present.
+    #[error("no committed ledger generation is present")]
     NoValidGeneration,
+    /// At least one present commit slot failed marker/checksum validation.
+    #[error(
+        "present commit slot validation failed (slot0_invalid={slot0_invalid}, slot1_invalid={slot1_invalid})"
+    )]
+    InvalidCommitSlots {
+        /// Whether the first present slot failed validation.
+        slot0_invalid: bool,
+        /// Whether the second present slot failed validation.
+        slot1_invalid: bool,
+    },
     /// Both commit slots validated at the same generation but contained different bytes.
     #[error("ambiguous committed ledger generation {generation}")]
     AmbiguousGeneration {
@@ -465,26 +490,37 @@ mod tests {
     }
 
     #[test]
-    fn corrupt_newer_slot_leaves_prior_generation_authoritative() {
+    fn corrupt_newer_slot_fails_closed() {
         let mut store = DualCommitStore::default();
         store.commit_payload(payload(1)).expect("first commit");
         store.write_corrupt_inactive_slot(1, payload(2));
 
-        let authoritative = store.authoritative().expect("authoritative");
+        let err = store.authoritative().expect_err("corrupt slot");
 
-        assert_eq!(authoritative.generation, 0);
-        assert_eq!(authoritative.payload, payload(1));
+        assert_eq!(
+            err,
+            CommitRecoveryError::InvalidCommitSlots {
+                slot0_invalid: false,
+                slot1_invalid: true,
+            }
+        );
     }
 
     #[test]
-    fn no_valid_generation_fails_closed() {
+    fn two_invalid_commit_slots_fail_closed() {
         let mut store = DualCommitStore::default();
         store.write_corrupt_inactive_slot(0, payload(1));
         store.write_corrupt_inactive_slot(1, payload(2));
 
-        let err = store.authoritative().expect_err("no valid slot");
+        let err = store.authoritative().expect_err("invalid slots");
 
-        assert_eq!(err, CommitRecoveryError::NoValidGeneration);
+        assert_eq!(
+            err,
+            CommitRecoveryError::InvalidCommitSlots {
+                slot0_invalid: true,
+                slot1_invalid: true,
+            }
+        );
     }
 
     #[test]
@@ -536,32 +572,44 @@ mod tests {
     }
 
     #[test]
-    fn diagnostic_reports_authoritative_generation_and_corrupt_slots() {
+    fn diagnostic_reports_corrupt_slots_without_an_authoritative_generation() {
         let mut store = DualCommitStore::default();
         store.commit_payload(payload(1)).expect("first commit");
         store.write_corrupt_inactive_slot(1, payload(2));
 
         let diagnostic = store.diagnostic();
 
-        assert_eq!(diagnostic.authoritative_generation, Some(0));
-        assert_eq!(diagnostic.recovery_error, None);
-        assert_eq!(diagnostic.slot0.generation, Some(0));
-        assert!(diagnostic.slot0.valid);
-        assert_eq!(diagnostic.slot1.generation, Some(1));
-        assert!(!diagnostic.slot1.valid);
+        assert_eq!(
+            diagnostic.recovery,
+            Err(CommitRecoveryError::InvalidCommitSlots {
+                slot0_invalid: false,
+                slot1_invalid: true,
+            })
+        );
+        assert_eq!(
+            diagnostic.slot0,
+            CommitSlotDiagnostic::Valid { generation: 0 }
+        );
+        assert_eq!(
+            diagnostic.slot1,
+            CommitSlotDiagnostic::Invalid { generation: 1 }
+        );
+        let bytes = crate::test_cbor::to_vec(&diagnostic).expect("diagnostic bytes");
+        let decoded: CommitStoreDiagnostic =
+            crate::test_cbor::from_slice(&bytes).expect("diagnostic round trip");
+        assert_eq!(decoded, diagnostic);
     }
 
     #[test]
     fn diagnostic_reports_no_valid_generation_for_empty_store() {
         let diagnostic = DualCommitStore::default().diagnostic();
 
-        assert_eq!(diagnostic.authoritative_generation, None);
         assert_eq!(
-            diagnostic.recovery_error,
-            Some(CommitRecoveryError::NoValidGeneration)
+            diagnostic.recovery,
+            Err(CommitRecoveryError::NoValidGeneration)
         );
-        assert!(!diagnostic.slot0.present);
-        assert!(!diagnostic.slot1.present);
+        assert_eq!(diagnostic.slot0, CommitSlotDiagnostic::Empty);
+        assert_eq!(diagnostic.slot1, CommitSlotDiagnostic::Empty);
     }
 
     #[test]
@@ -575,15 +623,21 @@ mod tests {
     }
 
     #[test]
-    fn commit_after_corrupt_slot_advances_from_prior_valid_generation() {
+    fn commit_after_corrupt_slot_fails_closed() {
         let mut store = DualCommitStore::default();
         store.commit_payload(payload(1)).expect("first commit");
         store.write_corrupt_inactive_slot(1, payload(2));
-        store.commit_payload(payload(3)).expect("third commit");
 
-        let authoritative = store.authoritative().expect("authoritative");
+        let err = store
+            .commit_payload(payload(3))
+            .expect_err("corrupt history must not be overwritten");
 
-        assert_eq!(authoritative.generation, 1);
-        assert_eq!(authoritative.payload, payload(3));
+        assert_eq!(
+            err,
+            CommitRecoveryError::InvalidCommitSlots {
+                slot0_invalid: false,
+                slot1_invalid: true,
+            }
+        );
     }
 }

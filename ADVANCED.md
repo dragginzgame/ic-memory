@@ -118,7 +118,9 @@ derived implicitly from package metadata.
 
 Frameworks or libraries that need custom policy metadata can inspect
 `static_memory_declarations()` and `static_memory_range_declarations()`, then
-bootstrap with `bootstrap_default_memory_manager_with_policy(...)`.
+bootstrap with `bootstrap_default_memory_manager_with_policy(...)`. The custom
+policy receives external declarations only; ic-memory validates its private
+ledger declaration internally.
 
 ## Default Runtime Diagnostics
 
@@ -127,6 +129,10 @@ default `MemoryManager` runtime before or after bootstrap. It includes
 stable-cell status, protected commit recovery, recovered ledger export,
 registered declarations, registered and effective range authority, generic
 validation preflight, and live memory sizes for recovered ledger records.
+
+Mutually exclusive diagnostic outcomes use enums or `Result` values instead of
+nullable field pairs, so machine-readable reports cannot express contradictory
+success and failure states.
 
 Before bootstrap, the doctor runs deferred `eager_init!` hooks so the report
 matches the declaration set bootstrap would see. The validation field covers
@@ -150,9 +156,10 @@ only then open stable-memory handles
 ```
 
 Decoded ledger and declaration DTOs are not trusted just because serde accepted
-them. Recovery first selects a valid physical generation, decodes the logical
-payload envelope, decodes the current-format `ic-memory` CBOR ledger payload,
-checks the physical/logical generation binding, and validates committed ledger
+them. Recovery first validates every present physical commit slot and selects
+the authoritative generation, decodes the logical payload envelope, decodes the
+current-format `ic-memory` CBOR ledger payload, checks the physical/logical
+generation binding, and validates committed ledger
 integrity. Only the resulting `RecoveredLedger` proof can be passed to
 declaration validation to produce pre-commit `ValidatedAllocations`.
 
@@ -362,5 +369,5 @@ standalone boundary settles.
 The two commit slots are serialized together inside the stable cell and rely on
 ICP message execution for atomic commit and rollback. If the enclosing record
 remains decodable, their non-cryptographic checksums detect accidental slot
-corruption and permit fallback to the other valid generation. They do not
-provide adversarial tamper resistance.
+corruption. Any present invalid slot fails closed instead of falling back to an
+older generation. The checksums do not provide adversarial tamper resistance.

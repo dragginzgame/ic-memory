@@ -609,11 +609,7 @@ mod tests {
         assert_eq!(committed.current_generation, 2);
         assert_eq!(
             committed.allocation_history.records()[0].state(),
-            AllocationState::Retired
-        );
-        assert_eq!(
-            committed.allocation_history.records()[0].retired_generation(),
-            Some(2)
+            AllocationState::Retired { generation: 2 }
         );
     }
 

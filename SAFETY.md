@@ -59,7 +59,9 @@ authorization, or endpoint safety.
   disagree in a way the recovery rules cannot prove safe.
 - Identical duplicate commit slots at the same generation are recoverable
   deterministically.
-- A newer corrupt slot cannot override an older valid slot.
+- Every present commit slot must pass marker and checksum validation. Recovery
+  must not discard an invalid slot and fall back to an older generation because
+  doing so could forget committed allocation history.
 - Recovered ledgers are untrusted until current-format and committed-integrity
   checks succeed.
 - Stable-cell ledger storage used by the default runtime must be preflighted
@@ -106,8 +108,8 @@ and `ValidatedAllocations` are not open authority.
 - A retired slot cannot be claimed by a different stable key.
 - Retirement requires the stable key and slot to match the historical allocation
   record.
-- Retired records must carry a retired generation, and non-retired records must
-  not carry one.
+- The retired lifecycle state carries its committed retirement generation
+  directly; a retired record without that generation is unrepresentable.
 - Tombstones are preserved for rollback safety, diagnostics, and historical ABI
   integrity.
 
@@ -117,9 +119,9 @@ The redundant commit slots are serialized together inside the default
 `ic-stable-structures::Cell`; they are not independently atomic physical
 writes. ICP message execution provides atomic stable-memory commit and rollback.
 If the enclosing record remains decodable, the slot checksum can detect
-accidental corruption and allow recovery from the other valid slot. It is
-non-cryptographic and does not provide adversarial tamper resistance,
-authenticity, or authorization.
+accidental corruption. Any present invalid slot fails closed; the other slot is
+not a rollback path. The checksum is non-cryptographic and does not provide
+adversarial tamper resistance, authenticity, or authorization.
 
 Public durable structs are DTOs. Decoded, deserialized, and diagnostic values
 are untrusted until the relevant recovery, current-format, integrity,

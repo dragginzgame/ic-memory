@@ -11,9 +11,13 @@ use crate::{key::StableKey, slot::AllocationSlotDescriptor};
 /// substrate-specific range before staging a generation.
 ///
 /// In the default `MemoryManager` runtime, registered range claims are checked
-/// before this policy. Framework adapters should decide whether `ic-memory`
-/// range claims or their own policy is authoritative for a given ID space, then
-/// register ranges accordingly.
+/// before this policy, and this policy receives external declarations only.
+/// The internal allocation-ledger declaration remains exclusively governed by
+/// ic-memory. Framework adapters should decide whether registered range claims
+/// or their own policy is authoritative for application ID space, then register
+/// ranges accordingly.
+///
+
 pub trait AllocationPolicy {
     /// Policy error type.
     type Error;

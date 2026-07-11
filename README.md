@@ -1,7 +1,7 @@
 # ic-memory
 
 <p align="center">
-  <img src="images/under-construction.gif" alt="Animated warning banner" width="400">
+  <img src="https://raw.githubusercontent.com/dragginzgame/ic-memory/main/images/under-construction.gif" alt="Animated warning banner" width="400">
 </p>
 
 <p align="center">
@@ -35,7 +35,7 @@ You probably do not need it for a tiny canister with one hand-written stable
 structure and a fixed layout.
 
 <p align="center">
-  <img src="images/balloon-meme.jpg" alt="Meme showing ic-memory keeping ic-stable-structures stable memory allocations from drifting" width="375">
+  <img src="https://raw.githubusercontent.com/dragginzgame/ic-memory/main/images/balloon-meme.jpg" alt="Meme showing ic-memory keeping ic-stable-structures stable memory allocations from drifting" width="375">
 </p>
 
 ## The Bug
@@ -65,7 +65,7 @@ Declare both direct dependencies:
 
 ```toml
 [dependencies]
-ic-memory = "0.9.0"
+ic-memory = "0.10.0"
 ic-stable-structures = "0.7.2"
 ```
 
@@ -191,9 +191,9 @@ stable-cell status, protected commit recovery state, recovered ledger export,
 registered declarations, range authority, validation preflight, and live
 `MemoryManager` slot sizes when they can be recovered.
 
-Use `default_memory_manager_commit_recovery_diagnostic()` when you only need the
-redundant commit-slot status, including empty, corrupt, ambiguous, or
-recoverable physical ledger state.
+Use `default_memory_manager_commit_recovery_diagnostic()` when you only need
+commit-slot presence and validity, the selected authoritative generation, and
+any corruption or ambiguity error.
 
 ## Stable Keys
 
@@ -232,9 +232,12 @@ bootstrap once
 only then open stable memory
 ```
 
-Framework authors and policy adapters should read [ADVANCED.md](ADVANCED.md).
-The non-negotiable invariants are recorded in [SAFETY.md](SAFETY.md). The
-protocol whitepaper lives in [whitepaper/src/SUMMARY.md](whitepaper/src/SUMMARY.md)
+Framework authors and policy adapters should read
+[ADVANCED.md](https://github.com/dragginzgame/ic-memory/blob/main/ADVANCED.md).
+The non-negotiable invariants are recorded in
+[SAFETY.md](https://github.com/dragginzgame/ic-memory/blob/main/SAFETY.md). The
+protocol whitepaper lives in
+[whitepaper/src/SUMMARY.md](https://github.com/dragginzgame/ic-memory/blob/main/whitepaper/src/SUMMARY.md)
 and builds as an mdBook with `make maintainer-build`.
 
 `ic-memory` is early infrastructure extracted from Canic. It owns allocation

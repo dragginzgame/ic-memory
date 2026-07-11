@@ -42,13 +42,13 @@ $$
 Each allocation record has:
 
 $$
-r = (k, s, state, first, last, retiredAt, schemaHistory)
+r = (k, s, state, first, last, schemaHistory)
 $$
 
 where `k` is in `K`, `s` is in `S`, and:
 
 $$
-state \in \{\mathsf{Reserved}, \mathsf{Active}, \mathsf{Retired}\}
+state \in \{\mathsf{Reserved}, \mathsf{Active}, \mathsf{Retired}(g_r)\}
 $$
 
 `schemaHistory` is diagnostic metadata observed across committed generations.
@@ -78,5 +78,9 @@ A stable key `k` is retired at slot `s`, written `RetiredAt(L,k,s)`, when:
 
 $$
 \exists r \in L.\; r.key = k \land r.slot = s
-\land r.state = \mathsf{Retired}
+\land r.state = \mathsf{Retired}(g_r)
 $$
+
+The retirement generation `g_r` is part of the retired lifecycle state rather
+than separate nullable metadata. Therefore a retired record without a
+retirement generation, and a live record with one, cannot be represented.

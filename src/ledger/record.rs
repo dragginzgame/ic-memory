@@ -58,6 +58,8 @@ pub struct AllocationHistory {
 /// Records are historical facts, not live handles. Fields are private so stale
 /// or invalid ownership state cannot be assembled through public struct
 /// literals; use accessors for diagnostics and ledger methods for mutation.
+///
+
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct AllocationRecord {
@@ -71,8 +73,6 @@ pub struct AllocationRecord {
     pub(crate) first_generation: u64,
     /// Latest committed generation that observed this allocation declaration.
     pub(crate) last_seen_generation: u64,
-    /// Generation that explicitly retired this allocation.
-    pub(crate) retired_generation: Option<u64>,
     /// Per-generation schema metadata history.
     pub(crate) schema_history: Vec<SchemaMetadataRecord>,
 }
@@ -134,6 +134,8 @@ impl AllocationRetirement {
 /// AllocationState
 ///
 /// Allocation lifecycle state.
+///
+
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub enum AllocationState {
     /// Slot is reserved for a future allocation identity.
@@ -141,7 +143,10 @@ pub enum AllocationState {
     /// Slot is active and may be opened after validation.
     Active,
     /// Slot was explicitly retired and remains tombstoned.
-    Retired,
+    Retired {
+        /// Committed generation that retired the allocation.
+        generation: u64,
+    },
 }
 
 ///
@@ -165,6 +170,8 @@ pub struct SchemaMetadataRecord {
 /// GenerationRecord
 ///
 /// Diagnostic metadata for one committed ledger generation.
+///
+
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct GenerationRecord {
@@ -173,10 +180,12 @@ pub struct GenerationRecord {
     /// Parent generation.
     pub(crate) parent_generation: u64,
     /// Optional binary/runtime fingerprint.
+    #[serde(deserialize_with = "crate::cbor::deserialize_present_option")]
     pub(crate) runtime_fingerprint: Option<String>,
     /// Number of declarations in the generation.
     pub(crate) declaration_count: u32,
     /// Optional commit timestamp supplied by the integration layer.
+    #[serde(deserialize_with = "crate::cbor::deserialize_present_option")]
     pub(crate) committed_at: Option<u64>,
 }
 
@@ -353,8 +362,7 @@ impl GenerationRecord {
 }
 
 impl AllocationRecord {
-    /// Create a new allocation record from a declaration.
-    pub(crate) fn from_declaration(
+    fn from_declaration(
         generation: u64,
         declaration: AllocationDeclaration,
         state: AllocationState,
@@ -365,9 +373,16 @@ impl AllocationRecord {
             state,
             first_generation: generation,
             last_seen_generation: generation,
-            retired_generation: None,
             schema_history: vec![SchemaMetadataRecord::new(generation, declaration.schema)?],
         })
+    }
+
+    /// Create a new active allocation record from a declaration.
+    pub(crate) fn active(
+        generation: u64,
+        declaration: AllocationDeclaration,
+    ) -> Result<Self, SchemaMetadataError> {
+        Self::from_declaration(generation, declaration, AllocationState::Active)
     }
 
     /// Create a new reserved allocation record from a declaration.
@@ -406,12 +421,6 @@ impl AllocationRecord {
     #[must_use]
     pub const fn last_seen_generation(&self) -> u64 {
         self.last_seen_generation
-    }
-
-    /// Return the generation that explicitly retired this allocation, if any.
-    #[must_use]
-    pub const fn retired_generation(&self) -> Option<u64> {
-        self.retired_generation
     }
 
     /// Return the per-generation schema metadata history.

@@ -228,7 +228,7 @@ pub fn bootstrap_default_memory_manager()
 /// 2. If any user range is registered, all `MemoryManager` declarations must
 ///    belong to the range claimed by their authority.
 /// 3. The caller-supplied [`AllocationPolicy`] then applies framework-specific
-///    namespace and lifecycle rules.
+///    namespace and lifecycle rules to external declarations only.
 ///
 /// Framework adapters such as Canic should register only the ranges they want
 /// this generic runtime to enforce. If a framework wants its own policy to be
@@ -546,11 +546,7 @@ fn default_memory_manager_stable_cell_diagnostic() -> DefaultStableCellDiagnosti
     let memory_size = DiagnosticMemorySize::from_wasm_pages(memory.size());
     if memory.size() == 0 {
         return DefaultStableCellDiagnostic {
-            diagnostic: DiagnosticStableCell::new(
-                DiagnosticStableCellStatus::Empty,
-                memory_size,
-                None,
-            ),
+            diagnostic: DiagnosticStableCell::new(DiagnosticStableCellStatus::Empty, memory_size),
             record: Some(StableCellLedgerRecord::default()),
         };
     }
@@ -561,15 +557,15 @@ fn default_memory_manager_stable_cell_diagnostic() -> DefaultStableCellDiagnosti
             diagnostic: DiagnosticStableCell::new(
                 DiagnosticStableCellStatus::Readable,
                 memory_size,
-                None,
             ),
             record: Some(record),
         },
         Err(err) => DefaultStableCellDiagnostic {
             diagnostic: DiagnosticStableCell::new(
-                DiagnosticStableCellStatus::Corrupt,
+                DiagnosticStableCellStatus::Corrupt {
+                    error: err.to_string(),
+                },
                 memory_size,
-                Some(err.to_string()),
             ),
             record: None,
         },
@@ -586,15 +582,11 @@ fn diagnostic_range_authority(
                 .map(|registration| registration.record().clone())
                 .collect();
             match range_authority(ranges.clone()) {
-                Ok(authority) => {
-                    DiagnosticRangeAuthority::new(registered_records, Some(authority), None)
-                }
-                Err(err) => {
-                    DiagnosticRangeAuthority::new(registered_records, None, Some(err.to_string()))
-                }
+                Ok(authority) => DiagnosticRangeAuthority::new(registered_records, Ok(authority)),
+                Err(err) => DiagnosticRangeAuthority::new(registered_records, Err(err.to_string())),
             }
         }
-        Err(err) => DiagnosticRangeAuthority::new(Vec::new(), None, Some(err.to_string())),
+        Err(err) => DiagnosticRangeAuthority::new(Vec::new(), Err(err.to_string())),
     }
 }
 
@@ -762,9 +754,10 @@ impl<P: AllocationPolicy> AllocationPolicy for RuntimeMemoryManagerPolicy<'_, P>
 
     fn validate_key(&self, key: &StableKey) -> Result<(), Self::Error> {
         let authority = self.declaration_authority(key)?;
-        if crate::is_ic_memory_stable_key(key.as_str())
-            && !matches!(authority, RuntimeDeclarationAuthority::Internal)
-        {
+        if matches!(authority, RuntimeDeclarationAuthority::Internal) {
+            return Ok(());
+        }
+        if crate::is_ic_memory_stable_key(key.as_str()) {
             return Err(RuntimePolicyError::ReservedStableKeyAuthority {
                 stable_key: key.as_str().to_string(),
                 expected_authority: IC_MEMORY_AUTHORITY_OWNER,
@@ -781,6 +774,12 @@ impl<P: AllocationPolicy> AllocationPolicy for RuntimeMemoryManagerPolicy<'_, P>
         slot: &AllocationSlotDescriptor,
     ) -> Result<(), Self::Error> {
         self.validate_runtime_range(key, slot)?;
+        if matches!(
+            self.declaration_authority(key)?,
+            RuntimeDeclarationAuthority::Internal
+        ) {
+            return Ok(());
+        }
         self.custom_policy
             .validate_slot(key, slot)
             .map_err(RuntimePolicyError::Custom)
@@ -792,6 +791,12 @@ impl<P: AllocationPolicy> AllocationPolicy for RuntimeMemoryManagerPolicy<'_, P>
         slot: &AllocationSlotDescriptor,
     ) -> Result<(), Self::Error> {
         self.validate_runtime_range(key, slot)?;
+        if matches!(
+            self.declaration_authority(key)?,
+            RuntimeDeclarationAuthority::Internal
+        ) {
+            return Ok(());
+        }
         self.custom_policy
             .validate_reserved_slot(key, slot)
             .map_err(RuntimePolicyError::Custom)
@@ -905,6 +910,41 @@ mod tests {
 
     static EAGER_INIT_RAN: AtomicBool = AtomicBool::new(false);
 
+    struct ExternalOnlyPolicy;
+
+    impl AllocationPolicy for ExternalOnlyPolicy {
+        type Error = &'static str;
+
+        fn validate_key(&self, key: &StableKey) -> Result<(), Self::Error> {
+            if crate::is_ic_memory_stable_key(key.as_str()) {
+                return Err("internal key reached external policy");
+            }
+            Ok(())
+        }
+
+        fn validate_slot(
+            &self,
+            _key: &StableKey,
+            slot: &AllocationSlotDescriptor,
+        ) -> Result<(), Self::Error> {
+            if slot
+                .memory_manager_id()
+                .is_ok_and(|id| id <= crate::MEMORY_MANAGER_GOVERNANCE_MAX_ID)
+            {
+                return Err("internal slot reached external policy");
+            }
+            Ok(())
+        }
+
+        fn validate_reserved_slot(
+            &self,
+            key: &StableKey,
+            slot: &AllocationSlotDescriptor,
+        ) -> Result<(), Self::Error> {
+            self.validate_slot(key, slot)
+        }
+    }
+
     fn register_crate_a() {
         register_static_memory_manager_range(
             100,
@@ -982,6 +1022,36 @@ mod tests {
             panic!("internal ledger slot must stay private");
         };
         assert!(matches!(err, RuntimeOpenError::ReservedStableKey { .. }));
+    }
+
+    #[test]
+    fn custom_policy_validates_external_declarations_only() {
+        let _guard = TEST_REGISTRY_LOCK.lock().expect("test lock poisoned");
+        reset_for_tests();
+        register_static_memory_manager_range(
+            244,
+            244,
+            "external_policy",
+            MemoryManagerRangeMode::Reserved,
+            None,
+        )
+        .expect("external range");
+        register_static_memory_manager_declaration(
+            244,
+            "external_policy",
+            "users",
+            "external_policy.users.v1",
+        )
+        .expect("external declaration");
+
+        let committed = bootstrap_default_memory_manager_with_policy(&ExternalOnlyPolicy)
+            .expect("external-only policy bootstrap");
+
+        assert_eq!(committed.declarations().len(), 1);
+        assert_eq!(
+            committed.declarations()[0].stable_key().as_str(),
+            "external_policy.users.v1"
+        );
     }
 
     #[test]
@@ -1193,10 +1263,7 @@ mod tests {
             .find(|record| record.allocation.stable_key().as_str() == "diagnostics.users.v1")
             .expect("diagnostic allocation");
 
-        assert_eq!(
-            recovery.authoritative_generation,
-            Some(export.current_generation)
-        );
+        assert_eq!(recovery.recovery, Ok(export.current_generation));
         assert_eq!(
             record.memory_size,
             Some(DiagnosticMemorySize::from_wasm_pages(old_size + 2))
@@ -1227,11 +1294,8 @@ mod tests {
 
         assert!(!report.bootstrapped);
         assert_eq!(report.registered_declarations.len(), 1);
-        assert!(report.range_authority.effective_authority.is_some());
-        assert_eq!(
-            report.validation.status,
-            crate::DiagnosticCheckStatus::Passed
-        );
+        assert!(report.range_authority.effective_authority.is_ok());
+        assert_eq!(report.validation, crate::DiagnosticCheck::Passed);
         assert!(report.commit_recovery.is_some());
         assert!(matches!(
             report.stable_cell.status,
@@ -1278,10 +1342,7 @@ mod tests {
             report.stable_cell.status,
             crate::DiagnosticStableCellStatus::Readable
         );
-        assert_eq!(
-            report.validation.status,
-            crate::DiagnosticCheckStatus::Passed
-        );
+        assert_eq!(report.validation, crate::DiagnosticCheck::Passed);
         assert_eq!(
             record.memory_size,
             Some(DiagnosticMemorySize::from_wasm_pages(old_size + 1))
@@ -1309,16 +1370,9 @@ mod tests {
 
         let report = default_memory_manager_doctor_report();
 
-        assert_eq!(
-            report.validation.status,
-            crate::DiagnosticCheckStatus::Failed
-        );
-        assert!(
-            report
-                .validation
-                .message
-                .expect("validation failure message")
-                .contains("declared more than once")
-        );
+        let crate::DiagnosticCheck::Failed { message } = report.validation else {
+            panic!("validation must fail");
+        };
+        assert!(message.contains("declared more than once"));
     }
 }

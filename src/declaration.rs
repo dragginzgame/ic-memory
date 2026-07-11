@@ -17,6 +17,8 @@ use std::collections::BTreeSet;
 /// Constructors validate the stable key, slot descriptor, label, and schema
 /// metadata, but a declaration is not authoritative until it has been validated
 /// against the recovered ledger and committed as part of a generation.
+///
+
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct AllocationDeclaration {
@@ -25,6 +27,7 @@ pub struct AllocationDeclaration {
     /// Claimed allocation slot.
     pub(crate) slot: AllocationSlotDescriptor,
     /// Optional diagnostic label.
+    #[serde(deserialize_with = "crate::cbor::deserialize_present_option")]
     pub(crate) label: Option<String>,
     /// Optional diagnostic schema metadata.
     pub(crate) schema: SchemaMetadata,
@@ -276,12 +279,15 @@ impl DeclarationCollector {
 /// A snapshot is duplicate-free, but it is still not permission to open storage.
 /// Integrations should call [`crate::validate_allocations`], commit the staged
 /// generation, and only then expose committed allocation authority.
+///
+
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct DeclarationSnapshot {
     /// Runtime declarations.
     declarations: Vec<AllocationDeclaration>,
     /// Optional binary/runtime identity for generation diagnostics.
+    #[serde(deserialize_with = "crate::cbor::deserialize_present_option")]
     runtime_fingerprint: Option<String>,
 }
 

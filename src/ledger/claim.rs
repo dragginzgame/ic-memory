@@ -41,7 +41,7 @@ pub fn validate_declaration_claim(
 ) -> Result<ClaimOutcome, ClaimConflict> {
     if let Some(record_index) = find_by_key_index(ledger, &declaration.stable_key) {
         let record = &ledger.allocation_history.records()[record_index];
-        if record.state == AllocationState::Retired {
+        if matches!(record.state, AllocationState::Retired { .. }) {
             return Err(ClaimConflict::Tombstoned { record_index });
         }
         if record.slot != declaration.slot {
@@ -70,7 +70,7 @@ pub fn validate_reservation_claim(
         return match record.state {
             AllocationState::Reserved => Ok(ClaimOutcome::Existing { record_index }),
             AllocationState::Active => Err(ClaimConflict::ActiveAllocation { record_index }),
-            AllocationState::Retired => Err(ClaimConflict::Tombstoned { record_index }),
+            AllocationState::Retired { .. } => Err(ClaimConflict::Tombstoned { record_index }),
         };
     }
 

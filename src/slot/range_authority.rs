@@ -113,6 +113,8 @@ pub enum MemoryManagerRangeMode {
 /// MemoryManagerAuthorityRecord
 ///
 /// Ordered diagnostic authority record for a `MemoryManager` ID range.
+///
+
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct MemoryManagerAuthorityRecord {
@@ -123,6 +125,7 @@ pub struct MemoryManagerAuthorityRecord {
     /// Policy mode for this authority range.
     pub(crate) mode: MemoryManagerRangeMode,
     /// Optional stable printable ASCII diagnostic purpose.
+    #[serde(deserialize_with = "crate::cbor::deserialize_present_option")]
     pub(crate) purpose: Option<String>,
 }
 

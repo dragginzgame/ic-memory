@@ -24,6 +24,7 @@ pub struct DiagnosticExport {
     /// Generation records.
     pub generations: Vec<DiagnosticGeneration>,
     /// Optional protected commit recovery diagnostic.
+    #[serde(deserialize_with = "crate::cbor::deserialize_present_option")]
     pub commit_recovery: Option<CommitStoreDiagnostic>,
 }
 
@@ -48,8 +49,10 @@ pub struct DefaultMemoryManagerDoctorReport {
     /// Stable-cell ledger storage status.
     pub stable_cell: DiagnosticStableCell,
     /// Protected commit recovery status when a ledger record was readable.
+    #[serde(deserialize_with = "crate::cbor::deserialize_present_option")]
     pub commit_recovery: Option<CommitStoreDiagnostic>,
     /// Recovered allocation ledger export when protected recovery succeeded.
+    #[serde(deserialize_with = "crate::cbor::deserialize_present_option")]
     pub ledger: Option<DiagnosticExport>,
     /// Static declarations registered by linked crates.
     pub registered_declarations: Vec<DiagnosticDeclaration>,
@@ -101,12 +104,8 @@ impl DiagnosticDeclaration {
 pub struct DiagnosticRangeAuthority {
     /// Range records registered directly by linked crates.
     pub registered_records: Vec<MemoryManagerAuthorityRecord>,
-    /// Effective range authority table, including runtime-owned internal
-    /// records, when the table validated successfully.
-    pub effective_authority: Option<MemoryManagerRangeAuthority>,
-    /// Validation error when the effective authority table could not be built.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub error: Option<String>,
+    /// Effective range authority table or its validation error.
+    pub effective_authority: Result<MemoryManagerRangeAuthority, String>,
 }
 
 impl DiagnosticRangeAuthority {
@@ -114,13 +113,11 @@ impl DiagnosticRangeAuthority {
     #[must_use]
     pub const fn new(
         registered_records: Vec<MemoryManagerAuthorityRecord>,
-        effective_authority: Option<MemoryManagerRangeAuthority>,
-        error: Option<String>,
+        effective_authority: Result<MemoryManagerRangeAuthority, String>,
     ) -> Self {
         Self {
             registered_records,
             effective_authority,
-            error,
         }
     }
 }
@@ -138,9 +135,6 @@ pub struct DiagnosticStableCell {
     pub status: DiagnosticStableCellStatus,
     /// Backing memory size for the ledger cell.
     pub memory_size: DiagnosticMemorySize,
-    /// Decode error when the stable cell was not readable.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub error: Option<String>,
 }
 
 impl DiagnosticStableCell {
@@ -149,12 +143,10 @@ impl DiagnosticStableCell {
     pub const fn new(
         status: DiagnosticStableCellStatus,
         memory_size: DiagnosticMemorySize,
-        error: Option<String>,
     ) -> Self {
         Self {
             status,
             memory_size,
-            error,
         }
     }
 }
@@ -165,7 +157,8 @@ impl DiagnosticStableCell {
 /// Stable-cell ledger storage status.
 ///
 
-#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
 pub enum DiagnosticStableCellStatus {
     /// The ledger memory is empty and can be initialized.
     Empty,
@@ -173,7 +166,10 @@ pub enum DiagnosticStableCellStatus {
     Readable,
     /// The ledger memory is present but could not be decoded as the expected
     /// stable-cell ledger record.
-    Corrupt,
+    Corrupt {
+        /// Stable-cell envelope or ledger-record decode error.
+        error: String,
+    },
 }
 
 ///
@@ -184,57 +180,43 @@ pub enum DiagnosticStableCellStatus {
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
-pub struct DiagnosticCheck {
-    /// Check status.
-    pub status: DiagnosticCheckStatus,
-    /// Failure or skip reason.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub message: Option<String>,
+pub enum DiagnosticCheck {
+    /// The check could not run because prerequisite state was unavailable.
+    NotRun {
+        /// Reason the check could not run.
+        message: String,
+    },
+    /// The check completed successfully.
+    Passed,
+    /// The check ran and found a problem.
+    Failed {
+        /// Validation failure.
+        message: String,
+    },
 }
 
 impl DiagnosticCheck {
     /// Build a passed diagnostic check.
     #[must_use]
     pub const fn passed() -> Self {
-        Self {
-            status: DiagnosticCheckStatus::Passed,
-            message: None,
-        }
+        Self::Passed
     }
 
     /// Build a failed diagnostic check.
     #[must_use]
     pub fn failed(message: impl Into<String>) -> Self {
-        Self {
-            status: DiagnosticCheckStatus::Failed,
-            message: Some(message.into()),
+        Self::Failed {
+            message: message.into(),
         }
     }
 
     /// Build a skipped diagnostic check.
     #[must_use]
     pub fn not_run(message: impl Into<String>) -> Self {
-        Self {
-            status: DiagnosticCheckStatus::NotRun,
-            message: Some(message.into()),
+        Self::NotRun {
+            message: message.into(),
         }
     }
-}
-
-///
-/// DiagnosticCheckStatus
-///
-/// Status for one diagnostic preflight check.
-///
-
-#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
-pub enum DiagnosticCheckStatus {
-    /// The check could not run because prerequisite state was unavailable.
-    NotRun,
-    /// The check completed successfully.
-    Passed,
-    /// The check ran and found a problem.
-    Failed,
 }
 
 impl DiagnosticExport {
@@ -370,7 +352,7 @@ mod tests {
     use super::*;
     use crate::{
         declaration::AllocationDeclaration,
-        ledger::{AllocationHistory, AllocationRecord, AllocationState},
+        ledger::{AllocationHistory, AllocationRecord},
         physical::{CommitRecoveryError, CommitSlotDiagnostic, CommitStoreDiagnostic},
         schema::SchemaMetadata,
     };
@@ -387,10 +369,7 @@ mod tests {
         let ledger = AllocationLedger {
             current_generation: 3,
             allocation_history: AllocationHistory::from_parts(
-                vec![
-                    AllocationRecord::from_declaration(3, declaration, AllocationState::Active)
-                        .expect("valid schema metadata"),
-                ],
+                vec![AllocationRecord::active(3, declaration).expect("valid schema metadata")],
                 vec![GenerationRecord {
                     generation: 3,
                     parent_generation: 2,
@@ -446,24 +425,47 @@ mod tests {
     }
 
     #[test]
+    fn diagnostic_outcome_states_round_trip() {
+        let stable_cell = DiagnosticStableCell::new(
+            DiagnosticStableCellStatus::Corrupt {
+                error: "bad stable-cell record".to_string(),
+            },
+            DiagnosticMemorySize::from_wasm_pages(1),
+        );
+        let range_authority = DiagnosticRangeAuthority::new(
+            Vec::new(),
+            Err("overlapping authority ranges".to_string()),
+        );
+        let check = DiagnosticCheck::failed("duplicate declaration");
+
+        for value in [DiagnosticCheck::passed(), check] {
+            let bytes = crate::test_cbor::to_vec(&value).expect("check bytes");
+            let decoded: DiagnosticCheck =
+                crate::test_cbor::from_slice(&bytes).expect("check round trip");
+            assert_eq!(decoded, value);
+        }
+
+        let bytes = crate::test_cbor::to_vec(&stable_cell).expect("stable-cell diagnostic bytes");
+        let decoded: DiagnosticStableCell =
+            crate::test_cbor::from_slice(&bytes).expect("stable-cell round trip");
+        assert_eq!(decoded, stable_cell);
+
+        let bytes = crate::test_cbor::to_vec(&range_authority).expect("range diagnostic bytes");
+        let decoded: DiagnosticRangeAuthority =
+            crate::test_cbor::from_slice(&bytes).expect("range round trip");
+        assert_eq!(decoded, range_authority);
+    }
+
+    #[test]
     fn diagnostic_export_can_include_commit_recovery_state() {
         let ledger = AllocationLedger {
             current_generation: 3,
             allocation_history: AllocationHistory::default(),
         };
         let commit_recovery = CommitStoreDiagnostic {
-            slot0: CommitSlotDiagnostic {
-                present: true,
-                generation: Some(3),
-                valid: true,
-            },
-            slot1: CommitSlotDiagnostic {
-                present: false,
-                generation: None,
-                valid: false,
-            },
-            authoritative_generation: Some(3),
-            recovery_error: None,
+            slot0: CommitSlotDiagnostic::Valid { generation: 3 },
+            slot1: CommitSlotDiagnostic::Empty,
+            recovery: Ok(3),
         };
 
         let export = DiagnosticExport::from_ledger_with_commit_recovery(
@@ -487,10 +489,7 @@ mod tests {
         let ledger = AllocationLedger {
             current_generation: 3,
             allocation_history: AllocationHistory::from_parts(
-                vec![
-                    AllocationRecord::from_declaration(3, declaration, AllocationState::Active)
-                        .expect("valid schema metadata"),
-                ],
+                vec![AllocationRecord::active(3, declaration).expect("valid schema metadata")],
                 Vec::new(),
             ),
         };
@@ -520,18 +519,9 @@ mod tests {
             allocation_history: AllocationHistory::default(),
         };
         let commit_recovery = CommitStoreDiagnostic {
-            slot0: CommitSlotDiagnostic {
-                present: false,
-                generation: None,
-                valid: false,
-            },
-            slot1: CommitSlotDiagnostic {
-                present: false,
-                generation: None,
-                valid: false,
-            },
-            authoritative_generation: None,
-            recovery_error: Some(CommitRecoveryError::NoValidGeneration),
+            slot0: CommitSlotDiagnostic::Empty,
+            slot1: CommitSlotDiagnostic::Empty,
+            recovery: Err(CommitRecoveryError::NoValidGeneration),
         };
 
         let export = DiagnosticExport::from_ledger_with_commit_recovery(
@@ -541,11 +531,8 @@ mod tests {
         );
 
         assert_eq!(
-            export
-                .commit_recovery
-                .expect("commit recovery")
-                .recovery_error,
-            Some(CommitRecoveryError::NoValidGeneration)
+            export.commit_recovery.expect("commit recovery").recovery,
+            Err(CommitRecoveryError::NoValidGeneration)
         );
     }
 }

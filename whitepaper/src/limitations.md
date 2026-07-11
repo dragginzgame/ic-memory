@@ -15,8 +15,9 @@ verification of the Rust implementation.
 - provide disaster recovery.
 
 Its checksums detect accidental corruption only when the enclosing stable-cell
-record remains decodable. They do not replace ICP message-level atomic commit
-and rollback.
+record remains decodable. Any present invalid commit slot fails closed; the
+other slot is not an automatic rollback path. Checksums do not replace ICP
+message-level atomic commit and rollback.
 
 The durable format is intentionally current-only. Any other envelope shape
 fails closed.

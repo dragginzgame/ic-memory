@@ -14,7 +14,8 @@ implementation details such as CBOR decoding, physical dual-slot recovery,
 runtime registration, declaration-count limits, schema metadata history,
 mandatory generation parent links, and `u64` overflow. In particular, the Lean
 `OpenAuthority` type is a post-commit model object, not a field carried inside
-Rust's `ValidatedAllocations` struct.
+Rust's pre-commit `ValidatedAllocations` value. Its runtime counterpart is the
+post-persistence `CommittedAllocations` capability.
 
 The current model also encodes several safety facts as assumptions on
 `SafeLedger`, `TombstoneLedger`, and `OpenAuthority`. The checked theorems then

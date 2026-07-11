@@ -44,9 +44,9 @@ $$
 \mathsf{MayOpen}(A,k,s) \Rightarrow \mathsf{ActiveAt}(L,k,s)
 $$
 
-For the Rust default runtime, this corresponds to publishing validated
-allocations only after the staged ledger generation has been committed. Manual
-integrations carry this as an ordering obligation.
+For the Rust default runtime, this corresponds to publishing
+`CommittedAllocations` only after the staged ledger generation has been
+persisted. Manual integrations carry this as an ordering obligation.
 
 ## Generation Monotonicity
 

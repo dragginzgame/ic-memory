@@ -11,6 +11,8 @@ use crate::{
 /// LedgerIntegrityError
 ///
 /// Decoded ledger violates structural allocation-history invariants.
+///
+
 #[non_exhaustive]
 #[derive(Clone, Debug, Eq, thiserror::Error, PartialEq)]
 pub enum LedgerIntegrityError {
@@ -54,20 +56,8 @@ pub enum LedgerIntegrityError {
         /// Current ledger generation.
         current_generation: u64,
     },
-    /// Non-retired allocation carries retired metadata.
-    #[error("stable key '{stable_key}' is not retired but has retired_generation metadata")]
-    UnexpectedRetiredGeneration {
-        /// Stable key whose record is invalid.
-        stable_key: StableKey,
-    },
-    /// Retired allocation is missing retired metadata.
-    #[error("stable key '{stable_key}' is retired but retired_generation is missing")]
-    MissingRetiredGeneration {
-        /// Stable key whose record is invalid.
-        stable_key: StableKey,
-    },
     /// Retired generation predates the allocation record.
-    #[error("stable key '{stable_key}' has retired_generation before first_generation")]
+    #[error("stable key '{stable_key}' was retired before first_generation")]
     RetiredBeforeFirstGeneration {
         /// Stable key whose record is invalid.
         stable_key: StableKey,
@@ -77,7 +67,7 @@ pub enum LedgerIntegrityError {
         retired_generation: u64,
     },
     /// Retirement does not occur after the record's final observation.
-    #[error("stable key '{stable_key}' has retired_generation at or before last_seen_generation")]
+    #[error("stable key '{stable_key}' was retired at or before last_seen_generation")]
     RetirementNotAfterLastSeen {
         /// Stable key whose record is invalid.
         stable_key: StableKey,

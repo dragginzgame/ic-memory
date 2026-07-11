@@ -1,5 +1,57 @@
 # Changelog
 
+## 0.10.0
+
+This is an intentional current-format hard cut. No fallback decoder, missing-
+field default, compatibility alias, or migration shim was added.
+
+### Recovery hardening
+
+- Fail closed when either present physical commit slot has an invalid marker or
+  checksum. Recovery no longer falls back to an older generation, which could
+  otherwise forget a newer allocation, retirement, or schema-history fact.
+- Keep deterministic recovery for identical duplicate slots and select the
+  highest generation only after every present slot validates.
+- Add regressions proving a corrupt latest generation cannot roll allocation
+  history back and a corrupt inactive slot cannot be silently overwritten.
+
+### Decode and policy hardening
+
+- Require every non-elided optional field in current durable CBOR records to be
+  present. Explicit CBOR `null` remains the encoding of `None`; omission now
+  fails closed instead of being interpreted as empty state.
+- Apply caller-supplied default-runtime policy only to external declarations.
+  The private `ic_memory.ledger.v1` allocation remains governed exclusively by
+  ic-memory's internal namespace and range policy.
+
+### State-model hard cut
+
+- Changed `AllocationState::Retired` to
+  `AllocationState::Retired { generation }` and removed the separate nullable
+  `AllocationRecord::retired_generation` field and accessor. A retired record
+  without a generation, or a live record with retirement metadata, is now
+  unrepresentable.
+- Removed the obsolete `MissingRetiredGeneration` and
+  `UnexpectedRetiredGeneration` integrity errors.
+- Replaced nullable diagnostic field pairs with explicit states:
+  `CommitSlotDiagnostic` is now `Empty`, `Valid`, or `Invalid`;
+  `CommitStoreDiagnostic::recovery` and
+  `DiagnosticRangeAuthority::effective_authority` are `Result` values;
+  corrupt stable-cell errors live in `DiagnosticStableCellStatus::Corrupt`;
+  and `DiagnosticCheck` is now an enum carrying failure/not-run messages.
+- Removed `DiagnosticCheckStatus`; `DiagnosticCheck` itself is the status.
+- Replaced the current fixture set in place. Earlier pre-1.0 allocation-record
+  and diagnostic shapes are intentionally rejected; there is no legacy decoder
+  or in-crate migration path.
+
+### Release checks and documentation
+
+- Add WebAssembly test-target compilation to CI.
+- Fix packaged README image and documentation links, and align recovery and
+  capability wording across the safety guide and whitepaper.
+- Keep stable keys and memory IDs unchanged while intentionally replacing the
+  pre-0.10.0 allocation-ledger encoding.
+
 ## 0.9.0
 
 This is an intentional hard-cut release. Removed APIs have no deprecated

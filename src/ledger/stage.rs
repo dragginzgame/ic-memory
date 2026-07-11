@@ -129,15 +129,16 @@ impl AllocationLedger {
                 retired_slot: Box::new(retirement.slot.clone()),
             });
         }
-        if record.state == AllocationState::Retired {
+        if matches!(record.state, AllocationState::Retired { .. }) {
             return Err(AllocationRetirementError::AlreadyRetired {
                 stable_key: retirement.stable_key.clone(),
                 slot: Box::new(record.slot.clone()),
             });
         }
 
-        record.state = AllocationState::Retired;
-        record.retired_generation = Some(next_generation);
+        record.state = AllocationState::Retired {
+            generation: next_generation,
+        };
         next.current_generation = next_generation;
         next.allocation_history.push_generation(GenerationRecord {
             generation: next_generation,
@@ -167,15 +168,13 @@ fn record_declaration(
             Ok(())
         }
         Ok(ClaimOutcome::New) => {
-            let record = AllocationRecord::from_declaration(
-                generation,
-                declaration.clone(),
-                AllocationState::Active,
-            )
-            .map_err(|error| AllocationStageError::InvalidSchemaMetadata {
-                stable_key: declaration.stable_key.clone(),
-                error,
-            })?;
+            let record =
+                AllocationRecord::active(generation, declaration.clone()).map_err(|error| {
+                    AllocationStageError::InvalidSchemaMetadata {
+                        stable_key: declaration.stable_key.clone(),
+                        error,
+                    }
+                })?;
             ledger.allocation_history.push_record(record);
             Ok(())
         }

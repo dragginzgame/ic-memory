@@ -294,6 +294,38 @@ mod tests {
     }
 
     #[test]
+    fn stable_cell_ledger_record_requires_both_commit_slot_fields() {
+        use crate::test_cbor::Value;
+
+        for (missing, present) in [("slot0", "slot1"), ("slot1", "slot0")] {
+            let mut physical = Vec::new();
+            crate::test_cbor::map_insert(
+                &mut physical,
+                Value::Text(present.to_string()),
+                Value::Null,
+            );
+            let mut store = Vec::new();
+            crate::test_cbor::map_insert(
+                &mut store,
+                Value::Text("physical".to_string()),
+                Value::Map(physical),
+            );
+            let mut record = Vec::new();
+            crate::test_cbor::map_insert(
+                &mut record,
+                Value::Text("store".to_string()),
+                Value::Map(store),
+            );
+            let bytes = crate::test_cbor::to_vec(&Value::Map(record)).expect("record bytes");
+
+            let err = decode_stable_cell_ledger_record(&bytes)
+                .expect_err("missing commit slot must fail closed");
+
+            assert!(err.to_string().contains(missing));
+        }
+    }
+
+    #[test]
     fn stable_cell_payload_rejects_non_cell_memory() {
         let memory = VectorMemory::default();
         memory.grow(1);

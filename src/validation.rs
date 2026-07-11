@@ -233,8 +233,7 @@ mod tests {
     }
 
     fn active_record(key: &str, id: u8) -> AllocationRecord {
-        AllocationRecord::from_declaration(1, declaration(key, id), AllocationState::Active)
-            .expect("valid schema metadata")
+        AllocationRecord::active(1, declaration(key, id)).expect("valid schema metadata")
     }
 
     fn recovered(records: Vec<AllocationRecord>) -> RecoveredLedger {
@@ -311,8 +310,7 @@ mod tests {
     #[test]
     fn rejects_retired_redeclaration() {
         let mut record = active_record("app.users.v1", 100);
-        record.state = AllocationState::Retired;
-        record.retired_generation = Some(3);
+        record.state = AllocationState::Retired { generation: 3 };
         let snapshot =
             DeclarationSnapshot::new(vec![declaration("app.users.v1", 100)]).expect("snapshot");
 

@@ -9,6 +9,10 @@ current output to catch accidental wire-format drift in reviewable text form.
 Intentional protocol hard cuts replace these fixtures in place. The repository
 contains exactly one current fixture set and one current decoder path.
 
+In the current allocation-record shape, `AllocationState::Retired` carries its
+retirement generation directly. There is no separate nullable
+`retired_generation` field.
+
 Fixture groups:
 
 - `*_payload_envelope.hex`: logical `LedgerPayloadEnvelope` bytes.
@@ -17,7 +21,8 @@ Fixture groups:
 - `dual_slot_store_valid_newer.cbor.hex`: full dual-slot store where the newer
   generation is valid and authoritative.
 - `dual_slot_store_corrupt_newer.cbor.hex`: full dual-slot store where the
-  newer generation is corrupt and recovery must use the prior valid generation.
+  newer generation is corrupt and recovery must fail closed without rolling
+  back to the prior valid generation.
 - `stable_cell_record.cbor.hex`: `StableCellLedgerRecord` value bytes stored
   inside the `ic-stable-structures::Cell` envelope.
 - `memory_manager_descriptor.cbor.hex`: `MemoryManager` slot descriptor bytes.

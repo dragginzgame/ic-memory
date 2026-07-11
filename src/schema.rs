@@ -15,6 +15,7 @@ use serde::{Deserialize, Serialize};
 #[serde(deny_unknown_fields)]
 pub struct SchemaMetadata {
     /// Optional in-place schema version.
+    #[serde(deserialize_with = "crate::cbor::deserialize_present_option")]
     pub(crate) schema_version: Option<u32>,
 }
 

@@ -119,9 +119,9 @@ pub use declaration::{
     AllocationDeclaration, DeclarationCollector, DeclarationSnapshot, DeclarationSnapshotError,
 };
 pub use diagnostics::{
-    DefaultMemoryManagerDoctorReport, DiagnosticCheck, DiagnosticCheckStatus,
-    DiagnosticDeclaration, DiagnosticExport, DiagnosticGeneration, DiagnosticMemorySize,
-    DiagnosticRangeAuthority, DiagnosticRecord, DiagnosticStableCell, DiagnosticStableCellStatus,
+    DefaultMemoryManagerDoctorReport, DiagnosticCheck, DiagnosticDeclaration, DiagnosticExport,
+    DiagnosticGeneration, DiagnosticMemorySize, DiagnosticRangeAuthority, DiagnosticRecord,
+    DiagnosticStableCell, DiagnosticStableCellStatus,
 };
 pub use key::{StableKey, StableKeyError};
 pub use ledger::{

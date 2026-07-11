@@ -102,7 +102,10 @@ impl AllocationLedger {
                 &record.stable_key,
                 record.last_seen_generation,
             )?;
-            if let Some(retired_generation) = record.retired_generation {
+            if let AllocationState::Retired {
+                generation: retired_generation,
+            } = record.state
+            {
                 validate_known_record_generation(
                     &known_generations,
                     &record.stable_key,
@@ -150,8 +153,10 @@ fn validate_record_integrity(
         });
     }
 
-    match (record.state, record.retired_generation) {
-        (AllocationState::Retired, Some(retired_generation)) => {
+    match record.state {
+        AllocationState::Retired {
+            generation: retired_generation,
+        } => {
             if retired_generation < record.first_generation {
                 return Err(LedgerIntegrityError::RetiredBeforeFirstGeneration {
                     stable_key: record.stable_key.clone(),
@@ -174,17 +179,7 @@ fn validate_record_integrity(
                 });
             }
         }
-        (AllocationState::Retired, None) => {
-            return Err(LedgerIntegrityError::MissingRetiredGeneration {
-                stable_key: record.stable_key.clone(),
-            });
-        }
-        (AllocationState::Reserved | AllocationState::Active, Some(_)) => {
-            return Err(LedgerIntegrityError::UnexpectedRetiredGeneration {
-                stable_key: record.stable_key.clone(),
-            });
-        }
-        (AllocationState::Reserved | AllocationState::Active, None) => {}
+        AllocationState::Reserved | AllocationState::Active => {}
     }
 
     validate_schema_history_integrity(current_generation, record)

@@ -239,8 +239,7 @@ mod tests {
     }
 
     fn active_record(key: &str, id: u8) -> AllocationRecord {
-        AllocationRecord::from_declaration(1, declaration(key, id, None), AllocationState::Active)
-            .expect("valid schema metadata")
+        AllocationRecord::active(1, declaration(key, id, None)).expect("valid schema metadata")
     }
 
     fn validated(
@@ -355,6 +354,18 @@ mod tests {
             .find(|(key, _)| key == &crate::test_cbor::Value::Text(field.to_string()))
             .map(|(_, value)| value)
             .expect("CBOR map field")
+    }
+
+    fn remove_map_field(
+        map: &mut Vec<(crate::test_cbor::Value, crate::test_cbor::Value)>,
+        field: &str,
+    ) {
+        let field = crate::test_cbor::Value::Text(field.to_string());
+        let index = map
+            .iter()
+            .position(|(key, _)| key == &field)
+            .expect("CBOR map field");
+        map.remove(index);
     }
 
     fn value_array_mut(value: &mut crate::test_cbor::Value) -> &mut Vec<crate::test_cbor::Value> {
@@ -526,6 +537,62 @@ mod tests {
     }
 
     #[test]
+    fn cbor_ledger_codec_rejects_removed_retirement_generation_field() {
+        let mut value = active_ledger_value();
+        let history = map_field_mut(value_map_mut(&mut value), "allocation_history");
+        let records = map_field_mut(value_map_mut(history), "records");
+        let record = value_array_mut(records)
+            .first_mut()
+            .expect("allocation record");
+        crate::test_cbor::map_insert(
+            value_map_mut(record),
+            crate::test_cbor::Value::Text("retired_generation".to_string()),
+            crate::test_cbor::Value::Null,
+        );
+
+        let err = decode_mutated_ledger(value);
+
+        assert!(err.contains("retired_generation"));
+    }
+
+    #[test]
+    fn cbor_ledger_codec_requires_generation_optional_fields() {
+        for field in ["runtime_fingerprint", "committed_at"] {
+            let mut value = active_ledger_value();
+            let history = map_field_mut(value_map_mut(&mut value), "allocation_history");
+            let generations = map_field_mut(value_map_mut(history), "generations");
+            let generation = value_array_mut(generations)
+                .first_mut()
+                .expect("generation record");
+            remove_map_field(value_map_mut(generation), field);
+
+            let err = decode_mutated_ledger(value);
+
+            assert!(err.contains(field));
+        }
+    }
+
+    #[test]
+    fn cbor_ledger_codec_requires_schema_version_field() {
+        let mut value = active_ledger_value();
+        let history = map_field_mut(value_map_mut(&mut value), "allocation_history");
+        let records = map_field_mut(value_map_mut(history), "records");
+        let record = value_array_mut(records)
+            .first_mut()
+            .expect("allocation record");
+        let schema_history = map_field_mut(value_map_mut(record), "schema_history");
+        let schema_record = value_array_mut(schema_history)
+            .first_mut()
+            .expect("schema record");
+        let schema = map_field_mut(value_map_mut(schema_record), "schema");
+        remove_map_field(value_map_mut(schema), "schema_version");
+
+        let err = decode_mutated_ledger(value);
+
+        assert!(err.contains("schema_version"));
+    }
+
+    #[test]
     fn ledger_commit_store_rejects_unknown_top_level_fields() {
         use crate::test_cbor::Value;
 
@@ -593,8 +660,7 @@ mod tests {
         let record = record(&ledger, "app.users.v1");
 
         assert_eq!(ledger.current_generation, 2);
-        assert_eq!(record.state(), AllocationState::Retired);
-        assert_eq!(record.retired_generation(), Some(2));
+        assert_eq!(record.state(), AllocationState::Retired { generation: 2 });
     }
 
     #[test]
@@ -635,26 +701,39 @@ mod tests {
             "../../fixtures/current/dual_slot_store_valid_newer.cbor.hex"
         ));
 
-        assert_eq!(
-            store.physical().diagnostic().authoritative_generation,
-            Some(2)
-        );
+        assert_eq!(store.physical().diagnostic().recovery, Ok(2));
         let recovered = store.recover().expect("fixture store recovers");
         assert_eq!(recovered.current_generation(), 2);
     }
 
     #[test]
-    fn current_dual_slot_corrupt_newer_fixture_recovers_prior() {
+    fn current_dual_slot_corrupt_newer_fixture_fails_closed() {
         let store = store_from_fixture(include_str!(
             "../../fixtures/current/dual_slot_store_corrupt_newer.cbor.hex"
         ));
 
         let diagnostic = store.physical().diagnostic();
-        assert_eq!(diagnostic.authoritative_generation, Some(1));
-        assert!(diagnostic.slot1.present);
-        assert!(!diagnostic.slot1.valid);
-        let recovered = store.recover().expect("fixture store recovers");
-        assert_eq!(recovered.current_generation(), 1);
+        assert_eq!(
+            diagnostic.recovery,
+            Err(CommitRecoveryError::InvalidCommitSlots {
+                slot0_invalid: false,
+                slot1_invalid: true,
+            })
+        );
+        assert_eq!(
+            diagnostic.slot1,
+            crate::CommitSlotDiagnostic::Invalid { generation: 2 }
+        );
+        let err = store
+            .recover()
+            .expect_err("corrupt fixture must fail closed");
+        assert!(matches!(
+            err,
+            LedgerCommitError::Recovery(CommitRecoveryError::InvalidCommitSlots {
+                slot0_invalid: false,
+                slot1_invalid: true,
+            })
+        ));
     }
 
     #[test]
@@ -804,8 +883,7 @@ mod tests {
     fn stage_validated_generation_rejects_retired_redeclaration() {
         let mut ledger = ledger();
         let mut record = active_record("app.users.v1", 100);
-        record.state = AllocationState::Retired;
-        record.retired_generation = Some(3);
+        record.state = AllocationState::Retired { generation: 3 };
         *ledger.allocation_history.records_mut() = vec![record];
         let validated = validated(3, vec![declaration("app.users.v1", 100, None)]);
 
@@ -1053,8 +1131,7 @@ mod tests {
     fn stage_reservation_generation_rejects_retired_allocation() {
         let mut ledger = ledger();
         let mut record = active_record("app.users.v1", 100);
-        record.state = AllocationState::Retired;
-        record.retired_generation = Some(3);
+        record.state = AllocationState::Retired { generation: 3 };
         *ledger.allocation_history.records_mut() = vec![record];
         let reservations = vec![declaration("app.users.v1", 100, None)];
 
@@ -1105,8 +1182,7 @@ mod tests {
         let record = &staged.allocation_history.records()[0];
 
         assert_eq!(staged.current_generation, 5);
-        assert_eq!(record.state, AllocationState::Retired);
-        assert_eq!(record.retired_generation, Some(5));
+        assert_eq!(record.state, AllocationState::Retired { generation: 5 });
         assert_eq!(
             staged.allocation_history.generations()[1].declaration_count,
             0
@@ -1131,9 +1207,8 @@ mod tests {
         let record = &staged.allocation_history.records()[0];
 
         assert_eq!(staged.current_generation, 5);
-        assert_eq!(record.state, AllocationState::Retired);
+        assert_eq!(record.state, AllocationState::Retired { generation: 5 });
         assert_eq!(record.first_generation, 4);
-        assert_eq!(record.retired_generation, Some(5));
         assert_eq!(
             staged.allocation_history.generations()[1].declaration_count(),
             0
@@ -1362,7 +1437,7 @@ mod tests {
         assert_eq!(ledger.current_generation, 6);
         assert_eq!(
             record(&ledger, "app.users.v1").state,
-            AllocationState::Retired
+            AllocationState::Retired { generation: 6 }
         );
         assert_eq!(
             record(&ledger, "app.future_store.v1").last_seen_generation,
@@ -1580,46 +1655,11 @@ mod tests {
     }
 
     #[test]
-    fn validate_integrity_rejects_retired_record_without_retired_generation() {
-        let mut ledger = ledger();
-        let mut record = active_record("app.users.v1", 100);
-        record.state = AllocationState::Retired;
-        *ledger.allocation_history.records_mut() = vec![record];
-
-        let err = ledger
-            .validate_integrity()
-            .expect_err("missing retired generation");
-
-        assert!(matches!(
-            err,
-            LedgerIntegrityError::MissingRetiredGeneration { .. }
-        ));
-    }
-
-    #[test]
-    fn validate_integrity_rejects_non_retired_record_with_retired_generation() {
-        let mut ledger = ledger();
-        let mut record = active_record("app.users.v1", 100);
-        record.retired_generation = Some(2);
-        *ledger.allocation_history.records_mut() = vec![record];
-
-        let err = ledger
-            .validate_integrity()
-            .expect_err("unexpected retired generation");
-
-        assert!(matches!(
-            err,
-            LedgerIntegrityError::UnexpectedRetiredGeneration { .. }
-        ));
-    }
-
-    #[test]
     fn validate_integrity_rejects_retirement_before_last_observation() {
         let mut ledger = committed_ledger(5);
         let mut record = active_record("app.users.v1", 100);
         record.last_seen_generation = 4;
-        record.state = AllocationState::Retired;
-        record.retired_generation = Some(3);
+        record.state = AllocationState::Retired { generation: 3 };
         *ledger.allocation_history.records_mut() = vec![record];
 
         let err = ledger
@@ -1629,6 +1669,23 @@ mod tests {
         assert!(matches!(
             err,
             LedgerIntegrityError::RetirementNotAfterLastSeen { .. }
+        ));
+    }
+
+    #[test]
+    fn validate_integrity_rejects_retirement_before_allocation() {
+        let mut ledger = committed_ledger(2);
+        let mut record = active_record("app.users.v1", 100);
+        record.state = AllocationState::Retired { generation: 0 };
+        *ledger.allocation_history.records_mut() = vec![record];
+
+        let err = ledger
+            .validate_committed_integrity()
+            .expect_err("retirement cannot predate allocation");
+
+        assert!(matches!(
+            err,
+            LedgerIntegrityError::RetiredBeforeFirstGeneration { .. }
         ));
     }
 
@@ -1866,7 +1923,7 @@ mod tests {
     }
 
     #[test]
-    fn ledger_commit_store_recovers_full_payload_after_corrupt_latest_slot() {
+    fn ledger_commit_store_rejects_corrupt_latest_slot_without_rollback() {
         let mut store = LedgerCommitStore::default();
         let genesis = committed_ledger(0);
         store.commit(&genesis).expect("genesis commit");
@@ -1885,17 +1942,19 @@ mod tests {
             )
             .expect("second generation");
 
-        store
-            .write_corrupt_inactive_ledger(&second)
-            .expect("corrupt latest");
-        let recovered = store.recover().expect("recover prior generation");
+        store.commit(&second).expect("second commit");
+        store.physical.slot0.as_mut().expect("latest slot").checksum ^= 1;
 
-        assert_eq!(recovered.current_generation(), 1);
+        let err = store
+            .recover()
+            .expect_err("corrupt latest must not roll back");
+
         assert_eq!(
-            record(recovered.ledger(), "app.users.v1")
-                .schema_history
-                .len(),
-            1
+            err,
+            LedgerCommitError::Recovery(CommitRecoveryError::InvalidCommitSlots {
+                slot0_invalid: true,
+                slot1_invalid: false,
+            })
         );
     }
 
@@ -1922,7 +1981,7 @@ mod tests {
     }
 
     #[test]
-    fn ledger_commit_store_ignores_corrupt_inactive_ledger() {
+    fn ledger_commit_store_rejects_corrupt_inactive_ledger() {
         let mut store = LedgerCommitStore::default();
         let first = committed_ledger(1);
         let second = committed_ledger(2);
@@ -1931,9 +1990,15 @@ mod tests {
         store
             .write_corrupt_inactive_ledger(&second)
             .expect("corrupt write");
-        let recovered = store.recover().expect("recovered ledger");
+        let err = store.recover().expect_err("corrupt slot");
 
-        assert_eq!(recovered.current_generation(), 1);
+        assert_eq!(
+            err,
+            LedgerCommitError::Recovery(CommitRecoveryError::InvalidCommitSlots {
+                slot0_invalid: false,
+                slot1_invalid: true,
+            })
+        );
     }
 
     #[test]
@@ -2002,7 +2067,10 @@ mod tests {
 
         assert!(matches!(
             err,
-            LedgerCommitError::Recovery(CommitRecoveryError::NoValidGeneration)
+            LedgerCommitError::Recovery(CommitRecoveryError::InvalidCommitSlots {
+                slot0_invalid: true,
+                slot1_invalid: false,
+            })
         ));
     }
 }
