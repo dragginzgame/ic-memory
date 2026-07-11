@@ -105,7 +105,7 @@ pub struct DiagnosticRangeAuthority {
     /// records, when the table validated successfully.
     pub effective_authority: Option<MemoryManagerRangeAuthority>,
     /// Validation error when the effective authority table could not be built.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub error: Option<String>,
 }
 
@@ -139,7 +139,7 @@ pub struct DiagnosticStableCell {
     /// Backing memory size for the ledger cell.
     pub memory_size: DiagnosticMemorySize,
     /// Decode error when the stable cell was not readable.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub error: Option<String>,
 }
 
@@ -188,7 +188,7 @@ pub struct DiagnosticCheck {
     /// Check status.
     pub status: DiagnosticCheckStatus,
     /// Failure or skip reason.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub message: Option<String>,
 }
 
@@ -324,7 +324,7 @@ pub struct DiagnosticRecord {
     ///
     /// This is allocation size reported by the backing memory, not logical user
     /// payload size inside the stable structure.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub memory_size: Option<DiagnosticMemorySize>,
 }
 

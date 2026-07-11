@@ -22,8 +22,8 @@
 //! 3. Validate those declarations against ledger history and any framework
 //!    policy.
 //! 4. Commit the next generation.
-//! 5. Only then open stable-memory handles through a committed allocation
-//!    session.
+//! 5. Only then open stable-memory handles through committed allocation
+//!    authority.
 //!
 //! This crate owns allocation invariants, not framework policy. Namespace
 //! rules, controller authorization, endpoint lifecycle, schema migrations, and
@@ -39,8 +39,8 @@
 //! Use these primitives before opening stable-memory handles. Integrations
 //! should recover the historical ledger, declare the stores expected by the
 //! current binary, validate declarations against history and policy, commit a
-//! new generation, and only then publish a committed allocation session that can
-//! open slots through a storage substrate.
+//! new generation, and only then publish committed allocation authority before
+//! opening slots through the storage owner.
 //!
 //! [`AllocationBootstrap`] is the golden path for whichever layer owns a given
 //! ledger store. Canic may own bootstrap for a framework canister and compose
@@ -64,6 +64,7 @@
 //! does not wrap typed stores such as `StableBTreeMap`.
 
 mod bootstrap;
+mod capability;
 mod cbor;
 mod constants;
 mod declaration;
@@ -75,10 +76,8 @@ mod policy;
 mod registry;
 mod runtime;
 mod schema;
-mod session;
 mod slot;
 mod stable_cell;
-mod substrate;
 mod validation;
 
 #[cfg(test)]
@@ -114,6 +113,7 @@ pub use bootstrap::{
     AllocationBootstrap, BootstrapError, BootstrapReservationError, BootstrapRetirementError,
     PendingBootstrapCommit,
 };
+pub use capability::{CommittedAllocations, ValidatedAllocations};
 pub use constants::WASM_PAGE_SIZE_BYTES;
 pub use declaration::{
     AllocationDeclaration, DeclarationCollector, DeclarationSnapshot, DeclarationSnapshotError,
@@ -131,9 +131,8 @@ pub use ledger::{
     LedgerPayloadEnvelope, LedgerPayloadEnvelopeError, RecoveredLedger, SchemaMetadataRecord,
 };
 pub use physical::{
-    AuthoritativeSlot, CommitRecoveryError, CommitSlotDiagnostic, CommitSlotIndex,
-    CommitStoreDiagnostic, CommittedGenerationBytes, DualCommitStore, DualProtectedCommitStore,
-    ProtectedGenerationSlot, select_authoritative_slot,
+    CommitRecoveryError, CommitSlotDiagnostic, CommitStoreDiagnostic, CommittedGenerationBytes,
+    DualCommitStore,
 };
 pub use policy::AllocationPolicy;
 pub use registry::{
@@ -152,9 +151,6 @@ pub use runtime::{
     is_default_memory_manager_bootstrapped, open_default_memory_manager_memory,
 };
 pub use schema::{SchemaMetadata, SchemaMetadataError};
-pub use session::{
-    AllocationSession, AllocationSessionError, CommittedAllocations, ValidatedAllocations,
-};
 pub use slot::{
     AllocationSlot, AllocationSlotDescriptor, IC_MEMORY_AUTHORITY_OWNER,
     IC_MEMORY_AUTHORITY_PURPOSE, IC_MEMORY_LEDGER_LABEL, IC_MEMORY_LEDGER_STABLE_KEY,
@@ -171,7 +167,6 @@ pub use stable_cell::{
     StableCellPayloadError, decode_stable_cell_ledger_record, decode_stable_cell_payload,
     validate_stable_cell_ledger_memory,
 };
-pub use substrate::{LedgerAnchor, StorageSubstrate};
 pub use validation::{AllocationValidationError, Validate, validate_allocations};
 
 #[doc(hidden)]

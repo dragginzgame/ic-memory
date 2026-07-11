@@ -1,4 +1,5 @@
 use crate::{
+    capability::{CommittedAllocations, ValidatedAllocations},
     declaration::AllocationDeclaration,
     declaration::DeclarationSnapshot,
     ledger::{
@@ -7,7 +8,6 @@ use crate::{
         validate_reservation_declaration,
     },
     policy::AllocationPolicy,
-    session::{CommittedAllocations, ValidatedAllocations},
     validation::{AllocationValidationError, validate_allocations},
 };
 

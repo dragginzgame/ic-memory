@@ -15,7 +15,7 @@ The runtime then:
 2. collects current declarations,
 3. validates them against history and policy,
 4. commits the next generation,
-5. publishes a capability that can open validated slots.
+5. publishes a capability that authorizes the owner's committed-slot open path.
 
 The default runtime performs that sequence before publishing its open
 authority. The lower-level Rust APIs expose the pieces separately for framework

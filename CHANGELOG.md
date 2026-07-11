@@ -1,5 +1,37 @@
 # Changelog
 
+## 0.9.0
+
+This is an intentional hard-cut release. Removed APIs have no deprecated
+forwarders, compatibility aliases, or legacy modules.
+
+### Reduced public surface
+
+- Removed the unused generic `AllocationSession`, `AllocationSessionError`,
+  `StorageSubstrate`, and `LedgerAnchor` APIs. Persistence owners now use the
+  opaque `CommittedAllocations` capability directly when authorizing their own
+  storage-open path.
+- Stopped exporting implementation-only physical recovery machinery:
+  `ProtectedGenerationSlot`, `DualProtectedCommitStore`, `CommitSlotIndex`,
+  `AuthoritativeSlot`, and `select_authoritative_slot`.
+- Kept the concrete `DualCommitStore`, committed-generation DTOs, recovery
+  errors, and diagnostics public for current stable-cell integrations.
+- Narrowed `CommitStoreDiagnostic::from_store` to the concrete
+  `DualCommitStore` instead of an extension trait.
+- Added a repository-wide pre-1.0 hard-cut rule and removed redundant serde
+  defaults from optional diagnostic fields so no annotation resembles an
+  earlier-shape compatibility path.
+
+### Durability clarification
+
+- Clarified that both redundant commit slots are serialized inside one
+  `ic-stable-structures::Cell` in the default runtime. ICP message execution
+  provides atomic stable-memory commit and rollback; the embedded slot
+  checksums provide fallback only from localized corruption when the enclosing
+  record remains decodable.
+- Preserved the 0.8 durable ledger, stable-cell, payload-envelope, and CBOR
+  formats. Upgrading from 0.8 requires no stable-memory migration.
+
 ## 0.8.1
 
 ### Decode and ingestion hardening

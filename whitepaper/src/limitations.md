@@ -14,12 +14,12 @@ verification of the Rust implementation.
 - authorize endpoints,
 - provide disaster recovery.
 
-Its checksum protects against torn writes and accidental corruption only.
+Its checksums detect accidental corruption only when the enclosing stable-cell
+record remains decodable. They do not replace ICP message-level atomic commit
+and rollback.
 
-The current durable format is intentionally current-only. The 0.7 cleanup
-removed earlier compatibility-range and envelope version-routing scaffolding;
-older or future envelope shapes fail closed unless the crate explicitly learns
-to decode them.
+The durable format is intentionally current-only. Any other envelope shape
+fails closed.
 
 The present native slot model follows `ic-stable-structures` `MemoryManager`
 IDs exactly. Moving beyond 255 virtual memories would require a different slot

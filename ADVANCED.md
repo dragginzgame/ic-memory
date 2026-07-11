@@ -16,7 +16,7 @@ The native IC ledger anchor is:
 MemoryManager ID 0
   -> ic-stable-structures::Cell<StableCellLedgerRecord, _>
   -> LedgerCommitStore
-  -> dual protected committed generation bytes
+  -> redundant committed generation bytes
   -> LedgerPayloadEnvelope
   -> RecoveredLedger
   -> ValidatedAllocations
@@ -172,15 +172,16 @@ let commit = AllocationBootstrap::new(record.store_mut()).initialize_validate_an
 
 persist_record(&record)?;
 let committed = commit.confirm_persisted();
-let orders = AllocationSession::new(storage, committed)
-    .open(&StableKey::parse("app.orders.v1")?)?;
+let key = StableKey::parse("app.orders.v1")?;
+let slot = committed.slot_for(&key).ok_or("allocation was not committed")?;
+let orders = open_storage(slot)?;
 ```
 
 The helper names for `record`, `persist_record`, `genesis_ledger`, `policy`,
-`committed_at`, and `storage` are placeholders. Frameworks and libraries wire
-those to their own stable-memory persistence and collection construction. The
-ordering is the contract. Calling `confirm_persisted()` before `persist_record`
-succeeds violates the protocol.
+`committed_at`, and `open_storage` are placeholders. Frameworks and libraries
+wire those to their own stable-memory persistence and collection construction.
+The ordering is the contract. Calling `confirm_persisted()` before
+`persist_record` succeeds violates the protocol.
 
 Supplying `genesis_ledger` is privileged. Normal empty-store bootstraps should
 use an empty current-format ledger, like the default runtime does. A non-empty
@@ -358,10 +359,8 @@ intended to stabilize around persistent allocation ownership, but framework
 authors should still treat this line as young infrastructure while the
 standalone boundary settles.
 
-Earlier drafts exposed some durable DTO fields directly. Current versions use
-checked constructors and accessors so invalid allocation state is harder to
-construct accidentally.
-
-The protected physical checksum detects torn writes and accidental corruption.
-It is not a cryptographic integrity mechanism and must not be treated as
-adversarial tamper resistance.
+The two commit slots are serialized together inside the stable cell and rely on
+ICP message execution for atomic commit and rollback. If the enclosing record
+remains decodable, their non-cryptographic checksums detect accidental slot
+corruption and permit fallback to the other valid generation. They do not
+provide adversarial tamper resistance.

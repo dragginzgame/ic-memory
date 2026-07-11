@@ -275,7 +275,7 @@ impl DeclarationCollector {
 ///
 /// A snapshot is duplicate-free, but it is still not permission to open storage.
 /// Integrations should call [`crate::validate_allocations`], commit the staged
-/// generation, and only then expose an [`crate::AllocationSession`].
+/// generation, and only then expose committed allocation authority.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct DeclarationSnapshot {

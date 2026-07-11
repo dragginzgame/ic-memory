@@ -4,78 +4,14 @@ const COMMIT_MARKER: u64 = 0x4943_4D45_4D43_4F4D;
 const FNV_OFFSET: u64 = 0xcbf2_9ce4_8422_2325;
 const FNV_PRIME: u64 = 0x0000_0100_0000_01b3;
 
-///
-/// ProtectedGenerationSlot
-///
-/// One physical generation slot that can participate in protected recovery.
-///
-/// This is an advanced low-level API for framework or stable-IO owners. Most
-/// callers should use the ledger commit/recovery flow instead of implementing
-/// physical slot recovery directly.
-pub trait ProtectedGenerationSlot: Eq {
-    /// Generation encoded by this slot.
-    fn generation(&self) -> u64;
-
-    /// Return whether the slot passed its marker/checksum validation.
-    fn validates(&self) -> bool;
-}
-
-///
-/// DualProtectedCommitStore
-///
-/// Physical store with two protected generation slots.
-///
-/// This is an advanced low-level API for framework or stable-IO owners. Normal
-/// allocation flows recover and commit ledgers through the higher-level ledger
-/// commit APIs.
-pub trait DualProtectedCommitStore {
-    /// Protected slot record type.
-    type Slot: ProtectedGenerationSlot;
-
-    /// Borrow the first physical slot.
-    fn slot0(&self) -> Option<&Self::Slot>;
-
-    /// Borrow the second physical slot.
-    fn slot1(&self) -> Option<&Self::Slot>;
-
-    /// Return true when no commit slot has ever been written.
-    fn is_uninitialized(&self) -> bool {
-        self.slot0().is_none() && self.slot1().is_none()
-    }
-
-    /// Return the highest-generation valid physical slot.
-    fn authoritative_slot(&self) -> Result<AuthoritativeSlot<'_, Self::Slot>, CommitRecoveryError> {
-        select_authoritative_slot(self.slot0(), self.slot1())
-    }
-
-    /// Return the slot that should receive the next staged generation write.
-    ///
-    /// The result is derived from validated recovery state. It does not trust a
-    /// separate current-pointer/header field.
-    fn inactive_slot_index(&self) -> CommitSlotIndex {
-        match self.authoritative_slot() {
-            Ok(authoritative) => authoritative.index.opposite(),
-            Err(_) => CommitSlotIndex::Slot0,
-        }
-    }
-}
-
-///
-/// CommitSlotIndex
-///
-/// Physical dual-slot index selected by protected recovery.
-#[derive(Clone, Copy, Debug, Deserialize, Eq, Ord, PartialEq, PartialOrd, Serialize)]
-pub enum CommitSlotIndex {
-    /// First physical commit slot.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum CommitSlotIndex {
     Slot0,
-    /// Second physical commit slot.
     Slot1,
 }
 
 impl CommitSlotIndex {
-    /// Return the opposite physical slot.
-    #[must_use]
-    pub const fn opposite(self) -> Self {
+    const fn opposite(self) -> Self {
         match self {
             Self::Slot0 => Self::Slot1,
             Self::Slot1 => Self::Slot0,
@@ -83,27 +19,16 @@ impl CommitSlotIndex {
     }
 }
 
-///
-/// AuthoritativeSlot
-///
-/// Highest-generation valid slot selected by protected recovery.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct AuthoritativeSlot<'slot, T> {
-    /// Physical slot index.
-    pub index: CommitSlotIndex,
-    /// Valid committed generation in that slot.
-    pub record: &'slot T,
+struct AuthoritativeSlot<'slot> {
+    index: CommitSlotIndex,
+    record: &'slot CommittedGenerationBytes,
 }
 
-/// Select the highest-generation valid physical slot.
-///
-/// This is an advanced recovery helper for framework or stable-IO owners. It
-/// only selects among supplied protected slots; it does not decode or validate
-/// the allocation ledger payload.
-pub fn select_authoritative_slot<'slot, T: ProtectedGenerationSlot>(
-    slot0: Option<&'slot T>,
-    slot1: Option<&'slot T>,
-) -> Result<AuthoritativeSlot<'slot, T>, CommitRecoveryError> {
+fn select_authoritative_slot<'slot>(
+    slot0: Option<&'slot CommittedGenerationBytes>,
+    slot1: Option<&'slot CommittedGenerationBytes>,
+) -> Result<AuthoritativeSlot<'slot>, CommitRecoveryError> {
     let slot0 = slot0
         .filter(|slot| slot.validates())
         .map(|record| AuthoritativeSlot {
@@ -138,7 +63,7 @@ pub fn select_authoritative_slot<'slot, T: ProtectedGenerationSlot>(
 ///
 /// CommittedGenerationBytes
 ///
-/// Physically committed ledger generation payload protected by a checksum.
+/// Committed ledger generation payload protected by a checksum.
 ///
 /// This is an advanced low-level DTO for framework or stable-IO owners. Its
 /// recovered bytes are untrusted until marker/checksum validation and ledger
@@ -188,8 +113,8 @@ impl CommittedGenerationBytes {
 
     /// Return the checksum over the generation, marker, and payload bytes.
     ///
-    /// The checksum is non-cryptographic and detects torn writes or accidental
-    /// corruption only.
+    /// The checksum is non-cryptographic and detects accidental corruption
+    /// only.
     #[must_use]
     pub const fn checksum(&self) -> u64 {
         self.checksum
@@ -208,38 +133,31 @@ impl CommittedGenerationBytes {
     }
 }
 
-impl ProtectedGenerationSlot for CommittedGenerationBytes {
-    fn generation(&self) -> u64 {
-        self.generation
-    }
-
-    fn validates(&self) -> bool {
-        self.validates()
-    }
-}
-
 ///
 /// DualCommitStore
 ///
-/// Dual-slot protected commit protocol for encoded ledger generations.
+/// Redundant commit store for encoded ledger generations.
 ///
 /// This is an advanced low-level API for framework or stable-IO owners. Most
 /// applications should recover, validate, and commit through the allocation
 /// ledger flow rather than manipulating encoded physical commit slots directly.
 ///
 /// Writers stage a complete generation record into the inactive slot. Readers
-/// recover by selecting the highest-generation valid slot. A torn or partial
-/// write cannot become authoritative unless its marker and checksum validate.
+/// recover by selecting the highest-generation valid slot. If the enclosing
+/// record remains decodable, a corrupt newer slot cannot override an older
+/// valid slot.
 ///
-/// The checksum is for torn-write and accidental-corruption detection only. It
-/// is not a cryptographic hash and does not provide adversarial tamper
-/// resistance.
+/// In the default runtime both slots are serialized together inside one
+/// `ic-stable-structures::Cell`; they are not independently atomic physical
+/// writes. ICP message execution supplies atomic stable-memory commit and
+/// rollback. The checksum is for accidental-corruption detection only. It is
+/// not a cryptographic hash and does not provide adversarial tamper resistance.
 #[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct DualCommitStore {
-    /// First physical commit slot.
+    /// First commit slot.
     pub(crate) slot0: Option<CommittedGenerationBytes>,
-    /// Second physical commit slot.
+    /// Second commit slot.
     pub(crate) slot1: Option<CommittedGenerationBytes>,
 }
 
@@ -250,7 +168,7 @@ impl DualCommitStore {
         self.slot0.is_none() && self.slot1.is_none()
     }
 
-    /// Borrow the first physical commit slot.
+    /// Borrow the first commit slot.
     ///
     /// Slot records are untrusted recovered state until recovery selects an
     /// authoritative generation.
@@ -259,13 +177,24 @@ impl DualCommitStore {
         self.slot0.as_ref()
     }
 
-    /// Borrow the second physical commit slot.
+    /// Borrow the second commit slot.
     ///
     /// Slot records are untrusted recovered state until recovery selects an
     /// authoritative generation.
     #[must_use]
     pub const fn slot1(&self) -> Option<&CommittedGenerationBytes> {
         self.slot1.as_ref()
+    }
+
+    fn authoritative_slot(&self) -> Result<AuthoritativeSlot<'_>, CommitRecoveryError> {
+        select_authoritative_slot(self.slot0(), self.slot1())
+    }
+
+    fn inactive_slot_index(&self) -> CommitSlotIndex {
+        match self.authoritative_slot() {
+            Ok(authoritative) => authoritative.index.opposite(),
+            Err(_) => CommitSlotIndex::Slot0,
+        }
     }
 
     /// Return the highest-generation valid committed record.
@@ -282,9 +211,8 @@ impl DualCommitStore {
 
     /// Commit a new payload to the inactive slot.
     ///
-    /// The returned store models the post-write physical state. If a real
-    /// substrate traps before the inactive slot is fully written, the prior
-    /// valid slot remains authoritative under `authoritative`.
+    /// The returned record is the new authoritative in-memory slot. The owner
+    /// remains responsible for persisting the enclosing store.
     pub fn commit_payload(
         &mut self,
         payload: Vec<u8>,
@@ -311,7 +239,7 @@ impl DualCommitStore {
     /// payloads are decoded, current-format checked, and integrity-validated
     /// before they can become authoritative.
     ///
-    /// The physical slot generation is checked against the recovered physical
+    /// The commit-slot generation is checked against the recovered
     /// predecessor. This method does not inspect `payload`.
     pub fn commit_payload_at_generation(
         &mut self,
@@ -347,7 +275,7 @@ impl DualCommitStore {
         self.authoritative()
     }
 
-    /// Simulate a torn write into the inactive slot.
+    /// Simulate corruption in the inactive slot.
     ///
     /// This helper is intentionally part of the model because recovery behavior
     /// is an ABI requirement, not an implementation detail.
@@ -361,18 +289,6 @@ impl DualCommitStore {
         } else {
             self.slot1 = Some(corrupt);
         }
-    }
-}
-
-impl DualProtectedCommitStore for DualCommitStore {
-    type Slot = CommittedGenerationBytes;
-
-    fn slot0(&self) -> Option<&Self::Slot> {
-        self.slot0.as_ref()
-    }
-
-    fn slot1(&self) -> Option<&Self::Slot> {
-        self.slot1.as_ref()
     }
 }
 
@@ -394,9 +310,9 @@ pub struct CommitStoreDiagnostic {
 }
 
 impl CommitStoreDiagnostic {
-    /// Build a read-only recovery diagnostic from a dual protected commit store.
+    /// Build a read-only recovery diagnostic from a dual commit store.
     #[must_use]
-    pub fn from_store<S: DualProtectedCommitStore>(store: &S) -> Self {
+    pub fn from_store(store: &DualCommitStore) -> Self {
         let (authoritative_generation, recovery_error) = match store.authoritative_slot() {
             Ok(slot) => (Some(slot.record.generation()), None),
             Err(err) => (None, Some(err)),
@@ -426,7 +342,7 @@ pub struct CommitSlotDiagnostic {
 }
 
 impl CommitSlotDiagnostic {
-    fn from_slot<T: ProtectedGenerationSlot>(slot: Option<&T>) -> Self {
+    fn from_slot(slot: Option<&CommittedGenerationBytes>) -> Self {
         match slot {
             Some(record) => Self {
                 present: true,
@@ -452,7 +368,7 @@ pub enum CommitRecoveryError {
     /// No committed slot passed marker and checksum validation.
     #[error("no valid committed ledger generation")]
     NoValidGeneration,
-    /// Both physical slots validated at the same generation but contained different bytes.
+    /// Both commit slots validated at the same generation but contained different bytes.
     #[error("ambiguous committed ledger generation {generation}")]
     AmbiguousGeneration {
         /// Ambiguous physical generation.
@@ -646,58 +562,6 @@ mod tests {
         );
         assert!(!diagnostic.slot0.present);
         assert!(!diagnostic.slot1.present);
-    }
-
-    #[test]
-    fn diagnostic_builds_from_any_dual_protected_store() {
-        #[derive(Eq, PartialEq)]
-        struct TestSlot {
-            generation: u64,
-            valid: bool,
-        }
-
-        impl ProtectedGenerationSlot for TestSlot {
-            fn generation(&self) -> u64 {
-                self.generation
-            }
-
-            fn validates(&self) -> bool {
-                self.valid
-            }
-        }
-
-        struct TestStore {
-            slot0: Option<TestSlot>,
-            slot1: Option<TestSlot>,
-        }
-
-        impl DualProtectedCommitStore for TestStore {
-            type Slot = TestSlot;
-
-            fn slot0(&self) -> Option<&Self::Slot> {
-                self.slot0.as_ref()
-            }
-
-            fn slot1(&self) -> Option<&Self::Slot> {
-                self.slot1.as_ref()
-            }
-        }
-
-        let diagnostic = CommitStoreDiagnostic::from_store(&TestStore {
-            slot0: Some(TestSlot {
-                generation: 8,
-                valid: true,
-            }),
-            slot1: Some(TestSlot {
-                generation: 9,
-                valid: false,
-            }),
-        });
-
-        assert_eq!(diagnostic.authoritative_generation, Some(8));
-        assert!(diagnostic.slot0.valid);
-        assert_eq!(diagnostic.slot1.generation, Some(9));
-        assert!(!diagnostic.slot1.valid);
     }
 
     #[test]

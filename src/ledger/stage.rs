@@ -5,8 +5,8 @@ use super::{
     validate_reservation_claim,
 };
 use crate::{
+    capability::ValidatedAllocations,
     declaration::{AllocationDeclaration, DeclarationSnapshotError},
-    session::ValidatedAllocations,
 };
 
 impl AllocationLedger {

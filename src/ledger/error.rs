@@ -240,7 +240,7 @@ pub enum AllocationStageError {
         "validated allocations were produced at generation {validated_generation}, but ledger is at generation {ledger_generation}"
     )]
     StaleValidatedAllocations {
-        /// Generation carried by the validated allocation session.
+        /// Generation carried by the validated allocation capability.
         validated_generation: u64,
         /// Current ledger generation.
         ledger_generation: u64,

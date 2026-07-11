@@ -1,14 +1,13 @@
 # ic-memory Current Wire Fixtures
 
-These fixtures pin the current 0.7.5 durable wire shape, unchanged from 0.7.4.
+These fixtures pin the current durable wire shape.
 
 Files ending in `.hex` contain lowercase hexadecimal bytes. Tests decode the
 hex into the actual durable bytes, recover or validate them, and re-encode the
 current output to catch accidental wire-format drift in reviewable text form.
 
 Intentional protocol hard cuts replace these fixtures in place. The repository
-does not retain versioned decoders, compatibility fixture directories, or
-legacy wire aliases.
+contains exactly one current fixture set and one current decoder path.
 
 Fixture groups:
 

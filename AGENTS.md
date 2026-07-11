@@ -1,5 +1,22 @@
 # Repository Instructions
 
+## Pre-1.0 Hard-Cut Policy
+
+Until `1.0.0`, every release uses the current API and durable format only. Do
+not preserve backward compatibility with an earlier pre-1.0 release.
+
+- Do not add deprecated forwarders, compatibility shims, renamed aliases,
+  legacy modules, or old macro forms.
+- Do not add serde field aliases, version-routed legacy decoders, fallback
+  readers, compatibility fixtures, or defaults whose purpose is to accept an
+  earlier wire shape.
+- When an API or format changes, remove the superseded path in the same change
+  and update current fixtures, documentation, and downstream callers directly.
+- Historical changelogs and archived design documents may describe removed
+  behavior, but executable code and current documentation must not retain it.
+- Negative compile-fail tests may reference removed forms only to prove that
+  they remain rejected.
+
 ## Rust Item Documentation Style
 
 For public structs, traits, and enums, prefer a wrapped rustdoc block with the

@@ -1,7 +1,4 @@
-use crate::{
-    declaration::AllocationDeclaration, key::StableKey, slot::AllocationSlotDescriptor,
-    substrate::StorageSubstrate,
-};
+use crate::{declaration::AllocationDeclaration, key::StableKey, slot::AllocationSlotDescriptor};
 use std::sync::Arc;
 
 ///
@@ -11,9 +8,8 @@ use std::sync::Arc;
 /// validation.
 ///
 /// This value is produced by [`crate::validate_allocations`] and may be staged
-/// into the next ledger generation. It cannot construct an
-/// [`AllocationSession`] or open storage. Only a [`CommittedAllocations`]
-/// capability confirmed after persistence can do that.
+/// into the next ledger generation. It cannot open storage. Only a
+/// [`CommittedAllocations`] capability confirmed after persistence can do that.
 ///
 /// This is an in-memory capability, not a serde DTO. It has no public
 /// constructor and should only be produced by validation or bootstrap paths.
@@ -139,64 +135,4 @@ impl CommittedAllocations {
         self.validated.inner = Arc::new(state);
         self
     }
-}
-
-///
-/// AllocationSession
-///
-/// Persisted allocation capability required before opening allocation slots.
-///
-/// Integrations should construct sessions only after recovering the ledger,
-/// validating declarations, and committing the next generation. Opening storage
-/// through this type keeps handle creation tied to the validated stable-key
-/// snapshot.
-pub struct AllocationSession<S: StorageSubstrate> {
-    substrate: S,
-    committed: CommittedAllocations,
-}
-
-impl<S: StorageSubstrate> AllocationSession<S> {
-    /// Construct a session from a substrate and committed allocation set.
-    #[must_use]
-    pub const fn new(substrate: S, committed: CommittedAllocations) -> Self {
-        Self {
-            substrate,
-            committed,
-        }
-    }
-
-    /// Borrow the committed allocation set.
-    #[must_use]
-    pub const fn committed(&self) -> &CommittedAllocations {
-        &self.committed
-    }
-
-    /// Open an allocation by stable key.
-    pub fn open(
-        &self,
-        key: &StableKey,
-    ) -> Result<S::MemoryHandle, AllocationSessionError<S::Error>> {
-        let slot = self
-            .committed
-            .slot_for(key)
-            .ok_or_else(|| AllocationSessionError::UnknownStableKey(key.clone()))?;
-        self.substrate
-            .open_slot(slot)
-            .map_err(AllocationSessionError::Substrate)
-    }
-}
-
-///
-/// AllocationSessionError
-///
-/// Failure to open through a committed allocation session.
-#[non_exhaustive]
-#[derive(Clone, Debug, Eq, thiserror::Error, PartialEq)]
-pub enum AllocationSessionError<E> {
-    /// Stable key was not part of the committed allocation snapshot.
-    #[error("stable key '{0}' was not committed for this allocation session")]
-    UnknownStableKey(StableKey),
-    /// Storage substrate failed to open the committed slot.
-    #[error("storage substrate failed to open allocation slot")]
-    Substrate(E),
 }

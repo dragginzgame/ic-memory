@@ -61,15 +61,24 @@ orders data. `ic-memory` catches that mismatch first.
 
 ## Quick Start
 
+Declare both direct dependencies:
+
+```toml
+[dependencies]
+ic-memory = "0.9.0"
+ic-stable-structures = "0.7.2"
+```
+
 Declare the MemoryManager IDs your crate owns:
 
 ```rust,ignore
 ic_memory::ic_memory_range!(authority = "icydb.test_db", start = 120, end = 129);
 ```
 
-The authority string is explicit durable policy identity. Use the same stable
-value for the package's range and key declarations; do not derive it from a
-Cargo package name or module path.
+The authority string is explicit stable policy metadata. It is not persisted
+allocation identity; the stable key and memory ID fill that role. Use the same
+authority value for the package's range and key declarations, and do not derive
+it from a Cargo package name or module path.
 
 Open stable structures through `ic_memory_key!`:
 
@@ -183,7 +192,7 @@ registered declarations, range authority, validation preflight, and live
 `MemoryManager` slot sizes when they can be recovered.
 
 Use `default_memory_manager_commit_recovery_diagnostic()` when you only need the
-dual-slot protected commit status, including empty, corrupt, ambiguous, or
+redundant commit-slot status, including empty, corrupt, ambiguous, or
 recoverable physical ledger state.
 
 ## Stable Keys

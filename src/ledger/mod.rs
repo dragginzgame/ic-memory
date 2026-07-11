@@ -46,7 +46,7 @@ trait LedgerCodec: private::Sealed {
 /// This is the only logical ledger codec in the current IC stack:
 /// `MemoryManager` ID 0 stores an `ic-stable-structures::Cell` containing a
 /// [`crate::StableCellLedgerRecord`], whose [`LedgerCommitStore`] contains
-/// dual protected CBOR-encoded ledger generations.
+/// redundant checksummed CBOR-encoded ledger generations.
 ///
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
@@ -163,7 +163,7 @@ impl LedgerCommitStore {
         self.recover()
     }
 
-    /// Simulate a torn write of a logical ledger payload into the inactive slot.
+    /// Simulate corruption of a logical ledger payload in the inactive slot.
     #[cfg(test)]
     pub fn write_corrupt_inactive_ledger(
         &mut self,
@@ -246,8 +246,8 @@ mod tests {
     fn validated(
         generation: u64,
         declarations: Vec<AllocationDeclaration>,
-    ) -> crate::session::ValidatedAllocations {
-        crate::session::ValidatedAllocations::new(generation, declarations, None)
+    ) -> crate::capability::ValidatedAllocations {
+        crate::capability::ValidatedAllocations::new(generation, declarations, None)
     }
 
     fn record<'ledger>(ledger: &'ledger AllocationLedger, key: &str) -> &'ledger AllocationRecord {
@@ -678,7 +678,7 @@ mod tests {
 
     #[test]
     fn stage_validated_generation_allows_empty_generation_boundary() {
-        let validated = crate::session::ValidatedAllocations::new(
+        let validated = crate::capability::ValidatedAllocations::new(
             3,
             Vec::new(),
             Some("test-runtime".to_string()),
@@ -729,7 +729,7 @@ mod tests {
 
     #[test]
     fn stage_validated_generation_rejects_invalid_schema_metadata() {
-        let validated = crate::session::ValidatedAllocations::new(
+        let validated = crate::capability::ValidatedAllocations::new(
             3,
             vec![declaration_with_invalid_schema("app.users.v1", 100)],
             None,
@@ -1254,7 +1254,7 @@ mod tests {
             .expect("snapshot");
         let (declarations, runtime_fingerprint) = snapshot.into_parts();
         let validated =
-            crate::session::ValidatedAllocations::new(3, declarations, runtime_fingerprint);
+            crate::capability::ValidatedAllocations::new(3, declarations, runtime_fingerprint);
 
         let staged = ledger()
             .stage_validated_generation(&validated, None)
@@ -1265,7 +1265,7 @@ mod tests {
 
     #[test]
     fn stage_validated_generation_records_runtime_fingerprint() {
-        let validated = crate::session::ValidatedAllocations::new(
+        let validated = crate::capability::ValidatedAllocations::new(
             3,
             vec![declaration("app.users.v1", 100, None)],
             Some("wasm:abc123".to_string()),

@@ -1,4 +1,5 @@
 use crate::{
+    capability::ValidatedAllocations,
     declaration::{DeclarationSnapshot, DeclarationSnapshotError},
     key::StableKey,
     ledger::{
@@ -6,7 +7,6 @@ use crate::{
         claim_conflict_record, validate_declaration_claim,
     },
     policy::AllocationPolicy,
-    session::ValidatedAllocations,
     slot::AllocationSlotDescriptor,
 };
 

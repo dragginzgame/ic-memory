@@ -8,11 +8,17 @@ MemoryManager ID 0
   -> LedgerCommitStore
 ```
 
-`LedgerCommitStore` uses dual protected commit slots. Each slot contains a
+`LedgerCommitStore` uses two redundant commit slots. Each slot contains a
 generation number, marker, checksum, and encoded ledger payload. Recovery
-chooses the highest-generation valid slot. A corrupt newer slot cannot override
-an older valid slot, and ambiguous equal-generation divergent slots fail
-closed.
+chooses the highest-generation valid slot. If the enclosing record remains
+decodable, a corrupt newer slot cannot override an older valid slot, and
+ambiguous equal-generation divergent slots fail closed.
+
+The default runtime serializes both slots together inside one
+`ic-stable-structures::Cell`; they are not independently atomic physical writes.
+ICP message execution provides atomic stable-memory commit and rollback. The
+redundant slots and checksums therefore provide recovery from localized,
+decodable record corruption rather than transaction atomicity.
 
 The logical payload is wrapped in a small envelope before ledger decode:
 
@@ -22,10 +28,8 @@ ICMEMLED
   || CBOR(AllocationLedger)
 ```
 
-The 0.7 protocol deliberately removed the earlier version-routing scaffold from
-this envelope. The only logical payload accepted by the current crate is the
-current crate-owned CBOR `AllocationLedger` DTO, guarded by the envelope magic
-and payload length.
+The only logical payload accepted by the current crate is the crate-owned CBOR
+`AllocationLedger` DTO, guarded by the envelope magic and payload length.
 
 This ordering still matters: physical recovery selects a valid committed slot
 before the logical envelope is decoded, and the envelope is classified before

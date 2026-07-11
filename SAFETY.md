@@ -2,7 +2,7 @@
 
 `ic-memory` is stable-memory allocation-governance infrastructure. Future
 changes must preserve these invariants on every recovery, validation, staging,
-commit, and session-opening path.
+commit, and allocation-opening path.
 
 These invariants are about allocation ABI safety. They do not prove
 store-schema compatibility, application-level data validity, controller
@@ -32,8 +32,8 @@ authorization, or endpoint safety.
 
 ## Generation Invariants
 
-- Validated sessions are bound to exactly one committed ledger generation.
-- Staging a validated generation must reject stale validated sessions whose
+- Validated capabilities are bound to exactly one committed ledger generation.
+- Staging a validated generation must reject stale validated capabilities whose
   generation no longer matches the current ledger.
 - Durable generation counters must never silently saturate or wrap.
 - Physical commit generation must equal logical ledger generation.
@@ -43,8 +43,8 @@ authorization, or endpoint safety.
 
 ## Physical / Logical Binding
 
-- The physical protected commit slot and the logical allocation ledger must
-  describe the same generation.
+- The checksummed commit slot and the logical allocation ledger must describe
+  the same generation.
 - A payload committed at physical generation `N` must decode to a ledger whose
   current generation is also `N`.
 - A non-next logical generation must not be committed over the current ledger.
@@ -57,7 +57,7 @@ authorization, or endpoint safety.
 - Ambiguous physical state fails closed.
 - Dual-slot recovery must not select an authoritative generation when the slots
   disagree in a way the recovery rules cannot prove safe.
-- Identical duplicate physical slots at the same generation are recoverable
+- Identical duplicate commit slots at the same generation are recoverable
   deterministically.
 - A newer corrupt slot cannot override an older valid slot.
 - Recovered ledgers are untrusted until current-format and committed-integrity
@@ -78,7 +78,7 @@ Storage integrations must validate layout before opening stable-memory handles:
 2. Declare the stores expected by the current binary.
 3. Validate those declarations against ledger history and framework policy.
 4. Commit the new allocation generation.
-5. Only then open stable-memory handles through the validated session/substrate.
+5. Only then open stable-memory handles using committed allocation authority.
 
 Opening stable-memory handles before validation defeats the purpose of this
 crate.
@@ -95,10 +95,10 @@ runtime may produce it only after its stable-cell write succeeds. Generic
 persistence owners may confirm it only after durably writing the pending
 `PendingBootstrapCommit` state.
 
-Allocation sessions may open storage only from `CommittedAllocations` produced
-after current-format recovery, committed-ledger integrity, declaration
-validation, generation staging, commit, and durable persistence. Diagnostics,
-durable DTOs, and `ValidatedAllocations` are not open authority.
+Integrations may open storage only from `CommittedAllocations` produced after
+current-format recovery, committed-ledger integrity, declaration validation,
+generation staging, commit, and durable persistence. Diagnostics, durable DTOs,
+and `ValidatedAllocations` are not open authority.
 
 ## Retirement Invariants
 
@@ -113,9 +113,13 @@ durable DTOs, and `ValidatedAllocations` are not open authority.
 
 ## Integrity Boundary
 
-The protected physical checksum is only torn-write and accidental-corruption
-detection. It is non-cryptographic and does not provide adversarial tamper
-resistance, authenticity, or authorization.
+The redundant commit slots are serialized together inside the default
+`ic-stable-structures::Cell`; they are not independently atomic physical
+writes. ICP message execution provides atomic stable-memory commit and rollback.
+If the enclosing record remains decodable, the slot checksum can detect
+accidental corruption and allow recovery from the other valid slot. It is
+non-cryptographic and does not provide adversarial tamper resistance,
+authenticity, or authorization.
 
 Public durable structs are DTOs. Decoded, deserialized, and diagnostic values
 are untrusted until the relevant recovery, current-format, integrity,
