@@ -16,7 +16,9 @@ pub use error::{
     AllocationReservationError, AllocationRetirementError, AllocationStageError, LedgerCommitError,
     LedgerIntegrityError,
 };
-pub use payload::{LedgerPayloadEnvelope, LedgerPayloadEnvelopeError};
+pub use payload::{
+    LEDGER_PAYLOAD_FORMAT_VERSION, LedgerPayloadEnvelope, LedgerPayloadEnvelopeError,
+};
 pub use record::{
     AllocationHistory, AllocationLedger, AllocationRecord, AllocationRetirement, AllocationState,
     GenerationRecord, RecoveredLedger, SchemaMetadataRecord,
@@ -263,13 +265,10 @@ mod tests {
             .encode()
     }
 
-    fn old_versioned_enveloped_payload(ledger: &AllocationLedger) -> Vec<u8> {
+    fn pre_0_10_enveloped_payload(ledger: &AllocationLedger) -> Vec<u8> {
         let payload = CborLedgerCodec.encode(ledger).expect("CBOR payload");
-        let mut bytes = Vec::with_capacity(8 + 2 + 4 + 4 + 8 + payload.len());
+        let mut bytes = Vec::with_capacity(8 + 8 + payload.len());
         bytes.extend_from_slice(b"ICMEMLED");
-        bytes.extend_from_slice(&1u16.to_le_bytes());
-        bytes.extend_from_slice(&1u32.to_le_bytes());
-        bytes.extend_from_slice(&1u32.to_le_bytes());
         bytes.extend_from_slice(
             &u64::try_from(payload.len())
                 .expect("payload length")
@@ -1863,26 +1862,52 @@ mod tests {
     }
 
     #[test]
-    fn ledger_commit_store_rejects_old_versioned_payload_envelope_shape() {
+    fn ledger_commit_store_classifies_pre_0_10_payload_as_unsupported() {
         let store = LedgerCommitStore {
             physical: DualCommitStore {
                 slot0: Some(CommittedGenerationBytes::new(
                     1,
-                    old_versioned_enveloped_payload(&committed_ledger(1)),
+                    pre_0_10_enveloped_payload(&committed_ledger(1)),
                 )),
                 slot1: None,
             },
         };
 
-        let err = store.recover().expect_err("old envelope shape must fail");
+        let err = store
+            .recover()
+            .expect_err("pre-0.10 envelope shape must fail");
 
         assert!(matches!(
             err,
-            LedgerCommitError::PayloadEnvelope(
-                LedgerPayloadEnvelopeError::PayloadLengthOverflow { .. }
-                    | LedgerPayloadEnvelopeError::LengthMismatch { .. }
-            )
+            LedgerCommitError::PayloadEnvelope(LedgerPayloadEnvelopeError::UnsupportedFormat {
+                version: None,
+                ..
+            })
         ));
+    }
+
+    #[test]
+    fn ledger_commit_store_classifies_unknown_format_version_as_unsupported() {
+        let mut payload = enveloped_payload(&committed_ledger(1));
+        payload[12..16].copy_from_slice(&(LEDGER_PAYLOAD_FORMAT_VERSION + 1).to_le_bytes());
+        let store = LedgerCommitStore {
+            physical: DualCommitStore {
+                slot0: Some(CommittedGenerationBytes::new(1, payload)),
+                slot1: None,
+            },
+        };
+
+        let err = store
+            .recover()
+            .expect_err("unknown ledger format version must fail");
+
+        assert_eq!(
+            err,
+            LedgerCommitError::PayloadEnvelope(LedgerPayloadEnvelopeError::UnsupportedFormat {
+                marker: *b"ICMF",
+                version: Some(LEDGER_PAYLOAD_FORMAT_VERSION + 1),
+            })
+        );
     }
 
     #[test]

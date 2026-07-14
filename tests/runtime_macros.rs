@@ -7,8 +7,9 @@ use std::{
 struct MacroStore;
 
 static EAGER_INIT_RAN: AtomicBool = AtomicBool::new(false);
+const MACRO_AUTHORITY: &str = "runtime_macros";
 
-ic_memory::ic_memory_range!(authority = "runtime_macros", start = 130, end = 139);
+ic_memory::ic_memory_range!(authority = MACRO_AUTHORITY, start = 130, end = 139);
 
 ic_memory::eager_init!({
     EAGER_INIT_RAN.store(true, Ordering::SeqCst);
@@ -18,7 +19,7 @@ thread_local! {
     static MACRO_MEMORY: RefCell<Option<VirtualMemory<DefaultMemoryImpl>>> = {
         assert!(ic_memory::is_default_memory_manager_bootstrapped());
         RefCell::new(Some(ic_memory::ic_memory_key!(
-            authority = "runtime_macros",
+            authority = MACRO_AUTHORITY,
             key = "macro.integration.users.v1",
             ty = MacroStore,
             id = 130,

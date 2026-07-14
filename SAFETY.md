@@ -62,8 +62,9 @@ authorization, or endpoint safety.
 - Every present commit slot must pass marker and checksum validation. Recovery
   must not discard an invalid slot and fall back to an older generation because
   doing so could forget committed allocation history.
-- Recovered ledgers are untrusted until current-format and committed-integrity
-  checks succeed.
+- Recovered ledgers are untrusted until the explicit current-format
+  discriminator and committed-integrity checks succeed. A recognized obsolete
+  format is rejected as unsupported; it is never decoded through a legacy path.
 - Stable-cell ledger storage used by the default runtime must be preflighted
   before opening it through `ic-stable-structures::Cell`, so envelope or record
   corruption is classified as a bootstrap error instead of escaping as a decode

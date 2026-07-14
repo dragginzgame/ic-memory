@@ -27,12 +27,16 @@ The logical payload is wrapped in a small envelope before ledger decode:
 
 ```text
 ICMEMLED
+  || ICMF
+  || formatVersion
   || payloadLength
   || CBOR(AllocationLedger)
 ```
 
 The only logical payload accepted by the current crate is the crate-owned CBOR
-`AllocationLedger` DTO, guarded by the envelope magic and payload length.
+`AllocationLedger` DTO, guarded by the envelope family magic, current format
+marker and version, and payload length. A recognized non-current format is
+reported as unsupported without accepting or migrating it.
 
 This ordering still matters: physical recovery selects the authoritative
 committed slot before the logical envelope is decoded, and the envelope is

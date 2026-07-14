@@ -38,4 +38,5 @@ logic outside `ic-memory`.
 For operator diagnostics, `ic_memory::default_memory_manager_doctor_report()`
 reports stable-cell status, protected commit recovery state, recovered ledger
 export, registered declarations, range authority, validation preflight, and
-live memory sizes when recovery succeeds.
+live memory sizes when recovery succeeds. Failure states include stable
+diagnostic codes for automation as well as human-readable messages.

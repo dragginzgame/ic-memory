@@ -94,6 +94,72 @@ impl DiagnosticDeclaration {
 }
 
 ///
+/// DiagnosticCode
+///
+/// Stable machine-readable category for an operator diagnostic failure.
+///
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub enum DiagnosticCode {
+    /// Deferred static initialization could not run.
+    #[serde(rename = "eager_init")]
+    EagerInit,
+    /// Static allocation declarations could not be read.
+    #[serde(rename = "declaration_registry")]
+    DeclarationRegistry,
+    /// Static range declarations could not be read.
+    #[serde(rename = "range_registry")]
+    RangeRegistry,
+    /// Effective range authority could not be constructed or applied.
+    #[serde(rename = "range_authority")]
+    RangeAuthority,
+    /// Registered declarations could not form a valid snapshot.
+    #[serde(rename = "declaration_snapshot")]
+    DeclarationSnapshot,
+    /// Stable-cell storage could not be decoded.
+    #[serde(rename = "stable_cell")]
+    StableCell,
+    /// Persisted bytes use a recognized but unsupported durable format.
+    #[serde(rename = "unsupported_format")]
+    UnsupportedFormat,
+    /// Protected ledger recovery failed.
+    #[serde(rename = "ledger_recovery")]
+    LedgerRecovery,
+    /// An empty current-format genesis ledger could not be constructed.
+    #[serde(rename = "genesis_ledger")]
+    GenesisLedger,
+    /// Current declarations failed allocation validation.
+    #[serde(rename = "allocation_validation")]
+    AllocationValidation,
+}
+
+///
+/// DiagnosticFailure
+///
+/// Machine-readable diagnostic code paired with an operator-facing message.
+///
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct DiagnosticFailure {
+    /// Stable diagnostic category.
+    pub code: DiagnosticCode,
+    /// Human-readable failure detail.
+    pub message: String,
+}
+
+impl DiagnosticFailure {
+    /// Build a coded diagnostic failure.
+    #[must_use]
+    pub fn new(code: DiagnosticCode, message: impl Into<String>) -> Self {
+        Self {
+            code,
+            message: message.into(),
+        }
+    }
+}
+
+///
 /// DiagnosticRangeAuthority
 ///
 /// Read-only diagnostic view of registered and effective range authority.
@@ -105,7 +171,7 @@ pub struct DiagnosticRangeAuthority {
     /// Range records registered directly by linked crates.
     pub registered_records: Vec<MemoryManagerAuthorityRecord>,
     /// Effective range authority table or its validation error.
-    pub effective_authority: Result<MemoryManagerRangeAuthority, String>,
+    pub effective_authority: Result<MemoryManagerRangeAuthority, DiagnosticFailure>,
 }
 
 impl DiagnosticRangeAuthority {
@@ -113,7 +179,7 @@ impl DiagnosticRangeAuthority {
     #[must_use]
     pub const fn new(
         registered_records: Vec<MemoryManagerAuthorityRecord>,
-        effective_authority: Result<MemoryManagerRangeAuthority, String>,
+        effective_authority: Result<MemoryManagerRangeAuthority, DiagnosticFailure>,
     ) -> Self {
         Self {
             registered_records,
@@ -167,8 +233,8 @@ pub enum DiagnosticStableCellStatus {
     /// The ledger memory is present but could not be decoded as the expected
     /// stable-cell ledger record.
     Corrupt {
-        /// Stable-cell envelope or ledger-record decode error.
-        error: String,
+        /// Stable-cell envelope or ledger-record decode failure.
+        failure: DiagnosticFailure,
     },
 }
 
@@ -183,6 +249,8 @@ pub enum DiagnosticStableCellStatus {
 pub enum DiagnosticCheck {
     /// The check could not run because prerequisite state was unavailable.
     NotRun {
+        /// Stable diagnostic category.
+        code: DiagnosticCode,
         /// Reason the check could not run.
         message: String,
     },
@@ -190,6 +258,8 @@ pub enum DiagnosticCheck {
     Passed,
     /// The check ran and found a problem.
     Failed {
+        /// Stable diagnostic category.
+        code: DiagnosticCode,
         /// Validation failure.
         message: String,
     },
@@ -204,16 +274,18 @@ impl DiagnosticCheck {
 
     /// Build a failed diagnostic check.
     #[must_use]
-    pub fn failed(message: impl Into<String>) -> Self {
+    pub fn failed(code: DiagnosticCode, message: impl Into<String>) -> Self {
         Self::Failed {
+            code,
             message: message.into(),
         }
     }
 
     /// Build a skipped diagnostic check.
     #[must_use]
-    pub fn not_run(message: impl Into<String>) -> Self {
+    pub fn not_run(code: DiagnosticCode, message: impl Into<String>) -> Self {
         Self::NotRun {
+            code,
             message: message.into(),
         }
     }
@@ -428,15 +500,24 @@ mod tests {
     fn diagnostic_outcome_states_round_trip() {
         let stable_cell = DiagnosticStableCell::new(
             DiagnosticStableCellStatus::Corrupt {
-                error: "bad stable-cell record".to_string(),
+                failure: DiagnosticFailure::new(
+                    DiagnosticCode::StableCell,
+                    "bad stable-cell record",
+                ),
             },
             DiagnosticMemorySize::from_wasm_pages(1),
         );
         let range_authority = DiagnosticRangeAuthority::new(
             Vec::new(),
-            Err("overlapping authority ranges".to_string()),
+            Err(DiagnosticFailure::new(
+                DiagnosticCode::RangeAuthority,
+                "overlapping authority ranges",
+            )),
         );
-        let check = DiagnosticCheck::failed("duplicate declaration");
+        let check = DiagnosticCheck::failed(
+            DiagnosticCode::AllocationValidation,
+            "duplicate declaration",
+        );
 
         for value in [DiagnosticCheck::passed(), check] {
             let bytes = crate::test_cbor::to_vec(&value).expect("check bytes");
@@ -454,6 +535,32 @@ mod tests {
         let decoded: DiagnosticRangeAuthority =
             crate::test_cbor::from_slice(&bytes).expect("range round trip");
         assert_eq!(decoded, range_authority);
+    }
+
+    #[test]
+    fn diagnostic_codes_have_stable_wire_names() {
+        let cases = [
+            (DiagnosticCode::EagerInit, "eager_init"),
+            (DiagnosticCode::DeclarationRegistry, "declaration_registry"),
+            (DiagnosticCode::RangeRegistry, "range_registry"),
+            (DiagnosticCode::RangeAuthority, "range_authority"),
+            (DiagnosticCode::DeclarationSnapshot, "declaration_snapshot"),
+            (DiagnosticCode::StableCell, "stable_cell"),
+            (DiagnosticCode::UnsupportedFormat, "unsupported_format"),
+            (DiagnosticCode::LedgerRecovery, "ledger_recovery"),
+            (DiagnosticCode::GenesisLedger, "genesis_ledger"),
+            (
+                DiagnosticCode::AllocationValidation,
+                "allocation_validation",
+            ),
+        ];
+
+        for (code, expected) in cases {
+            assert_eq!(
+                crate::test_cbor::to_value(code).expect("diagnostic code value"),
+                crate::test_cbor::Value::Text(expected.to_string())
+            );
+        }
     }
 
     #[test]

@@ -69,10 +69,13 @@ ic-memory = "0.10.0"
 ic-stable-structures = "0.7.2"
 ```
 
-Declare the MemoryManager IDs your crate owns:
+Declare the MemoryManager IDs your crate owns. A shared compile-time constant
+keeps the explicit authority identical across the range and each key:
 
 ```rust,ignore
-ic_memory::ic_memory_range!(authority = "icydb.test_db", start = 120, end = 129);
+const MEMORY_AUTHORITY: &str = "icydb.test_db";
+
+ic_memory::ic_memory_range!(authority = MEMORY_AUTHORITY, start = 120, end = 129);
 ```
 
 The authority string is explicit stable policy metadata. It is not persisted
@@ -88,7 +91,7 @@ use std::cell::RefCell;
 thread_local! {
     pub static USERS: RefCell<UsersStore> = RefCell::new(UsersStore::init(
         ic_memory::ic_memory_key!(
-            authority = "icydb.test_db",
+            authority = MEMORY_AUTHORITY,
             key = "icydb.test_db.users.data.v1",
             ty = UsersStore,
             id = 120,
@@ -190,6 +193,8 @@ runtime diagnostics. It can be called before or after bootstrap and reports the
 stable-cell status, protected commit recovery state, recovered ledger export,
 registered declarations, range authority, validation preflight, and live
 `MemoryManager` slot sizes when they can be recovered.
+Diagnostic failures carry stable `DiagnosticCode` values alongside their
+human-readable messages for operator automation.
 
 Use `default_memory_manager_commit_recovery_diagnostic()` when you only need
 commit-slot presence and validity, the selected authoritative generation, and

@@ -1,9 +1,10 @@
 use crate::{
     AllocationBootstrap, AllocationDeclaration, AllocationHistory, AllocationLedger,
     AllocationPolicy, AllocationSlotDescriptor, CommittedAllocations, DeclarationSnapshot,
-    DefaultMemoryManagerDoctorReport, DiagnosticCheck, DiagnosticDeclaration, DiagnosticExport,
-    DiagnosticMemorySize, DiagnosticRangeAuthority, DiagnosticStableCell,
-    DiagnosticStableCellStatus, LedgerCommitError, STABLE_CELL_VALUE_OFFSET, StableCellLedgerError,
+    DefaultMemoryManagerDoctorReport, DiagnosticCheck, DiagnosticCode, DiagnosticDeclaration,
+    DiagnosticExport, DiagnosticFailure, DiagnosticMemorySize, DiagnosticRangeAuthority,
+    DiagnosticStableCell, DiagnosticStableCellStatus, LedgerCommitError,
+    LedgerPayloadEnvelopeError, STABLE_CELL_VALUE_OFFSET, StableCellLedgerError,
     StableCellLedgerRecord, StableKey,
     physical::CommitStoreDiagnostic,
     registry::{
@@ -352,9 +353,12 @@ pub fn default_memory_manager_doctor_report() -> DefaultMemoryManagerDoctorRepor
     let eager_init_error = if bootstrapped {
         None
     } else {
-        run_eager_init_hooks()
-            .err()
-            .map(|_err| format!("eager-init hooks: {}", RuntimeLockPoisoned::MESSAGE))
+        run_eager_init_hooks().err().map(|_err| {
+            DiagnosticFailure::new(
+                DiagnosticCode::EagerInit,
+                format!("eager-init hooks: {}", RuntimeLockPoisoned::MESSAGE),
+            )
+        })
     };
 
     let stable_cell = default_memory_manager_stable_cell_diagnostic();
@@ -403,7 +407,7 @@ pub fn default_memory_manager_doctor_report() -> DefaultMemoryManagerDoctorRepor
                 recovered.as_ref(),
             )
         },
-        DiagnosticCheck::failed,
+        |failure| DiagnosticCheck::failed(failure.code, failure.message),
     );
 
     DefaultMemoryManagerDoctorReport {
@@ -563,7 +567,7 @@ fn default_memory_manager_stable_cell_diagnostic() -> DefaultStableCellDiagnosti
         Err(err) => DefaultStableCellDiagnostic {
             diagnostic: DiagnosticStableCell::new(
                 DiagnosticStableCellStatus::Corrupt {
-                    error: err.to_string(),
+                    failure: DiagnosticFailure::new(DiagnosticCode::StableCell, err.to_string()),
                 },
                 memory_size,
             ),
@@ -583,10 +587,22 @@ fn diagnostic_range_authority(
                 .collect();
             match range_authority(ranges.clone()) {
                 Ok(authority) => DiagnosticRangeAuthority::new(registered_records, Ok(authority)),
-                Err(err) => DiagnosticRangeAuthority::new(registered_records, Err(err.to_string())),
+                Err(err) => DiagnosticRangeAuthority::new(
+                    registered_records,
+                    Err(DiagnosticFailure::new(
+                        DiagnosticCode::RangeAuthority,
+                        err.to_string(),
+                    )),
+                ),
             }
         }
-        Err(err) => DiagnosticRangeAuthority::new(Vec::new(), Err(err.to_string())),
+        Err(err) => DiagnosticRangeAuthority::new(
+            Vec::new(),
+            Err(DiagnosticFailure::new(
+                DiagnosticCode::RangeRegistry,
+                err.to_string(),
+            )),
+        ),
     }
 }
 
@@ -598,23 +614,43 @@ fn diagnostic_validation(
 ) -> DiagnosticCheck {
     let registered_declarations = match registered_declarations {
         Ok(declarations) => declarations.clone(),
-        Err(err) => return DiagnosticCheck::failed(format!("declaration registry: {err}")),
+        Err(err) => {
+            return DiagnosticCheck::failed(
+                DiagnosticCode::DeclarationRegistry,
+                format!("declaration registry: {err}"),
+            );
+        }
     };
     let registered_ranges = match registered_ranges {
         Ok(ranges) => ranges.clone(),
-        Err(err) => return DiagnosticCheck::failed(format!("range registry: {err}")),
+        Err(err) => {
+            return DiagnosticCheck::failed(
+                DiagnosticCode::RangeRegistry,
+                format!("range registry: {err}"),
+            );
+        }
     };
     let range_authority = match range_authority(registered_ranges.clone()) {
         Ok(authority) => authority,
-        Err(err) => return DiagnosticCheck::failed(format!("range authority: {err}")),
+        Err(err) => {
+            return DiagnosticCheck::failed(
+                DiagnosticCode::RangeAuthority,
+                format!("range authority: {err}"),
+            );
+        }
     };
     let snapshot = match declaration_snapshot(registered_declarations.clone()) {
         Ok(snapshot) => snapshot,
-        Err(err) => return DiagnosticCheck::failed(format!("declaration snapshot: {err}")),
+        Err(err) => {
+            return DiagnosticCheck::failed(
+                DiagnosticCode::DeclarationSnapshot,
+                format!("declaration snapshot: {err}"),
+            );
+        }
     };
     let recovered = match diagnostic_validation_ledger(stable_cell_record, recovered) {
         Ok(recovered) => recovered,
-        Err(reason) => return DiagnosticCheck::not_run(reason),
+        Err(failure) => return DiagnosticCheck::not_run(failure.code, failure.message),
     };
     let policy = RuntimeMemoryManagerPolicy {
         range_authority,
@@ -625,14 +661,14 @@ fn diagnostic_validation(
 
     match crate::validate_allocations(&recovered, snapshot, &policy) {
         Ok(_) => DiagnosticCheck::passed(),
-        Err(err) => DiagnosticCheck::failed(err.to_string()),
+        Err(err) => DiagnosticCheck::failed(DiagnosticCode::AllocationValidation, err.to_string()),
     }
 }
 
 fn diagnostic_validation_ledger(
     stable_cell_record: Option<&StableCellLedgerRecord>,
     recovered: Option<&Result<crate::RecoveredLedger, LedgerCommitError>>,
-) -> Result<crate::RecoveredLedger, String> {
+) -> Result<crate::RecoveredLedger, DiagnosticFailure> {
     if let Some(Ok(recovered)) = recovered {
         return Ok(recovered.clone());
     }
@@ -640,18 +676,39 @@ fn diagnostic_validation_ledger(
         if stable_cell_record.is_some_and(|record| record.store().physical().is_uninitialized()) {
             return diagnostic_genesis_recovered_ledger();
         }
-        return Err(format!("protected ledger recovery: {err}"));
+        let code = if matches!(
+            err,
+            LedgerCommitError::PayloadEnvelope(
+                LedgerPayloadEnvelopeError::UnsupportedFormat { .. }
+            )
+        ) {
+            DiagnosticCode::UnsupportedFormat
+        } else {
+            DiagnosticCode::LedgerRecovery
+        };
+        return Err(DiagnosticFailure::new(
+            code,
+            format!("protected ledger recovery: {err}"),
+        ));
     }
     if stable_cell_record.is_some() {
         return diagnostic_genesis_recovered_ledger();
     }
-    Err("stable-cell ledger record is not readable".to_string())
+    Err(DiagnosticFailure::new(
+        DiagnosticCode::StableCell,
+        "stable-cell ledger record is not readable",
+    ))
 }
 
-fn diagnostic_genesis_recovered_ledger() -> Result<crate::RecoveredLedger, String> {
+fn diagnostic_genesis_recovered_ledger() -> Result<crate::RecoveredLedger, DiagnosticFailure> {
     AllocationLedger::new(0, AllocationHistory::default())
         .map(|ledger| crate::RecoveredLedger::from_trusted_parts(ledger, 0))
-        .map_err(|err| format!("genesis ledger: {err}"))
+        .map_err(|err| {
+            DiagnosticFailure::new(
+                DiagnosticCode::GenesisLedger,
+                format!("genesis ledger: {err}"),
+            )
+        })
 }
 
 fn publish_committed_allocations<P>(
@@ -1370,9 +1427,30 @@ mod tests {
 
         let report = default_memory_manager_doctor_report();
 
-        let crate::DiagnosticCheck::Failed { message } = report.validation else {
+        let crate::DiagnosticCheck::Failed { code, message } = report.validation else {
             panic!("validation must fail");
         };
+        assert_eq!(code, crate::DiagnosticCode::DeclarationSnapshot);
         assert!(message.contains("declared more than once"));
+    }
+
+    #[test]
+    fn validation_diagnostic_preserves_unsupported_format_code() {
+        let recovered = Err(LedgerCommitError::PayloadEnvelope(
+            LedgerPayloadEnvelopeError::UnsupportedFormat {
+                marker: *b"ICMF",
+                version: Some(crate::LEDGER_PAYLOAD_FORMAT_VERSION + 1),
+            },
+        ));
+
+        let failure = diagnostic_validation_ledger(None, Some(&recovered))
+            .expect_err("unsupported format must block validation");
+
+        assert_eq!(failure.code, DiagnosticCode::UnsupportedFormat);
+        assert!(
+            failure
+                .message
+                .contains("unsupported ic-memory ledger payload format")
+        );
     }
 }

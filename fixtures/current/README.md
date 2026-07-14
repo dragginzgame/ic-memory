@@ -13,6 +13,10 @@ In the current allocation-record shape, `AllocationState::Retired` carries its
 retirement generation directly. There is no separate nullable
 `retired_generation` field.
 
+Current logical payload envelopes carry the `ICMEMLED` family magic followed
+by the `ICMF` format marker, format version `1`, payload length, and CBOR
+ledger bytes. Earlier pre-1.0 envelopes are not retained as readable fixtures.
+
 Fixture groups:
 
 - `*_payload_envelope.hex`: logical `LedgerPayloadEnvelope` bytes.

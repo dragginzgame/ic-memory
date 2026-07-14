@@ -1,5 +1,8 @@
 const LEDGER_PAYLOAD_MAGIC: &[u8; 8] = b"ICMEMLED";
-const LEDGER_PAYLOAD_HEADER_LEN: usize = 8 + 8;
+const LEDGER_PAYLOAD_FORMAT_MARKER: &[u8; 4] = b"ICMF";
+/// Current durable ledger payload format version.
+pub const LEDGER_PAYLOAD_FORMAT_VERSION: u32 = 1;
+const LEDGER_PAYLOAD_HEADER_LEN: usize = 8 + 4 + 4 + 8;
 
 ///
 /// LedgerPayloadEnvelope
@@ -52,6 +55,8 @@ impl LedgerPayloadEnvelope {
 
         let mut bytes = Vec::with_capacity(total_len);
         bytes.extend_from_slice(LEDGER_PAYLOAD_MAGIC);
+        bytes.extend_from_slice(LEDGER_PAYLOAD_FORMAT_MARKER);
+        bytes.extend_from_slice(&LEDGER_PAYLOAD_FORMAT_VERSION.to_le_bytes());
         bytes.extend_from_slice(&payload_len.to_le_bytes());
         bytes.extend_from_slice(&self.payload);
         Ok(bytes)
@@ -59,7 +64,7 @@ impl LedgerPayloadEnvelope {
 
     /// Manually decode the logical payload envelope.
     pub fn decode(bytes: &[u8]) -> Result<Self, LedgerPayloadEnvelopeError> {
-        if bytes.len() < LEDGER_PAYLOAD_HEADER_LEN {
+        if bytes.len() < LEDGER_PAYLOAD_MAGIC.len() {
             return Err(LedgerPayloadEnvelopeError::Truncated {
                 actual: bytes.len(),
                 minimum: LEDGER_PAYLOAD_HEADER_LEN,
@@ -76,7 +81,34 @@ impl LedgerPayloadEnvelope {
             return Err(LedgerPayloadEnvelopeError::BadMagic { found: magic });
         }
 
-        let Some(payload_len) = bytes.get(8..16).and_then(|bytes| bytes.try_into().ok()) else {
+        let Some(format_marker) = bytes.get(8..12).and_then(|bytes| bytes.try_into().ok()) else {
+            return Err(LedgerPayloadEnvelopeError::Truncated {
+                actual: bytes.len(),
+                minimum: LEDGER_PAYLOAD_HEADER_LEN,
+            });
+        };
+        if &format_marker != LEDGER_PAYLOAD_FORMAT_MARKER {
+            return Err(LedgerPayloadEnvelopeError::UnsupportedFormat {
+                marker: format_marker,
+                version: None,
+            });
+        }
+
+        let Some(format_version) = bytes.get(12..16).and_then(|bytes| bytes.try_into().ok()) else {
+            return Err(LedgerPayloadEnvelopeError::Truncated {
+                actual: bytes.len(),
+                minimum: LEDGER_PAYLOAD_HEADER_LEN,
+            });
+        };
+        let format_version = u32::from_le_bytes(format_version);
+        if format_version != LEDGER_PAYLOAD_FORMAT_VERSION {
+            return Err(LedgerPayloadEnvelopeError::UnsupportedFormat {
+                marker: format_marker,
+                version: Some(format_version),
+            });
+        }
+
+        let Some(payload_len) = bytes.get(16..24).and_then(|bytes| bytes.try_into().ok()) else {
             return Err(LedgerPayloadEnvelopeError::Truncated {
                 actual: bytes.len(),
                 minimum: LEDGER_PAYLOAD_HEADER_LEN,
@@ -127,6 +159,15 @@ pub enum LedgerPayloadEnvelopeError {
     BadMagic {
         /// Magic bytes found.
         found: [u8; 8],
+    },
+    /// The payload belongs to the `ic-memory` ledger family but does not carry
+    /// the current format discriminator.
+    #[error("unsupported ic-memory ledger payload format (marker={marker:?}, version={version:?})")]
+    UnsupportedFormat {
+        /// Format marker found after the ledger-family magic.
+        marker: [u8; 4],
+        /// Format version when the current marker was present.
+        version: Option<u32>,
     },
     /// Declared payload length does not fit in this platform's address space.
     #[error("ledger payload envelope length {len} is too large")]

@@ -7,7 +7,7 @@ error: no rules expected `start`
 note: while trying to match `authority`
  --> src/lib.rs
   |
-  |     (authority = $authority:literal, start = $start:expr, end = $end:expr $(,)?) => {
+  |     (authority = $authority:expr, start = $start:expr, end = $end:expr $(,)?) => {
   |      ^^^^^^^^^
 
 error: no rules expected `"app.users.v1"`
@@ -19,5 +19,5 @@ error: no rules expected `"app.users.v1"`
 note: while trying to match `authority`
  --> src/lib.rs
   |
-  |     (authority = $authority:literal, key = $stable_key:literal, ty = $label:path, id = $id:expr $(,)?) => {{
+  |     (authority = $authority:expr, key = $stable_key:literal, ty = $label:path, id = $id:expr $(,)?) => {{
   |      ^^^^^^^^^

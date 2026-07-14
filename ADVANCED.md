@@ -132,7 +132,8 @@ validation preflight, and live memory sizes for recovered ledger records.
 
 Mutually exclusive diagnostic outcomes use enums or `Result` values instead of
 nullable field pairs, so machine-readable reports cannot express contradictory
-success and failure states.
+success and failure states. Failures include a stable `DiagnosticCode` beside
+the human-readable message, so automation does not need to parse prose.
 
 Before bootstrap, the doctor runs deferred `eager_init!` hooks so the report
 matches the declaration set bootstrap would see. The validation field covers
@@ -157,9 +158,9 @@ only then open stable-memory handles
 
 Decoded ledger and declaration DTOs are not trusted just because serde accepted
 them. Recovery first validates every present physical commit slot and selects
-the authoritative generation, decodes the logical payload envelope, decodes the
-current-format `ic-memory` CBOR ledger payload, checks the physical/logical
-generation binding, and validates committed ledger
+the authoritative generation, verifies the logical payload's current format
+marker and version, decodes the current-format `ic-memory` CBOR ledger payload,
+checks the physical/logical generation binding, and validates committed ledger
 integrity. Only the resulting `RecoveredLedger` proof can be passed to
 declaration validation to produce pre-commit `ValidatedAllocations`.
 

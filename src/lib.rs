@@ -119,16 +119,17 @@ pub use declaration::{
     AllocationDeclaration, DeclarationCollector, DeclarationSnapshot, DeclarationSnapshotError,
 };
 pub use diagnostics::{
-    DefaultMemoryManagerDoctorReport, DiagnosticCheck, DiagnosticDeclaration, DiagnosticExport,
-    DiagnosticGeneration, DiagnosticMemorySize, DiagnosticRangeAuthority, DiagnosticRecord,
-    DiagnosticStableCell, DiagnosticStableCellStatus,
+    DefaultMemoryManagerDoctorReport, DiagnosticCheck, DiagnosticCode, DiagnosticDeclaration,
+    DiagnosticExport, DiagnosticFailure, DiagnosticGeneration, DiagnosticMemorySize,
+    DiagnosticRangeAuthority, DiagnosticRecord, DiagnosticStableCell, DiagnosticStableCellStatus,
 };
 pub use key::{StableKey, StableKeyError};
 pub use ledger::{
     AllocationHistory, AllocationLedger, AllocationRecord, AllocationReservationError,
     AllocationRetirement, AllocationRetirementError, AllocationStageError, AllocationState,
-    GenerationRecord, LedgerCommitError, LedgerCommitStore, LedgerIntegrityError,
-    LedgerPayloadEnvelope, LedgerPayloadEnvelopeError, RecoveredLedger, SchemaMetadataRecord,
+    GenerationRecord, LEDGER_PAYLOAD_FORMAT_VERSION, LedgerCommitError, LedgerCommitStore,
+    LedgerIntegrityError, LedgerPayloadEnvelope, LedgerPayloadEnvelopeError, RecoveredLedger,
+    SchemaMetadataRecord,
 };
 pub use physical::{
     CommitRecoveryError, CommitSlotDiagnostic, CommitStoreDiagnostic, CommittedGenerationBytes,
@@ -180,21 +181,24 @@ pub mod __reexports {
 /// Register a `MemoryManager` allocation declaration during static initialization.
 ///
 /// The explicit authority is stable policy identity shared with the matching
-/// range declaration. Internal `ic-memory` authority is unavailable to callers.
+/// range declaration. A string literal or shared compile-time string constant
+/// may be used. Internal `ic-memory` authority is unavailable to callers.
 ///
 /// This macro only registers declaration metadata. It does not open stable
 /// memory. The bootstrap owner still has to collect/seal declarations, validate
 /// them against the ledger, commit the generation, and then open memory handles.
 #[macro_export]
 macro_rules! ic_memory_declaration {
-    (authority = $authority:literal, key = $stable_key:literal, ty = $label:path, id = $id:expr $(,)?) => {
+    (authority = $authority:expr, key = $stable_key:literal, ty = $label:path, id = $id:expr $(,)?) => {
         const _: () = {
+            const __IC_MEMORY_AUTHORITY: &str = $authority;
+
             #[ $crate::__reexports::ctor::ctor(unsafe, anonymous, crate_path = $crate::__reexports::ctor) ]
             fn __ic_memory_register_static_declaration() {
                 let _ = core::marker::PhantomData::<$label>;
                 $crate::register_static_memory_manager_declaration(
                     $id,
-                    $authority,
+                    __IC_MEMORY_AUTHORITY,
                     stringify!($label),
                     $stable_key,
                 )
@@ -202,13 +206,15 @@ macro_rules! ic_memory_declaration {
             }
         };
     };
-    (authority = $authority:literal, key = $stable_key:literal, label = $label:literal, id = $id:expr $(,)?) => {
+    (authority = $authority:expr, key = $stable_key:literal, label = $label:literal, id = $id:expr $(,)?) => {
         const _: () = {
+            const __IC_MEMORY_AUTHORITY: &str = $authority;
+
             #[ $crate::__reexports::ctor::ctor(unsafe, anonymous, crate_path = $crate::__reexports::ctor) ]
             fn __ic_memory_register_static_declaration() {
                 $crate::register_static_memory_manager_declaration(
                     $id,
-                    $authority,
+                    __IC_MEMORY_AUTHORITY,
                     $label,
                     $stable_key,
                 )
@@ -221,9 +227,10 @@ macro_rules! ic_memory_declaration {
 /// Declare a `MemoryManager` allocation range during static initialization.
 ///
 /// The explicit authority must match every declaration that uses this range.
+/// A shared compile-time string constant can keep those declarations aligned.
 #[macro_export]
 macro_rules! ic_memory_range {
-    (authority = $authority:literal, start = $start:expr, end = $end:expr $(,)?) => {
+    (authority = $authority:expr, start = $start:expr, end = $end:expr $(,)?) => {
         $crate::ic_memory_range!(
             authority = $authority,
             start = $start,
@@ -231,14 +238,16 @@ macro_rules! ic_memory_range {
             mode = Reserved,
         );
     };
-    (authority = $authority:literal, start = $start:expr, end = $end:expr, mode = $mode:ident $(,)?) => {
+    (authority = $authority:expr, start = $start:expr, end = $end:expr, mode = $mode:ident $(,)?) => {
         const _: () = {
+            const __IC_MEMORY_AUTHORITY: &str = $authority;
+
             #[ $crate::__reexports::ctor::ctor(unsafe, anonymous, crate_path = $crate::__reexports::ctor) ]
             fn __ic_memory_register_static_range() {
                 $crate::register_static_memory_manager_range(
                     $start,
                     $end,
-                    $authority,
+                    __IC_MEMORY_AUTHORITY,
                     $crate::MemoryManagerRangeMode::$mode,
                     None,
                 )
@@ -254,12 +263,12 @@ macro_rules! ic_memory_range {
 /// returns the committed default-runtime memory handle at expression use time.
 #[macro_export]
 macro_rules! ic_memory_key {
-    (authority = $authority:literal, key = $stable_key:literal, ty = $label:path, id = $id:expr $(,)?) => {{
+    (authority = $authority:expr, key = $stable_key:literal, ty = $label:path, id = $id:expr $(,)?) => {{
         $crate::ic_memory_declaration!(authority = $authority, key = $stable_key, ty = $label, id = $id,);
         $crate::open_default_memory_manager_memory($stable_key, $id)
             .expect("ic-memory failed to open committed stable memory; bootstrap must run first and the stable key/id must match the committed declaration")
     }};
-    (authority = $authority:literal, key = $stable_key:literal, label = $label:literal, id = $id:expr $(,)?) => {{
+    (authority = $authority:expr, key = $stable_key:literal, label = $label:literal, id = $id:expr $(,)?) => {{
         $crate::ic_memory_declaration!(authority = $authority, key = $stable_key, label = $label, id = $id,);
         $crate::open_default_memory_manager_memory($stable_key, $id)
             .expect("ic-memory failed to open committed stable memory; bootstrap must run first and the stable key/id must match the committed declaration")

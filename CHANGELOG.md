@@ -1,5 +1,45 @@
 # Changelog
 
+## 0.11.0
+
+This is an intentional current-format and diagnostic-API hard cut. No legacy
+decoder, compatibility shim, serde alias, or migration path was added.
+
+### Durable format classification
+
+- Added an explicit current ledger-format marker and version inside the
+  protected payload envelope. Recognized pre-0.11 `ic-memory` payloads without
+  the current discriminator now return typed
+  `LedgerPayloadEnvelopeError::UnsupportedFormat` instead of falling through
+  to a generic ledger decode or length error.
+- Replaced the current golden fixtures in place and recomputed protected-slot
+  checksums for the new envelope. Superseded fixtures and decoders are not
+  retained.
+
+### Machine-readable diagnostics
+
+- Added stable machine-readable `DiagnosticCode` values alongside human
+  messages in stable-cell, range-authority, and validation diagnostics. The
+  doctor report no longer requires tooling to classify these failures by
+  parsing prose.
+- Added `DiagnosticFailure` and changed string-valued diagnostic errors to
+  carry both a stable code and an operator-facing message.
+
+### Authority ergonomics
+
+- Allowed explicit macro authority arguments to use a shared compile-time
+  string constant, reducing repeated-literal drift without restoring implicit
+  ownership.
+
+### WebAssembly size
+
+- Measured equivalent `serde_cbor` and `ciborium` encode/decode Wasm probes;
+  the raw optimized `ciborium` artifact was 55,288 bytes (41.19%) smaller. It
+  remained 48,099 bytes (40.88%) smaller after `wasm-opt -Oz`.
+- Confirmed that `crunchy` is present only in the all-target lockfile
+  resolution and is not linked into the normal `wasm32-unknown-unknown`
+  dependency graph. The complete method is recorded under `docs/audits/`.
+
 ## 0.10.0
 
 This is an intentional current-format hard cut. No fallback decoder, missing-
