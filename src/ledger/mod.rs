@@ -265,19 +265,6 @@ mod tests {
             .encode()
     }
 
-    fn pre_0_10_enveloped_payload(ledger: &AllocationLedger) -> Vec<u8> {
-        let payload = CborLedgerCodec.encode(ledger).expect("CBOR payload");
-        let mut bytes = Vec::with_capacity(8 + 8 + payload.len());
-        bytes.extend_from_slice(b"ICMEMLED");
-        bytes.extend_from_slice(
-            &u64::try_from(payload.len())
-                .expect("payload length")
-                .to_le_bytes(),
-        );
-        bytes.extend_from_slice(&payload);
-        bytes
-    }
-
     fn hex_fixture(contents: &str) -> Vec<u8> {
         let hex = contents
             .chars()
@@ -533,25 +520,6 @@ mod tests {
         let err = decode_mutated_ledger(value);
 
         assert!(err.contains("future_generation_field"));
-    }
-
-    #[test]
-    fn cbor_ledger_codec_rejects_removed_retirement_generation_field() {
-        let mut value = active_ledger_value();
-        let history = map_field_mut(value_map_mut(&mut value), "allocation_history");
-        let records = map_field_mut(value_map_mut(history), "records");
-        let record = value_array_mut(records)
-            .first_mut()
-            .expect("allocation record");
-        crate::test_cbor::map_insert(
-            value_map_mut(record),
-            crate::test_cbor::Value::Text("retired_generation".to_string()),
-            crate::test_cbor::Value::Null,
-        );
-
-        let err = decode_mutated_ledger(value);
-
-        assert!(err.contains("retired_generation"));
     }
 
     #[test]
@@ -1858,31 +1826,6 @@ mod tests {
         assert!(matches!(
             err,
             LedgerCommitError::PayloadEnvelope(LedgerPayloadEnvelopeError::BadMagic { .. })
-        ));
-    }
-
-    #[test]
-    fn ledger_commit_store_classifies_pre_0_10_payload_as_unsupported() {
-        let store = LedgerCommitStore {
-            physical: DualCommitStore {
-                slot0: Some(CommittedGenerationBytes::new(
-                    1,
-                    pre_0_10_enveloped_payload(&committed_ledger(1)),
-                )),
-                slot1: None,
-            },
-        };
-
-        let err = store
-            .recover()
-            .expect_err("pre-0.10 envelope shape must fail");
-
-        assert!(matches!(
-            err,
-            LedgerCommitError::PayloadEnvelope(LedgerPayloadEnvelopeError::UnsupportedFormat {
-                version: None,
-                ..
-            })
         ));
     }
 

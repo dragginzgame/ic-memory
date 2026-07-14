@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.11.1
+
+This release tightens repository hygiene around the pre-1.0 hard-cut policy. It
+does not change the current runtime API or durable format.
+
+### Compatibility hygiene
+
+- Audited the active API and decoder surface for deprecated forwarders,
+  compatibility aliases, legacy modules, serde aliases/defaults, fallback
+  readers, and migration shims. None remain.
+- Removed test-only encodings of superseded envelope, record-field, and macro
+  forms. The active suite now exercises only the current format and current
+  authority boundaries.
+- Removed current fixture and safety documentation that described superseded
+  wire shapes; historical release notes remain the only record of them.
+
 ## 0.11.0
 
 This is an intentional current-format and diagnostic-API hard cut. No legacy
