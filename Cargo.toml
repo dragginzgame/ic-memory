@@ -2,7 +2,7 @@
 name = "ic-memory"
 edition = "2024"
 rust-version = "1.85.0"
-version = "0.10.0"
+version = "0.11.0"
 license = "MIT"
 authors = ["borovan <84897664+borovan@users.noreply.github.com>"]
 description = "Durable stable-memory allocation governance for Internet Computer canisters"
