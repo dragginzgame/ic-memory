@@ -7,7 +7,7 @@ use crate::{
     physical::CommitStoreDiagnostic, registry::sealed_declaration_snapshot,
 };
 use ic_stable_structures::{DefaultMemoryImpl, memory_manager::VirtualMemory};
-use std::{cell::RefCell, convert::Infallible};
+use std::{cell::RefCell, convert::Infallible, fmt::Display};
 
 thread_local! {
     static DEFAULT_RUNTIME:
@@ -107,8 +107,19 @@ pub fn default_memory_manager_commit_recovery_diagnostic()
 /// Build preflight and lifecycle diagnostics for this thread's default runtime.
 pub fn default_memory_manager_doctor_report()
 -> Result<MemoryRuntimeDoctorReport, RuntimeDiagnosticError> {
+    default_memory_manager_doctor_report_with_policy(&NoopPolicy)
+}
+
+/// Build diagnostics for this thread's default runtime under one explicit policy.
+pub fn default_memory_manager_doctor_report_with_policy<P>(
+    policy: &P,
+) -> Result<MemoryRuntimeDoctorReport, RuntimeDiagnosticError>
+where
+    P: RuntimeBootstrapPolicy,
+    P::Error: Display,
+{
     let declarations = sealed_declaration_snapshot()?;
-    with_default_runtime(|runtime| Ok(runtime.doctor_report(&declarations)))
+    with_default_runtime(|runtime| Ok(runtime.doctor_report(&declarations, policy)))
 }
 
 #[cfg(test)]

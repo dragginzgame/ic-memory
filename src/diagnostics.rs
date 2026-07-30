@@ -3,6 +3,8 @@ use crate::{
     declaration::AllocationDeclaration,
     ledger::{AllocationLedger, AllocationRecord, GenerationRecord},
     physical::CommitStoreDiagnostic,
+    policy::PolicyIdentity,
+    registry::SealedDeclarationFingerprint,
     slot::{AllocationSlotDescriptor, MemoryManagerAuthorityRecord, MemoryManagerRangeAuthority},
 };
 use serde::{Deserialize, Serialize};
@@ -29,6 +31,36 @@ pub struct DiagnosticExport {
 }
 
 ///
+/// DiagnosticRuntimeBinding
+///
+/// Operator-facing view of the policy identity and declaration snapshot bound
+/// to one successful memory-runtime bootstrap.
+///
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct DiagnosticRuntimeBinding {
+    /// Bounded semantic identity of the bootstrap policy.
+    pub policy_identity: PolicyIdentity,
+    /// Deterministic fingerprint of the sealed declaration snapshot.
+    pub declaration_fingerprint: SealedDeclarationFingerprint,
+}
+
+impl DiagnosticRuntimeBinding {
+    /// Build one runtime binding diagnostic.
+    #[must_use]
+    pub const fn new(
+        policy_identity: PolicyIdentity,
+        declaration_fingerprint: SealedDeclarationFingerprint,
+    ) -> Self {
+        Self {
+            policy_identity,
+            declaration_fingerprint,
+        }
+    }
+}
+
+///
 /// MemoryRuntimeDoctorReport
 ///
 /// Preflight and runtime diagnostic report for one concrete
@@ -44,6 +76,16 @@ pub struct DiagnosticExport {
 pub struct MemoryRuntimeDoctorReport {
     /// Whether this runtime has completed bootstrap validation.
     pub bootstrapped: bool,
+    /// Policy identity supplied for this diagnostic evaluation.
+    pub tested_policy_identity: Result<PolicyIdentity, DiagnosticFailure>,
+    /// Sealed declaration fingerprint supplied for this diagnostic evaluation.
+    pub tested_declaration_fingerprint: SealedDeclarationFingerprint,
+    /// Binding published by this runtime's successful bootstrap, when present.
+    #[serde(deserialize_with = "crate::cbor::deserialize_present_option")]
+    pub established_bootstrap_binding: Option<DiagnosticRuntimeBinding>,
+    /// Whether the tested identity and declarations match the established
+    /// bootstrap binding.
+    pub bootstrap_binding: DiagnosticCheck,
     /// Ledger anchor descriptor used by this runtime.
     pub ledger_anchor: AllocationSlotDescriptor,
     /// Stable-cell ledger storage status.
@@ -59,10 +101,7 @@ pub struct MemoryRuntimeDoctorReport {
     /// Static range authority registered by linked crates and the effective
     /// authority table supplied to this runtime.
     pub range_authority: DiagnosticRangeAuthority,
-    /// Current generic runtime declaration validation preflight result.
-    ///
-    /// Caller-supplied policies passed to [`crate::MemoryRuntime::bootstrap`] or
-    /// the default TLS bootstrap wrapper are not represented in this check.
+    /// Declaration validation result under the tested caller-supplied policy.
     pub validation: DiagnosticCheck,
 }
 
@@ -130,6 +169,15 @@ pub enum DiagnosticCode {
     /// Current declarations failed allocation validation.
     #[serde(rename = "allocation_validation")]
     AllocationValidation,
+    /// Runtime bootstrap policy identity was invalid.
+    #[serde(rename = "policy_identity")]
+    PolicyIdentity,
+    /// Tested bootstrap identity or declarations differ from runtime state.
+    #[serde(rename = "runtime_binding")]
+    RuntimeBinding,
+    /// Live memory size could not be measured for one allocation.
+    #[serde(rename = "memory_size")]
+    MemorySize,
 }
 
 ///
@@ -335,6 +383,22 @@ impl DiagnosticExport {
         commit_recovery: Option<CommitStoreDiagnostic>,
         memory_sizes: impl IntoIterator<Item = (AllocationSlotDescriptor, DiagnosticMemorySize)>,
     ) -> Self {
+        Self::from_ledger_with_commit_recovery_and_memory_size_outcomes(
+            ledger,
+            ledger_anchor,
+            commit_recovery,
+            memory_sizes
+                .into_iter()
+                .map(|(slot, size)| (slot, DiagnosticMemorySizeOutcome::Measured(size))),
+        )
+    }
+
+    pub(crate) fn from_ledger_with_commit_recovery_and_memory_size_outcomes(
+        ledger: &AllocationLedger,
+        ledger_anchor: AllocationSlotDescriptor,
+        commit_recovery: Option<CommitStoreDiagnostic>,
+        memory_sizes: impl IntoIterator<Item = (AllocationSlotDescriptor, DiagnosticMemorySizeOutcome)>,
+    ) -> Self {
         let memory_sizes: BTreeMap<_, _> = memory_sizes.into_iter().collect();
         Self {
             current_generation: ledger.current_generation,
@@ -345,7 +409,7 @@ impl DiagnosticExport {
                 .iter()
                 .cloned()
                 .map(|allocation| {
-                    let memory_size = memory_sizes.get(allocation.slot()).copied();
+                    let memory_size = memory_sizes.get(allocation.slot()).cloned();
                     DiagnosticRecord {
                         allocation,
                         memory_size,
@@ -378,7 +442,21 @@ pub struct DiagnosticRecord {
     /// This is allocation size reported by the backing memory, not logical user
     /// payload size inside the stable structure.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub memory_size: Option<DiagnosticMemorySize>,
+    pub memory_size: Option<DiagnosticMemorySizeOutcome>,
+}
+
+///
+/// DiagnosticMemorySizeOutcome
+///
+/// Per-allocation result of measuring live backing-memory size.
+///
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub enum DiagnosticMemorySizeOutcome {
+    /// The backing memory reported a live size.
+    Measured(DiagnosticMemorySize),
+    /// The allocation slot could not be measured.
+    Failed(DiagnosticFailure),
 }
 
 ///
@@ -552,6 +630,9 @@ mod tests {
                 DiagnosticCode::AllocationValidation,
                 "allocation_validation",
             ),
+            (DiagnosticCode::PolicyIdentity, "policy_identity"),
+            (DiagnosticCode::RuntimeBinding, "runtime_binding"),
+            (DiagnosticCode::MemorySize, "memory_size"),
         ];
 
         for (code, expected) in cases {
@@ -611,10 +692,59 @@ mod tests {
 
         assert_eq!(
             export.records[0].memory_size,
-            Some(DiagnosticMemorySize {
-                wasm_pages: 2,
-                bytes: 131_072,
-            })
+            Some(DiagnosticMemorySizeOutcome::Measured(
+                DiagnosticMemorySize {
+                    wasm_pages: 2,
+                    bytes: 131_072,
+                }
+            ))
+        );
+    }
+
+    #[test]
+    fn diagnostic_export_preserves_per_slot_size_successes_and_failures() {
+        let users = AllocationDeclaration::memory_manager("app.users.v1", 100, "users")
+            .expect("users declaration");
+        let orders = AllocationDeclaration::memory_manager("app.orders.v1", 101, "orders")
+            .expect("orders declaration");
+        let ledger = AllocationLedger {
+            current_generation: 3,
+            allocation_history: AllocationHistory::from_parts(
+                vec![
+                    AllocationRecord::active(3, users).expect("users record"),
+                    AllocationRecord::active(3, orders).expect("orders record"),
+                ],
+                Vec::new(),
+            ),
+        };
+        let size_failure =
+            DiagnosticFailure::new(DiagnosticCode::MemorySize, "slot could not be measured");
+
+        let export = DiagnosticExport::from_ledger_with_commit_recovery_and_memory_size_outcomes(
+            &ledger,
+            AllocationSlotDescriptor::memory_manager(0).expect("usable slot"),
+            None,
+            [
+                (
+                    AllocationSlotDescriptor::memory_manager(100).expect("users slot"),
+                    DiagnosticMemorySizeOutcome::Measured(DiagnosticMemorySize::from_wasm_pages(2)),
+                ),
+                (
+                    AllocationSlotDescriptor::memory_manager(101).expect("orders slot"),
+                    DiagnosticMemorySizeOutcome::Failed(size_failure.clone()),
+                ),
+            ],
+        );
+
+        assert_eq!(
+            export.records[0].memory_size,
+            Some(DiagnosticMemorySizeOutcome::Measured(
+                DiagnosticMemorySize::from_wasm_pages(2)
+            ))
+        );
+        assert_eq!(
+            export.records[1].memory_size,
+            Some(DiagnosticMemorySizeOutcome::Failed(size_failure))
         );
     }
 

@@ -1,5 +1,5 @@
 use crate::{
-    LedgerCommitError, StableCellLedgerError,
+    LedgerCommitError, PolicyIdentity, PolicyIdentityError, StableCellLedgerError,
     registry::StaticMemoryDeclarationError,
     slot::{MemoryManagerRangeAuthorityError, MemoryManagerSlotError},
 };
@@ -68,19 +68,19 @@ pub enum RuntimeStateError {
 #[non_exhaustive]
 #[derive(Debug, thiserror::Error)]
 pub enum RuntimeBootstrapError<P> {
-    /// The policy did not provide a usable semantic bootstrap identity.
-    #[error("runtime bootstrap policy identity must not be empty")]
-    EmptyPolicyIdentity,
+    /// The policy did not provide a valid bounded semantic identity.
+    #[error(transparent)]
+    PolicyIdentity(#[from] PolicyIdentityError),
     /// A bootstrapped runtime was called with a different declaration snapshot.
     #[error("runtime bootstrap declaration snapshot differs from the established binding")]
     DeclarationSnapshotMismatch,
     /// A bootstrapped runtime was called with a different policy identity.
-    #[error("runtime bootstrap policy identity changed from '{established}' to '{requested}'")]
+    #[error("runtime bootstrap policy identity changed from {established:?} to {requested:?}")]
     PolicyIdentityMismatch {
         /// Policy identity established by successful bootstrap.
-        established: &'static str,
+        established: PolicyIdentity,
         /// Policy identity supplied by the repeated call.
-        requested: &'static str,
+        requested: PolicyIdentity,
     },
     /// Linked-program declaration snapshot sealing failed.
     #[error(transparent)]

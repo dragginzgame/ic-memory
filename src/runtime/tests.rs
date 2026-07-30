@@ -6,8 +6,10 @@ use super::{
     policy::NoopPolicy,
 };
 use crate::{
-    AllocationPolicy, AllocationSlotDescriptor, DiagnosticCode, DiagnosticMemorySize,
-    LedgerCommitError, LedgerPayloadEnvelopeError, RuntimeBootstrapPolicy, StableKey,
+    AllocationHistory, AllocationLedger, AllocationPolicy, AllocationRecord,
+    AllocationSlotDescriptor, DiagnosticCheck, DiagnosticCode, DiagnosticMemorySize,
+    DiagnosticMemorySizeOutcome, LedgerCommitError, LedgerPayloadEnvelopeError, PolicyIdentity,
+    PolicyIdentityError, RuntimeBootstrapPolicy, StableKey,
     registry::{
         SealedDeclarationSnapshot, TEST_REGISTRY_LOCK, register_static_memory_manager_declaration,
         register_static_memory_manager_range, reset_static_memory_declarations_for_tests,
@@ -88,12 +90,34 @@ impl AllocationPolicy for CountingPolicy {
 }
 
 impl RuntimeBootstrapPolicy for CountingPolicy {
-    fn runtime_bootstrap_identity(&self) -> &'static str {
-        "runtime-tests.counting-policy.v1"
+    fn runtime_bootstrap_identity(&self) -> Result<PolicyIdentity, PolicyIdentityError> {
+        PolicyIdentity::new("runtime-tests.counting-policy", 1)
     }
 }
 
-struct IdentityPolicy(&'static str);
+struct IdentityPolicy {
+    name: &'static str,
+    version: u32,
+    configuration_digest: Option<[u8; 32]>,
+}
+
+impl IdentityPolicy {
+    const fn new(name: &'static str, version: u32) -> Self {
+        Self {
+            name,
+            version,
+            configuration_digest: None,
+        }
+    }
+
+    const fn configured(name: &'static str, version: u32, configuration_digest: [u8; 32]) -> Self {
+        Self {
+            name,
+            version,
+            configuration_digest: Some(configuration_digest),
+        }
+    }
+}
 
 impl AllocationPolicy for IdentityPolicy {
     type Error = Infallible;
@@ -120,8 +144,12 @@ impl AllocationPolicy for IdentityPolicy {
 }
 
 impl RuntimeBootstrapPolicy for IdentityPolicy {
-    fn runtime_bootstrap_identity(&self) -> &'static str {
-        self.0
+    fn runtime_bootstrap_identity(&self) -> Result<PolicyIdentity, PolicyIdentityError> {
+        let identity = PolicyIdentity::new(self.name, self.version)?;
+        Ok(match self.configuration_digest {
+            Some(digest) => identity.with_configuration_digest(digest),
+            None => identity,
+        })
     }
 }
 
@@ -323,14 +351,14 @@ fn repeated_bootstrap_is_bound_to_declarations_and_policy_identity() {
     let generation = runtime
         .bootstrap(
             &declarations,
-            &IdentityPolicy("runtime-tests.identity-policy.v1"),
+            &IdentityPolicy::new("runtime-tests.identity-policy", 1),
         )
         .expect("first bootstrap")
         .generation();
     let repeated_generation = runtime
         .bootstrap(
             &declarations,
-            &IdentityPolicy("runtime-tests.identity-policy.v1"),
+            &IdentityPolicy::new("runtime-tests.identity-policy", 1),
         )
         .expect("same semantic policy identity")
         .generation();
@@ -339,7 +367,7 @@ fn repeated_bootstrap_is_bound_to_declarations_and_policy_identity() {
     let policy_error = runtime
         .bootstrap(
             &declarations,
-            &IdentityPolicy("runtime-tests.identity-policy.v2"),
+            &IdentityPolicy::new("runtime-tests.identity-policy", 2),
         )
         .expect_err("changed policy identity");
     assert!(matches!(
@@ -368,7 +396,7 @@ fn repeated_bootstrap_is_bound_to_declarations_and_policy_identity() {
     let declaration_error = runtime
         .bootstrap(
             &alternate_declarations,
-            &IdentityPolicy("runtime-tests.identity-policy.v1"),
+            &IdentityPolicy::new("runtime-tests.identity-policy", 1),
         )
         .expect_err("changed declaration snapshot");
     assert!(matches!(
@@ -382,16 +410,55 @@ fn repeated_bootstrap_is_bound_to_declarations_and_policy_identity() {
             .current_generation,
         generation
     );
+}
 
+#[test]
+fn policy_identity_validation_and_configuration_digest_are_runtime_bound() {
+    let _guard = TEST_REGISTRY_LOCK.lock().expect("test lock");
+    let declarations = declarations();
     let mut empty_identity_runtime = empty_runtime();
     let empty_identity_error = empty_identity_runtime
-        .bootstrap(&alternate_declarations, &IdentityPolicy(""))
+        .bootstrap(&declarations, &IdentityPolicy::new("", 1))
         .expect_err("empty policy identity");
     assert!(matches!(
         empty_identity_error,
-        super::RuntimeBootstrapError::EmptyPolicyIdentity
+        super::RuntimeBootstrapError::PolicyIdentity(PolicyIdentityError::EmptyName)
     ));
     assert!(!empty_identity_runtime.is_bootstrapped());
+    let invalid_identity_doctor =
+        empty_identity_runtime.doctor_report(&declarations, &IdentityPolicy::new("", 1));
+    assert!(matches!(
+        invalid_identity_doctor.tested_policy_identity,
+        Err(crate::DiagnosticFailure {
+            code: DiagnosticCode::PolicyIdentity,
+            ..
+        })
+    ));
+    assert!(matches!(
+        invalid_identity_doctor.validation,
+        DiagnosticCheck::NotRun {
+            code: DiagnosticCode::PolicyIdentity,
+            ..
+        }
+    ));
+
+    let mut configured_runtime = empty_runtime();
+    configured_runtime
+        .bootstrap(
+            &declarations,
+            &IdentityPolicy::configured("runtime-tests.configured-policy", 1, [1; 32]),
+        )
+        .expect("configured policy bootstrap");
+    let digest_mismatch = configured_runtime
+        .bootstrap(
+            &declarations,
+            &IdentityPolicy::configured("runtime-tests.configured-policy", 1, [2; 32]),
+        )
+        .expect_err("configuration digest is part of identity");
+    assert!(matches!(
+        digest_mismatch,
+        super::RuntimeBootstrapError::PolicyIdentityMismatch { .. }
+    ));
 }
 
 struct RejectPolicy;
@@ -421,8 +488,8 @@ impl AllocationPolicy for RejectPolicy {
 }
 
 impl RuntimeBootstrapPolicy for RejectPolicy {
-    fn runtime_bootstrap_identity(&self) -> &'static str {
-        "runtime-tests.reject-policy.v1"
+    fn runtime_bootstrap_identity(&self) -> Result<PolicyIdentity, PolicyIdentityError> {
+        PolicyIdentity::new("runtime-tests.reject-policy", 1)
     }
 }
 
@@ -438,7 +505,15 @@ fn open_errors_and_failed_bootstrap_do_not_publish_authority() {
     assert_eq!(open_before_bootstrap, RuntimeOpenError::NotBootstrapped);
     assert!(runtime.bootstrap(&declarations, &RejectPolicy).is_err());
     assert!(!runtime.is_bootstrapped());
-    assert!(!runtime.doctor_report(&declarations).bootstrapped);
+    let rejected_doctor = runtime.doctor_report(&declarations, &RejectPolicy);
+    assert!(!rejected_doctor.bootstrapped);
+    assert!(matches!(
+        rejected_doctor.validation,
+        DiagnosticCheck::Failed {
+            code: DiagnosticCode::AllocationValidation,
+            ..
+        }
+    ));
     assert!(matches!(
         runtime.diagnostic_export(),
         Err(RuntimeDiagnosticError::NotBootstrapped)
@@ -473,7 +548,11 @@ fn doctor_and_diagnostics_report_the_same_runtime_lifecycle() {
     let declarations = declarations();
     let mut runtime = empty_runtime();
 
-    assert!(!runtime.doctor_report(&declarations).bootstrapped);
+    assert!(
+        !runtime
+            .doctor_report(&declarations, &NoopPolicy)
+            .bootstrapped
+    );
     assert!(matches!(
         runtime.diagnostic_export(),
         Err(RuntimeDiagnosticError::NotBootstrapped)
@@ -486,7 +565,7 @@ fn doctor_and_diagnostics_report_the_same_runtime_lifecycle() {
         .open_memory("runtime_tests.rows.v1", 120)
         .expect("open");
     memory.grow(2);
-    let doctor = runtime.doctor_report(&declarations);
+    let doctor = runtime.doctor_report(&declarations, &NoopPolicy);
     let export = runtime.diagnostic_export().expect("diagnostic export");
     assert!(doctor.bootstrapped);
     assert_eq!(
@@ -504,8 +583,81 @@ fn doctor_and_diagnostics_report_the_same_runtime_lifecycle() {
             .find(|record| { record.allocation.stable_key().as_str() == "runtime_tests.rows.v1" })
             .expect("runtime record")
             .memory_size,
-        Some(DiagnosticMemorySize::from_wasm_pages(2))
+        Some(DiagnosticMemorySizeOutcome::Measured(
+            DiagnosticMemorySize::from_wasm_pages(2)
+        ))
     );
+    assert!(matches!(&doctor.bootstrap_binding, DiagnosticCheck::Passed));
+    assert_eq!(
+        doctor
+            .tested_policy_identity
+            .as_ref()
+            .expect("valid tested identity"),
+        &PolicyIdentity::new("ic-memory.noop-policy", 1).expect("valid identity")
+    );
+    let established = doctor
+        .established_bootstrap_binding
+        .as_ref()
+        .expect("established runtime binding");
+    assert_eq!(
+        established.policy_identity,
+        PolicyIdentity::new("ic-memory.noop-policy", 1).expect("valid identity")
+    );
+    assert_eq!(
+        established.declaration_fingerprint,
+        declarations.fingerprint()
+    );
+    let doctor_bytes = crate::test_cbor::to_vec(&doctor).expect("doctor diagnostic bytes");
+    let decoded_doctor: crate::MemoryRuntimeDoctorReport =
+        crate::test_cbor::from_slice(&doctor_bytes).expect("doctor diagnostic round trip");
+    assert_eq!(decoded_doctor, doctor);
+
+    let mismatched = runtime.doctor_report(
+        &declarations,
+        &IdentityPolicy::new("runtime-tests.identity-policy", 2),
+    );
+    assert!(matches!(
+        mismatched.bootstrap_binding,
+        DiagnosticCheck::Failed {
+            code: DiagnosticCode::RuntimeBinding,
+            ..
+        }
+    ));
+    assert!(matches!(mismatched.validation, DiagnosticCheck::Passed));
+}
+
+#[test]
+fn memory_size_diagnostics_preserve_success_when_another_slot_fails() {
+    let users = crate::AllocationDeclaration::memory_manager("size.users.v1", 100, "users")
+        .expect("users declaration");
+    let orders = crate::AllocationDeclaration::memory_manager("size.orders.v1", 101, "orders")
+        .expect("orders declaration");
+    let mut ledger = AllocationLedger {
+        current_generation: 1,
+        allocation_history: AllocationHistory::from_parts(
+            vec![
+                AllocationRecord::active(1, users).expect("users record"),
+                AllocationRecord::active(1, orders).expect("orders record"),
+            ],
+            Vec::new(),
+        ),
+    };
+    ledger.allocation_history.records_mut()[1].slot =
+        AllocationSlotDescriptor::memory_manager_unchecked(crate::MEMORY_MANAGER_INVALID_ID);
+
+    let outcomes = empty_runtime().memory_size_outcomes(&ledger);
+
+    assert!(matches!(
+        &outcomes[0].1,
+        DiagnosticMemorySizeOutcome::Measured(_)
+    ));
+    assert!(matches!(
+        &outcomes[1].1,
+        DiagnosticMemorySizeOutcome::Failed(crate::DiagnosticFailure {
+            code: DiagnosticCode::MemorySize,
+            ..
+        })
+    ));
 }
 
 #[test]

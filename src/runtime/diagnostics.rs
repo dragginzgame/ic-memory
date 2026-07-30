@@ -1,13 +1,18 @@
-use super::{MemoryRuntime, RuntimeDiagnosticError, policy::NoopPolicy};
+use super::{MemoryRuntime, RuntimeDiagnosticError, RuntimeLifecycle};
 use crate::{
-    AllocationHistory, AllocationLedger, AllocationSlotDescriptor, DiagnosticCheck, DiagnosticCode,
-    DiagnosticDeclaration, DiagnosticExport, DiagnosticFailure, DiagnosticMemorySize,
-    DiagnosticRangeAuthority, DiagnosticStableCell, DiagnosticStableCellStatus, LedgerCommitError,
-    LedgerPayloadEnvelopeError, MemoryRuntimeDoctorReport, StableCellLedgerRecord,
-    physical::CommitStoreDiagnostic, registry::SealedDeclarationSnapshot,
-    slot::MEMORY_MANAGER_LEDGER_ID, stable_cell::decode_stable_cell_ledger_record_from_memory,
+    AllocationHistory, AllocationLedger, AllocationPolicy, AllocationSlotDescriptor,
+    DiagnosticCheck, DiagnosticCode, DiagnosticDeclaration, DiagnosticExport, DiagnosticFailure,
+    DiagnosticMemorySize, DiagnosticMemorySizeOutcome, DiagnosticRangeAuthority,
+    DiagnosticRuntimeBinding, DiagnosticStableCell, DiagnosticStableCellStatus, LedgerCommitError,
+    LedgerPayloadEnvelopeError, MemoryRuntimeDoctorReport, PolicyIdentity, RuntimeBootstrapPolicy,
+    StableCellLedgerRecord,
+    physical::CommitStoreDiagnostic,
+    registry::{SealedDeclarationFingerprint, SealedDeclarationSnapshot},
+    slot::MEMORY_MANAGER_LEDGER_ID,
+    stable_cell::decode_stable_cell_ledger_record_from_memory,
 };
 use ic_stable_structures::Memory;
+use std::fmt::Display;
 
 impl<M: Memory> MemoryRuntime<M> {
     /// Export this runtime's recovered ledger and live virtual-memory sizes.
@@ -41,10 +46,15 @@ impl<M: Memory> MemoryRuntime<M> {
 
     /// Build preflight and lifecycle diagnostics for this runtime.
     #[must_use]
-    pub fn doctor_report(
+    pub fn doctor_report<P>(
         &self,
         declarations: &SealedDeclarationSnapshot,
-    ) -> MemoryRuntimeDoctorReport {
+        policy: &P,
+    ) -> MemoryRuntimeDoctorReport
+    where
+        P: RuntimeBootstrapPolicy,
+        P::Error: Display,
+    {
         let stable_cell = self.stable_cell_diagnostic();
         let commit_recovery = stable_cell
             .record
@@ -56,11 +66,11 @@ impl<M: Memory> MemoryRuntime<M> {
             .map(|record| record.store().recover());
         let recovered_for_export = recovered.as_ref().and_then(|result| result.as_ref().ok());
         let ledger = recovered_for_export.map(|recovered| {
-            DiagnosticExport::from_ledger_with_commit_recovery_and_memory_sizes(
+            DiagnosticExport::from_ledger_with_commit_recovery_and_memory_size_outcomes(
                 recovered.ledger(),
                 ledger_anchor_descriptor(),
                 commit_recovery,
-                self.memory_sizes_lossy(recovered.ledger()),
+                self.memory_size_outcomes(recovered.ledger()),
             )
         });
         let diagnostic_declarations = declarations
@@ -82,14 +92,32 @@ impl<M: Memory> MemoryRuntime<M> {
             registered_records,
             Ok(declarations.range_authority().clone()),
         );
-        let validation = diagnostic_validation(
-            declarations,
-            stable_cell.record.as_ref(),
-            recovered.as_ref(),
+        let tested_policy_identity = policy
+            .runtime_bootstrap_identity()
+            .map_err(|err| DiagnosticFailure::new(DiagnosticCode::PolicyIdentity, err.to_string()));
+        let tested_declaration_fingerprint = declarations.fingerprint();
+        let established_bootstrap_binding = self.established_bootstrap_binding();
+        let bootstrap_binding = diagnostic_bootstrap_binding(
+            &tested_policy_identity,
+            tested_declaration_fingerprint,
+            established_bootstrap_binding.as_ref(),
         );
+        let validation = match &tested_policy_identity {
+            Ok(_) => diagnostic_validation(
+                declarations,
+                policy,
+                stable_cell.record.as_ref(),
+                recovered.as_ref(),
+            ),
+            Err(failure) => DiagnosticCheck::not_run(failure.code, failure.message.clone()),
+        };
 
         MemoryRuntimeDoctorReport {
             bootstrapped: self.is_bootstrapped(),
+            tested_policy_identity,
+            tested_declaration_fingerprint,
+            established_bootstrap_binding,
+            bootstrap_binding,
             ledger_anchor: ledger_anchor_descriptor(),
             stable_cell: stable_cell.diagnostic,
             commit_recovery,
@@ -118,11 +146,37 @@ impl<M: Memory> MemoryRuntime<M> {
             .collect()
     }
 
-    fn memory_sizes_lossy(
+    pub(super) fn memory_size_outcomes(
         &self,
         ledger: &AllocationLedger,
-    ) -> Vec<(AllocationSlotDescriptor, DiagnosticMemorySize)> {
-        self.memory_sizes(ledger).unwrap_or_default()
+    ) -> Vec<(AllocationSlotDescriptor, DiagnosticMemorySizeOutcome)> {
+        ledger
+            .allocation_history()
+            .records()
+            .iter()
+            .map(|record| {
+                let outcome = match record.slot().memory_manager_id() {
+                    Ok(id) => DiagnosticMemorySizeOutcome::Measured(
+                        DiagnosticMemorySize::from_wasm_pages(self.memory(id).size()),
+                    ),
+                    Err(err) => DiagnosticMemorySizeOutcome::Failed(DiagnosticFailure::new(
+                        DiagnosticCode::MemorySize,
+                        err.to_string(),
+                    )),
+                };
+                (record.slot().clone(), outcome)
+            })
+            .collect()
+    }
+
+    fn established_bootstrap_binding(&self) -> Option<DiagnosticRuntimeBinding> {
+        match &self.lifecycle {
+            RuntimeLifecycle::Unbootstrapped => None,
+            RuntimeLifecycle::Bootstrapped { binding, .. } => Some(DiagnosticRuntimeBinding::new(
+                binding.policy_identity.clone(),
+                binding.declarations.fingerprint(),
+            )),
+        }
     }
 
     fn stable_cell_diagnostic(&self) -> StableCellDiagnostic {
@@ -171,18 +225,22 @@ const fn ledger_anchor_descriptor() -> AllocationSlotDescriptor {
     AllocationSlotDescriptor::memory_manager_unchecked(MEMORY_MANAGER_LEDGER_ID)
 }
 
-fn diagnostic_validation(
+fn diagnostic_validation<P: AllocationPolicy>(
     declarations: &SealedDeclarationSnapshot,
+    custom_policy: &P,
     stable_cell_record: Option<&StableCellLedgerRecord>,
     recovered: Option<&Result<crate::RecoveredLedger, LedgerCommitError>>,
-) -> DiagnosticCheck {
+) -> DiagnosticCheck
+where
+    P::Error: Display,
+{
     let recovered = match diagnostic_validation_ledger(stable_cell_record, recovered) {
         Ok(recovered) => recovered,
         Err(failure) => return DiagnosticCheck::not_run(failure.code, failure.message),
     };
     let policy = super::policy::RuntimeMemoryManagerPolicy {
         declarations,
-        custom_policy: &NoopPolicy,
+        custom_policy,
     };
     match crate::validate_allocations(
         &recovered,
@@ -192,6 +250,39 @@ fn diagnostic_validation(
         Ok(_) => DiagnosticCheck::passed(),
         Err(err) => DiagnosticCheck::failed(DiagnosticCode::AllocationValidation, err.to_string()),
     }
+}
+
+fn diagnostic_bootstrap_binding(
+    tested_policy_identity: &Result<PolicyIdentity, DiagnosticFailure>,
+    tested_declaration_fingerprint: SealedDeclarationFingerprint,
+    established: Option<&DiagnosticRuntimeBinding>,
+) -> DiagnosticCheck {
+    let tested_policy_identity = match tested_policy_identity {
+        Ok(identity) => identity,
+        Err(failure) => {
+            return DiagnosticCheck::not_run(failure.code, failure.message.clone());
+        }
+    };
+    let Some(established) = established else {
+        return DiagnosticCheck::not_run(
+            DiagnosticCode::RuntimeBinding,
+            "runtime has not completed bootstrap",
+        );
+    };
+    if &established.policy_identity == tested_policy_identity
+        && established.declaration_fingerprint == tested_declaration_fingerprint
+    {
+        return DiagnosticCheck::passed();
+    }
+    DiagnosticCheck::failed(
+        DiagnosticCode::RuntimeBinding,
+        format!(
+            "tested policy/declaration binding differs from established runtime binding: \
+             tested_policy={tested_policy_identity:?}, \
+             tested_declarations={tested_declaration_fingerprint:?}, \
+             established={established:?}"
+        ),
+    )
 }
 
 pub(super) fn diagnostic_validation_ledger(

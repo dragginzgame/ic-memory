@@ -9,6 +9,7 @@ use crate::{
         MemoryManagerRangeAuthorityError, MemoryManagerRangeMode, is_ic_memory_stable_key,
     },
 };
+use serde::{Deserialize, Serialize};
 use std::{
     collections::BTreeMap,
     panic::{AssertUnwindSafe, catch_unwind},
@@ -142,6 +143,12 @@ pub enum StaticMemoryDeclarationError {
     /// Range authority validation failed.
     #[error(transparent)]
     Range(#[from] MemoryManagerRangeAuthorityError),
+    /// Canonical sealed-snapshot diagnostic fingerprint encoding failed.
+    #[error("failed to encode canonical sealed declaration fingerprint material: {message}")]
+    SnapshotFingerprintEncoding {
+        /// Encoder failure.
+        message: String,
+    },
     /// External registration attempted to use an invalid authority identifier.
     #[error("authority {reason}")]
     InvalidAuthority {
@@ -179,6 +186,39 @@ pub struct SealedDeclarationSnapshot {
     inner: Arc<SealedDeclarationSnapshotInner>,
 }
 
+///
+/// SealedDeclarationFingerprint
+///
+/// Deterministic non-cryptographic fingerprint of one canonical sealed
+/// declaration snapshot.
+///
+/// The fingerprint covers canonical allocation declarations, their linked-code
+/// authorities, and the effective range-authority table. It is diagnostic
+/// metadata for comparing in-memory bootstrap bindings, not persisted
+/// allocation authority or an adversarial integrity proof.
+///
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, Ord, PartialEq, PartialOrd, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct SealedDeclarationFingerprint {
+    algorithm_version: u8,
+    value: u64,
+}
+
+impl SealedDeclarationFingerprint {
+    /// Return the diagnostic fingerprint algorithm version.
+    #[must_use]
+    pub const fn algorithm_version(&self) -> u8 {
+        self.algorithm_version
+    }
+
+    /// Return the non-cryptographic fingerprint value.
+    #[must_use]
+    pub const fn value(&self) -> u64 {
+        self.value
+    }
+}
+
 #[derive(Debug, Eq, PartialEq)]
 struct SealedDeclarationSnapshotInner {
     allocation_snapshot: DeclarationSnapshot,
@@ -186,6 +226,7 @@ struct SealedDeclarationSnapshotInner {
     registered_ranges: Vec<StaticMemoryRangeDeclaration>,
     range_authority: MemoryManagerRangeAuthority,
     declaration_authority: BTreeMap<String, RuntimeDeclarationAuthority>,
+    fingerprint: SealedDeclarationFingerprint,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -217,6 +258,12 @@ impl SealedDeclarationSnapshot {
     #[must_use]
     pub fn range_authority(&self) -> &MemoryManagerRangeAuthority {
         &self.inner.range_authority
+    }
+
+    /// Return the deterministic fingerprint of this sealed declaration meaning.
+    #[must_use]
+    pub fn fingerprint(&self) -> SealedDeclarationFingerprint {
+        self.inner.fingerprint
     }
 
     pub(crate) fn declaration_authority(&self) -> &BTreeMap<String, RuntimeDeclarationAuthority> {
@@ -582,6 +629,11 @@ fn build_sealed_snapshot(
             .map(|registration| registration.record().clone()),
     );
     let range_authority = MemoryManagerRangeAuthority::from_records(authority_records)?;
+    let fingerprint = sealed_declaration_fingerprint(
+        &allocation_snapshot,
+        &registered_declarations,
+        range_authority.authorities(),
+    )?;
 
     let mut declaration_authority = BTreeMap::new();
     declaration_authority.insert(
@@ -602,8 +654,64 @@ fn build_sealed_snapshot(
             registered_ranges,
             range_authority,
             declaration_authority,
+            fingerprint,
         }),
     })
+}
+
+#[derive(Serialize)]
+struct FingerprintDeclaration<'a> {
+    authority: &'a str,
+    declaration: &'a AllocationDeclaration,
+}
+
+#[derive(Serialize)]
+struct SealedDeclarationFingerprintMaterial<'a> {
+    format: &'static str,
+    allocation_snapshot: &'a DeclarationSnapshot,
+    registered_declarations: Vec<FingerprintDeclaration<'a>>,
+    effective_ranges: &'a [MemoryManagerAuthorityRecord],
+}
+
+fn sealed_declaration_fingerprint(
+    allocation_snapshot: &DeclarationSnapshot,
+    registered_declarations: &[StaticMemoryDeclaration],
+    effective_ranges: &[MemoryManagerAuthorityRecord],
+) -> Result<SealedDeclarationFingerprint, StaticMemoryDeclarationError> {
+    let material = SealedDeclarationFingerprintMaterial {
+        format: "ic-memory.sealed-declaration-fingerprint.v1",
+        allocation_snapshot,
+        registered_declarations: registered_declarations
+            .iter()
+            .map(|registration| FingerprintDeclaration {
+                authority: registration.authority(),
+                declaration: registration.declaration(),
+            })
+            .collect(),
+        effective_ranges,
+    };
+    let mut bytes = Vec::new();
+    ciborium::into_writer(&material, &mut bytes).map_err(|err| {
+        StaticMemoryDeclarationError::SnapshotFingerprintEncoding {
+            message: err.to_string(),
+        }
+    })?;
+
+    let value = bytes
+        .into_iter()
+        .fold(FINGERPRINT_FNV_OFFSET, fingerprint_hash_byte);
+    Ok(SealedDeclarationFingerprint {
+        algorithm_version: SEALED_DECLARATION_FINGERPRINT_VERSION,
+        value,
+    })
+}
+
+const SEALED_DECLARATION_FINGERPRINT_VERSION: u8 = 1;
+const FINGERPRINT_FNV_OFFSET: u64 = 0xcbf2_9ce4_8422_2325;
+const FINGERPRINT_FNV_PRIME: u64 = 0x0000_0100_0000_01b3;
+
+const fn fingerprint_hash_byte(hash: u64, byte: u8) -> u64 {
+    (hash ^ byte as u64).wrapping_mul(FINGERPRINT_FNV_PRIME)
 }
 
 const fn range_mode_order(mode: MemoryManagerRangeMode) -> u8 {

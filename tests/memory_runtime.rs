@@ -1,6 +1,6 @@
 use ic_memory::{
-    AllocationPolicy, AllocationSlotDescriptor, MemoryRuntime, RuntimeBootstrapPolicy, StableKey,
-    sealed_declaration_snapshot,
+    AllocationPolicy, AllocationSlotDescriptor, MemoryRuntime, PolicyIdentity, PolicyIdentityError,
+    RuntimeBootstrapPolicy, StableKey, sealed_declaration_snapshot,
 };
 use ic_stable_structures::{Memory, VectorMemory};
 
@@ -42,8 +42,8 @@ impl AllocationPolicy for AllowAll {
 }
 
 impl RuntimeBootstrapPolicy for AllowAll {
-    fn runtime_bootstrap_identity(&self) -> &'static str {
-        "explicit-runtime.allow-all.v1"
+    fn runtime_bootstrap_identity(&self) -> Result<PolicyIdentity, PolicyIdentityError> {
+        PolicyIdentity::new("explicit-runtime.allow-all", 1)
     }
 }
 
@@ -63,5 +63,5 @@ fn public_explicit_runtime_bootstraps_opens_and_diagnoses_its_memory() {
 
     let export = runtime.diagnostic_export().expect("runtime diagnostics");
     assert_eq!(export.current_generation, generation);
-    assert!(runtime.doctor_report(&declarations).bootstrapped);
+    assert!(runtime.doctor_report(&declarations, &AllowAll).bootstrapped);
 }

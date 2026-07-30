@@ -21,14 +21,23 @@ jobs:
       - run: cargo test -- --test-threads=1
       - run: cargo test --doc
       - run: cargo check --target wasm32-unknown-unknown --tests
-      - name: Enforce representative raw Wasm size
+      - name: Enforce core and diagnostics raw Wasm sizes
         run: |
-          cargo build --profile wasm-size --target wasm32-unknown-unknown --example wasm-size-probe
-          wasm=target/wasm32-unknown-unknown/wasm-size/examples/wasm_size_probe.wasm
-          bytes=$(wc -c < "$wasm")
-          budget=240000
-          echo "Representative raw Wasm: $bytes bytes (budget: $budget bytes)"
-          test "$bytes" -le "$budget"
+          cargo build --profile wasm-size --target wasm32-unknown-unknown \
+            --example wasm-core-size-probe \
+            --example wasm-diagnostics-size-probe
+
+          core_wasm=target/wasm32-unknown-unknown/wasm-size/examples/wasm_core_size_probe.wasm
+          core_bytes=$(wc -c < "$core_wasm")
+          core_budget=245000
+          echo "Core raw Wasm: $core_bytes bytes (budget: $core_budget bytes)"
+          test "$core_bytes" -le "$core_budget"
+
+          diagnostics_wasm=target/wasm32-unknown-unknown/wasm-size/examples/wasm_diagnostics_size_probe.wasm
+          diagnostics_bytes=$(wc -c < "$diagnostics_wasm")
+          diagnostics_budget=290000
+          echo "Diagnostics raw Wasm: $diagnostics_bytes bytes (budget: $diagnostics_budget bytes)"
+          test "$diagnostics_bytes" -le "$diagnostics_budget"
       - run: cargo package
 
   msrv:

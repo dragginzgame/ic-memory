@@ -246,6 +246,22 @@ fn deferred_constructor_registration_errors_are_reported_by_snapshot_requests() 
 fn snapshot_order_is_independent_of_registration_order() {
     let _guard = TEST_REGISTRY_LOCK.lock().expect("test lock poisoned");
     reset_static_memory_declarations_for_tests();
+    register_static_memory_manager_range(
+        102,
+        102,
+        "order",
+        MemoryManagerRangeMode::Reserved,
+        Some("z".to_string()),
+    )
+    .expect("z range");
+    register_static_memory_manager_range(
+        101,
+        101,
+        "order",
+        MemoryManagerRangeMode::Reserved,
+        Some("a".to_string()),
+    )
+    .expect("a range");
     register_static_memory_manager_declaration(102, "order", "z", "order.z.v1")
         .expect("z declaration");
     register_static_memory_manager_declaration(101, "order", "a", "order.a.v1")
@@ -253,6 +269,22 @@ fn snapshot_order_is_independent_of_registration_order() {
     let first = sealed_declaration_snapshot().expect("first snapshot");
 
     reset_static_memory_declarations_for_tests();
+    register_static_memory_manager_range(
+        101,
+        101,
+        "order",
+        MemoryManagerRangeMode::Reserved,
+        Some("a".to_string()),
+    )
+    .expect("a range");
+    register_static_memory_manager_range(
+        102,
+        102,
+        "order",
+        MemoryManagerRangeMode::Reserved,
+        Some("z".to_string()),
+    )
+    .expect("z range");
     register_static_memory_manager_declaration(101, "order", "a", "order.a.v1")
         .expect("a declaration");
     register_static_memory_manager_declaration(102, "order", "z", "order.z.v1")
@@ -264,6 +296,29 @@ fn snapshot_order_is_independent_of_registration_order() {
         crate::test_cbor::to_vec(first.allocation_snapshot()).expect("first bytes"),
         crate::test_cbor::to_vec(second.allocation_snapshot()).expect("second bytes")
     );
+    assert_eq!(first.fingerprint(), second.fingerprint());
+    assert_eq!(first.fingerprint().algorithm_version(), 1);
+    assert_eq!(first.fingerprint().value(), 2_010_740_972_202_682_334);
+}
+
+#[test]
+fn snapshot_fingerprint_covers_linked_declaration_authority() {
+    let _guard = TEST_REGISTRY_LOCK.lock().expect("test lock poisoned");
+    reset_static_memory_declarations_for_tests();
+    register_static_memory_manager_declaration(101, "authority_a", "rows", "fingerprint.rows.v1")
+        .expect("first declaration");
+    let first = sealed_declaration_snapshot()
+        .expect("first snapshot")
+        .fingerprint();
+
+    reset_static_memory_declarations_for_tests();
+    register_static_memory_manager_declaration(101, "authority_b", "rows", "fingerprint.rows.v1")
+        .expect("second declaration");
+    let second = sealed_declaration_snapshot()
+        .expect("second snapshot")
+        .fingerprint();
+
+    assert_ne!(first, second);
 }
 
 #[test]

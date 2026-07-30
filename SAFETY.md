@@ -136,6 +136,13 @@ single-threaded IC Wasm, the TLS runtime naturally has canister-instance
 lifetime. There is no public reset operation because resetting process flags
 cannot reset or replace the concrete backing memory that owns durable facts.
 
+A successful runtime bootstrap also binds that runtime in memory to a validated
+`PolicyIdentity` and deterministic sealed-declaration fingerprint. Those values
+prevent a repeated call from silently substituting different policy semantics
+or declarations, and doctor reports expose the same binding. They are
+diagnostic lifecycle metadata, not persisted ledger authority or upgrade audit
+history. The snapshot fingerprint is non-cryptographic.
+
 ## Retirement Invariants
 
 - A retired stable key cannot be declared again.

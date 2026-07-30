@@ -1,7 +1,10 @@
-use ic_memory::{AllocationPolicy, AllocationSlotDescriptor, RuntimeBootstrapPolicy, StableKey};
+use ic_memory::{
+    AllocationPolicy, AllocationSlotDescriptor, PolicyIdentity, PolicyIdentityError,
+    RuntimeBootstrapPolicy, StableKey,
+};
 
 const AUTHORITY: &str = "default_custom_policy";
-const POLICY_IDENTITY: &str = "default-custom-policy.v1";
+const POLICY_IDENTITY: &str = "default-custom-policy";
 
 ic_memory::ic_memory_range!(authority = AUTHORITY, start = 150, end = 150);
 
@@ -39,8 +42,8 @@ impl AllocationPolicy for CustomPolicy {
 }
 
 impl RuntimeBootstrapPolicy for CustomPolicy {
-    fn runtime_bootstrap_identity(&self) -> &'static str {
-        POLICY_IDENTITY
+    fn runtime_bootstrap_identity(&self) -> Result<PolicyIdentity, PolicyIdentityError> {
+        PolicyIdentity::new(POLICY_IDENTITY, 1)
     }
 }
 
@@ -52,6 +55,18 @@ fn custom_default_policy_bootstrap_is_identity_bound_and_idempotent() {
         .expect("same custom-policy identity");
 
     assert_eq!(repeated.generation(), first.generation());
+    let doctor = ic_memory::default_memory_manager_doctor_report_with_policy(&CustomPolicy)
+        .expect("custom-policy doctor report");
+    assert!(matches!(
+        doctor.bootstrap_binding,
+        ic_memory::DiagnosticCheck::Passed
+    ));
+    assert_eq!(
+        doctor
+            .tested_policy_identity
+            .expect("valid custom-policy identity"),
+        PolicyIdentity::new(POLICY_IDENTITY, 1).expect("valid identity")
+    );
     ic_memory::open_default_memory_manager_memory("default_custom_policy.rows.v1", 150)
         .expect("custom-policy committed memory");
 }

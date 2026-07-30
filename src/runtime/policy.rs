@@ -1,6 +1,7 @@
 use super::{RuntimeBootstrapError, RuntimePolicyError};
 use crate::{
-    AllocationPolicy, AllocationSlotDescriptor, RuntimeBootstrapPolicy, StableKey,
+    AllocationPolicy, AllocationSlotDescriptor, PolicyIdentity, PolicyIdentityError,
+    RuntimeBootstrapPolicy, StableKey,
     registry::{RuntimeDeclarationAuthority, SealedDeclarationSnapshot},
     slot::{IC_MEMORY_AUTHORITY_OWNER, MemoryManagerRangeAuthorityError},
 };
@@ -155,7 +156,7 @@ impl AllocationPolicy for NoopPolicy {
 }
 
 impl RuntimeBootstrapPolicy for NoopPolicy {
-    fn runtime_bootstrap_identity(&self) -> &'static str {
-        "ic-memory.noop-policy.v1"
+    fn runtime_bootstrap_identity(&self) -> Result<PolicyIdentity, PolicyIdentityError> {
+        PolicyIdentity::new("ic-memory.noop-policy", 1)
     }
 }

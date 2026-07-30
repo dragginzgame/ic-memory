@@ -48,10 +48,13 @@ Schema metadata is optional diagnostic metadata. Use it to record the in-place
 store schema version that a generation declared, but keep application migration
 logic outside `ic-memory`.
 
-For operator diagnostics, `MemoryRuntime::doctor_report(&snapshot)` reports
-stable-cell status, protected commit recovery state, recovered ledger export,
-registered declarations, range authority, validation preflight, and live
-memory sizes for that runtime when recovery succeeds. The default-runtime
-wrapper returns a typed TLS access error if it is re-entered. Failure states
-include stable diagnostic codes for automation as well as human-readable
-messages.
+For operator diagnostics,
+`MemoryRuntime::doctor_report(&snapshot, &policy)` reports stable-cell status,
+protected commit recovery state, recovered ledger export, registered
+declarations, range authority, validation under the tested policy, and live
+memory sizes for that runtime when recovery succeeds. It also compares the
+tested policy identity and declaration fingerprint with the binding established
+by successful bootstrap. Size failures are reported per allocation without
+discarding successful measurements. The default-runtime wrapper returns a typed
+TLS access error if it is re-entered. Failure states include stable diagnostic
+codes for automation as well as human-readable messages.

@@ -65,7 +65,7 @@ Declare both direct dependencies:
 
 ```toml
 [dependencies]
-ic-memory = "0.12.2"
+ic-memory = "0.12.3"
 ic-stable-structures = "0.7.2"
 ```
 
@@ -130,10 +130,12 @@ Use helpers such as
 `ic_memory::open_default_memory_manager_memory(...)`, and the macros shown
 above; implementation modules are private.
 
-The no-argument bootstrap helper uses ic-memory's built-in versioned policy
-identity. A custom policy implements both `AllocationPolicy` and
-`RuntimeBootstrapPolicy`; its static identity must change whenever its
-configuration or semantics change.
+The no-argument bootstrap helper uses ic-memory's built-in versioned
+`PolicyIdentity`. A custom policy implements both `AllocationPolicy` and
+`RuntimeBootstrapPolicy`. Its bounded identity contains a policy-family name,
+a nonzero semantic version, and an optional caller-computed 32-byte
+configuration digest. Change the version when policy semantics change and use
+the digest when effective runtime configuration changes.
 
 ## Multi-Crate Composition
 
@@ -233,7 +235,9 @@ runtime object is idempotent only when the snapshot and
 `RuntimeBootstrapPolicy::runtime_bootstrap_identity()` match the successful
 bootstrap. A changed snapshot or policy identity returns a typed error without
 touching the ledger. Policy implementations should change their identity
-whenever policy configuration or semantics change.
+whenever policy configuration or semantics change. This binding is
+intentionally in-memory lifecycle and diagnostic state; it is not upgrade audit
+history and is not persisted in the allocation ledger.
 
 There is intentionally no public reset API. Native tests should construct a new
 explicit runtime or use the naturally independent default TLS runtime; changing
@@ -246,7 +250,17 @@ runtime diagnostics. It returns a typed error if the default TLS runtime is
 re-entered. Otherwise it can be called before or after bootstrap and reports the
 stable-cell status, protected commit recovery state, recovered ledger export,
 registered declarations, range authority, validation preflight, and live
-`MemoryManager` slot sizes when they can be recovered.
+`MemoryManager` slot sizes when they can be recovered. This no-argument entry
+point evaluates the built-in policy. Integrations that bootstrap with a custom
+policy should call
+`default_memory_manager_doctor_report_with_policy(&policy)`, or call
+`runtime.doctor_report(&declarations, &policy)` on an explicit runtime.
+
+Doctor output includes the tested policy identity and sealed-declaration
+fingerprint, the binding established by successful bootstrap, and a typed
+binding comparison. Live size measurement is also per allocation: one invalid
+slot is reported as a `DiagnosticMemorySizeOutcome::Failed` value without
+discarding successful measurements for other slots.
 Diagnostic failures carry stable `DiagnosticCode` values alongside their
 human-readable messages for operator automation.
 

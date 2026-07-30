@@ -10,7 +10,8 @@ pub use default::{
     bootstrap_default_memory_manager, bootstrap_default_memory_manager_with_policy,
     committed_allocations, default_memory_manager_commit_recovery_diagnostic,
     default_memory_manager_diagnostic_export, default_memory_manager_doctor_report,
-    is_default_memory_manager_bootstrapped, open_default_memory_manager_memory,
+    default_memory_manager_doctor_report_with_policy, is_default_memory_manager_bootstrapped,
+    open_default_memory_manager_memory,
 };
 pub use error::{
     RuntimeBootstrapError, RuntimeConstructionError, RuntimeDiagnosticError, RuntimeOpenError,
@@ -20,8 +21,8 @@ pub use error::{
 use self::policy::{RuntimeMemoryManagerPolicy, runtime_bootstrap_error_from_bootstrap};
 use crate::{
     AllocationBootstrap, AllocationHistory, AllocationLedger, AllocationPolicy,
-    CommittedAllocations, RuntimeBootstrapPolicy, STABLE_CELL_VALUE_OFFSET, StableCellLedgerError,
-    StableCellLedgerRecord, StableKey, registry::SealedDeclarationSnapshot,
+    CommittedAllocations, PolicyIdentity, RuntimeBootstrapPolicy, STABLE_CELL_VALUE_OFFSET,
+    StableCellLedgerError, StableCellLedgerRecord, StableKey, registry::SealedDeclarationSnapshot,
     slot::MEMORY_MANAGER_LEDGER_ID, stable_cell::decode_stable_cell_ledger_record_from_memory,
 };
 use ic_stable_structures::{
@@ -47,7 +48,7 @@ enum RuntimeLifecycle {
 
 struct RuntimeBootstrapBinding {
     declarations: SealedDeclarationSnapshot,
-    policy_identity: &'static str,
+    policy_identity: PolicyIdentity,
 }
 
 ///
@@ -114,14 +115,11 @@ impl<M: Memory> MemoryRuntime<M> {
         declarations: &SealedDeclarationSnapshot,
         policy: &P,
     ) -> Result<&CommittedAllocations, RuntimeBootstrapError<P::Error>> {
-        let policy_identity = policy.runtime_bootstrap_identity();
-        if policy_identity.is_empty() {
-            return Err(RuntimeBootstrapError::EmptyPolicyIdentity);
-        }
+        let policy_identity = policy.runtime_bootstrap_identity()?;
         let already_bootstrapped = match &self.lifecycle {
             RuntimeLifecycle::Unbootstrapped => false,
             RuntimeLifecycle::Bootstrapped { binding, .. } => {
-                binding.validate(declarations, policy_identity)?;
+                binding.validate(declarations, &policy_identity)?;
                 true
             }
         };
@@ -143,7 +141,7 @@ impl<M: Memory> MemoryRuntime<M> {
         &mut self,
         declarations: &SealedDeclarationSnapshot,
         policy: &P,
-        policy_identity: &'static str,
+        policy_identity: PolicyIdentity,
     ) -> Result<(), RuntimeBootstrapError<P::Error>> {
         self.initialize_ledger_cell()?;
         let mut record = self
@@ -276,15 +274,15 @@ impl RuntimeBootstrapBinding {
     fn validate<P>(
         &self,
         declarations: &SealedDeclarationSnapshot,
-        policy_identity: &'static str,
+        policy_identity: &PolicyIdentity,
     ) -> Result<(), RuntimeBootstrapError<P>> {
         if !self.declarations.shares_storage_with(declarations) {
             return Err(RuntimeBootstrapError::DeclarationSnapshotMismatch);
         }
-        if self.policy_identity != policy_identity {
+        if &self.policy_identity != policy_identity {
             return Err(RuntimeBootstrapError::PolicyIdentityMismatch {
-                established: self.policy_identity,
-                requested: policy_identity,
+                established: self.policy_identity.clone(),
+                requested: policy_identity.clone(),
             });
         }
         Ok(())

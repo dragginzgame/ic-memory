@@ -126,8 +126,9 @@ pub use declaration::{
 };
 pub use diagnostics::{
     DiagnosticCheck, DiagnosticCode, DiagnosticDeclaration, DiagnosticExport, DiagnosticFailure,
-    DiagnosticGeneration, DiagnosticMemorySize, DiagnosticRangeAuthority, DiagnosticRecord,
-    DiagnosticStableCell, DiagnosticStableCellStatus, MemoryRuntimeDoctorReport,
+    DiagnosticGeneration, DiagnosticMemorySize, DiagnosticMemorySizeOutcome,
+    DiagnosticRangeAuthority, DiagnosticRecord, DiagnosticRuntimeBinding, DiagnosticStableCell,
+    DiagnosticStableCellStatus, MemoryRuntimeDoctorReport,
 };
 pub use key::{StableKey, StableKeyError};
 pub use ledger::{
@@ -141,10 +142,10 @@ pub use physical::{
     CommitRecoveryError, CommitSlotDiagnostic, CommitStoreDiagnostic, CommittedGenerationBytes,
     DualCommitStore,
 };
-pub use policy::{AllocationPolicy, RuntimeBootstrapPolicy};
+pub use policy::{AllocationPolicy, PolicyIdentity, PolicyIdentityError, RuntimeBootstrapPolicy};
 pub use registry::{
-    SealedDeclarationSnapshot, StaticMemoryDeclaration, StaticMemoryDeclarationError,
-    StaticMemoryRangeDeclaration, register_static_memory_declaration,
+    SealedDeclarationFingerprint, SealedDeclarationSnapshot, StaticMemoryDeclaration,
+    StaticMemoryDeclarationError, StaticMemoryRangeDeclaration, register_static_memory_declaration,
     register_static_memory_manager_declaration,
     register_static_memory_manager_declaration_with_schema, register_static_memory_manager_range,
     register_static_memory_range_declaration, sealed_declaration_snapshot,
@@ -154,8 +155,8 @@ pub use runtime::{
     RuntimeOpenError, RuntimePolicyError, RuntimeStateError, bootstrap_default_memory_manager,
     bootstrap_default_memory_manager_with_policy, committed_allocations,
     default_memory_manager_commit_recovery_diagnostic, default_memory_manager_diagnostic_export,
-    default_memory_manager_doctor_report, is_default_memory_manager_bootstrapped,
-    open_default_memory_manager_memory,
+    default_memory_manager_doctor_report, default_memory_manager_doctor_report_with_policy,
+    is_default_memory_manager_bootstrapped, open_default_memory_manager_memory,
 };
 pub use schema::{SchemaMetadata, SchemaMetadataError};
 pub use slot::{

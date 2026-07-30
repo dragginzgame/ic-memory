@@ -102,9 +102,29 @@ There is one authority order in the default runtime:
 3. The caller-supplied `AllocationPolicy` is applied after generic range checks.
 
 Policies passed to runtime bootstrap also implement `RuntimeBootstrapPolicy`.
-Its identity names the policy configuration and semantics, not the policy
-object's address or Rust type. Frameworks must change that identity when their
-effective rules change.
+Its `PolicyIdentity` names the policy family and semantic version, not the
+policy object's address or Rust type. Configuration-dependent policies should
+attach a caller-computed 32-byte digest of their effective configuration.
+Frameworks must change the version or digest when their effective rules change.
+Names are validated printable ASCII and bounded to 256 bytes.
+
+The policy identity is an in-memory repeat-call and doctor-report binding only.
+It is not written to the allocation ledger and therefore is not upgrade audit
+history. An integration that needs durable policy history must make a separate
+explicit persisted-format decision rather than infer it from this runtime
+binding.
+
+```rust,ignore
+impl RuntimeBootstrapPolicy for FrameworkPolicy {
+    fn runtime_bootstrap_identity(
+        &self,
+    ) -> Result<PolicyIdentity, PolicyIdentityError> {
+        PolicyIdentity::new("framework.memory-bootstrap-policy", 2).map(|identity| {
+            identity.with_configuration_digest(self.effective_configuration_digest())
+        })
+    }
+}
+```
 
 That means a framework adapter must choose deliberately which layer owns range
 decisions.
@@ -160,14 +180,22 @@ internally.
 
 ## Default Runtime Diagnostics
 
-`MemoryRuntime::doctor_report(&snapshot)` builds a serializable report for that
-runtime before or after bootstrap. The default
+`MemoryRuntime::doctor_report(&snapshot, &policy)` builds a serializable report
+for that runtime before or after bootstrap and runs validation through the
+supplied policy. The default
 `default_memory_manager_doctor_report()` entry point seals the linked snapshot,
-enters the calling thread's runtime fallibly, and returns the same report. It
-includes stable-cell status, protected commit recovery, recovered ledger
-export, registered declarations, registered and effective range authority,
-generic validation preflight, and live memory sizes for recovered ledger
-records.
+enters the calling thread's runtime fallibly, and evaluates the built-in policy.
+Custom-policy default runtimes should use
+`default_memory_manager_doctor_report_with_policy(&policy)`. Reports include
+stable-cell status, protected commit recovery, recovered ledger export,
+registered declarations, registered and effective range authority, validation
+under the tested policy, and live memory sizes for recovered ledger records.
+
+The report identifies the tested policy and declaration-snapshot fingerprint,
+shows the binding established by successful bootstrap, and reports whether the
+two match. The snapshot fingerprint is deterministic, versioned,
+non-cryptographic diagnostic metadata; it is neither durable allocation
+authority nor an adversarial integrity proof.
 
 Mutually exclusive diagnostic outcomes use enums or `Result` values instead of
 nullable field pairs, so machine-readable reports cannot express contradictory
@@ -176,9 +204,9 @@ the human-readable message, so automation does not need to parse prose.
 
 The first snapshot request runs deferred generated registration and
 `eager_init!` hooks exactly once before sealing, so doctor and bootstrap always
-use the same immutable declaration set. The validation field covers generic
-range/declaration checks. Frameworks that pass a custom policy should still
-diagnose that policy in their own adapter layer.
+use the same immutable declaration set. Each recovered allocation carries its
+own `DiagnosticMemorySizeOutcome`: a bad slot records a typed failure without
+discarding sizes measured successfully for other slots.
 
 ## Explicit `MemoryRuntime<M>`
 
@@ -192,7 +220,7 @@ runtime.bootstrap(&declarations, &policy)?;
 let users = runtime.open_memory("app.users.v1", 120)?;
 let export = runtime.diagnostic_export()?;
 let recovery = runtime.commit_recovery_diagnostic()?;
-let doctor = runtime.doctor_report(&declarations);
+let doctor = runtime.doctor_report(&declarations, &policy);
 ```
 
 Runtime construction accepts empty backing memory or the current

@@ -1,5 +1,45 @@
 # Changelog
 
+## 0.12.3
+
+This release hardens runtime policy identity and makes doctor diagnostics
+policy-aware. It is an intentional pre-1.0 API and diagnostic-shape hard cut
+and does not change the durable allocation-ledger format.
+
+### Policy and bootstrap binding
+
+- Replaced the unbounded `&'static str` policy identity with validated
+  `PolicyIdentity`, containing a bounded policy-family name, nonzero semantic
+  version, and optional caller-computed 32-byte configuration digest.
+- Made identity construction fallible and revalidated diagnostic
+  deserialization so malformed input cannot bypass the newtype invariants.
+- Bound repeated bootstrap to the complete identity, including configured
+  policy digest, while keeping the binding explicitly in-memory rather than
+  durable upgrade history.
+- Added a deterministic, versioned, non-cryptographic
+  `SealedDeclarationFingerprint` for diagnostic comparison without replacing
+  sealed-snapshot identity as bootstrap authority.
+
+### Policy-aware diagnostics
+
+- Changed `MemoryRuntime::doctor_report` to accept the policy it evaluates and
+  added `default_memory_manager_doctor_report_with_policy` for custom-policy
+  default runtimes.
+- Included the tested policy identity and declaration fingerprint, the binding
+  established by successful bootstrap, and a typed binding comparison in
+  `MemoryRuntimeDoctorReport`.
+- Added distinct diagnostic codes for invalid policy identity, runtime-binding
+  mismatch, and per-slot memory-size failure.
+- Changed doctor ledger size projection to preserve successful measurements
+  when another allocation's slot is invalid, using
+  `DiagnosticMemorySizeOutcome` per record.
+
+### Size budgets
+
+- Split the representative raw Wasm gate into a 245,000-byte bootstrap/open
+  core tier and a 290,000-byte doctor/export diagnostics tier.
+- Measured 239,150 and 281,858 bytes respectively on Rust 1.97.1.
+
 ## 0.12.2
 
 This release makes runtime construction fail closed before
