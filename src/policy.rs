@@ -39,3 +39,21 @@ pub trait AllocationPolicy {
         slot: &AllocationSlotDescriptor,
     ) -> Result<(), Self::Error>;
 }
+
+///
+/// RuntimeBootstrapPolicy
+///
+/// Allocation policy with an explicit semantic identity for runtime bootstrap.
+///
+/// [`crate::MemoryRuntime`] binds its successful bootstrap to this identity.
+/// Repeated bootstrap is idempotent only when the caller supplies the same
+/// sealed declaration snapshot and the same policy identity. Implementations
+/// should change the identity whenever policy configuration or semantics
+/// change. The identity must be a non-empty static string, normally a
+/// versioned framework or application constant.
+///
+
+pub trait RuntimeBootstrapPolicy: AllocationPolicy {
+    /// Return the stable semantic identity of this policy configuration.
+    fn runtime_bootstrap_identity(&self) -> &'static str;
+}

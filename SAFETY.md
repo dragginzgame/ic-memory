@@ -82,6 +82,11 @@ Storage integrations must validate layout before opening stable-memory handles:
 4. Commit the new allocation generation.
 5. Only then open stable-memory handles using committed allocation authority.
 
+Runtime policy implementations also provide an explicit
+`RuntimeBootstrapPolicy` identity. Repeated bootstrap is accepted only when
+that identity and the sealed declaration snapshot match the successful
+bootstrap, preventing a later policy argument from being silently ignored.
+
 Opening stable-memory handles before validation defeats the purpose of this
 crate.
 

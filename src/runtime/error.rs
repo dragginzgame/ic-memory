@@ -1,0 +1,178 @@
+use crate::{
+    LedgerCommitError, StableCellLedgerError,
+    registry::StaticMemoryDeclarationError,
+    slot::{MemoryManagerRangeAuthorityError, MemoryManagerSlotError},
+};
+
+///
+/// RuntimeStateError
+///
+/// Failure to enter or maintain one memory runtime's in-memory lifecycle.
+///
+
+#[non_exhaustive]
+#[derive(Clone, Copy, Debug, Eq, thiserror::Error, PartialEq)]
+pub enum RuntimeStateError {
+    /// A default-runtime operation re-entered while that TLS runtime was borrowed.
+    #[error("ic-memory default runtime is already borrowed by an active operation")]
+    ReentrantAccess,
+    /// The thread-local default runtime is being destroyed and cannot be entered.
+    #[error("ic-memory default runtime is unavailable during thread-local destruction")]
+    Unavailable,
+    /// Internal runtime lifecycle state was inconsistent.
+    #[error("ic-memory runtime lifecycle is internally inconsistent")]
+    InconsistentLifecycle,
+}
+
+///
+/// RuntimeBootstrapError
+///
+/// Failure to bootstrap one `MemoryRuntime`.
+///
+
+#[non_exhaustive]
+#[derive(Debug, thiserror::Error)]
+pub enum RuntimeBootstrapError<P> {
+    /// The policy did not provide a usable semantic bootstrap identity.
+    #[error("runtime bootstrap policy identity must not be empty")]
+    EmptyPolicyIdentity,
+    /// A bootstrapped runtime was called with a different declaration snapshot.
+    #[error("runtime bootstrap declaration snapshot differs from the established binding")]
+    DeclarationSnapshotMismatch,
+    /// A bootstrapped runtime was called with a different policy identity.
+    #[error("runtime bootstrap policy identity changed from '{established}' to '{requested}'")]
+    PolicyIdentityMismatch {
+        /// Policy identity established by successful bootstrap.
+        established: &'static str,
+        /// Policy identity supplied by the repeated call.
+        requested: &'static str,
+    },
+    /// Linked-program declaration snapshot sealing failed.
+    #[error(transparent)]
+    Registry(#[from] StaticMemoryDeclarationError),
+    /// Runtime ledger genesis construction failed.
+    #[error(transparent)]
+    LedgerIntegrity(#[from] crate::LedgerIntegrityError),
+    /// Protected ledger recovery or commit failed.
+    #[error(transparent)]
+    LedgerCommit(#[from] crate::LedgerCommitError),
+    /// Stable-cell ledger storage is corrupt before protected recovery can run.
+    #[error(transparent)]
+    StableCellLedger(#[from] StableCellLedgerError),
+    /// Stable-cell ledger storage cannot fit the next protected ledger record.
+    #[error("stable-cell ledger record size {value_size} cannot be written to stable memory")]
+    StableCellLedgerWriteTooLarge {
+        /// Encoded stable-cell ledger record size in bytes.
+        value_size: usize,
+    },
+    /// Declaration validation failed.
+    #[error(transparent)]
+    Validation(#[from] crate::AllocationValidationError<RuntimePolicyError<P>>),
+    /// Validated declarations could not be staged.
+    #[error(transparent)]
+    Staging(#[from] crate::AllocationStageError),
+    /// Runtime lifecycle or default TLS access failed.
+    #[error(transparent)]
+    State(#[from] RuntimeStateError),
+}
+
+///
+/// RuntimeOpenError
+///
+/// Failure to open an allocation through one memory runtime.
+///
+
+#[non_exhaustive]
+#[derive(Clone, Debug, Eq, thiserror::Error, PartialEq)]
+pub enum RuntimeOpenError {
+    /// This runtime has not published committed allocations.
+    #[error("ic-memory runtime has not completed bootstrap validation")]
+    NotBootstrapped,
+    /// Runtime lifecycle or default TLS access failed.
+    #[error(transparent)]
+    State(#[from] RuntimeStateError),
+    /// Stable-key grammar failure.
+    #[error(transparent)]
+    StableKey(#[from] crate::StableKeyError),
+    /// The stable key was not present in this runtime's committed declaration set.
+    #[error("stable key '{0}' was not committed by ic-memory runtime bootstrap")]
+    StableKeyNotCommitted(String),
+    /// Runtime governance stable keys are internal and cannot be opened publicly.
+    #[error("stable key '{stable_key}' is reserved for ic-memory runtime governance")]
+    ReservedStableKey {
+        /// Reserved stable key.
+        stable_key: String,
+    },
+    /// The committed slot is not a usable `MemoryManager` ID.
+    #[error(transparent)]
+    MemoryManagerSlot(#[from] MemoryManagerSlotError),
+    /// The requested memory ID does not match the committed stable-key binding.
+    #[error(
+        "stable key '{stable_key}' is committed for MemoryManager ID {committed_id}, not requested ID {requested_id}"
+    )]
+    MemoryIdMismatch {
+        /// Stable key being opened.
+        stable_key: String,
+        /// Committed MemoryManager ID.
+        committed_id: u8,
+        /// Requested MemoryManager ID.
+        requested_id: u8,
+    },
+}
+
+///
+/// RuntimeDiagnosticError
+///
+/// Failure to build diagnostics for one memory runtime.
+///
+
+#[non_exhaustive]
+#[derive(Debug, thiserror::Error)]
+pub enum RuntimeDiagnosticError {
+    /// This runtime has not opened and validated its ledger cell.
+    #[error("ic-memory runtime has not completed bootstrap validation")]
+    NotBootstrapped,
+    /// Linked-program declaration snapshot sealing failed.
+    #[error(transparent)]
+    Registry(#[from] StaticMemoryDeclarationError),
+    /// Runtime lifecycle or default TLS access failed.
+    #[error(transparent)]
+    State(#[from] RuntimeStateError),
+    /// The recovered allocation ledger failed protected commit validation.
+    #[error(transparent)]
+    LedgerCommit(#[from] LedgerCommitError),
+    /// Stable-cell ledger storage is corrupt before protected recovery can run.
+    #[error(transparent)]
+    StableCellLedger(#[from] StableCellLedgerError),
+    /// A committed allocation slot was not a usable `MemoryManager` ID.
+    #[error(transparent)]
+    MemoryManagerSlot(#[from] MemoryManagerSlotError),
+}
+
+///
+/// RuntimePolicyError
+///
+/// Failure in generic runtime range policy or caller-supplied policy.
+///
+
+#[non_exhaustive]
+#[derive(Clone, Debug, Eq, thiserror::Error, PartialEq)]
+pub enum RuntimePolicyError<P> {
+    /// Runtime range authority rejected the declaration.
+    #[error(transparent)]
+    Range(#[from] MemoryManagerRangeAuthorityError),
+    /// Runtime metadata is internally inconsistent.
+    #[error("runtime declaration metadata is missing for stable key '{0}'")]
+    MissingDeclarationMetadata(String),
+    /// `ic_memory.*` stable keys are reserved to the `ic-memory` authority.
+    #[error("stable key '{stable_key}' is reserved to authority '{expected_authority}'")]
+    ReservedStableKeyAuthority {
+        /// Stable key being declared.
+        stable_key: String,
+        /// Required declaring authority.
+        expected_authority: &'static str,
+    },
+    /// Caller-supplied policy rejected the declaration.
+    #[error(transparent)]
+    Custom(P),
+}

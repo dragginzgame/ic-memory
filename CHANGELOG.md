@@ -1,5 +1,47 @@
 # Changelog
 
+## 0.12.1
+
+This release cleans up and hardens the explicit runtime architecture introduced
+in 0.12.0. It makes one intentional pre-1.0 policy-trait hard cut and does not
+change the durable allocation-ledger format.
+
+### Runtime implementation structure
+
+- Split the runtime implementation into focused core, policy, diagnostics,
+  error, default TLS, and test modules.
+- Kept `MemoryRuntime<M>` as the single owner of each backing memory's runtime
+  state and kept the default API as thin entry points into one TLS runtime.
+- Moved declaration-registry and runtime unit tests out of production
+  implementation files so ownership and sealing paths are easier to review.
+
+### Bootstrap and registration hardening
+
+- Added `RuntimeBootstrapPolicy` with an explicit semantic identity. Repeated
+  bootstrap is idempotent only when both that identity and the sealed
+  declaration snapshot match the successful bootstrap; mismatches return typed
+  errors without touching the ledger.
+- Moved deferred constructor-registration failures into the declaration
+  registry lifecycle, so open, sealing, sealed, and failed state have one
+  canonical owner. The first sealing failure remains deterministic, and an
+  impossible internal transition has a distinct typed error.
+- Removed a redundant final registry lock during snapshot construction and
+  lifecycle publication.
+- Made the committed-capability compile-fail boundary independent of changing
+  rustc missing-item wording.
+
+### Regression coverage
+
+- Added a downstream-style integration test for the default runtime with a
+  custom `RuntimeBootstrapPolicy`, including repeated-bootstrap identity and
+  generation checks.
+- Pinned primary development and CI validation to Rust 1.97.1 while retaining
+  the Rust 1.85.0 MSRV check.
+- Made CI run the exact two-libtest-thread regression with
+  `--test-threads=1`, and run the full test suite in serialized libtest mode.
+- Added a representative stripped, uncompressed Wasm bootstrap/open probe with
+  a 240,000-byte release budget.
+
 ## 0.12.0
 
 This release is an intentional pre-1.0 runtime API hard cut. It removes the

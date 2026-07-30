@@ -11,14 +11,24 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@1.95.0
+      - uses: dtolnay/rust-toolchain@1.97.1
         with:
+          components: clippy, rustfmt
           targets: wasm32-unknown-unknown
       - run: cargo fmt --check
       - run: cargo clippy --all-targets -- -D warnings
-      - run: cargo test
+      - run: cargo test --test runtime_macros -- --test-threads=1
+      - run: cargo test -- --test-threads=1
       - run: cargo test --doc
       - run: cargo check --target wasm32-unknown-unknown --tests
+      - name: Enforce representative raw Wasm size
+        run: |
+          cargo build --profile wasm-size --target wasm32-unknown-unknown --example wasm-size-probe
+          wasm=target/wasm32-unknown-unknown/wasm-size/examples/wasm_size_probe.wasm
+          bytes=$(wc -c < "$wasm")
+          budget=240000
+          echo "Representative raw Wasm: $bytes bytes (budget: $budget bytes)"
+          test "$bytes" -le "$budget"
       - run: cargo package
 
   msrv:

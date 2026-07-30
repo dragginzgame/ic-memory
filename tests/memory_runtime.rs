@@ -1,5 +1,5 @@
 use ic_memory::{
-    AllocationPolicy, AllocationSlotDescriptor, MemoryRuntime, StableKey,
+    AllocationPolicy, AllocationSlotDescriptor, MemoryRuntime, RuntimeBootstrapPolicy, StableKey,
     sealed_declaration_snapshot,
 };
 use ic_stable_structures::{Memory, VectorMemory};
@@ -38,6 +38,12 @@ impl AllocationPolicy for AllowAll {
         _slot: &AllocationSlotDescriptor,
     ) -> Result<(), Self::Error> {
         Ok(())
+    }
+}
+
+impl RuntimeBootstrapPolicy for AllowAll {
+    fn runtime_bootstrap_identity(&self) -> &'static str {
+        "explicit-runtime.allow-all.v1"
     }
 }
 

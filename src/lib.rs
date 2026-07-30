@@ -141,7 +141,7 @@ pub use physical::{
     CommitRecoveryError, CommitSlotDiagnostic, CommitStoreDiagnostic, CommittedGenerationBytes,
     DualCommitStore,
 };
-pub use policy::AllocationPolicy;
+pub use policy::{AllocationPolicy, RuntimeBootstrapPolicy};
 pub use registry::{
     SealedDeclarationSnapshot, StaticMemoryDeclaration, StaticMemoryDeclarationError,
     StaticMemoryRangeDeclaration, register_static_memory_declaration,
@@ -211,9 +211,7 @@ macro_rules! ic_memory_declaration {
 
             #[ $crate::__reexports::ctor::ctor(unsafe, anonymous, crate_path = $crate::__reexports::ctor) ]
             fn __ic_memory_defer_static_declaration() {
-                let _ = $crate::defer_static_memory_registration(
-                    __ic_memory_register_static_declaration
-                );
+                $crate::defer_static_memory_registration(__ic_memory_register_static_declaration);
             }
         };
     };
@@ -232,9 +230,7 @@ macro_rules! ic_memory_declaration {
 
             #[ $crate::__reexports::ctor::ctor(unsafe, anonymous, crate_path = $crate::__reexports::ctor) ]
             fn __ic_memory_defer_static_declaration() {
-                let _ = $crate::defer_static_memory_registration(
-                    __ic_memory_register_static_declaration
-                );
+                $crate::defer_static_memory_registration(__ic_memory_register_static_declaration);
             }
         };
     };
@@ -270,9 +266,7 @@ macro_rules! ic_memory_range {
 
             #[ $crate::__reexports::ctor::ctor(unsafe, anonymous, crate_path = $crate::__reexports::ctor) ]
             fn __ic_memory_defer_static_range() {
-                let _ = $crate::defer_static_memory_registration(
-                    __ic_memory_register_static_range
-                );
+                $crate::defer_static_memory_registration(__ic_memory_register_static_range);
             }
         };
     };
@@ -315,7 +309,7 @@ macro_rules! eager_init {
 
             #[ $crate::__reexports::ctor::ctor(unsafe, anonymous, crate_path = $crate::__reexports::ctor) ]
             fn __ic_memory_register_eager_init() {
-                let _ = $crate::defer_eager_init(__ic_memory_registered_eager_init_body);
+                $crate::defer_eager_init(__ic_memory_registered_eager_init_body);
             }
         };
     };

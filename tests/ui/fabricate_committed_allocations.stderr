@@ -1,11 +1,10 @@
-error[E0599]: no function or associated item named `new` found for struct `CommittedAllocations` in the current scope
- --> tests/ui/fabricate_committed_allocations.rs:4:44
+error[E0624]: method `confirm_persisted` is private
+ --> tests/ui/fabricate_committed_allocations.rs:4:32
   |
-4 |     let _committed = CommittedAllocations::new(());
-  |                                            ^^^ function or associated item not found in `CommittedAllocations`
+4 |     let _committed = validated.confirm_persisted(0);
+  |                                ^^^^^^^^^^^^^^^^^ private method
   |
-help: there is a method `ne` with a similar name
+ ::: src/capability.rs
   |
-4 -     let _committed = CommittedAllocations::new(());
-4 +     let _committed = CommittedAllocations::ne(());
-  |
+  |     pub(crate) const fn confirm_persisted(self, generation: u64) -> CommittedAllocations {
+  |     ------------------------------------------------------------------------------------ private method defined here

@@ -86,9 +86,12 @@ or consulting another runtime.
 
 Bootstrap is once per runtime object, not once per process. A second call on the
 same successfully bootstrapped runtime is idempotent and does not advance the
-ledger generation. A different runtime always inspects its own ledger memory.
-No public reset API is provided; constructing a new runtime is the correct way
-to own a new backing memory.
+ledger generation only when the sealed snapshot and
+`RuntimeBootstrapPolicy::runtime_bootstrap_identity()` match the established
+bootstrap binding. A changed snapshot or policy identity returns a typed error
+without evaluating policy or touching the ledger. A different runtime always
+inspects its own ledger memory. No public reset API is provided; constructing a
+new runtime is the correct way to own a new backing memory.
 
 ## Policy Authority
 
@@ -97,6 +100,11 @@ There is one authority order in the default runtime:
 1. `ic-memory` always owns its governance range.
 2. Registered `ic_memory_range!` claims are authoritative generic range policy.
 3. The caller-supplied `AllocationPolicy` is applied after generic range checks.
+
+Policies passed to runtime bootstrap also implement `RuntimeBootstrapPolicy`.
+Its identity names the policy configuration and semantics, not the policy
+object's address or Rust type. Frameworks must change that identity when their
+effective rules change.
 
 That means a framework adapter must choose deliberately which layer owns range
 decisions.

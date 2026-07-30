@@ -65,7 +65,7 @@ Declare both direct dependencies:
 
 ```toml
 [dependencies]
-ic-memory = "0.12.0"
+ic-memory = "0.12.1"
 ic-stable-structures = "0.7.2"
 ```
 
@@ -129,6 +129,11 @@ Use helpers such as
 `ic_memory::committed_allocations()`,
 `ic_memory::open_default_memory_manager_memory(...)`, and the macros shown
 above; implementation modules are private.
+
+The no-argument bootstrap helper uses ic-memory's built-in versioned policy
+identity. A custom policy implements both `AllocationPolicy` and
+`RuntimeBootstrapPolicy`; its static identity must change whenever its
+configuration or semantics change.
 
 ## Multi-Crate Composition
 
@@ -217,7 +222,11 @@ Each runtime owns all facts derived from `backing_memory`: recovery, ledger
 cell, lifecycle, committed allocations, opens, diagnostics, and live sizes.
 Multiple runtimes share only the immutable linked declaration snapshot. A
 failed bootstrap publishes no capability, and repeated bootstrap on the same
-runtime object is idempotent.
+runtime object is idempotent only when the snapshot and
+`RuntimeBootstrapPolicy::runtime_bootstrap_identity()` match the successful
+bootstrap. A changed snapshot or policy identity returns a typed error without
+touching the ledger. Policy implementations should change their identity
+whenever policy configuration or semantics change.
 
 There is intentionally no public reset API. Native tests should construct a new
 explicit runtime or use the naturally independent default TLS runtime; changing
