@@ -1,6 +1,6 @@
 use super::{
-    MemoryRuntime, RuntimeBootstrapError, RuntimeDiagnosticError, RuntimeOpenError,
-    RuntimeStateError, policy::NoopPolicy,
+    MemoryRuntime, RuntimeBootstrapError, RuntimeConstructionError, RuntimeDiagnosticError,
+    RuntimeOpenError, RuntimeStateError, policy::NoopPolicy,
 };
 use crate::{
     CommittedAllocations, DiagnosticExport, MemoryRuntimeDoctorReport, RuntimeBootstrapPolicy,
@@ -10,7 +10,8 @@ use ic_stable_structures::{DefaultMemoryImpl, memory_manager::VirtualMemory};
 use std::{cell::RefCell, convert::Infallible};
 
 thread_local! {
-    static DEFAULT_RUNTIME: RefCell<MemoryRuntime<DefaultMemoryImpl>> =
+    static DEFAULT_RUNTIME:
+        RefCell<Result<MemoryRuntime<DefaultMemoryImpl>, RuntimeConstructionError>> =
         RefCell::new(MemoryRuntime::new(DefaultMemoryImpl::default()));
 }
 
@@ -24,7 +25,10 @@ where
         let runtime = runtime
             .try_borrow()
             .map_err(|_| E::from(RuntimeStateError::ReentrantAccess))?;
-        operation(&runtime)
+        let runtime = runtime
+            .as_ref()
+            .map_err(|error| E::from(RuntimeStateError::Construction(*error)))?;
+        operation(runtime)
     }) {
         Ok(result) => result,
         Err(_) => Err(E::from(RuntimeStateError::Unavailable)),
@@ -41,7 +45,10 @@ where
         let mut runtime = runtime
             .try_borrow_mut()
             .map_err(|_| E::from(RuntimeStateError::ReentrantAccess))?;
-        operation(&mut runtime)
+        let runtime = runtime
+            .as_mut()
+            .map_err(|error| E::from(RuntimeStateError::Construction(*error)))?;
+        operation(runtime)
     }) {
         Ok(result) => result,
         Err(_) => Err(E::from(RuntimeStateError::Unavailable)),

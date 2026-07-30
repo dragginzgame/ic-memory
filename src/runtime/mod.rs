@@ -13,8 +13,8 @@ pub use default::{
     is_default_memory_manager_bootstrapped, open_default_memory_manager_memory,
 };
 pub use error::{
-    RuntimeBootstrapError, RuntimeDiagnosticError, RuntimeOpenError, RuntimePolicyError,
-    RuntimeStateError,
+    RuntimeBootstrapError, RuntimeConstructionError, RuntimeDiagnosticError, RuntimeOpenError,
+    RuntimePolicyError, RuntimeStateError,
 };
 
 use self::policy::{RuntimeMemoryManagerPolicy, runtime_bootstrap_error_from_bootstrap};
@@ -30,6 +30,12 @@ use ic_stable_structures::{
 };
 
 type LedgerCell<M> = Cell<StableCellLedgerRecord, VirtualMemory<M>>;
+
+// `ic-stable-structures` 0.7.2 documents this four-byte prefix for its V1
+// `MemoryManager` layout but does not expose a fallible constructor or these
+// constants. Keep this preflight coupled to the pinned dependency version.
+const MEMORY_MANAGER_MAGIC: [u8; 3] = *b"MGR";
+const MEMORY_MANAGER_LAYOUT_VERSION: u8 = 1;
 
 enum RuntimeLifecycle {
     Unbootstrapped,
@@ -65,14 +71,28 @@ pub struct MemoryRuntime<M: Memory> {
 }
 
 impl<M: Memory> MemoryRuntime<M> {
-    /// Construct an unbootstrapped runtime over one backing memory.
-    #[must_use]
-    pub fn new(memory: M) -> Self {
-        Self {
+    /// Construct an unbootstrapped runtime without overwriting foreign memory.
+    ///
+    /// Empty backing memory is initialized as an
+    /// `ic_stable_structures::MemoryManager`. Nonempty memory must already
+    /// contain the current `MemoryManager` magic and layout version; otherwise
+    /// construction returns a typed error before `MemoryManager::init` can
+    /// write its header or allocation table. A pre-grown blank memory is
+    /// nonempty and is therefore rejected rather than assumed disposable.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`RuntimeConstructionError::ForeignMemory`] for nonempty memory
+    /// without `MemoryManager` magic, or
+    /// [`RuntimeConstructionError::UnsupportedMemoryManagerVersion`] when the
+    /// magic is recognized but the layout version is not current.
+    pub fn new(memory: M) -> Result<Self, RuntimeConstructionError> {
+        preflight_memory_manager_backing(&memory)?;
+        Ok(Self {
             memory_manager: MemoryManager::init(memory),
             ledger_cell: None,
             lifecycle: RuntimeLifecycle::Unbootstrapped,
-        }
+        })
     }
 
     /// Return whether this runtime has published committed allocation authority.
@@ -229,6 +249,27 @@ impl<M: Memory> MemoryRuntime<M> {
     fn ledger_record_from_memory(&self) -> Result<StableCellLedgerRecord, StableCellLedgerError> {
         decode_stable_cell_ledger_record_from_memory(&self.memory(MEMORY_MANAGER_LEDGER_ID))
     }
+}
+
+fn preflight_memory_manager_backing<M: Memory>(memory: &M) -> Result<(), RuntimeConstructionError> {
+    if memory.size() == 0 {
+        return Ok(());
+    }
+
+    let mut prefix = [0_u8; 4];
+    memory.read(0, &mut prefix);
+    let observed_magic = [prefix[0], prefix[1], prefix[2]];
+    if observed_magic != MEMORY_MANAGER_MAGIC {
+        return Err(RuntimeConstructionError::ForeignMemory { observed_magic });
+    }
+    let observed = prefix[3];
+    if observed != MEMORY_MANAGER_LAYOUT_VERSION {
+        return Err(RuntimeConstructionError::UnsupportedMemoryManagerVersion {
+            observed,
+            supported: MEMORY_MANAGER_LAYOUT_VERSION,
+        });
+    }
+    Ok(())
 }
 
 impl RuntimeBootstrapBinding {

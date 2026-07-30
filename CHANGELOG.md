@@ -1,5 +1,26 @@
 # Changelog
 
+## 0.12.2
+
+This release makes runtime construction fail closed before
+`ic-stable-structures` can initialize over unrecognized nonempty backing
+memory. It is an intentional pre-1.0 API hard cut and does not change the
+durable allocation-ledger format.
+
+### Backing-memory construction safety
+
+- Changed `MemoryRuntime::new(memory)` to return
+  `Result<MemoryRuntime<M>, RuntimeConstructionError>`.
+- Added raw backing-memory preflight for the pinned `MemoryManager` magic and
+  layout version. Empty memory remains initializable; nonempty foreign or
+  unsupported memory is rejected without mutation.
+- Propagated default TLS construction failures through the existing typed
+  runtime-state path without adding panic, fallback, reset, or compatibility
+  behavior.
+- Added byte-for-byte negative tests for foreign memory and unsupported
+  `MemoryManager` versions, plus positive empty-memory and current-layout
+  recovery coverage.
+
 ## 0.12.1
 
 This release cleans up and hardens the explicit runtime architecture introduced

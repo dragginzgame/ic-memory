@@ -65,7 +65,7 @@ Declare both direct dependencies:
 
 ```toml
 [dependencies]
-ic-memory = "0.12.1"
+ic-memory = "0.12.2"
 ic-stable-structures = "0.7.2"
 ```
 
@@ -211,12 +211,19 @@ Frameworks and tests that own backing memory directly should use
 use ic_memory::{MemoryRuntime, sealed_declaration_snapshot};
 
 let declarations = sealed_declaration_snapshot()?;
-let mut runtime = MemoryRuntime::new(backing_memory);
+let mut runtime = MemoryRuntime::new(backing_memory)?;
 runtime.bootstrap(&declarations, &policy)?;
 
 let rows = runtime.open_memory("app.rows.v1", 120)?;
 let diagnostics = runtime.diagnostic_export()?;
 ```
+
+Construction is fallible. Empty backing memory is initialized as an
+`ic-stable-structures` `MemoryManager`; nonempty backing memory must already
+contain the current `MGR` header and layout version. Foreign or unsupported
+memory is rejected before `MemoryManager::init()` can overwrite its header.
+A pre-grown blank memory is nonempty and is rejected rather than assumed
+disposable.
 
 Each runtime owns all facts derived from `backing_memory`: recovery, ledger
 cell, lifecycle, committed allocations, opens, diagnostics, and live sizes.

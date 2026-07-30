@@ -76,11 +76,18 @@ authorization, or endpoint safety.
 
 Storage integrations must validate layout before opening stable-memory handles:
 
-1. Recover the persisted allocation ledger.
-2. Declare the stores expected by the current binary.
-3. Validate those declarations against ledger history and framework policy.
-4. Commit the new allocation generation.
-5. Only then open stable-memory handles using committed allocation authority.
+1. Construct the runtime only after its raw backing memory is classified as
+   empty or as the current `ic-stable-structures` `MemoryManager` layout.
+2. Recover the persisted allocation ledger.
+3. Declare the stores expected by the current binary.
+4. Validate those declarations against ledger history and framework policy.
+5. Commit the new allocation generation.
+6. Only then open stable-memory handles using committed allocation authority.
+
+`MemoryRuntime::new()` performs the first step and is fallible. It rejects
+nonempty foreign or unsupported manager bytes before calling
+`MemoryManager::init()`, because that dependency initializes a new manager
+header when its magic is absent.
 
 Runtime policy implementations also provide an explicit
 `RuntimeBootstrapPolicy` identity. Repeated bootstrap is accepted only when

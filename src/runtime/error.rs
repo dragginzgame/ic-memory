@@ -5,6 +5,38 @@ use crate::{
 };
 
 ///
+/// RuntimeConstructionError
+///
+/// Failure to construct a memory runtime without overwriting unrecognized
+/// backing memory.
+///
+
+#[non_exhaustive]
+#[derive(Clone, Copy, Debug, Eq, thiserror::Error, PartialEq)]
+pub enum RuntimeConstructionError {
+    /// Nonempty backing memory does not contain a `MemoryManager` header.
+    #[error(
+        "nonempty backing memory is not an ic-stable-structures MemoryManager \
+         (expected magic 'MGR', found bytes {observed_magic:?})"
+    )]
+    ForeignMemory {
+        /// First three bytes found in the nonempty backing memory.
+        observed_magic: [u8; 3],
+    },
+    /// Backing memory contains an unsupported `MemoryManager` layout version.
+    #[error(
+        "unsupported ic-stable-structures MemoryManager layout version {observed}; \
+         expected {supported}"
+    )]
+    UnsupportedMemoryManagerVersion {
+        /// Version byte found after the `MemoryManager` magic.
+        observed: u8,
+        /// Version supported by the pinned `ic-stable-structures` dependency.
+        supported: u8,
+    },
+}
+
+///
 /// RuntimeStateError
 ///
 /// Failure to enter or maintain one memory runtime's in-memory lifecycle.
@@ -13,6 +45,9 @@ use crate::{
 #[non_exhaustive]
 #[derive(Clone, Copy, Debug, Eq, thiserror::Error, PartialEq)]
 pub enum RuntimeStateError {
+    /// This thread's default runtime could not safely claim its backing memory.
+    #[error(transparent)]
+    Construction(#[from] RuntimeConstructionError),
     /// A default-runtime operation re-entered while that TLS runtime was borrowed.
     #[error("ic-memory default runtime is already borrowed by an active operation")]
     ReentrantAccess,

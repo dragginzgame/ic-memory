@@ -186,7 +186,7 @@ The explicit runtime requires only `M: ic_stable_structures::Memory`:
 
 ```rust,ignore
 let declarations = ic_memory::sealed_declaration_snapshot()?;
-let mut runtime = ic_memory::MemoryRuntime::new(backing_memory);
+let mut runtime = ic_memory::MemoryRuntime::new(backing_memory)?;
 runtime.bootstrap(&declarations, &policy)?;
 
 let users = runtime.open_memory("app.users.v1", 120)?;
@@ -194,6 +194,12 @@ let export = runtime.diagnostic_export()?;
 let recovery = runtime.commit_recovery_diagnostic()?;
 let doctor = runtime.doctor_report(&declarations);
 ```
+
+Runtime construction accepts empty backing memory or the current
+`ic-stable-structures` `MemoryManager` layout. It returns
+`RuntimeConstructionError` before initialization when nonempty memory has
+foreign magic or an unsupported manager version, leaving rejected bytes
+unchanged.
 
 `committed` borrows the capability stored under `runtime`. Opening memory never
 accepts a capability from another runtime; it consults the capability and

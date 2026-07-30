@@ -1,5 +1,6 @@
 use super::{
-    MemoryRuntime, RuntimeDiagnosticError, RuntimeOpenError, RuntimeStateError,
+    MemoryRuntime, RuntimeConstructionError, RuntimeDiagnosticError, RuntimeOpenError,
+    RuntimeStateError,
     default::{is_default_memory_manager_bootstrapped, with_default_runtime_borrowed},
     diagnostics::diagnostic_validation_ledger,
     policy::NoopPolicy,
@@ -34,6 +35,28 @@ fn declarations() -> SealedDeclarationSnapshot {
     )
     .expect("test declaration");
     sealed_declaration_snapshot().expect("sealed declarations")
+}
+
+fn empty_runtime() -> MemoryRuntime<VectorMemory> {
+    MemoryRuntime::new(VectorMemory::default()).expect("empty backing memory")
+}
+
+const WASM_PAGE_SIZE_BYTES: usize = 65_536;
+
+fn one_page_backing(prefix: [u8; 4]) -> (VectorMemory, Vec<u8>) {
+    let memory = VectorMemory::default();
+    assert_eq!(memory.grow(1), 0);
+    let mut bytes = vec![0xA5; WASM_PAGE_SIZE_BYTES];
+    bytes[..prefix.len()].copy_from_slice(&prefix);
+    memory.write(0, &bytes);
+    (memory, bytes)
+}
+
+fn read_one_page(memory: &VectorMemory) -> Vec<u8> {
+    assert_eq!(memory.size(), 1);
+    let mut bytes = vec![0; WASM_PAGE_SIZE_BYTES];
+    memory.read(0, &mut bytes);
+    bytes
 }
 
 struct CountingPolicy(std::cell::Cell<usize>);
@@ -103,11 +126,59 @@ impl RuntimeBootstrapPolicy for IdentityPolicy {
 }
 
 #[test]
+fn construction_initializes_empty_memory_and_accepts_current_manager_memory() {
+    let backing = VectorMemory::default();
+    let runtime =
+        MemoryRuntime::new(backing.clone()).expect("empty backing memory should initialize");
+    assert_eq!(&read_one_page(&backing)[..4], b"MGR\x01");
+
+    drop(runtime);
+    let recovered =
+        MemoryRuntime::new(backing).expect("current MemoryManager backing should be accepted");
+    assert!(!recovered.is_bootstrapped());
+}
+
+#[test]
+fn construction_rejects_foreign_nonempty_memory_without_writing() {
+    let (backing, original) = one_page_backing(*b"DATA");
+
+    let Err(error) = MemoryRuntime::new(backing.clone()) else {
+        panic!("foreign backing memory must be rejected");
+    };
+
+    assert_eq!(
+        error,
+        RuntimeConstructionError::ForeignMemory {
+            observed_magic: *b"DAT",
+        }
+    );
+    assert_eq!(read_one_page(&backing), original);
+}
+
+#[test]
+fn construction_rejects_unsupported_manager_version_without_writing() {
+    let (backing, original) = one_page_backing(*b"MGR\x02");
+
+    let Err(error) = MemoryRuntime::new(backing.clone()) else {
+        panic!("unsupported MemoryManager backing must be rejected");
+    };
+
+    assert_eq!(
+        error,
+        RuntimeConstructionError::UnsupportedMemoryManagerVersion {
+            observed: 2,
+            supported: 1,
+        }
+    );
+    assert_eq!(read_one_page(&backing), original);
+}
+
+#[test]
 fn separate_runtimes_have_independent_bootstrap_authority_and_memory() {
     let _guard = TEST_REGISTRY_LOCK.lock().expect("test lock");
     let declarations = declarations();
-    let mut runtime_a = MemoryRuntime::new(VectorMemory::default());
-    let mut runtime_b = MemoryRuntime::new(VectorMemory::default());
+    let mut runtime_a = empty_runtime();
+    let mut runtime_b = empty_runtime();
     let policy = CountingPolicy(std::cell::Cell::new(0));
 
     runtime_a
@@ -164,7 +235,7 @@ fn concurrent_independent_runtimes_do_not_share_bootstrap_state() {
 
     let (first, second) = std::thread::scope(|scope| {
         let first = scope.spawn(move || {
-            let mut runtime = MemoryRuntime::new(VectorMemory::default());
+            let mut runtime = empty_runtime();
             let generation = runtime
                 .bootstrap(&first_declarations, &NoopPolicy)
                 .expect("first bootstrap")
@@ -176,7 +247,7 @@ fn concurrent_independent_runtimes_do_not_share_bootstrap_state() {
             (generation, diagnostic_generation)
         });
         let second = scope.spawn(move || {
-            let mut runtime = MemoryRuntime::new(VectorMemory::default());
+            let mut runtime = empty_runtime();
             let generation = runtime
                 .bootstrap(&second_declarations, &NoopPolicy)
                 .expect("second bootstrap")
@@ -203,7 +274,7 @@ fn repeated_bootstrap_is_idempotent_and_existing_memory_recovers() {
     let declarations = declarations();
     let backing = VectorMemory::default();
     let generation = {
-        let mut runtime = MemoryRuntime::new(backing.clone());
+        let mut runtime = MemoryRuntime::new(backing.clone()).expect("empty backing memory");
         let first = runtime
             .bootstrap(&declarations, &NoopPolicy)
             .expect("first bootstrap")
@@ -221,7 +292,8 @@ fn repeated_bootstrap_is_idempotent_and_existing_memory_recovers() {
         first
     };
 
-    let mut recovered_runtime = MemoryRuntime::new(backing);
+    let mut recovered_runtime =
+        MemoryRuntime::new(backing).expect("existing MemoryManager backing memory");
     let recovered_generation = recovered_runtime
         .bootstrap(&declarations, &NoopPolicy)
         .expect("recover existing backing memory")
@@ -246,7 +318,7 @@ fn repeated_bootstrap_is_idempotent_and_existing_memory_recovers() {
 fn repeated_bootstrap_is_bound_to_declarations_and_policy_identity() {
     let _guard = TEST_REGISTRY_LOCK.lock().expect("test lock");
     let declarations = declarations();
-    let mut runtime = MemoryRuntime::new(VectorMemory::default());
+    let mut runtime = empty_runtime();
 
     let generation = runtime
         .bootstrap(
@@ -311,7 +383,7 @@ fn repeated_bootstrap_is_bound_to_declarations_and_policy_identity() {
         generation
     );
 
-    let mut empty_identity_runtime = MemoryRuntime::new(VectorMemory::default());
+    let mut empty_identity_runtime = empty_runtime();
     let empty_identity_error = empty_identity_runtime
         .bootstrap(&alternate_declarations, &IdentityPolicy(""))
         .expect_err("empty policy identity");
@@ -358,7 +430,7 @@ impl RuntimeBootstrapPolicy for RejectPolicy {
 fn open_errors_and_failed_bootstrap_do_not_publish_authority() {
     let _guard = TEST_REGISTRY_LOCK.lock().expect("test lock");
     let declarations = declarations();
-    let mut runtime = MemoryRuntime::new(VectorMemory::default());
+    let mut runtime = empty_runtime();
 
     let Err(open_before_bootstrap) = runtime.open_memory("runtime_tests.rows.v1", 120) else {
         panic!("open before bootstrap must fail");
@@ -399,7 +471,7 @@ fn open_errors_and_failed_bootstrap_do_not_publish_authority() {
 fn doctor_and_diagnostics_report_the_same_runtime_lifecycle() {
     let _guard = TEST_REGISTRY_LOCK.lock().expect("test lock");
     let declarations = declarations();
-    let mut runtime = MemoryRuntime::new(VectorMemory::default());
+    let mut runtime = empty_runtime();
 
     assert!(!runtime.doctor_report(&declarations).bootstrapped);
     assert!(matches!(

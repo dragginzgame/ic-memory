@@ -50,7 +50,7 @@ impl RuntimeBootstrapPolicy for AllowAll {
 #[test]
 fn public_explicit_runtime_bootstraps_opens_and_diagnoses_its_memory() {
     let declarations = sealed_declaration_snapshot().expect("linked declarations");
-    let mut runtime = MemoryRuntime::new(VectorMemory::default());
+    let mut runtime = MemoryRuntime::new(VectorMemory::default()).expect("empty backing memory");
 
     let generation = runtime
         .bootstrap(&declarations, &AllowAll)

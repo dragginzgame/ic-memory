@@ -150,8 +150,8 @@ pub use registry::{
     register_static_memory_range_declaration, sealed_declaration_snapshot,
 };
 pub use runtime::{
-    MemoryRuntime, RuntimeBootstrapError, RuntimeDiagnosticError, RuntimeOpenError,
-    RuntimePolicyError, RuntimeStateError, bootstrap_default_memory_manager,
+    MemoryRuntime, RuntimeBootstrapError, RuntimeConstructionError, RuntimeDiagnosticError,
+    RuntimeOpenError, RuntimePolicyError, RuntimeStateError, bootstrap_default_memory_manager,
     bootstrap_default_memory_manager_with_policy, committed_allocations,
     default_memory_manager_commit_recovery_diagnostic, default_memory_manager_diagnostic_export,
     default_memory_manager_doctor_report, is_default_memory_manager_bootstrapped,
