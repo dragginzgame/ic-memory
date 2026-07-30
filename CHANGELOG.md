@@ -1,5 +1,69 @@
 # Changelog
 
+## 0.12.0
+
+This release is an intentional pre-1.0 runtime API hard cut. It removes the
+split process-global/thread-local default runtime architecture without adding
+aliases, reset hooks, compatibility forwarders, or fallback state.
+
+### Explicit runtime ownership
+
+- Added `MemoryRuntime<M>` as the canonical owner of one backing memory's
+  `MemoryManager`, allocation-ledger cell, bootstrap lifecycle, committed
+  allocation capability, opens, diagnostics, and live memory sizes.
+- Added an explicit `Unbootstrapped` / `Bootstrapped { committed_allocations }`
+  lifecycle. Capability publication occurs only after that runtime's
+  stable-cell write succeeds, and failed bootstrap leaves the runtime
+  unbootstrapped.
+- Made repeated bootstrap on the same runtime object idempotent without
+  advancing its ledger generation.
+- Added `SealedDeclarationSnapshot`, an immutable canonical process-wide view
+  of linked declarations, range authority, and policy metadata. Declaration
+  sealing is independent from every concrete memory bootstrap.
+
+### Default TLS runtime hard cut
+
+- Replaced the separate TLS memory manager and ledger cell plus process-global
+  bootstrap flag and committed capability with one thread-local
+  `MemoryRuntime<DefaultMemoryImpl>`.
+- Removed all process-global memory-runtime lifecycle/capability state and
+  removed runtime reset support. Native libtest threads now bootstrap their own
+  default memory; single-threaded IC Wasm retains canister-instance behavior.
+- Changed default TLS entry to use fallible `RefCell` access and added typed
+  runtime reentrancy/unavailability errors.
+- Generalized `DefaultMemoryManagerDoctorReport` to
+  `MemoryRuntimeDoctorReport`, and made the default doctor wrapper return a
+  typed diagnostic result.
+- Changed `is_default_memory_manager_bootstrapped()` to return a typed result
+  and changed `ic_memory_key!` to return the typed memory-open result instead of
+  panicking internally.
+
+### Atomic declaration sealing
+
+- Moved generated declaration/range registration work into the fallible seal
+  lifecycle, before eager declaration hooks and final validation.
+- Canonically sorted declarations and ranges before duplicate detection and
+  snapshot publication, making snapshot meaning and declaration bytes
+  independent of constructor order.
+- Serialized concurrent snapshot requests and made them share one immutable
+  snapshot. Late registration, duplicate declarations, recursive sealing, hook
+  panic, and mutex poisoning remain distinct typed failures.
+- Removed public collection and separately assembled snapshot functions that
+  could expose unsealed registry views. Integrations now inspect
+  `sealed_declaration_snapshot()`.
+
+### Validation and format
+
+- Added the exact two-libtest-thread regression, independent
+  `MemoryRuntime<VectorMemory>` isolation/recovery tests, concurrent snapshot
+  and runtime bootstrap tests, typed negative opens, failure publication tests,
+  idempotence checks, and runtime-local diagnostics.
+- Kept the stable-cell, protected commit-store, payload-envelope, allocation
+  ledger, fixture, format marker, and format version bytes unchanged.
+- Updated README, advanced and safety guidance, whitepaper operations, and
+  rustdoc to distinguish linked declaration authority from concrete runtime
+  ownership and to document bootstrap once per memory runtime.
+
 ## 0.11.1
 
 This release tightens repository hygiene around the pre-1.0 hard-cut policy. It

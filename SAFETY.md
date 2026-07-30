@@ -64,11 +64,11 @@ authorization, or endpoint safety.
   doing so could forget committed allocation history.
 - Recovered ledgers are untrusted until the explicit current-format
   discriminator and committed-integrity checks succeed.
-- Stable-cell ledger storage used by the default runtime must be preflighted
+- Stable-cell ledger storage used by every `MemoryRuntime` must be preflighted
   before opening it through `ic-stable-structures::Cell`, so envelope or record
   corruption is classified as a bootstrap error instead of escaping as a decode
   panic.
-- The default runtime's internal `ic_memory.*` governance allocations must stay
+- Each runtime's internal `ic_memory.*` governance allocations must stay
   recoverable in the durable ledger, but must not be published or opened through
   public application-memory helpers.
 
@@ -92,15 +92,37 @@ deserializable, default-constructible, or publicly constructible, and it must
 not be accepted by allocation-opening APIs.
 
 `CommittedAllocations` is the in-memory open capability. It must not be
-deserializable, default-constructible, or publicly constructible. The default
-runtime may produce it only after its stable-cell write succeeds. Generic
-persistence owners may confirm it only after durably writing the pending
-`PendingBootstrapCommit` state.
+deserializable, default-constructible, or publicly constructible. A
+`MemoryRuntime<M>` may store it only after that runtime's stable-cell write
+succeeds. Generic persistence owners may confirm it only after durably writing
+the pending `PendingBootstrapCommit` state.
 
 Integrations may open storage only from `CommittedAllocations` produced after
 current-format recovery, committed-ledger integrity, declaration validation,
 generation staging, commit, and durable persistence. Diagnostics, durable DTOs,
 and `ValidatedAllocations` are not open authority.
+
+## Runtime Ownership Invariant
+
+Every fact derived from a backing memory belongs to one `MemoryRuntime<M>`:
+
+- `MemoryManager<M>` and ledger cell;
+- bootstrap lifecycle and recovery result;
+- committed allocation capability;
+- memory-open authority;
+- diagnostic ledger and commit-recovery view; and
+- live virtual-memory sizes.
+
+One runtime must never use another runtime's lifecycle or committed capability.
+The only process-global authority is the immutable canonical snapshot of linked
+declarations, ranges, and metadata. Bootstrap is once per concrete runtime, not
+once per process.
+
+The default convenience layer is one thread-local runtime. On native targets,
+each thread therefore has independent default memory and runtime state. On
+single-threaded IC Wasm, the TLS runtime naturally has canister-instance
+lifetime. There is no public reset operation because resetting process flags
+cannot reset or replace the concrete backing memory that owns durable facts.
 
 ## Retirement Invariants
 

@@ -42,6 +42,12 @@
 //! new generation, and only then publish committed allocation authority before
 //! opening slots through the storage owner.
 //!
+//! [`MemoryRuntime`] is the canonical owner for one backing memory instance. It
+//! contains that memory's manager, ledger cell, bootstrap lifecycle, committed
+//! capability, opens, and diagnostics. Linked code contributes declarations to
+//! one immutable [`SealedDeclarationSnapshot`], which is supplied to each
+//! runtime independently.
+//!
 //! [`AllocationBootstrap`] is the golden path for whichever layer owns a given
 //! ledger store. Canic may own bootstrap for a framework canister and compose
 //! IcyDB/application declarations through its registry; IcyDB may own bootstrap
@@ -119,9 +125,9 @@ pub use declaration::{
     AllocationDeclaration, DeclarationCollector, DeclarationSnapshot, DeclarationSnapshotError,
 };
 pub use diagnostics::{
-    DefaultMemoryManagerDoctorReport, DiagnosticCheck, DiagnosticCode, DiagnosticDeclaration,
-    DiagnosticExport, DiagnosticFailure, DiagnosticGeneration, DiagnosticMemorySize,
-    DiagnosticRangeAuthority, DiagnosticRecord, DiagnosticStableCell, DiagnosticStableCellStatus,
+    DiagnosticCheck, DiagnosticCode, DiagnosticDeclaration, DiagnosticExport, DiagnosticFailure,
+    DiagnosticGeneration, DiagnosticMemorySize, DiagnosticRangeAuthority, DiagnosticRecord,
+    DiagnosticStableCell, DiagnosticStableCellStatus, MemoryRuntimeDoctorReport,
 };
 pub use key::{StableKey, StableKeyError};
 pub use ledger::{
@@ -137,19 +143,19 @@ pub use physical::{
 };
 pub use policy::AllocationPolicy;
 pub use registry::{
-    StaticMemoryDeclaration, StaticMemoryDeclarationError, StaticMemoryRangeDeclaration,
-    collect_static_memory_declarations, register_static_memory_declaration,
+    SealedDeclarationSnapshot, StaticMemoryDeclaration, StaticMemoryDeclarationError,
+    StaticMemoryRangeDeclaration, register_static_memory_declaration,
     register_static_memory_manager_declaration,
     register_static_memory_manager_declaration_with_schema, register_static_memory_manager_range,
-    register_static_memory_range_declaration, static_memory_declaration_snapshot,
-    static_memory_declarations, static_memory_range_authority, static_memory_range_declarations,
+    register_static_memory_range_declaration, sealed_declaration_snapshot,
 };
 pub use runtime::{
-    RuntimeBootstrapError, RuntimeDiagnosticError, RuntimeOpenError, RuntimePolicyError,
-    bootstrap_default_memory_manager, bootstrap_default_memory_manager_with_policy,
-    committed_allocations, default_memory_manager_commit_recovery_diagnostic,
-    default_memory_manager_diagnostic_export, default_memory_manager_doctor_report,
-    is_default_memory_manager_bootstrapped, open_default_memory_manager_memory,
+    MemoryRuntime, RuntimeBootstrapError, RuntimeDiagnosticError, RuntimeOpenError,
+    RuntimePolicyError, RuntimeStateError, bootstrap_default_memory_manager,
+    bootstrap_default_memory_manager_with_policy, committed_allocations,
+    default_memory_manager_commit_recovery_diagnostic, default_memory_manager_diagnostic_export,
+    default_memory_manager_doctor_report, is_default_memory_manager_bootstrapped,
+    open_default_memory_manager_memory,
 };
 pub use schema::{SchemaMetadata, SchemaMetadataError};
 pub use slot::{
@@ -171,7 +177,7 @@ pub use stable_cell::{
 pub use validation::{AllocationValidationError, Validate, validate_allocations};
 
 #[doc(hidden)]
-pub use runtime::defer_eager_init;
+pub use registry::{defer_eager_init, defer_static_memory_registration};
 
 #[doc(hidden)]
 pub mod __reexports {
@@ -193,8 +199,7 @@ macro_rules! ic_memory_declaration {
         const _: () = {
             const __IC_MEMORY_AUTHORITY: &str = $authority;
 
-            #[ $crate::__reexports::ctor::ctor(unsafe, anonymous, crate_path = $crate::__reexports::ctor) ]
-            fn __ic_memory_register_static_declaration() {
+            fn __ic_memory_register_static_declaration() -> Result<(), $crate::StaticMemoryDeclarationError> {
                 let _ = core::marker::PhantomData::<$label>;
                 $crate::register_static_memory_manager_declaration(
                     $id,
@@ -202,7 +207,13 @@ macro_rules! ic_memory_declaration {
                     stringify!($label),
                     $stable_key,
                 )
-                .expect("ic-memory static memory declaration failed");
+            }
+
+            #[ $crate::__reexports::ctor::ctor(unsafe, anonymous, crate_path = $crate::__reexports::ctor) ]
+            fn __ic_memory_defer_static_declaration() {
+                let _ = $crate::defer_static_memory_registration(
+                    __ic_memory_register_static_declaration
+                );
             }
         };
     };
@@ -210,15 +221,20 @@ macro_rules! ic_memory_declaration {
         const _: () = {
             const __IC_MEMORY_AUTHORITY: &str = $authority;
 
-            #[ $crate::__reexports::ctor::ctor(unsafe, anonymous, crate_path = $crate::__reexports::ctor) ]
-            fn __ic_memory_register_static_declaration() {
+            fn __ic_memory_register_static_declaration() -> Result<(), $crate::StaticMemoryDeclarationError> {
                 $crate::register_static_memory_manager_declaration(
                     $id,
                     __IC_MEMORY_AUTHORITY,
                     $label,
                     $stable_key,
                 )
-                .expect("ic-memory static memory declaration failed");
+            }
+
+            #[ $crate::__reexports::ctor::ctor(unsafe, anonymous, crate_path = $crate::__reexports::ctor) ]
+            fn __ic_memory_defer_static_declaration() {
+                let _ = $crate::defer_static_memory_registration(
+                    __ic_memory_register_static_declaration
+                );
             }
         };
     };
@@ -242,8 +258,7 @@ macro_rules! ic_memory_range {
         const _: () = {
             const __IC_MEMORY_AUTHORITY: &str = $authority;
 
-            #[ $crate::__reexports::ctor::ctor(unsafe, anonymous, crate_path = $crate::__reexports::ctor) ]
-            fn __ic_memory_register_static_range() {
+            fn __ic_memory_register_static_range() -> Result<(), $crate::StaticMemoryDeclarationError> {
                 $crate::register_static_memory_manager_range(
                     $start,
                     $end,
@@ -251,7 +266,13 @@ macro_rules! ic_memory_range {
                     $crate::MemoryManagerRangeMode::$mode,
                     None,
                 )
-                .expect("ic-memory static memory range declaration failed");
+            }
+
+            #[ $crate::__reexports::ctor::ctor(unsafe, anonymous, crate_path = $crate::__reexports::ctor) ]
+            fn __ic_memory_defer_static_range() {
+                let _ = $crate::defer_static_memory_registration(
+                    __ic_memory_register_static_range
+                );
             }
         };
     };
@@ -260,18 +281,26 @@ macro_rules! ic_memory_range {
 /// Declare and open a committed `MemoryManager` slot by stable key.
 ///
 /// The macro registers declaration metadata during static initialization and
-/// returns the committed default-runtime memory handle at expression use time.
+/// returns the typed default-runtime open result at expression use time.
 #[macro_export]
 macro_rules! ic_memory_key {
     (authority = $authority:expr, key = $stable_key:literal, ty = $label:path, id = $id:expr $(,)?) => {{
-        $crate::ic_memory_declaration!(authority = $authority, key = $stable_key, ty = $label, id = $id,);
+        $crate::ic_memory_declaration!(
+            authority = $authority,
+            key = $stable_key,
+            ty = $label,
+            id = $id,
+        );
         $crate::open_default_memory_manager_memory($stable_key, $id)
-            .expect("ic-memory failed to open committed stable memory; bootstrap must run first and the stable key/id must match the committed declaration")
     }};
     (authority = $authority:expr, key = $stable_key:literal, label = $label:literal, id = $id:expr $(,)?) => {{
-        $crate::ic_memory_declaration!(authority = $authority, key = $stable_key, label = $label, id = $id,);
+        $crate::ic_memory_declaration!(
+            authority = $authority,
+            key = $stable_key,
+            label = $label,
+            id = $id,
+        );
         $crate::open_default_memory_manager_memory($stable_key, $id)
-            .expect("ic-memory failed to open committed stable memory; bootstrap must run first and the stable key/id must match the committed declaration")
     }};
 }
 
@@ -286,7 +315,7 @@ macro_rules! eager_init {
 
             #[ $crate::__reexports::ctor::ctor(unsafe, anonymous, crate_path = $crate::__reexports::ctor) ]
             fn __ic_memory_register_eager_init() {
-                $crate::defer_eager_init(__ic_memory_registered_eager_init_body);
+                let _ = $crate::defer_eager_init(__ic_memory_registered_eager_init_body);
             }
         };
     };

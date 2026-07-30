@@ -64,10 +64,11 @@ impl<'store> AllocationBootstrap<'store> {
 
     /// Initialize an empty ledger store, then validate and advance a pending commit.
     ///
-    /// This is the privileged genesis/import path. Normal default-runtime users
-    /// should use [`crate::bootstrap_default_memory_manager`], which supplies an
-    /// empty current-format genesis ledger. A non-empty `genesis` should only be
-    /// supplied by the layer that owns migration or import for this ledger store.
+    /// This is the privileged genesis/import path. Normal runtime users should
+    /// use [`crate::MemoryRuntime::bootstrap`] directly or the default TLS
+    /// convenience bootstrap, both of which supply an empty current-format
+    /// genesis ledger. A non-empty `genesis` should only be supplied by the layer
+    /// that owns migration or import for this ledger store.
     ///
     /// The generic crate guarantees only that `genesis` is used when the
     /// protected physical store is empty, never when recovery sees corrupt or

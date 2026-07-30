@@ -65,7 +65,7 @@ Declare both direct dependencies:
 
 ```toml
 [dependencies]
-ic-memory = "0.10.0"
+ic-memory = "0.12.0"
 ic-stable-structures = "0.7.2"
 ```
 
@@ -96,11 +96,12 @@ thread_local! {
             ty = UsersStore,
             id = 120,
         )
+        .expect("committed users memory")
     ));
 }
 ```
 
-Bootstrap once before touching stable data:
+Bootstrap once per concrete memory runtime before touching stable data:
 
 ```rust,ignore
 #[ic_cdk::init]
@@ -116,7 +117,13 @@ fn post_upgrade() {
 
 That is the normal path.
 
-The default runtime API is exported from the crate root. Use helpers such as
+The default runtime API is exported from the crate root. It is one
+thread-local `MemoryRuntime<DefaultMemoryImpl>`, so every native thread owns an
+independent backing memory, lifecycle, committed capability, and diagnostic
+view. On IC Wasm, execution is single-threaded and the same TLS object naturally
+has canister-instance lifetime.
+
+Use helpers such as
 `ic_memory::bootstrap_default_memory_manager()`,
 `ic_memory::bootstrap_default_memory_manager_with_policy(...)`,
 `ic_memory::committed_allocations()`,
@@ -125,7 +132,7 @@ above; implementation modules are private.
 
 ## Multi-Crate Composition
 
-Every crate registers into the same linked `ic-memory` runtime. Crates do not
+Every crate registers into the same linked declaration registry. Crates do not
 need to import or name each other:
 
 ```rust,ignore
@@ -140,6 +147,7 @@ mod package_a {
                 ty = UsersStore,
                 id = 100,
             )
+            .expect("committed users memory")
         ));
     }
 }
@@ -155,14 +163,17 @@ mod package_b {
                 ty = OrdersStore,
                 id = 110,
             )
+            .expect("committed orders memory")
         ));
     }
 }
 ```
 
-Bootstrap validates the complete layout from every linked crate, commits the
-allocation ledger, and publishes committed allocations. TLS-backed stores open
-when your code first touches the `thread_local!`.
+The linked program seals one immutable, canonical declaration snapshot.
+Bootstrap supplies that snapshot to the calling thread's default runtime,
+recovers and commits that runtime's allocation ledger, and publishes committed
+allocations into that runtime only. TLS-backed stores open when your code first
+touches the `thread_local!`.
 
 Duplicate stable keys, duplicate MemoryManager IDs, overlapping ranges, and
 out-of-range declarations fail before stable structures open.
@@ -182,14 +193,41 @@ adapters that want their own range policy, such as Canic, should register only
 the ranges they want `ic-memory` to enforce and put the rest in their policy
 adapter.
 
-The committed allocation state is an in-memory capability published only after
-bootstrap persistence succeeds; it is not a serde payload and should not be
-treated as configuration.
+The committed allocation state is an in-memory capability published into one
+runtime only after that runtime's stable-cell persistence succeeds. It is not a
+serde payload and should not be treated as configuration.
+
+## Explicit Runtimes
+
+Frameworks and tests that own backing memory directly should use
+`MemoryRuntime<M>` as the canonical API:
+
+```rust,ignore
+use ic_memory::{MemoryRuntime, sealed_declaration_snapshot};
+
+let declarations = sealed_declaration_snapshot()?;
+let mut runtime = MemoryRuntime::new(backing_memory);
+runtime.bootstrap(&declarations, &policy)?;
+
+let rows = runtime.open_memory("app.rows.v1", 120)?;
+let diagnostics = runtime.diagnostic_export()?;
+```
+
+Each runtime owns all facts derived from `backing_memory`: recovery, ledger
+cell, lifecycle, committed allocations, opens, diagnostics, and live sizes.
+Multiple runtimes share only the immutable linked declaration snapshot. A
+failed bootstrap publishes no capability, and repeated bootstrap on the same
+runtime object is idempotent.
+
+There is intentionally no public reset API. Native tests should construct a new
+explicit runtime or use the naturally independent default TLS runtime; changing
+global flags cannot reset a concrete stable-memory instance safely.
 
 ## Diagnostics
 
 Use `default_memory_manager_doctor_report()` for operator-facing preflight and
-runtime diagnostics. It can be called before or after bootstrap and reports the
+runtime diagnostics. It returns a typed error if the default TLS runtime is
+re-entered. Otherwise it can be called before or after bootstrap and reports the
 stable-cell status, protected commit recovery state, recovered ledger export,
 registered declarations, range authority, validation preflight, and live
 `MemoryManager` slot sizes when they can be recovered.
@@ -233,7 +271,8 @@ The short version:
 ```text
 declare ranges
 register stable stores
-bootstrap once
+seal linked declarations
+bootstrap once per memory runtime
 only then open stable memory
 ```
 

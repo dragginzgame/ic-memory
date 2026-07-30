@@ -49,11 +49,21 @@ inside `Cell::init`.
 
 ## Runtime Ownership
 
-Exactly one owner should bootstrap the default `ic-memory` runtime in a
-canister. Canic can be that owner, IcyDB can be that owner, or the application
-can be that owner.
+`MemoryRuntime<M>` is the canonical owner for one backing memory instance. It
+owns the `MemoryManager<M>`, allocation-ledger cell, bootstrap lifecycle,
+committed allocation capability, memory opens, recovery diagnostics, and live
+memory-size inspection.
 
-All crates using the default runtime compose into one bootstrap authority.
+Linked crates compose declarations into one immutable
+`SealedDeclarationSnapshot`. That process-global snapshot is declaration
+authority, not a process-global bootstrap result. Every concrete runtime
+receives the same declaration meaning but performs its own recovery, policy
+evaluation, persistence, and capability publication.
+
+Exactly one owner should bootstrap a given ledger store. Canic can own a
+`MemoryRuntime`, IcyDB can own one, or the application can use the default TLS
+runtime. Framework integrations should store and pass the explicit runtime
+object alongside the backing memory they own.
 
 The intended public API is exported from `ic_memory::...` at the crate root.
 Implementation modules such as the runtime, ledger, registry, and validation
@@ -63,7 +73,22 @@ modules are private. Frameworks should call root exports such as
 `open_default_memory_manager_memory(...)`.
 
 If multiple layers need separate allocation domains, they should use distinct
-ledger stores with an explicit bootstrap owner for each domain.
+backing memories and runtime objects with an explicit bootstrap owner for each
+domain.
+
+The default convenience layer is one
+`thread_local! RefCell<MemoryRuntime<DefaultMemoryImpl>>`. Native threads get
+independent default memory instances and therefore independent runtime
+lifecycle and authority. IC Wasm execution is single-threaded, so that TLS
+runtime naturally has canister-instance lifetime. Default entry points use
+fallible TLS borrowing and return a typed reentrancy error instead of panicking
+or consulting another runtime.
+
+Bootstrap is once per runtime object, not once per process. A second call on the
+same successfully bootstrapped runtime is idempotent and does not advance the
+ledger generation. A different runtime always inspects its own ledger memory.
+No public reset API is provided; constructing a new runtime is the correct way
+to own a new backing memory.
 
 ## Policy Authority
 
@@ -112,34 +137,60 @@ ic_memory::eager_init!({
 
 Hooks registered with `eager_init!` run before the declaration snapshot is
 sealed. Stable structures opened with `ic_memory_key!` require committed
-allocations to be published first. Macro range and key declarations require an
-explicit stable `authority` string; it is policy identity and must not be
-derived implicitly from package metadata.
+allocations to be published first, and the macro returns the typed open result
+so the integration chooses how to handle failure. Macro range and key
+declarations require an explicit stable `authority` string; it is policy
+identity and must not be derived implicitly from package metadata.
 
-Frameworks or libraries that need custom policy metadata can inspect
-`static_memory_declarations()` and `static_memory_range_declarations()`, then
-bootstrap with `bootstrap_default_memory_manager_with_policy(...)`. The custom
-policy receives external declarations only; ic-memory validates its private
-ledger declaration internally.
+Frameworks or libraries that need custom policy metadata should call
+`sealed_declaration_snapshot()` and inspect its canonical
+`registered_declarations()` and `registered_ranges()`. They can pass the same
+snapshot to an explicit `MemoryRuntime<M>` or bootstrap the default runtime with
+`bootstrap_default_memory_manager_with_policy(...)`. The custom policy receives
+external declarations only; ic-memory validates its private ledger declaration
+internally.
 
 ## Default Runtime Diagnostics
 
-`default_memory_manager_doctor_report()` builds a serializable report for the
-default `MemoryManager` runtime before or after bootstrap. It includes
-stable-cell status, protected commit recovery, recovered ledger export,
-registered declarations, registered and effective range authority, generic
-validation preflight, and live memory sizes for recovered ledger records.
+`MemoryRuntime::doctor_report(&snapshot)` builds a serializable report for that
+runtime before or after bootstrap. The default
+`default_memory_manager_doctor_report()` entry point seals the linked snapshot,
+enters the calling thread's runtime fallibly, and returns the same report. It
+includes stable-cell status, protected commit recovery, recovered ledger
+export, registered declarations, registered and effective range authority,
+generic validation preflight, and live memory sizes for recovered ledger
+records.
 
 Mutually exclusive diagnostic outcomes use enums or `Result` values instead of
 nullable field pairs, so machine-readable reports cannot express contradictory
 success and failure states. Failures include a stable `DiagnosticCode` beside
 the human-readable message, so automation does not need to parse prose.
 
-Before bootstrap, the doctor runs deferred `eager_init!` hooks so the report
-matches the declaration set bootstrap would see. The validation field covers
-the default runtime's generic range/declaration checks. Frameworks that pass a
-custom policy to `bootstrap_default_memory_manager_with_policy(...)` should
-still diagnose that policy in their own adapter layer.
+The first snapshot request runs deferred generated registration and
+`eager_init!` hooks exactly once before sealing, so doctor and bootstrap always
+use the same immutable declaration set. The validation field covers generic
+range/declaration checks. Frameworks that pass a custom policy should still
+diagnose that policy in their own adapter layer.
+
+## Explicit `MemoryRuntime<M>`
+
+The explicit runtime requires only `M: ic_stable_structures::Memory`:
+
+```rust,ignore
+let declarations = ic_memory::sealed_declaration_snapshot()?;
+let mut runtime = ic_memory::MemoryRuntime::new(backing_memory);
+runtime.bootstrap(&declarations, &policy)?;
+
+let users = runtime.open_memory("app.users.v1", 120)?;
+let export = runtime.diagnostic_export()?;
+let recovery = runtime.commit_recovery_diagnostic()?;
+let doctor = runtime.doctor_report(&declarations);
+```
+
+`committed` borrows the capability stored under `runtime`. Opening memory never
+accepts a capability from another runtime; it consults the capability and
+`MemoryManager` owned by the same object. Capability publication happens only
+after the stable-cell record write succeeds.
 
 ## Manual Bootstrap
 

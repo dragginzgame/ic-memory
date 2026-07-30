@@ -1,21 +1,18 @@
 use crate::{
-    AllocationBootstrap, AllocationDeclaration, AllocationHistory, AllocationLedger,
-    AllocationPolicy, AllocationSlotDescriptor, CommittedAllocations, DeclarationSnapshot,
-    DefaultMemoryManagerDoctorReport, DiagnosticCheck, DiagnosticCode, DiagnosticDeclaration,
-    DiagnosticExport, DiagnosticFailure, DiagnosticMemorySize, DiagnosticRangeAuthority,
-    DiagnosticStableCell, DiagnosticStableCellStatus, LedgerCommitError,
-    LedgerPayloadEnvelopeError, STABLE_CELL_VALUE_OFFSET, StableCellLedgerError,
-    StableCellLedgerRecord, StableKey,
+    AllocationBootstrap, AllocationHistory, AllocationLedger, AllocationPolicy,
+    AllocationSlotDescriptor, CommittedAllocations, DiagnosticCheck, DiagnosticCode,
+    DiagnosticDeclaration, DiagnosticExport, DiagnosticFailure, DiagnosticMemorySize,
+    DiagnosticRangeAuthority, DiagnosticStableCell, DiagnosticStableCellStatus, LedgerCommitError,
+    LedgerPayloadEnvelopeError, MemoryRuntimeDoctorReport, STABLE_CELL_VALUE_OFFSET,
+    StableCellLedgerError, StableCellLedgerRecord, StableKey,
     physical::CommitStoreDiagnostic,
     registry::{
-        StaticMemoryDeclaration, StaticMemoryDeclarationError, StaticMemoryRangeDeclaration,
-        seal_static_memory_registry, static_memory_declarations, static_memory_range_declarations,
+        RuntimeDeclarationAuthority, SealedDeclarationSnapshot, StaticMemoryDeclarationError,
+        sealed_declaration_snapshot,
     },
     slot::{
-        IC_MEMORY_AUTHORITY_OWNER, IC_MEMORY_AUTHORITY_PURPOSE, IC_MEMORY_LEDGER_LABEL,
-        IC_MEMORY_LEDGER_STABLE_KEY, MEMORY_MANAGER_LEDGER_ID, MemoryManagerAuthorityRecord,
-        MemoryManagerIdRange, MemoryManagerRangeAuthority, MemoryManagerRangeAuthorityError,
-        MemoryManagerRangeMode, MemoryManagerSlotError,
+        IC_MEMORY_AUTHORITY_OWNER, MEMORY_MANAGER_LEDGER_ID, MemoryManagerRangeAuthorityError,
+        MemoryManagerSlotError,
     },
     stable_cell::decode_stable_cell_ledger_record_from_memory,
 };
@@ -23,50 +20,69 @@ use ic_stable_structures::{
     Cell, DefaultMemoryImpl, Memory, Storable,
     memory_manager::{MemoryId, MemoryManager, VirtualMemory},
 };
-use std::{
-    cell::RefCell,
-    collections::BTreeMap,
-    convert::Infallible,
-    sync::{
-        Mutex,
-        atomic::{AtomicBool, Ordering},
+use std::{cell::RefCell, convert::Infallible};
+
+type LedgerCell<M> = Cell<StableCellLedgerRecord, VirtualMemory<M>>;
+
+enum RuntimeLifecycle {
+    Unbootstrapped,
+    Bootstrapped {
+        committed_allocations: CommittedAllocations,
     },
-};
-
-type DefaultLedgerCell = Cell<StableCellLedgerRecord, VirtualMemory<DefaultMemoryImpl>>;
-
-thread_local! {
-    static DEFAULT_MEMORY_MANAGER: MemoryManager<DefaultMemoryImpl> =
-        MemoryManager::init(DefaultMemoryImpl::default());
-    static DEFAULT_LEDGER_CELL: RefCell<Option<DefaultLedgerCell>> = const {
-        RefCell::new(None)
-    };
 }
 
-static EAGER_INIT_HOOKS: Mutex<Vec<fn()>> = Mutex::new(Vec::new());
-static COMMITTED_ALLOCATIONS: Mutex<Option<CommittedAllocations>> = Mutex::new(None);
-static BOOTSTRAPPED: AtomicBool = AtomicBool::new(false);
+///
+/// MemoryRuntime
+///
+/// Canonical owner of allocation bootstrap state for one backing memory.
+///
+/// The runtime owns its `MemoryManager`, allocation-ledger cell, bootstrap
+/// lifecycle, committed allocation capability, opens, and diagnostics. Static
+/// linked-program declarations are supplied separately as one immutable
+/// [`SealedDeclarationSnapshot`].
+///
+/// `M` needs only [`Memory`]. The runtime does not require the backing memory
+/// to be `Send`, `Sync`, `Clone`, or `'static`.
+///
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-struct RuntimeLockPoisoned;
+pub struct MemoryRuntime<M: Memory> {
+    memory_manager: MemoryManager<M>,
+    ledger_cell: Option<LedgerCell<M>>,
+    lifecycle: RuntimeLifecycle,
+}
 
-impl RuntimeLockPoisoned {
-    const MESSAGE: &'static str = "ic-memory runtime lock poisoned";
+///
+/// RuntimeStateError
+///
+/// Failure to enter or maintain one memory runtime's in-memory lifecycle.
+///
+
+#[non_exhaustive]
+#[derive(Clone, Copy, Debug, Eq, thiserror::Error, PartialEq)]
+pub enum RuntimeStateError {
+    /// A default-runtime operation re-entered while that TLS runtime was borrowed.
+    #[error("ic-memory default runtime is already borrowed by an active operation")]
+    ReentrantAccess,
+    /// The thread-local default runtime is being destroyed and cannot be entered.
+    #[error("ic-memory default runtime is unavailable during thread-local destruction")]
+    Unavailable,
+    /// Internal runtime lifecycle state was inconsistent.
+    #[error("ic-memory runtime lifecycle is internally inconsistent")]
+    InconsistentLifecycle,
 }
 
 ///
 /// RuntimeBootstrapError
 ///
-/// Failure to bootstrap the generic `ic-memory` runtime layer.
+/// Failure to bootstrap one `MemoryRuntime`.
+///
+
 #[non_exhaustive]
 #[derive(Debug, thiserror::Error)]
 pub enum RuntimeBootstrapError<P> {
-    /// Runtime registration or snapshot collection failed.
+    /// Linked-program declaration snapshot sealing failed.
     #[error(transparent)]
     Registry(#[from] StaticMemoryDeclarationError),
-    /// Runtime range authority table is invalid.
-    #[error(transparent)]
-    Range(#[from] MemoryManagerRangeAuthorityError),
     /// Runtime ledger genesis construction failed.
     #[error(transparent)]
     LedgerIntegrity(#[from] crate::LedgerIntegrityError),
@@ -88,31 +104,33 @@ pub enum RuntimeBootstrapError<P> {
     /// Validated declarations could not be staged.
     #[error(transparent)]
     Staging(#[from] crate::AllocationStageError),
-    /// Runtime state lock was poisoned.
-    #[error("ic-memory runtime lock poisoned")]
-    RuntimeLockPoisoned,
+    /// Runtime lifecycle or default TLS access failed.
+    #[error(transparent)]
+    State(#[from] RuntimeStateError),
 }
 
 ///
 /// RuntimeOpenError
 ///
-/// Failure to open a committed allocation through the default runtime substrate.
+/// Failure to open an allocation through one memory runtime.
+///
+
 #[non_exhaustive]
 #[derive(Clone, Debug, Eq, thiserror::Error, PartialEq)]
 pub enum RuntimeOpenError {
-    /// Runtime bootstrap has not published committed allocations.
+    /// This runtime has not published committed allocations.
     #[error("ic-memory runtime has not completed bootstrap validation")]
     NotBootstrapped,
-    /// Runtime state lock was poisoned.
-    #[error("ic-memory runtime lock poisoned")]
-    RuntimeLockPoisoned,
+    /// Runtime lifecycle or default TLS access failed.
+    #[error(transparent)]
+    State(#[from] RuntimeStateError),
     /// Stable-key grammar failure.
     #[error(transparent)]
     StableKey(#[from] crate::StableKeyError),
-    /// The stable key was not present in the committed declaration set.
+    /// The stable key was not present in this runtime's committed declaration set.
     #[error("stable key '{0}' was not committed by ic-memory runtime bootstrap")]
     StableKeyNotCommitted(String),
-    /// Runtime governance stable keys are internal and cannot be opened through the public runtime.
+    /// Runtime governance stable keys are internal and cannot be opened publicly.
     #[error("stable key '{stable_key}' is reserved for ic-memory runtime governance")]
     ReservedStableKey {
         /// Reserved stable key.
@@ -138,15 +156,21 @@ pub enum RuntimeOpenError {
 ///
 /// RuntimeDiagnosticError
 ///
-/// Failure to build diagnostics for the default `MemoryManager` runtime.
+/// Failure to build diagnostics for one memory runtime.
 ///
 
 #[non_exhaustive]
 #[derive(Debug, thiserror::Error)]
 pub enum RuntimeDiagnosticError {
-    /// Runtime bootstrap has not opened and validated the ledger cell.
+    /// This runtime has not opened and validated its ledger cell.
     #[error("ic-memory runtime has not completed bootstrap validation")]
     NotBootstrapped,
+    /// Linked-program declaration snapshot sealing failed.
+    #[error(transparent)]
+    Registry(#[from] StaticMemoryDeclarationError),
+    /// Runtime lifecycle or default TLS access failed.
+    #[error(transparent)]
+    State(#[from] RuntimeStateError),
     /// The recovered allocation ledger failed protected commit validation.
     #[error(transparent)]
     LedgerCommit(#[from] LedgerCommitError),
@@ -162,6 +186,8 @@ pub enum RuntimeDiagnosticError {
 /// RuntimePolicyError
 ///
 /// Failure in generic runtime range policy or caller-supplied policy.
+///
+
 #[non_exhaustive]
 #[derive(Clone, Debug, Eq, thiserror::Error, PartialEq)]
 pub enum RuntimePolicyError<P> {
@@ -184,303 +210,318 @@ pub enum RuntimePolicyError<P> {
     Custom(P),
 }
 
-/// Register a pre-bootstrap declaration hook.
-#[doc(hidden)]
-pub fn defer_eager_init(f: fn()) {
-    assert!(
-        !is_default_memory_manager_bootstrapped(),
-        "ic-memory eager-init registration attempted after runtime bootstrap"
-    );
-    EAGER_INIT_HOOKS
-        .lock()
-        .expect("ic-memory eager-init queue poisoned")
-        .push(f);
-}
-
-/// Return true once default runtime bootstrap has completed.
-#[must_use]
-pub fn is_default_memory_manager_bootstrapped() -> bool {
-    BOOTSTRAPPED.load(Ordering::SeqCst)
-}
-
-/// Return the published committed allocations for the default runtime substrate.
-pub fn committed_allocations() -> Result<CommittedAllocations, RuntimeOpenError> {
-    if !is_default_memory_manager_bootstrapped() {
-        return Err(RuntimeOpenError::NotBootstrapped);
-    }
-    COMMITTED_ALLOCATIONS
-        .lock()
-        .map_err(|_| RuntimeOpenError::RuntimeLockPoisoned)?
-        .clone()
-        .ok_or(RuntimeOpenError::NotBootstrapped)
-}
-
-/// Bootstrap the default `MemoryManager<DefaultMemoryImpl>` runtime using generic policy.
-pub fn bootstrap_default_memory_manager()
--> Result<CommittedAllocations, RuntimeBootstrapError<Infallible>> {
-    bootstrap_default_memory_manager_with_policy(&NoopPolicy)
-}
-
-/// Bootstrap the default runtime and layer caller-supplied policy over generic range checks.
-///
-/// Authority order is explicit:
-///
-/// 1. `ic-memory` always owns its governance range.
-/// 2. If any user range is registered, all `MemoryManager` declarations must
-///    belong to the range claimed by their authority.
-/// 3. The caller-supplied [`AllocationPolicy`] then applies framework-specific
-///    namespace and lifecycle rules to external declarations only.
-///
-/// Framework adapters such as Canic should register only the ranges they want
-/// this generic runtime to enforce. If a framework wants its own policy to be
-/// authoritative for application space, it should omit user range registrations
-/// for that space and enforce the rule in its [`AllocationPolicy`].
-pub fn bootstrap_default_memory_manager_with_policy<P: AllocationPolicy>(
-    policy: &P,
-) -> Result<CommittedAllocations, RuntimeBootstrapError<P::Error>> {
-    if let Ok(committed) = committed_allocations() {
-        return Ok(committed);
-    }
-
-    run_eager_init_hooks().map_err(|_err| RuntimeBootstrapError::RuntimeLockPoisoned)?;
-
-    let registered_declarations = static_memory_declarations()?;
-    let registered_ranges = static_memory_range_declarations()?;
-    let user_ranges_registered = !registered_ranges.is_empty();
-    let declaration_metadata = declaration_metadata(&registered_declarations);
-    let range_authority = range_authority(registered_ranges)?;
-    let snapshot = declaration_snapshot(registered_declarations)?;
-    seal_static_memory_registry()?;
-    let policy = RuntimeMemoryManagerPolicy {
-        range_authority,
-        user_ranges_registered,
-        declaration_metadata,
-        custom_policy: policy,
-    };
-    let genesis = AllocationLedger::new(0, AllocationHistory::default())?;
-
-    let committed = with_default_ledger_cell(
-        |cell| -> Result<CommittedAllocations, RuntimeBootstrapError<P::Error>> {
-            let mut record = cell.get().clone();
-            let mut bootstrap = AllocationBootstrap::new(record.store_mut());
-            let commit = bootstrap
-                .initialize_validate_and_commit(&genesis, snapshot, &policy, None)
-                .map_err(runtime_bootstrap_error_from_bootstrap)?;
-            let (ledger, validated) = commit.into_parts();
-            set_default_ledger_cell(cell, record)?;
-            Ok(external_runtime_allocations(
-                validated.confirm_persisted(ledger.current_generation()),
-            ))
-        },
-    )?;
-
-    publish_committed_allocations(committed.clone())?;
-    BOOTSTRAPPED.store(true, Ordering::SeqCst);
-    Ok(committed)
-}
-
-/// Open a committed `MemoryManager` memory by stable key and expected ID.
-pub fn open_default_memory_manager_memory(
-    stable_key: &str,
-    id: u8,
-) -> Result<VirtualMemory<DefaultMemoryImpl>, RuntimeOpenError> {
-    let key = StableKey::parse(stable_key)?;
-    if crate::is_ic_memory_stable_key(key.as_str()) {
-        return Err(RuntimeOpenError::ReservedStableKey {
-            stable_key: stable_key.to_string(),
-        });
-    }
-    let committed = committed_allocations()?;
-    let slot = committed
-        .slot_for(&key)
-        .ok_or_else(|| RuntimeOpenError::StableKeyNotCommitted(stable_key.to_string()))?;
-    let committed_id = slot.memory_manager_id()?;
-    if committed_id != id {
-        return Err(RuntimeOpenError::MemoryIdMismatch {
-            stable_key: stable_key.to_string(),
-            committed_id,
-            requested_id: id,
-        });
-    }
-    Ok(default_memory_manager_memory(id))
-}
-
-/// Build a diagnostic export for the default `MemoryManager` runtime.
-///
-/// Each allocation record includes the live `VirtualMemory::size()` for its
-/// slot when the committed ledger can be recovered. The reported size is the
-/// virtual memory size in WebAssembly pages and bytes, not logical data bytes
-/// stored by a particular stable-structure collection.
-pub fn default_memory_manager_diagnostic_export() -> Result<DiagnosticExport, RuntimeDiagnosticError>
-{
-    let record = default_ledger_record_for_diagnostics()?;
-    let recovered = record.store().recover()?;
-    let ledger = recovered.ledger();
-    let memory_sizes = default_memory_manager_memory_sizes(ledger)?;
-
-    Ok(
-        DiagnosticExport::from_ledger_with_commit_recovery_and_memory_sizes(
-            ledger,
-            AllocationSlotDescriptor::memory_manager(MEMORY_MANAGER_LEDGER_ID)?,
-            Some(record.store().physical().diagnostic()),
-            memory_sizes,
-        ),
-    )
-}
-
-/// Build a protected commit recovery diagnostic for the default ledger store.
-///
-/// Unlike [`default_memory_manager_diagnostic_export`], this helper does not
-/// require successful bootstrap. It can diagnose empty or partially corrupt
-/// dual-slot commit state as long as the enclosing stable-cell ledger record is
-/// readable.
-pub fn default_memory_manager_commit_recovery_diagnostic()
--> Result<CommitStoreDiagnostic, RuntimeDiagnosticError> {
-    let record = default_ledger_record_from_memory()?;
-    Ok(record.store().physical().diagnostic())
-}
-
-/// Build a preflight and runtime diagnostic report for the default runtime.
-///
-/// The doctor report can be collected before bootstrap, after bootstrap, or
-/// after a failed bootstrap attempt. Stable-cell, commit-recovery, declaration,
-/// range-authority, validation, ledger, and live memory-size status are
-/// collected into one serializable report. Recoverable problems are reported in
-/// fields rather than returned as errors.
-#[must_use]
-pub fn default_memory_manager_doctor_report() -> DefaultMemoryManagerDoctorReport {
-    let bootstrapped = is_default_memory_manager_bootstrapped();
-    let eager_init_error = if bootstrapped {
-        None
-    } else {
-        run_eager_init_hooks().err().map(|_err| {
-            DiagnosticFailure::new(
-                DiagnosticCode::EagerInit,
-                format!("eager-init hooks: {}", RuntimeLockPoisoned::MESSAGE),
-            )
-        })
-    };
-
-    let stable_cell = default_memory_manager_stable_cell_diagnostic();
-    let commit_recovery = stable_cell
-        .record
-        .as_ref()
-        .map(|record| record.store().physical().diagnostic());
-    let recovered = stable_cell
-        .record
-        .as_ref()
-        .map(|record| record.store().recover());
-    let recovered_for_export = recovered.as_ref().and_then(|result| result.as_ref().ok());
-    let ledger_anchor = default_ledger_anchor_descriptor();
-    let ledger = recovered_for_export.map(|recovered| {
-        DiagnosticExport::from_ledger_with_commit_recovery_and_memory_sizes(
-            recovered.ledger(),
-            ledger_anchor.clone(),
-            commit_recovery,
-            default_memory_manager_memory_sizes_lossy(recovered.ledger()),
-        )
-    });
-
-    let registered_declarations = static_memory_declarations();
-    let registered_ranges = static_memory_range_declarations();
-    let diagnostic_declarations = registered_declarations
-        .as_ref()
-        .map(|declarations| {
-            declarations
-                .iter()
-                .map(|registration| {
-                    DiagnosticDeclaration::new(
-                        registration.authority(),
-                        registration.declaration().clone(),
-                    )
-                })
-                .collect()
-        })
-        .unwrap_or_default();
-    let range_authority = diagnostic_range_authority(&registered_ranges);
-    let validation = eager_init_error.map_or_else(
-        || {
-            diagnostic_validation(
-                &registered_declarations,
-                &registered_ranges,
-                stable_cell.record.as_ref(),
-                recovered.as_ref(),
-            )
-        },
-        |failure| DiagnosticCheck::failed(failure.code, failure.message),
-    );
-
-    DefaultMemoryManagerDoctorReport {
-        bootstrapped: BOOTSTRAPPED.load(Ordering::SeqCst),
-        ledger_anchor,
-        stable_cell: stable_cell.diagnostic,
-        commit_recovery,
-        ledger,
-        registered_declarations: diagnostic_declarations,
-        range_authority,
-        validation,
-    }
-}
-
-fn run_eager_init_hooks() -> Result<(), RuntimeLockPoisoned> {
-    let hooks = {
-        let mut hooks = EAGER_INIT_HOOKS.lock().map_err(|_| RuntimeLockPoisoned)?;
-        std::mem::take(&mut *hooks)
-    };
-
-    for hook in hooks {
-        hook();
-    }
-    Ok(())
-}
-
-fn with_default_ledger_cell<P, T>(
-    op: impl FnOnce(&mut DefaultLedgerCell) -> Result<T, RuntimeBootstrapError<P>>,
-) -> Result<T, RuntimeBootstrapError<P>> {
-    DEFAULT_LEDGER_CELL.with(|cell| {
-        let mut cell = cell.borrow_mut();
-        if cell.is_none() {
-            let memory = default_memory_manager_memory(MEMORY_MANAGER_LEDGER_ID);
-            crate::validate_stable_cell_ledger_memory(&memory)?;
-            *cell = Some(Cell::init(memory, StableCellLedgerRecord::default()));
+impl<M: Memory> MemoryRuntime<M> {
+    /// Construct an unbootstrapped runtime over one backing memory.
+    #[must_use]
+    pub fn new(memory: M) -> Self {
+        Self {
+            memory_manager: MemoryManager::init(memory),
+            ledger_cell: None,
+            lifecycle: RuntimeLifecycle::Unbootstrapped,
         }
-        let Some(cell) = cell.as_mut() else {
-            return Err(RuntimeBootstrapError::RuntimeLockPoisoned);
+    }
+
+    /// Return whether this runtime has published committed allocation authority.
+    #[must_use]
+    pub const fn is_bootstrapped(&self) -> bool {
+        matches!(self.lifecycle, RuntimeLifecycle::Bootstrapped { .. })
+    }
+
+    /// Bootstrap this backing memory from one immutable declaration snapshot.
+    ///
+    /// Recovery, policy evaluation, staging, persistence, and capability
+    /// publication are local to this runtime. A repeated call on the same
+    /// successfully bootstrapped object is idempotent and does not advance the
+    /// durable generation or re-evaluate policy.
+    pub fn bootstrap<P: AllocationPolicy>(
+        &mut self,
+        declarations: &SealedDeclarationSnapshot,
+        policy: &P,
+    ) -> Result<&CommittedAllocations, RuntimeBootstrapError<P::Error>> {
+        if !self.is_bootstrapped() {
+            self.bootstrap_unbootstrapped(declarations, policy)?;
+        }
+        match &self.lifecycle {
+            RuntimeLifecycle::Bootstrapped {
+                committed_allocations,
+            } => Ok(committed_allocations),
+            RuntimeLifecycle::Unbootstrapped => Err(RuntimeBootstrapError::State(
+                RuntimeStateError::InconsistentLifecycle,
+            )),
+        }
+    }
+
+    fn bootstrap_unbootstrapped<P: AllocationPolicy>(
+        &mut self,
+        declarations: &SealedDeclarationSnapshot,
+        policy: &P,
+    ) -> Result<(), RuntimeBootstrapError<P::Error>> {
+        self.initialize_ledger_cell()?;
+        let mut record = self
+            .ledger_cell
+            .as_ref()
+            .map(|cell| cell.get().clone())
+            .ok_or(RuntimeStateError::InconsistentLifecycle)?;
+        let runtime_policy = RuntimeMemoryManagerPolicy {
+            declarations,
+            custom_policy: policy,
         };
-        op(cell)
-    })
+        let genesis = AllocationLedger::new(0, AllocationHistory::default())?;
+        let commit = AllocationBootstrap::new(record.store_mut())
+            .initialize_validate_and_commit(
+                &genesis,
+                declarations.allocation_snapshot().clone(),
+                &runtime_policy,
+                None,
+            )
+            .map_err(runtime_bootstrap_error_from_bootstrap)?;
+        let (ledger, validated) = commit.into_parts();
+
+        self.persist_ledger_record(record)?;
+        let committed =
+            external_runtime_allocations(validated.confirm_persisted(ledger.current_generation()));
+        self.lifecycle = RuntimeLifecycle::Bootstrapped {
+            committed_allocations: committed,
+        };
+        Ok(())
+    }
+
+    /// Borrow this runtime's committed allocation-open capability.
+    pub const fn committed_allocations(&self) -> Result<&CommittedAllocations, RuntimeOpenError> {
+        match &self.lifecycle {
+            RuntimeLifecycle::Unbootstrapped => Err(RuntimeOpenError::NotBootstrapped),
+            RuntimeLifecycle::Bootstrapped {
+                committed_allocations,
+            } => Ok(committed_allocations),
+        }
+    }
+
+    /// Open this runtime's committed memory by stable key and expected ID.
+    pub fn open_memory(
+        &self,
+        stable_key: &str,
+        expected_id: u8,
+    ) -> Result<VirtualMemory<M>, RuntimeOpenError> {
+        let key = StableKey::parse(stable_key)?;
+        if crate::is_ic_memory_stable_key(key.as_str()) {
+            return Err(RuntimeOpenError::ReservedStableKey {
+                stable_key: stable_key.to_string(),
+            });
+        }
+        let committed = self.committed_allocations()?;
+        let slot = committed
+            .slot_for(&key)
+            .ok_or_else(|| RuntimeOpenError::StableKeyNotCommitted(stable_key.to_string()))?;
+        let committed_id = slot.memory_manager_id()?;
+        if committed_id != expected_id {
+            return Err(RuntimeOpenError::MemoryIdMismatch {
+                stable_key: stable_key.to_string(),
+                committed_id,
+                requested_id: expected_id,
+            });
+        }
+        Ok(self.memory(expected_id))
+    }
+
+    /// Export this runtime's recovered ledger and live virtual-memory sizes.
+    pub fn diagnostic_export(&self) -> Result<DiagnosticExport, RuntimeDiagnosticError> {
+        if !self.is_bootstrapped() {
+            return Err(RuntimeDiagnosticError::NotBootstrapped);
+        }
+        let record = self.ledger_record_from_memory()?;
+        let recovered = record.store().recover()?;
+        let ledger = recovered.ledger();
+        Ok(
+            DiagnosticExport::from_ledger_with_commit_recovery_and_memory_sizes(
+                ledger,
+                ledger_anchor_descriptor(),
+                Some(record.store().physical().diagnostic()),
+                self.memory_sizes(ledger)?,
+            ),
+        )
+    }
+
+    /// Diagnose protected commit recovery from this runtime's ledger memory.
+    ///
+    /// This operation is available before bootstrap when the stable-cell
+    /// envelope is readable or the ledger memory is empty.
+    pub fn commit_recovery_diagnostic(
+        &self,
+    ) -> Result<CommitStoreDiagnostic, RuntimeDiagnosticError> {
+        let record = self.ledger_record_from_memory()?;
+        Ok(record.store().physical().diagnostic())
+    }
+
+    /// Build preflight and lifecycle diagnostics for this runtime.
+    #[must_use]
+    pub fn doctor_report(
+        &self,
+        declarations: &SealedDeclarationSnapshot,
+    ) -> MemoryRuntimeDoctorReport {
+        let stable_cell = self.stable_cell_diagnostic();
+        let commit_recovery = stable_cell
+            .record
+            .as_ref()
+            .map(|record| record.store().physical().diagnostic());
+        let recovered = stable_cell
+            .record
+            .as_ref()
+            .map(|record| record.store().recover());
+        let recovered_for_export = recovered.as_ref().and_then(|result| result.as_ref().ok());
+        let ledger = recovered_for_export.map(|recovered| {
+            DiagnosticExport::from_ledger_with_commit_recovery_and_memory_sizes(
+                recovered.ledger(),
+                ledger_anchor_descriptor(),
+                commit_recovery,
+                self.memory_sizes_lossy(recovered.ledger()),
+            )
+        });
+        let diagnostic_declarations = declarations
+            .registered_declarations()
+            .iter()
+            .map(|registration| {
+                DiagnosticDeclaration::new(
+                    registration.authority(),
+                    registration.declaration().clone(),
+                )
+            })
+            .collect();
+        let registered_records = declarations
+            .registered_ranges()
+            .iter()
+            .map(|registration| registration.record().clone())
+            .collect();
+        let range_authority = DiagnosticRangeAuthority::new(
+            registered_records,
+            Ok(declarations.range_authority().clone()),
+        );
+        let validation = diagnostic_validation(
+            declarations,
+            stable_cell.record.as_ref(),
+            recovered.as_ref(),
+        );
+
+        MemoryRuntimeDoctorReport {
+            bootstrapped: self.is_bootstrapped(),
+            ledger_anchor: ledger_anchor_descriptor(),
+            stable_cell: stable_cell.diagnostic,
+            commit_recovery,
+            ledger,
+            registered_declarations: diagnostic_declarations,
+            range_authority,
+            validation,
+        }
+    }
+
+    fn initialize_ledger_cell<P>(&mut self) -> Result<(), RuntimeBootstrapError<P>> {
+        if self.ledger_cell.is_some() {
+            return Ok(());
+        }
+        let memory = self.memory(MEMORY_MANAGER_LEDGER_ID);
+        crate::validate_stable_cell_ledger_memory(&memory)?;
+        ensure_ledger_cell_capacity(&memory, &StableCellLedgerRecord::default())?;
+        self.ledger_cell = Some(Cell::init(memory, StableCellLedgerRecord::default()));
+        Ok(())
+    }
+
+    fn persist_ledger_record<P>(
+        &mut self,
+        record: StableCellLedgerRecord,
+    ) -> Result<(), RuntimeBootstrapError<P>> {
+        let memory = self.memory(MEMORY_MANAGER_LEDGER_ID);
+        ensure_ledger_cell_capacity(&memory, &record)?;
+        let cell = self
+            .ledger_cell
+            .as_mut()
+            .ok_or(RuntimeStateError::InconsistentLifecycle)?;
+        let _previous = cell.set(record);
+        Ok(())
+    }
+
+    fn memory(&self, id: u8) -> VirtualMemory<M> {
+        self.memory_manager.get(MemoryId::new(id))
+    }
+
+    fn ledger_record_from_memory(&self) -> Result<StableCellLedgerRecord, StableCellLedgerError> {
+        decode_stable_cell_ledger_record_from_memory(&self.memory(MEMORY_MANAGER_LEDGER_ID))
+    }
+
+    fn memory_sizes(
+        &self,
+        ledger: &AllocationLedger,
+    ) -> Result<Vec<(AllocationSlotDescriptor, DiagnosticMemorySize)>, RuntimeDiagnosticError> {
+        ledger
+            .allocation_history()
+            .records()
+            .iter()
+            .map(|record| {
+                let id = record.slot().memory_manager_id()?;
+                Ok((
+                    record.slot().clone(),
+                    DiagnosticMemorySize::from_wasm_pages(self.memory(id).size()),
+                ))
+            })
+            .collect()
+    }
+
+    fn memory_sizes_lossy(
+        &self,
+        ledger: &AllocationLedger,
+    ) -> Vec<(AllocationSlotDescriptor, DiagnosticMemorySize)> {
+        self.memory_sizes(ledger).unwrap_or_default()
+    }
+
+    fn stable_cell_diagnostic(&self) -> StableCellDiagnostic {
+        let memory = self.memory(MEMORY_MANAGER_LEDGER_ID);
+        let memory_size = DiagnosticMemorySize::from_wasm_pages(memory.size());
+        if memory.size() == 0 {
+            return StableCellDiagnostic {
+                diagnostic: DiagnosticStableCell::new(
+                    DiagnosticStableCellStatus::Empty,
+                    memory_size,
+                ),
+                record: Some(StableCellLedgerRecord::default()),
+            };
+        }
+
+        match decode_stable_cell_ledger_record_from_memory(&memory) {
+            Ok(record) => StableCellDiagnostic {
+                diagnostic: DiagnosticStableCell::new(
+                    DiagnosticStableCellStatus::Readable,
+                    memory_size,
+                ),
+                record: Some(record),
+            },
+            Err(err) => StableCellDiagnostic {
+                diagnostic: DiagnosticStableCell::new(
+                    DiagnosticStableCellStatus::Corrupt {
+                        failure: DiagnosticFailure::new(
+                            DiagnosticCode::StableCell,
+                            err.to_string(),
+                        ),
+                    },
+                    memory_size,
+                ),
+                record: None,
+            },
+        }
+    }
 }
 
-fn set_default_ledger_cell<P>(
-    cell: &mut DefaultLedgerCell,
-    record: StableCellLedgerRecord,
-) -> Result<(), RuntimeBootstrapError<P>> {
-    ensure_default_ledger_cell_capacity(&record)?;
-    let _previous = cell.set(record);
-    Ok(())
-}
-
-fn ensure_default_ledger_cell_capacity<P>(
+fn ensure_ledger_cell_capacity<M: Memory, P>(
+    memory: &VirtualMemory<M>,
     record: &StableCellLedgerRecord,
 ) -> Result<(), RuntimeBootstrapError<P>> {
-    let encoded = record.to_bytes();
-    let value_size = encoded.len();
-    if value_size > u32::MAX as usize {
-        return Err(RuntimeBootstrapError::StableCellLedgerWriteTooLarge { value_size });
-    }
-
+    let value_size = record.to_bytes().len();
     let value_size_u32 = u32::try_from(value_size)
         .map_err(|_| RuntimeBootstrapError::StableCellLedgerWriteTooLarge { value_size })?;
-    let value_size_u64 = u64::from(value_size_u32);
     let required_bytes = STABLE_CELL_VALUE_OFFSET
-        .checked_add(value_size_u64)
+        .checked_add(u64::from(value_size_u32))
         .ok_or(RuntimeBootstrapError::StableCellLedgerWriteTooLarge { value_size })?;
-    let memory = default_memory_manager_memory(MEMORY_MANAGER_LEDGER_ID);
     let available_bytes = memory.size().saturating_mul(crate::WASM_PAGE_SIZE_BYTES);
     if required_bytes <= available_bytes {
         return Ok(());
     }
-
     let grow_by = required_bytes
         .saturating_sub(available_bytes)
         .div_ceil(crate::WASM_PAGE_SIZE_BYTES);
@@ -490,176 +531,37 @@ fn ensure_default_ledger_cell_capacity<P>(
     Ok(())
 }
 
-fn external_runtime_allocations(committed: CommittedAllocations) -> CommittedAllocations {
-    committed.without_stable_key_prefix(crate::IC_MEMORY_STABLE_KEY_PREFIX)
-}
-
-fn default_memory_manager_memory(id: u8) -> VirtualMemory<DefaultMemoryImpl> {
-    DEFAULT_MEMORY_MANAGER.with(|manager| manager.get(MemoryId::new(id)))
-}
-
-const fn default_ledger_anchor_descriptor() -> AllocationSlotDescriptor {
-    AllocationSlotDescriptor::memory_manager_unchecked(MEMORY_MANAGER_LEDGER_ID)
-}
-
-fn default_ledger_record_for_diagnostics() -> Result<StableCellLedgerRecord, RuntimeDiagnosticError>
-{
-    if !is_default_memory_manager_bootstrapped() {
-        return Err(RuntimeDiagnosticError::NotBootstrapped);
-    }
-
-    default_ledger_record_from_memory().map_err(RuntimeDiagnosticError::StableCellLedger)
-}
-
-fn default_ledger_record_from_memory() -> Result<StableCellLedgerRecord, StableCellLedgerError> {
-    let memory = default_memory_manager_memory(MEMORY_MANAGER_LEDGER_ID);
-    decode_stable_cell_ledger_record_from_memory(&memory)
-}
-
-fn default_memory_manager_memory_sizes(
-    ledger: &AllocationLedger,
-) -> Result<Vec<(AllocationSlotDescriptor, DiagnosticMemorySize)>, RuntimeDiagnosticError> {
-    ledger
-        .allocation_history()
-        .records()
-        .iter()
-        .map(|record| {
-            let id = record.slot().memory_manager_id()?;
-            let memory = default_memory_manager_memory(id);
-            Ok((
-                record.slot().clone(),
-                DiagnosticMemorySize::from_wasm_pages(memory.size()),
-            ))
-        })
-        .collect()
-}
-
-fn default_memory_manager_memory_sizes_lossy(
-    ledger: &AllocationLedger,
-) -> Vec<(AllocationSlotDescriptor, DiagnosticMemorySize)> {
-    default_memory_manager_memory_sizes(ledger).unwrap_or_default()
-}
-
-struct DefaultStableCellDiagnostic {
+struct StableCellDiagnostic {
     diagnostic: DiagnosticStableCell,
     record: Option<StableCellLedgerRecord>,
 }
 
-fn default_memory_manager_stable_cell_diagnostic() -> DefaultStableCellDiagnostic {
-    let memory = default_memory_manager_memory(MEMORY_MANAGER_LEDGER_ID);
-    let memory_size = DiagnosticMemorySize::from_wasm_pages(memory.size());
-    if memory.size() == 0 {
-        return DefaultStableCellDiagnostic {
-            diagnostic: DiagnosticStableCell::new(DiagnosticStableCellStatus::Empty, memory_size),
-            record: Some(StableCellLedgerRecord::default()),
-        };
-    }
-
-    let record = decode_stable_cell_ledger_record_from_memory(&memory);
-    match record {
-        Ok(record) => DefaultStableCellDiagnostic {
-            diagnostic: DiagnosticStableCell::new(
-                DiagnosticStableCellStatus::Readable,
-                memory_size,
-            ),
-            record: Some(record),
-        },
-        Err(err) => DefaultStableCellDiagnostic {
-            diagnostic: DiagnosticStableCell::new(
-                DiagnosticStableCellStatus::Corrupt {
-                    failure: DiagnosticFailure::new(DiagnosticCode::StableCell, err.to_string()),
-                },
-                memory_size,
-            ),
-            record: None,
-        },
-    }
+const fn ledger_anchor_descriptor() -> AllocationSlotDescriptor {
+    AllocationSlotDescriptor::memory_manager_unchecked(MEMORY_MANAGER_LEDGER_ID)
 }
 
-fn diagnostic_range_authority(
-    registered_ranges: &Result<Vec<StaticMemoryRangeDeclaration>, StaticMemoryDeclarationError>,
-) -> DiagnosticRangeAuthority {
-    match registered_ranges {
-        Ok(ranges) => {
-            let registered_records = ranges
-                .iter()
-                .map(|registration| registration.record().clone())
-                .collect();
-            match range_authority(ranges.clone()) {
-                Ok(authority) => DiagnosticRangeAuthority::new(registered_records, Ok(authority)),
-                Err(err) => DiagnosticRangeAuthority::new(
-                    registered_records,
-                    Err(DiagnosticFailure::new(
-                        DiagnosticCode::RangeAuthority,
-                        err.to_string(),
-                    )),
-                ),
-            }
-        }
-        Err(err) => DiagnosticRangeAuthority::new(
-            Vec::new(),
-            Err(DiagnosticFailure::new(
-                DiagnosticCode::RangeRegistry,
-                err.to_string(),
-            )),
-        ),
-    }
+fn external_runtime_allocations(committed: CommittedAllocations) -> CommittedAllocations {
+    committed.without_stable_key_prefix(crate::IC_MEMORY_STABLE_KEY_PREFIX)
 }
 
 fn diagnostic_validation(
-    registered_declarations: &Result<Vec<StaticMemoryDeclaration>, StaticMemoryDeclarationError>,
-    registered_ranges: &Result<Vec<StaticMemoryRangeDeclaration>, StaticMemoryDeclarationError>,
+    declarations: &SealedDeclarationSnapshot,
     stable_cell_record: Option<&StableCellLedgerRecord>,
     recovered: Option<&Result<crate::RecoveredLedger, LedgerCommitError>>,
 ) -> DiagnosticCheck {
-    let registered_declarations = match registered_declarations {
-        Ok(declarations) => declarations.clone(),
-        Err(err) => {
-            return DiagnosticCheck::failed(
-                DiagnosticCode::DeclarationRegistry,
-                format!("declaration registry: {err}"),
-            );
-        }
-    };
-    let registered_ranges = match registered_ranges {
-        Ok(ranges) => ranges.clone(),
-        Err(err) => {
-            return DiagnosticCheck::failed(
-                DiagnosticCode::RangeRegistry,
-                format!("range registry: {err}"),
-            );
-        }
-    };
-    let range_authority = match range_authority(registered_ranges.clone()) {
-        Ok(authority) => authority,
-        Err(err) => {
-            return DiagnosticCheck::failed(
-                DiagnosticCode::RangeAuthority,
-                format!("range authority: {err}"),
-            );
-        }
-    };
-    let snapshot = match declaration_snapshot(registered_declarations.clone()) {
-        Ok(snapshot) => snapshot,
-        Err(err) => {
-            return DiagnosticCheck::failed(
-                DiagnosticCode::DeclarationSnapshot,
-                format!("declaration snapshot: {err}"),
-            );
-        }
-    };
     let recovered = match diagnostic_validation_ledger(stable_cell_record, recovered) {
         Ok(recovered) => recovered,
         Err(failure) => return DiagnosticCheck::not_run(failure.code, failure.message),
     };
     let policy = RuntimeMemoryManagerPolicy {
-        range_authority,
-        user_ranges_registered: !registered_ranges.is_empty(),
-        declaration_metadata: declaration_metadata(&registered_declarations),
+        declarations,
         custom_policy: &NoopPolicy,
     };
-
-    match crate::validate_allocations(&recovered, snapshot, &policy) {
+    match crate::validate_allocations(
+        &recovered,
+        declarations.allocation_snapshot().clone(),
+        &policy,
+    ) {
         Ok(_) => DiagnosticCheck::passed(),
         Err(err) => DiagnosticCheck::failed(DiagnosticCode::AllocationValidation, err.to_string()),
     }
@@ -711,79 +613,6 @@ fn diagnostic_genesis_recovered_ledger() -> Result<crate::RecoveredLedger, Diagn
         })
 }
 
-fn publish_committed_allocations<P>(
-    committed: CommittedAllocations,
-) -> Result<(), RuntimeBootstrapError<P>> {
-    *COMMITTED_ALLOCATIONS
-        .lock()
-        .map_err(|_| RuntimeBootstrapError::RuntimeLockPoisoned)? = Some(committed);
-    Ok(())
-}
-
-fn declaration_snapshot(
-    registrations: Vec<StaticMemoryDeclaration>,
-) -> Result<DeclarationSnapshot, StaticMemoryDeclarationError> {
-    let mut declarations = Vec::with_capacity(registrations.len() + 1);
-    declarations.push(internal_ledger_declaration()?);
-    declarations.extend(
-        registrations
-            .into_iter()
-            .map(StaticMemoryDeclaration::into_declaration),
-    );
-    DeclarationSnapshot::new(declarations).map_err(StaticMemoryDeclarationError::Declaration)
-}
-
-fn declaration_metadata(
-    registrations: &[StaticMemoryDeclaration],
-) -> BTreeMap<String, RuntimeDeclarationAuthority> {
-    let mut metadata = BTreeMap::new();
-    metadata.insert(
-        IC_MEMORY_LEDGER_STABLE_KEY.to_string(),
-        RuntimeDeclarationAuthority::Internal,
-    );
-    for registration in registrations {
-        metadata.insert(
-            registration.declaration().stable_key().as_str().to_string(),
-            RuntimeDeclarationAuthority::External(registration.authority().to_string()),
-        );
-    }
-    metadata
-}
-
-fn range_authority(
-    registrations: Vec<StaticMemoryRangeDeclaration>,
-) -> Result<MemoryManagerRangeAuthority, MemoryManagerRangeAuthorityError> {
-    let mut records = Vec::with_capacity(registrations.len() + 1);
-    records.push(internal_ledger_range()?);
-    records.extend(
-        registrations
-            .into_iter()
-            .map(StaticMemoryRangeDeclaration::into_record),
-    );
-    MemoryManagerRangeAuthority::from_records(records)
-}
-
-fn internal_ledger_declaration() -> Result<AllocationDeclaration, crate::DeclarationSnapshotError> {
-    AllocationDeclaration::memory_manager(
-        IC_MEMORY_LEDGER_STABLE_KEY,
-        MEMORY_MANAGER_LEDGER_ID,
-        IC_MEMORY_LEDGER_LABEL,
-    )
-}
-
-fn internal_ledger_range() -> Result<MemoryManagerAuthorityRecord, MemoryManagerRangeAuthorityError>
-{
-    MemoryManagerAuthorityRecord::new(
-        MemoryManagerIdRange::new(
-            MEMORY_MANAGER_LEDGER_ID,
-            crate::MEMORY_MANAGER_GOVERNANCE_MAX_ID,
-        )?,
-        IC_MEMORY_AUTHORITY_OWNER,
-        MemoryManagerRangeMode::Reserved,
-        Some(IC_MEMORY_AUTHORITY_PURPOSE.to_string()),
-    )
-}
-
 fn runtime_bootstrap_error_from_bootstrap<P>(
     err: crate::BootstrapError<RuntimePolicyError<P>>,
 ) -> RuntimeBootstrapError<P> {
@@ -795,15 +624,8 @@ fn runtime_bootstrap_error_from_bootstrap<P>(
 }
 
 struct RuntimeMemoryManagerPolicy<'a, P> {
-    range_authority: MemoryManagerRangeAuthority,
-    user_ranges_registered: bool,
-    declaration_metadata: BTreeMap<String, RuntimeDeclarationAuthority>,
+    declarations: &'a SealedDeclarationSnapshot,
     custom_policy: &'a P,
-}
-
-enum RuntimeDeclarationAuthority {
-    Internal,
-    External(String),
 }
 
 impl<P: AllocationPolicy> AllocationPolicy for RuntimeMemoryManagerPolicy<'_, P> {
@@ -865,7 +687,8 @@ impl<P: AllocationPolicy> RuntimeMemoryManagerPolicy<'_, P> {
         &self,
         key: &StableKey,
     ) -> Result<&RuntimeDeclarationAuthority, RuntimePolicyError<P::Error>> {
-        self.declaration_metadata
+        self.declarations
+            .declaration_authority()
             .get(key.as_str())
             .ok_or_else(|| RuntimePolicyError::MissingDeclarationMetadata(key.as_str().to_string()))
     }
@@ -876,13 +699,9 @@ impl<P: AllocationPolicy> RuntimeMemoryManagerPolicy<'_, P> {
         slot: &AllocationSlotDescriptor,
     ) -> Result<(), RuntimePolicyError<P::Error>> {
         let authority = self.declaration_authority(key)?;
-        // Range claims are authoritative generic policy in the default runtime.
-        // Once any user range is registered, every user declaration must fit
-        // the authority's claimed range. With no user ranges, only the
-        // internal ic-memory governance range is enforced here and custom
-        // policy may decide application-space ownership.
         if matches!(authority, RuntimeDeclarationAuthority::Internal) {
-            self.range_authority
+            self.declarations
+                .range_authority()
                 .validate_slot_authority(slot, IC_MEMORY_AUTHORITY_OWNER)?;
             return Ok(());
         }
@@ -892,8 +711,9 @@ impl<P: AllocationPolicy> RuntimeMemoryManagerPolicy<'_, P> {
                 key.as_str().to_string(),
             ));
         };
-        if self.user_ranges_registered {
-            self.range_authority
+        if self.declarations.user_ranges_registered() {
+            self.declarations
+                .range_authority()
                 .validate_slot_authority(slot, authority)?;
             return Ok(());
         }
@@ -902,12 +722,13 @@ impl<P: AllocationPolicy> RuntimeMemoryManagerPolicy<'_, P> {
             .memory_manager_id()
             .map_err(MemoryManagerRangeAuthorityError::Slot)?;
         if self
-            .range_authority
-            .authority_for_id(id)
-            .map_err(RuntimePolicyError::Range)?
+            .declarations
+            .range_authority()
+            .authority_for_id(id)?
             .is_some()
         {
-            self.range_authority
+            self.declarations
+                .range_authority()
                 .validate_slot_authority(slot, authority)?;
         }
         Ok(())
@@ -940,20 +761,98 @@ impl AllocationPolicy for NoopPolicy {
     }
 }
 
-#[cfg(test)]
-pub fn reset_for_tests() {
-    crate::registry::reset_static_memory_declarations_for_tests();
-    EAGER_INIT_HOOKS
-        .lock()
-        .expect("ic-memory eager-init queue poisoned")
-        .clear();
-    *COMMITTED_ALLOCATIONS
-        .lock()
-        .expect("ic-memory runtime validation state poisoned") = None;
-    BOOTSTRAPPED.store(false, Ordering::SeqCst);
-    DEFAULT_LEDGER_CELL.with_borrow_mut(|cell| {
-        *cell = None;
-    });
+thread_local! {
+    static DEFAULT_RUNTIME: RefCell<MemoryRuntime<DefaultMemoryImpl>> =
+        RefCell::new(MemoryRuntime::new(DefaultMemoryImpl::default()));
+}
+
+fn with_default_runtime<T, E>(
+    operation: impl FnOnce(&MemoryRuntime<DefaultMemoryImpl>) -> Result<T, E>,
+) -> Result<T, E>
+where
+    E: From<RuntimeStateError>,
+{
+    match DEFAULT_RUNTIME.try_with(|runtime| {
+        let runtime = runtime
+            .try_borrow()
+            .map_err(|_| E::from(RuntimeStateError::ReentrantAccess))?;
+        operation(&runtime)
+    }) {
+        Ok(result) => result,
+        Err(_) => Err(E::from(RuntimeStateError::Unavailable)),
+    }
+}
+
+fn with_default_runtime_mut<T, E>(
+    operation: impl FnOnce(&mut MemoryRuntime<DefaultMemoryImpl>) -> Result<T, E>,
+) -> Result<T, E>
+where
+    E: From<RuntimeStateError>,
+{
+    match DEFAULT_RUNTIME.try_with(|runtime| {
+        let mut runtime = runtime
+            .try_borrow_mut()
+            .map_err(|_| E::from(RuntimeStateError::ReentrantAccess))?;
+        operation(&mut runtime)
+    }) {
+        Ok(result) => result,
+        Err(_) => Err(E::from(RuntimeStateError::Unavailable)),
+    }
+}
+
+/// Return whether this thread's default runtime has completed bootstrap.
+pub fn is_default_memory_manager_bootstrapped() -> Result<bool, RuntimeStateError> {
+    with_default_runtime(|runtime| Ok(runtime.is_bootstrapped()))
+}
+
+/// Return this thread's default runtime committed allocation capability.
+pub fn committed_allocations() -> Result<CommittedAllocations, RuntimeOpenError> {
+    with_default_runtime(|runtime| runtime.committed_allocations().cloned())
+}
+
+/// Bootstrap this thread's default runtime using generic range policy.
+pub fn bootstrap_default_memory_manager()
+-> Result<CommittedAllocations, RuntimeBootstrapError<Infallible>> {
+    bootstrap_default_memory_manager_with_policy(&NoopPolicy)
+}
+
+/// Bootstrap this thread's default runtime with caller-supplied policy.
+///
+/// Static declarations are sealed once per linked program. Recovery, policy
+/// evaluation, persistence, and capability publication occur once for this
+/// concrete TLS runtime.
+pub fn bootstrap_default_memory_manager_with_policy<P: AllocationPolicy>(
+    policy: &P,
+) -> Result<CommittedAllocations, RuntimeBootstrapError<P::Error>> {
+    let declarations = sealed_declaration_snapshot()?;
+    with_default_runtime_mut(|runtime| runtime.bootstrap(&declarations, policy).cloned())
+}
+
+/// Open a committed memory from this thread's default runtime.
+pub fn open_default_memory_manager_memory(
+    stable_key: &str,
+    id: u8,
+) -> Result<VirtualMemory<DefaultMemoryImpl>, RuntimeOpenError> {
+    with_default_runtime(|runtime| runtime.open_memory(stable_key, id))
+}
+
+/// Export this thread's default runtime ledger and live memory sizes.
+pub fn default_memory_manager_diagnostic_export() -> Result<DiagnosticExport, RuntimeDiagnosticError>
+{
+    with_default_runtime(MemoryRuntime::diagnostic_export)
+}
+
+/// Diagnose protected commit recovery for this thread's default runtime.
+pub fn default_memory_manager_commit_recovery_diagnostic()
+-> Result<CommitStoreDiagnostic, RuntimeDiagnosticError> {
+    with_default_runtime(MemoryRuntime::commit_recovery_diagnostic)
+}
+
+/// Build preflight and lifecycle diagnostics for this thread's default runtime.
+pub fn default_memory_manager_doctor_report()
+-> Result<MemoryRuntimeDoctorReport, RuntimeDiagnosticError> {
+    let declarations = sealed_declaration_snapshot()?;
+    with_default_runtime(|runtime| Ok(runtime.doctor_report(&declarations)))
 }
 
 #[cfg(test)]
@@ -961,477 +860,317 @@ mod tests {
     use super::*;
     use crate::registry::{
         TEST_REGISTRY_LOCK, register_static_memory_manager_declaration,
-        register_static_memory_manager_range,
+        register_static_memory_manager_range, reset_static_memory_declarations_for_tests,
     };
-    use std::sync::atomic::{AtomicBool, Ordering};
+    use ic_stable_structures::VectorMemory;
 
-    static EAGER_INIT_RAN: AtomicBool = AtomicBool::new(false);
+    fn declarations() -> SealedDeclarationSnapshot {
+        reset_static_memory_declarations_for_tests();
+        register_static_memory_manager_range(
+            120,
+            120,
+            "runtime_tests",
+            crate::MemoryManagerRangeMode::Reserved,
+            None,
+        )
+        .expect("test range");
+        register_static_memory_manager_declaration(
+            120,
+            "runtime_tests",
+            "rows",
+            "runtime_tests.rows.v1",
+        )
+        .expect("test declaration");
+        sealed_declaration_snapshot().expect("sealed declarations")
+    }
 
-    struct ExternalOnlyPolicy;
+    struct CountingPolicy(std::cell::Cell<usize>);
 
-    impl AllocationPolicy for ExternalOnlyPolicy {
-        type Error = &'static str;
+    impl AllocationPolicy for CountingPolicy {
+        type Error = Infallible;
 
-        fn validate_key(&self, key: &StableKey) -> Result<(), Self::Error> {
-            if crate::is_ic_memory_stable_key(key.as_str()) {
-                return Err("internal key reached external policy");
-            }
+        fn validate_key(&self, _key: &StableKey) -> Result<(), Self::Error> {
+            self.0.set(self.0.get() + 1);
             Ok(())
         }
 
         fn validate_slot(
             &self,
             _key: &StableKey,
-            slot: &AllocationSlotDescriptor,
+            _slot: &AllocationSlotDescriptor,
         ) -> Result<(), Self::Error> {
-            if slot
-                .memory_manager_id()
-                .is_ok_and(|id| id <= crate::MEMORY_MANAGER_GOVERNANCE_MAX_ID)
-            {
-                return Err("internal slot reached external policy");
-            }
+            self.0.set(self.0.get() + 1);
             Ok(())
         }
 
         fn validate_reserved_slot(
             &self,
-            key: &StableKey,
-            slot: &AllocationSlotDescriptor,
+            _key: &StableKey,
+            _slot: &AllocationSlotDescriptor,
         ) -> Result<(), Self::Error> {
-            self.validate_slot(key, slot)
+            Ok(())
         }
     }
 
-    fn register_crate_a() {
-        register_static_memory_manager_range(
-            100,
-            109,
-            "crate_a",
-            MemoryManagerRangeMode::Reserved,
-            None,
-        )
-        .expect("crate A range");
-        register_static_memory_manager_declaration(100, "crate_a", "users", "crate_a.users.v1")
-            .expect("crate A memory");
-    }
-
-    fn register_crate_b() {
-        register_static_memory_manager_range(
-            110,
-            119,
-            "crate_b",
-            MemoryManagerRangeMode::Reserved,
-            None,
-        )
-        .expect("crate B range");
-        register_static_memory_manager_declaration(110, "crate_b", "orders", "crate_b.orders.v1")
-            .expect("crate B memory");
-    }
-
-    fn mark_eager_init() {
-        EAGER_INIT_RAN.store(true, Ordering::SeqCst);
-        register_static_memory_manager_declaration(101, "crate_a", "audit", "crate_a.audit.v1")
-            .expect("eager-init declaration");
-    }
-
     #[test]
-    fn multi_crate_declarations_compose_into_one_bootstrap() {
-        let _guard = TEST_REGISTRY_LOCK.lock().expect("test lock poisoned");
-        reset_for_tests();
-        register_crate_a();
-        register_crate_b();
+    fn separate_runtimes_have_independent_bootstrap_authority_and_memory() {
+        let _guard = TEST_REGISTRY_LOCK.lock().expect("test lock");
+        let declarations = declarations();
+        let mut runtime_a = MemoryRuntime::new(VectorMemory::default());
+        let mut runtime_b = MemoryRuntime::new(VectorMemory::default());
+        let policy = CountingPolicy(std::cell::Cell::new(0));
 
-        let validated = bootstrap_default_memory_manager().expect("bootstrap");
-
-        assert_eq!(validated.declarations().len(), 2);
-        assert!(
-            validated
-                .declarations()
-                .iter()
-                .any(|declaration| declaration.stable_key().as_str() == "crate_a.users.v1")
-        );
-        assert!(
-            validated
-                .declarations()
-                .iter()
-                .any(|declaration| declaration.stable_key().as_str() == "crate_b.orders.v1")
-        );
-    }
-
-    #[test]
-    fn default_runtime_keeps_internal_ledger_slot_private() {
-        let _guard = TEST_REGISTRY_LOCK.lock().expect("test lock poisoned");
-        reset_for_tests();
-
-        let validated = bootstrap_default_memory_manager().expect("bootstrap");
-
-        assert!(validated.declarations().is_empty());
-        assert!(
-            committed_allocations()
-                .expect("published allocations")
-                .declarations()
-                .is_empty()
-        );
-        let Err(err) = open_default_memory_manager_memory(
-            IC_MEMORY_LEDGER_STABLE_KEY,
-            MEMORY_MANAGER_LEDGER_ID,
-        ) else {
-            panic!("internal ledger slot must stay private");
-        };
-        assert!(matches!(err, RuntimeOpenError::ReservedStableKey { .. }));
-    }
-
-    #[test]
-    fn custom_policy_validates_external_declarations_only() {
-        let _guard = TEST_REGISTRY_LOCK.lock().expect("test lock poisoned");
-        reset_for_tests();
-        register_static_memory_manager_range(
-            244,
-            244,
-            "external_policy",
-            MemoryManagerRangeMode::Reserved,
-            None,
-        )
-        .expect("external range");
-        register_static_memory_manager_declaration(
-            244,
-            "external_policy",
-            "users",
-            "external_policy.users.v1",
-        )
-        .expect("external declaration");
-
-        let committed = bootstrap_default_memory_manager_with_policy(&ExternalOnlyPolicy)
-            .expect("external-only policy bootstrap");
-
-        assert_eq!(committed.declarations().len(), 1);
+        runtime_a
+            .bootstrap(&declarations, &policy)
+            .expect("runtime A bootstrap");
+        assert_eq!(policy.0.get(), 2);
+        assert!(runtime_a.is_bootstrapped());
+        assert!(!runtime_b.is_bootstrapped());
         assert_eq!(
-            committed.declarations()[0].stable_key().as_str(),
-            "external_policy.users.v1"
+            runtime_b.committed_allocations().expect_err("runtime B"),
+            RuntimeOpenError::NotBootstrapped
+        );
+
+        let memory_a = runtime_a
+            .open_memory("runtime_tests.rows.v1", 120)
+            .expect("runtime A memory");
+        memory_a.grow(1);
+        memory_a.write(0, b"runtime-a");
+
+        runtime_b
+            .bootstrap(&declarations, &policy)
+            .expect("runtime B bootstrap");
+        assert_eq!(policy.0.get(), 4);
+        let memory_b = runtime_b
+            .open_memory("runtime_tests.rows.v1", 120)
+            .expect("runtime B memory");
+        assert_eq!(memory_b.size(), 0);
+        memory_b.grow(1);
+        let mut bytes = [0; 9];
+        memory_b.read(0, &mut bytes);
+        assert_eq!(&bytes, &[0; 9]);
+        assert_eq!(
+            runtime_a
+                .diagnostic_export()
+                .expect("runtime A diagnostics")
+                .current_generation,
+            1
+        );
+        assert_eq!(
+            runtime_b
+                .diagnostic_export()
+                .expect("runtime B diagnostics")
+                .current_generation,
+            1
         );
     }
 
     #[test]
-    fn conflicting_ranges_fail() {
-        let _guard = TEST_REGISTRY_LOCK.lock().expect("test lock poisoned");
-        reset_for_tests();
-        register_static_memory_manager_range(
-            100,
-            110,
-            "crate_a",
-            MemoryManagerRangeMode::Reserved,
-            None,
-        )
-        .expect("crate A range");
-        register_static_memory_manager_range(
-            105,
-            119,
-            "crate_b",
-            MemoryManagerRangeMode::Reserved,
-            None,
-        )
-        .expect("crate B range");
+    fn concurrent_independent_runtimes_do_not_share_bootstrap_state() {
+        let _guard = TEST_REGISTRY_LOCK.lock().expect("test lock");
+        let declarations = declarations();
+        let first_declarations = declarations.clone();
+        let second_declarations = declarations;
 
-        let err = bootstrap_default_memory_manager().expect_err("overlap must fail");
-        assert!(matches!(
-            err,
-            RuntimeBootstrapError::Range(
-                MemoryManagerRangeAuthorityError::OverlappingRanges { .. }
+        let (first, second) = std::thread::scope(|scope| {
+            let first = scope.spawn(move || {
+                let mut runtime = MemoryRuntime::new(VectorMemory::default());
+                let generation = runtime
+                    .bootstrap(&first_declarations, &NoopPolicy)
+                    .expect("first bootstrap")
+                    .generation();
+                let diagnostic_generation = runtime
+                    .diagnostic_export()
+                    .expect("first diagnostics")
+                    .current_generation;
+                (generation, diagnostic_generation)
+            });
+            let second = scope.spawn(move || {
+                let mut runtime = MemoryRuntime::new(VectorMemory::default());
+                let generation = runtime
+                    .bootstrap(&second_declarations, &NoopPolicy)
+                    .expect("second bootstrap")
+                    .generation();
+                let diagnostic_generation = runtime
+                    .diagnostic_export()
+                    .expect("second diagnostics")
+                    .current_generation;
+                (generation, diagnostic_generation)
+            });
+            (
+                first.join().expect("first runtime thread"),
+                second.join().expect("second runtime thread"),
             )
-        ));
+        });
+
+        assert_eq!(first, (1, 1));
+        assert_eq!(second, (1, 1));
     }
 
     #[test]
-    fn duplicate_stable_keys_fail() {
-        let _guard = TEST_REGISTRY_LOCK.lock().expect("test lock poisoned");
-        reset_for_tests();
-        register_static_memory_manager_declaration(100, "crate_a", "users", "app.users.v1")
-            .expect("first declaration");
-        register_static_memory_manager_declaration(101, "crate_b", "users", "app.users.v1")
-            .expect("second declaration");
-
-        let err = bootstrap_default_memory_manager().expect_err("duplicate key must fail");
-        assert!(matches!(
-            err,
-            RuntimeBootstrapError::Registry(StaticMemoryDeclarationError::Declaration(
-                crate::DeclarationSnapshotError::DuplicateStableKey(_)
-            ))
-        ));
-    }
-
-    #[test]
-    fn duplicate_memory_manager_ids_fail() {
-        let _guard = TEST_REGISTRY_LOCK.lock().expect("test lock poisoned");
-        reset_for_tests();
-        register_static_memory_manager_declaration(100, "crate_a", "users", "crate_a.users.v1")
-            .expect("first declaration");
-        register_static_memory_manager_declaration(100, "crate_b", "orders", "crate_b.orders.v1")
-            .expect("second declaration");
-
-        let err = bootstrap_default_memory_manager().expect_err("duplicate slot must fail");
-        assert!(matches!(
-            err,
-            RuntimeBootstrapError::Registry(StaticMemoryDeclarationError::Declaration(
-                crate::DeclarationSnapshotError::DuplicateSlot(_)
-            ))
-        ));
-    }
-
-    #[test]
-    fn out_of_range_memory_declaration_fails_when_ranges_are_declared() {
-        let _guard = TEST_REGISTRY_LOCK.lock().expect("test lock poisoned");
-        reset_for_tests();
-        register_static_memory_manager_range(
-            100,
-            109,
-            "crate_a",
-            MemoryManagerRangeMode::Reserved,
-            None,
-        )
-        .expect("crate A range");
-        register_static_memory_manager_declaration(120, "crate_a", "users", "crate_a.users.v1")
-            .expect("out-of-range declaration");
-
-        let err = bootstrap_default_memory_manager().expect_err("out of range must fail");
-        assert!(matches!(
-            err,
-            RuntimeBootstrapError::Validation(crate::AllocationValidationError::Policy(
-                RuntimePolicyError::Range(MemoryManagerRangeAuthorityError::UnclaimedId {
-                    id: 120
-                })
-            ))
-        ));
-    }
-
-    #[test]
-    fn late_registration_after_bootstrap_fails() {
-        let _guard = TEST_REGISTRY_LOCK.lock().expect("test lock poisoned");
-        reset_for_tests();
-        register_static_memory_manager_declaration(100, "crate_a", "users", "crate_a.users.v1")
-            .expect("declaration");
-        bootstrap_default_memory_manager().expect("bootstrap");
-
-        let err = register_static_memory_manager_declaration(
-            101,
-            "crate_a",
-            "orders",
-            "crate_a.orders.v1",
-        )
-        .expect_err("late registration must fail");
-        assert_eq!(err, StaticMemoryDeclarationError::RegistrySealed);
-    }
-
-    #[test]
-    fn late_eager_init_registration_after_bootstrap_fails() {
-        let _guard = TEST_REGISTRY_LOCK.lock().expect("test lock poisoned");
-        reset_for_tests();
-        register_static_memory_manager_declaration(100, "crate_a", "users", "crate_a.users.v1")
-            .expect("declaration");
-        bootstrap_default_memory_manager().expect("bootstrap");
-
-        let err = std::panic::catch_unwind(|| defer_eager_init(mark_eager_init))
-            .expect_err("late eager-init registration must fail");
-
-        let message = err
-            .downcast_ref::<String>()
-            .map(String::as_str)
-            .or_else(|| err.downcast_ref::<&str>().copied())
-            .expect("panic message");
-        assert!(message.contains("after runtime bootstrap"));
-    }
-
-    #[test]
-    fn eager_init_runs_before_snapshot_seal() {
-        let _guard = TEST_REGISTRY_LOCK.lock().expect("test lock poisoned");
-        reset_for_tests();
-        EAGER_INIT_RAN.store(false, Ordering::SeqCst);
-        register_static_memory_manager_range(
-            100,
-            109,
-            "crate_a",
-            MemoryManagerRangeMode::Reserved,
-            None,
-        )
-        .expect("crate A range");
-        defer_eager_init(mark_eager_init);
-
-        let validated = bootstrap_default_memory_manager().expect("bootstrap");
-
-        assert!(EAGER_INIT_RAN.load(Ordering::SeqCst));
-        assert!(
-            validated
-                .declarations()
-                .iter()
-                .any(|declaration| declaration.stable_key().as_str() == "crate_a.audit.v1")
-        );
-    }
-
-    #[test]
-    fn direct_user_can_bootstrap_and_open_without_canic() {
-        let _guard = TEST_REGISTRY_LOCK.lock().expect("test lock poisoned");
-        reset_for_tests();
-        register_static_memory_manager_range(
-            120,
-            129,
-            "icydb",
-            MemoryManagerRangeMode::Reserved,
-            None,
-        )
-        .expect("icydb range");
-        register_static_memory_manager_declaration(120, "icydb", "users", "icydb.users.data.v1")
-            .expect("icydb declaration");
-
-        bootstrap_default_memory_manager().expect("bootstrap");
-        open_default_memory_manager_memory("icydb.users.data.v1", 120).expect("open memory");
-    }
-
-    #[test]
-    fn diagnostic_export_reports_default_memory_manager_sizes() {
-        let _guard = TEST_REGISTRY_LOCK.lock().expect("test lock poisoned");
-        reset_for_tests();
-        register_static_memory_manager_range(
-            130,
-            139,
-            "diagnostics",
-            MemoryManagerRangeMode::Reserved,
-            None,
-        )
-        .expect("diagnostics range");
-        register_static_memory_manager_declaration(
-            130,
-            "diagnostics",
-            "users",
-            "diagnostics.users.v1",
-        )
-        .expect("diagnostics declaration");
-
-        bootstrap_default_memory_manager().expect("bootstrap");
-        let memory =
-            open_default_memory_manager_memory("diagnostics.users.v1", 130).expect("open memory");
-        let old_size = memory.size();
-        memory.grow(2);
-
-        let export = default_memory_manager_diagnostic_export().expect("diagnostic export");
-        let recovery =
-            default_memory_manager_commit_recovery_diagnostic().expect("recovery diagnostic");
-        let record = export
-            .records
-            .iter()
-            .find(|record| record.allocation.stable_key().as_str() == "diagnostics.users.v1")
-            .expect("diagnostic allocation");
-
-        assert_eq!(recovery.recovery, Ok(export.current_generation));
-        assert_eq!(
-            record.memory_size,
-            Some(DiagnosticMemorySize::from_wasm_pages(old_size + 2))
-        );
-    }
-
-    #[test]
-    fn doctor_report_preflights_before_bootstrap() {
-        let _guard = TEST_REGISTRY_LOCK.lock().expect("test lock poisoned");
-        reset_for_tests();
-        register_static_memory_manager_range(
-            240,
-            240,
-            "doctor_preflight",
-            MemoryManagerRangeMode::Reserved,
-            None,
-        )
-        .expect("doctor range");
-        register_static_memory_manager_declaration(
-            240,
-            "doctor_preflight",
-            "users",
-            "doctor_preflight.users.v1",
-        )
-        .expect("doctor declaration");
-
-        let report = default_memory_manager_doctor_report();
-
-        assert!(!report.bootstrapped);
-        assert_eq!(report.registered_declarations.len(), 1);
-        assert!(report.range_authority.effective_authority.is_ok());
-        assert_eq!(report.validation, crate::DiagnosticCheck::Passed);
-        assert!(report.commit_recovery.is_some());
-        assert!(matches!(
-            report.stable_cell.status,
-            crate::DiagnosticStableCellStatus::Empty | crate::DiagnosticStableCellStatus::Readable
-        ));
-    }
-
-    #[test]
-    fn doctor_report_includes_recovered_ledger_and_memory_sizes_after_bootstrap() {
-        let _guard = TEST_REGISTRY_LOCK.lock().expect("test lock poisoned");
-        reset_for_tests();
-        register_static_memory_manager_range(
-            241,
-            241,
-            "doctor_runtime",
-            MemoryManagerRangeMode::Reserved,
-            None,
-        )
-        .expect("doctor range");
-        register_static_memory_manager_declaration(
-            241,
-            "doctor_runtime",
-            "orders",
-            "doctor_runtime.orders.v1",
-        )
-        .expect("doctor declaration");
-
-        bootstrap_default_memory_manager().expect("bootstrap");
-        let memory = open_default_memory_manager_memory("doctor_runtime.orders.v1", 241)
-            .expect("open memory");
-        let old_size = memory.size();
-        memory.grow(1);
-
-        let report = default_memory_manager_doctor_report();
-        let ledger = report.ledger.expect("recovered ledger export");
-        let record = ledger
-            .records
-            .iter()
-            .find(|record| record.allocation.stable_key().as_str() == "doctor_runtime.orders.v1")
-            .expect("doctor allocation");
-
-        assert!(report.bootstrapped);
-        assert_eq!(
-            report.stable_cell.status,
-            crate::DiagnosticStableCellStatus::Readable
-        );
-        assert_eq!(report.validation, crate::DiagnosticCheck::Passed);
-        assert_eq!(
-            record.memory_size,
-            Some(DiagnosticMemorySize::from_wasm_pages(old_size + 1))
-        );
-    }
-
-    #[test]
-    fn doctor_report_captures_validation_failure() {
-        let _guard = TEST_REGISTRY_LOCK.lock().expect("test lock poisoned");
-        reset_for_tests();
-        register_static_memory_manager_declaration(
-            242,
-            "doctor_failure_a",
-            "users",
-            "doctor_failure.users.v1",
-        )
-        .expect("first declaration");
-        register_static_memory_manager_declaration(
-            243,
-            "doctor_failure_b",
-            "orders",
-            "doctor_failure.users.v1",
-        )
-        .expect("second declaration");
-
-        let report = default_memory_manager_doctor_report();
-
-        let crate::DiagnosticCheck::Failed { code, message } = report.validation else {
-            panic!("validation must fail");
+    fn repeated_bootstrap_is_idempotent_and_existing_memory_recovers() {
+        let _guard = TEST_REGISTRY_LOCK.lock().expect("test lock");
+        let declarations = declarations();
+        let backing = VectorMemory::default();
+        let generation = {
+            let mut runtime = MemoryRuntime::new(backing.clone());
+            let first = runtime
+                .bootstrap(&declarations, &NoopPolicy)
+                .expect("first bootstrap")
+                .generation();
+            let second = runtime
+                .bootstrap(&declarations, &NoopPolicy)
+                .expect("idempotent bootstrap")
+                .generation();
+            assert_eq!(first, second);
+            let memory = runtime
+                .open_memory("runtime_tests.rows.v1", 120)
+                .expect("first runtime memory");
+            memory.grow(1);
+            memory.write(0, b"persisted");
+            first
         };
-        assert_eq!(code, crate::DiagnosticCode::DeclarationSnapshot);
-        assert!(message.contains("declared more than once"));
+
+        let mut recovered_runtime = MemoryRuntime::new(backing);
+        let recovered_generation = recovered_runtime
+            .bootstrap(&declarations, &NoopPolicy)
+            .expect("recover existing backing memory")
+            .generation();
+        assert!(recovered_generation >= generation);
+        assert_eq!(
+            recovered_runtime
+                .diagnostic_export()
+                .expect("runtime diagnostic")
+                .current_generation,
+            recovered_generation
+        );
+        let memory = recovered_runtime
+            .open_memory("runtime_tests.rows.v1", 120)
+            .expect("recovered runtime memory");
+        let mut bytes = [0; 9];
+        memory.read(0, &mut bytes);
+        assert_eq!(&bytes, b"persisted");
+    }
+
+    struct RejectPolicy;
+
+    impl AllocationPolicy for RejectPolicy {
+        type Error = &'static str;
+
+        fn validate_key(&self, _key: &StableKey) -> Result<(), Self::Error> {
+            Err("rejected")
+        }
+
+        fn validate_slot(
+            &self,
+            _key: &StableKey,
+            _slot: &AllocationSlotDescriptor,
+        ) -> Result<(), Self::Error> {
+            Ok(())
+        }
+
+        fn validate_reserved_slot(
+            &self,
+            _key: &StableKey,
+            _slot: &AllocationSlotDescriptor,
+        ) -> Result<(), Self::Error> {
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn open_errors_and_failed_bootstrap_do_not_publish_authority() {
+        let _guard = TEST_REGISTRY_LOCK.lock().expect("test lock");
+        let declarations = declarations();
+        let mut runtime = MemoryRuntime::new(VectorMemory::default());
+
+        let Err(open_before_bootstrap) = runtime.open_memory("runtime_tests.rows.v1", 120) else {
+            panic!("open before bootstrap must fail");
+        };
+        assert_eq!(open_before_bootstrap, RuntimeOpenError::NotBootstrapped);
+        assert!(runtime.bootstrap(&declarations, &RejectPolicy).is_err());
+        assert!(!runtime.is_bootstrapped());
+        assert!(!runtime.doctor_report(&declarations).bootstrapped);
+        assert!(matches!(
+            runtime.diagnostic_export(),
+            Err(RuntimeDiagnosticError::NotBootstrapped)
+        ));
+        assert_eq!(
+            runtime.committed_allocations().expect_err("no capability"),
+            RuntimeOpenError::NotBootstrapped
+        );
+
+        runtime
+            .bootstrap(&declarations, &NoopPolicy)
+            .expect("successful retry");
+        let Err(wrong_key) = runtime.open_memory("runtime_tests.missing.v1", 120) else {
+            panic!("wrong key must fail");
+        };
+        assert!(matches!(
+            wrong_key,
+            RuntimeOpenError::StableKeyNotCommitted(_)
+        ));
+        let Err(wrong_id) = runtime.open_memory("runtime_tests.rows.v1", 121) else {
+            panic!("wrong ID must fail");
+        };
+        assert!(matches!(
+            wrong_id,
+            RuntimeOpenError::MemoryIdMismatch { .. }
+        ));
+    }
+
+    #[test]
+    fn doctor_and_diagnostics_report_the_same_runtime_lifecycle() {
+        let _guard = TEST_REGISTRY_LOCK.lock().expect("test lock");
+        let declarations = declarations();
+        let mut runtime = MemoryRuntime::new(VectorMemory::default());
+
+        assert!(!runtime.doctor_report(&declarations).bootstrapped);
+        assert!(matches!(
+            runtime.diagnostic_export(),
+            Err(RuntimeDiagnosticError::NotBootstrapped)
+        ));
+
+        runtime
+            .bootstrap(&declarations, &NoopPolicy)
+            .expect("bootstrap");
+        let memory = runtime
+            .open_memory("runtime_tests.rows.v1", 120)
+            .expect("open");
+        memory.grow(2);
+        let doctor = runtime.doctor_report(&declarations);
+        let export = runtime.diagnostic_export().expect("diagnostic export");
+        assert!(doctor.bootstrapped);
+        assert_eq!(
+            doctor
+                .ledger
+                .as_ref()
+                .expect("doctor ledger")
+                .current_generation,
+            export.current_generation
+        );
+        assert_eq!(
+            export
+                .records
+                .iter()
+                .find(|record| {
+                    record.allocation.stable_key().as_str() == "runtime_tests.rows.v1"
+                })
+                .expect("runtime record")
+                .memory_size,
+            Some(DiagnosticMemorySize::from_wasm_pages(2))
+        );
+    }
+
+    #[test]
+    fn default_runtime_reentry_is_a_typed_state_error() {
+        DEFAULT_RUNTIME.with(|runtime| {
+            let _borrow = runtime.borrow_mut();
+            assert_eq!(
+                is_default_memory_manager_bootstrapped().expect_err("re-entry"),
+                RuntimeStateError::ReentrantAccess
+            );
+        });
     }
 
     #[test]

@@ -91,8 +91,9 @@ impl ValidatedAllocations {
 ///
 /// This type is not serializable, default-constructible, or publicly
 /// constructible. Generic persistence owners obtain it only by explicitly
-/// confirming a successful [`crate::PendingBootstrapCommit`]. The default runtime
-/// publishes it only after its stable cell write succeeds.
+/// confirming a successful [`crate::PendingBootstrapCommit`]. A
+/// [`crate::MemoryRuntime`] stores it only after that runtime's stable-cell write
+/// succeeds.
 ///
 
 #[derive(Clone, Debug, Eq, PartialEq)]

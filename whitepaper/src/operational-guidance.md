@@ -15,12 +15,25 @@ The normal integration pattern is:
    `post_upgrade` before any application stable structure is touched.
 
 `ic_memory_key!` is safe in a `thread_local!` definition because the actual
-stable-memory open happens when the value is first touched. Bootstrap must run
-before that first touch.
+stable-memory open happens when the value is first touched. The macro returns a
+typed open result; the TLS initializer should propagate or explicitly handle
+that result. Bootstrap must run before the first touch.
 
 Exactly one layer should bootstrap a given ledger store. Framework stacks
 should compose declarations into that owner, or use distinct ledger stores and
 allocation domains.
+
+The canonical owner is `MemoryRuntime<M>`. It owns the `MemoryManager`, ledger
+cell, bootstrap lifecycle, committed capability, opens, and diagnostics for one
+backing memory. Linked crates share only one immutable
+`SealedDeclarationSnapshot`; every runtime independently recovers and persists
+its own ledger.
+
+The default convenience runtime is thread-local. Native threads therefore have
+independent default memory instances and must each bootstrap their own runtime.
+IC Wasm execution is single-threaded, so the default TLS runtime naturally has
+canister-instance lifetime. Bootstrap means once per runtime, not once per
+process, and there is no public reset API.
 
 The default runtime reserves `MemoryManager` IDs `0..=9` and stable keys under
 `ic_memory.*` for allocation-governance records. The internal ledger allocation
@@ -35,8 +48,10 @@ Schema metadata is optional diagnostic metadata. Use it to record the in-place
 store schema version that a generation declared, but keep application migration
 logic outside `ic-memory`.
 
-For operator diagnostics, `ic_memory::default_memory_manager_doctor_report()`
-reports stable-cell status, protected commit recovery state, recovered ledger
-export, registered declarations, range authority, validation preflight, and
-live memory sizes when recovery succeeds. Failure states include stable
-diagnostic codes for automation as well as human-readable messages.
+For operator diagnostics, `MemoryRuntime::doctor_report(&snapshot)` reports
+stable-cell status, protected commit recovery state, recovered ledger export,
+registered declarations, range authority, validation preflight, and live
+memory sizes for that runtime when recovery succeeds. The default-runtime
+wrapper returns a typed TLS access error if it is re-entered. Failure states
+include stable diagnostic codes for automation as well as human-readable
+messages.

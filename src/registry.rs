@@ -1,14 +1,20 @@
 use crate::{
     constants::DIAGNOSTIC_STRING_MAX_BYTES,
-    declaration::{AllocationDeclaration, DeclarationCollector, DeclarationSnapshot},
+    declaration::{AllocationDeclaration, DeclarationSnapshot},
     schema::SchemaMetadata,
     slot::{
-        IC_MEMORY_AUTHORITY_OWNER, MemoryManagerAuthorityRecord, MemoryManagerIdRange,
-        MemoryManagerRangeAuthority, MemoryManagerRangeAuthorityError, MemoryManagerRangeMode,
-        is_ic_memory_stable_key,
+        IC_MEMORY_AUTHORITY_OWNER, IC_MEMORY_AUTHORITY_PURPOSE, IC_MEMORY_LEDGER_LABEL,
+        IC_MEMORY_LEDGER_STABLE_KEY, MEMORY_MANAGER_GOVERNANCE_MAX_ID, MEMORY_MANAGER_LEDGER_ID,
+        MemoryManagerAuthorityRecord, MemoryManagerIdRange, MemoryManagerRangeAuthority,
+        MemoryManagerRangeAuthorityError, MemoryManagerRangeMode, is_ic_memory_stable_key,
     },
 };
-use std::sync::{Mutex, MutexGuard};
+use std::{
+    collections::BTreeMap,
+    panic::{AssertUnwindSafe, catch_unwind},
+    sync::{Arc, Mutex, MutexGuard},
+    thread::ThreadId,
+};
 
 #[cfg(test)]
 pub static TEST_REGISTRY_LOCK: Mutex<()> = Mutex::new(());
@@ -17,10 +23,10 @@ pub static TEST_REGISTRY_LOCK: Mutex<()> = Mutex::new(());
 /// StaticMemoryDeclaration
 ///
 /// One allocation declaration registered by crate-level generated or macro
-/// code before bootstrap seals the declaration snapshot.
+/// code before the linked declaration registry seals its snapshot.
 ///
 /// The `authority` field is policy metadata for integration layers such as
-/// Canic or IcyDB. The default runtime uses it to match declarations against
+/// Canic or IcyDB. Each `MemoryRuntime` uses it to match declarations against
 /// registered range claims before it calls the caller's
 /// [`crate::AllocationPolicy`].
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -72,8 +78,8 @@ impl StaticMemoryDeclaration {
 /// StaticMemoryRangeDeclaration
 ///
 /// One `MemoryManager` authority range registered by crate-level generated or
-/// macro code before bootstrap seals the declaration snapshot. In the default
-/// runtime, registered user ranges are authoritative generic range policy:
+/// macro code before the linked registry seals the declaration snapshot. In a
+/// `MemoryRuntime`, registered user ranges are authoritative generic range policy:
 /// declarations must stay inside the authority's claimed range before
 /// caller-supplied policy runs.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -121,6 +127,12 @@ pub enum StaticMemoryDeclarationError {
     /// Bootstrap already sealed the declaration snapshot.
     #[error("static memory declaration registry is already sealed")]
     RegistrySealed,
+    /// Snapshot sealing was called recursively from an eager hook.
+    #[error("static memory declaration snapshot sealing is already active on this thread")]
+    ReentrantSealing,
+    /// A deferred eager initialization hook panicked while declarations were sealing.
+    #[error("static memory declaration eager-init hook panicked")]
+    EagerInitPanicked,
     /// Declaration validation failed.
     #[error(transparent)]
     Declaration(#[from] crate::DeclarationSnapshotError),
@@ -147,19 +159,106 @@ pub enum StaticMemoryDeclarationError {
     },
 }
 
-#[derive(Debug, Default)]
+///
+/// SealedDeclarationSnapshot
+///
+/// Immutable, canonical linked-program allocation declarations and range
+/// authority supplied to each concrete [`crate::MemoryRuntime`].
+///
+/// Sealing runs generated registration hooks and eager declaration hooks
+/// exactly once. Clones share the same immutable snapshot. This value contains
+/// declaration authority only; it contains no memory handles, recovery state,
+/// bootstrap lifecycle, or committed allocation capability.
+///
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct SealedDeclarationSnapshot {
+    inner: Arc<SealedDeclarationSnapshotInner>,
+}
+
+#[derive(Debug, Eq, PartialEq)]
+struct SealedDeclarationSnapshotInner {
+    allocation_snapshot: DeclarationSnapshot,
+    registered_declarations: Vec<StaticMemoryDeclaration>,
+    registered_ranges: Vec<StaticMemoryRangeDeclaration>,
+    range_authority: MemoryManagerRangeAuthority,
+    declaration_authority: BTreeMap<String, RuntimeDeclarationAuthority>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum RuntimeDeclarationAuthority {
+    Internal,
+    External(String),
+}
+
+impl SealedDeclarationSnapshot {
+    /// Borrow the canonical allocation snapshot, including runtime governance.
+    #[must_use]
+    pub fn allocation_snapshot(&self) -> &DeclarationSnapshot {
+        &self.inner.allocation_snapshot
+    }
+
+    /// Borrow canonical external declarations registered by linked code.
+    #[must_use]
+    pub fn registered_declarations(&self) -> &[StaticMemoryDeclaration] {
+        &self.inner.registered_declarations
+    }
+
+    /// Borrow canonical external range declarations registered by linked code.
+    #[must_use]
+    pub fn registered_ranges(&self) -> &[StaticMemoryRangeDeclaration] {
+        &self.inner.registered_ranges
+    }
+
+    /// Borrow the effective range authority, including runtime governance.
+    #[must_use]
+    pub fn range_authority(&self) -> &MemoryManagerRangeAuthority {
+        &self.inner.range_authority
+    }
+
+    pub(crate) fn declaration_authority(&self) -> &BTreeMap<String, RuntimeDeclarationAuthority> {
+        &self.inner.declaration_authority
+    }
+
+    pub(crate) fn user_ranges_registered(&self) -> bool {
+        !self.inner.registered_ranges.is_empty()
+    }
+
+    #[cfg(test)]
+    fn shares_storage_with(&self, other: &Self) -> bool {
+        Arc::ptr_eq(&self.inner, &other.inner)
+    }
+}
+
+type StaticRegistrationHook = fn() -> Result<(), StaticMemoryDeclarationError>;
+
+#[derive(Debug)]
 struct StaticMemoryDeclarationRegistry {
     declarations: Vec<StaticMemoryDeclaration>,
     ranges: Vec<StaticMemoryRangeDeclaration>,
-    sealed: bool,
+    registration_hooks: Vec<StaticRegistrationHook>,
+    eager_init_hooks: Vec<fn()>,
+    lifecycle: StaticRegistryLifecycle,
+}
+
+#[derive(Debug)]
+enum StaticRegistryLifecycle {
+    Open,
+    Sealing { owner: ThreadId },
+    Sealed(SealedDeclarationSnapshot),
+    Failed(StaticMemoryDeclarationError),
 }
 
 static STATIC_MEMORY_DECLARATIONS: Mutex<StaticMemoryDeclarationRegistry> =
     Mutex::new(StaticMemoryDeclarationRegistry {
         declarations: Vec::new(),
         ranges: Vec::new(),
-        sealed: false,
+        registration_hooks: Vec::new(),
+        eager_init_hooks: Vec::new(),
+        lifecycle: StaticRegistryLifecycle::Open,
     });
+
+static STATIC_MEMORY_SEAL: Mutex<()> = Mutex::new(());
 
 fn lock_registry()
 -> Result<MutexGuard<'static, StaticMemoryDeclarationRegistry>, StaticMemoryDeclarationError> {
@@ -168,21 +267,49 @@ fn lock_registry()
         .map_err(|_| StaticMemoryDeclarationError::RegistryPoisoned)
 }
 
-const fn ensure_unsealed(
+fn ensure_registration_open(
     registry: &StaticMemoryDeclarationRegistry,
 ) -> Result<(), StaticMemoryDeclarationError> {
-    if registry.sealed {
-        return Err(StaticMemoryDeclarationError::RegistrySealed);
+    match &registry.lifecycle {
+        StaticRegistryLifecycle::Open => Ok(()),
+        StaticRegistryLifecycle::Sealing { owner } if *owner == std::thread::current().id() => {
+            Ok(())
+        }
+        StaticRegistryLifecycle::Sealing { .. }
+        | StaticRegistryLifecycle::Sealed(_)
+        | StaticRegistryLifecycle::Failed(_) => Err(StaticMemoryDeclarationError::RegistrySealed),
     }
-    Ok(())
 }
 
 fn with_unsealed_registry(
     op: impl FnOnce(&mut StaticMemoryDeclarationRegistry),
 ) -> Result<(), StaticMemoryDeclarationError> {
     let mut registry = lock_registry()?;
-    ensure_unsealed(&registry)?;
+    ensure_registration_open(&registry)?;
     op(&mut registry);
+    Ok(())
+}
+
+#[doc(hidden)]
+pub fn defer_static_memory_registration(
+    hook: StaticRegistrationHook,
+) -> Result<(), StaticMemoryDeclarationError> {
+    let mut registry = lock_registry()?;
+    if !matches!(registry.lifecycle, StaticRegistryLifecycle::Open) {
+        return Err(StaticMemoryDeclarationError::RegistrySealed);
+    }
+    registry.registration_hooks.push(hook);
+    Ok(())
+}
+
+/// Register a declaration-only hook to run immediately before snapshot sealing.
+#[doc(hidden)]
+pub fn defer_eager_init(hook: fn()) -> Result<(), StaticMemoryDeclarationError> {
+    let mut registry = lock_registry()?;
+    if !matches!(registry.lifecycle, StaticRegistryLifecycle::Open) {
+        return Err(StaticMemoryDeclarationError::RegistrySealed);
+    }
+    registry.eager_init_hooks.push(hook);
     Ok(())
 }
 
@@ -283,64 +410,170 @@ pub fn register_static_memory_manager_declaration_with_schema(
     register_static_memory_declaration(authority, declaration)
 }
 
-/// Return the currently registered static allocation declarations.
-pub fn static_memory_declarations()
--> Result<Vec<StaticMemoryDeclaration>, StaticMemoryDeclarationError> {
-    Ok(lock_registry()?.declarations.clone())
-}
-
-/// Return the currently registered static range declarations.
-pub fn static_memory_range_declarations()
--> Result<Vec<StaticMemoryRangeDeclaration>, StaticMemoryDeclarationError> {
-    Ok(lock_registry()?.ranges.clone())
-}
-
-/// Return the currently registered static range declarations as an authority table.
-pub fn static_memory_range_authority()
--> Result<MemoryManagerRangeAuthority, StaticMemoryDeclarationError> {
-    MemoryManagerRangeAuthority::from_records(
-        static_memory_range_declarations()?
-            .into_iter()
-            .map(StaticMemoryRangeDeclaration::into_record)
-            .collect(),
-    )
-    .map_err(StaticMemoryDeclarationError::Range)
-}
-
-/// Seal the static memory registry so later registration attempts fail closed.
-pub fn seal_static_memory_registry() -> Result<(), StaticMemoryDeclarationError> {
-    let mut registry = lock_registry()?;
-    registry.sealed = true;
-    Ok(())
-}
-
-/// Add currently registered static allocation declarations to a collector.
-pub fn collect_static_memory_declarations(
-    collector: &mut DeclarationCollector,
-) -> Result<(), StaticMemoryDeclarationError> {
-    for registration in static_memory_declarations()? {
-        collector.push(registration.into_declaration());
-    }
-    Ok(())
-}
-
-/// Seal currently registered static allocation declarations into a snapshot.
+/// Seal and return the canonical linked-program declaration snapshot.
 ///
-/// Sealing prevents later static registrations from being accepted. Callers may
-/// still call this function again to rebuild the same snapshot for idempotent
-/// bootstrap paths.
-pub fn static_memory_declaration_snapshot()
--> Result<DeclarationSnapshot, StaticMemoryDeclarationError> {
-    let declarations = {
+/// The first caller runs deferred generated registrations and eager hooks,
+/// canonicalizes declarations and ranges, validates duplicates and range
+/// authority, and publishes one immutable snapshot. Concurrent and subsequent
+/// callers receive clones backed by that same snapshot.
+pub fn sealed_declaration_snapshot()
+-> Result<SealedDeclarationSnapshot, StaticMemoryDeclarationError> {
+    {
+        let registry = lock_registry()?;
+        match &registry.lifecycle {
+            StaticRegistryLifecycle::Sealed(snapshot) => return Ok(snapshot.clone()),
+            StaticRegistryLifecycle::Failed(err) => return Err(err.clone()),
+            StaticRegistryLifecycle::Sealing { owner } if *owner == std::thread::current().id() => {
+                return Err(StaticMemoryDeclarationError::ReentrantSealing);
+            }
+            StaticRegistryLifecycle::Open | StaticRegistryLifecycle::Sealing { .. } => {}
+        }
+    }
+
+    let _seal = STATIC_MEMORY_SEAL
+        .lock()
+        .map_err(|_| StaticMemoryDeclarationError::RegistryPoisoned)?;
+    let (registration_hooks, eager_init_hooks) = {
         let mut registry = lock_registry()?;
-        registry.sealed = true;
-        registry
-            .declarations
-            .iter()
-            .map(|registration| registration.declaration.clone())
-            .collect()
+        match &registry.lifecycle {
+            StaticRegistryLifecycle::Sealed(snapshot) => return Ok(snapshot.clone()),
+            StaticRegistryLifecycle::Failed(err) => return Err(err.clone()),
+            StaticRegistryLifecycle::Sealing { .. } => {
+                return Err(StaticMemoryDeclarationError::ReentrantSealing);
+            }
+            StaticRegistryLifecycle::Open => {}
+        }
+        registry.lifecycle = StaticRegistryLifecycle::Sealing {
+            owner: std::thread::current().id(),
+        };
+        (
+            std::mem::take(&mut registry.registration_hooks),
+            std::mem::take(&mut registry.eager_init_hooks),
+        )
     };
-    DeclarationSnapshot::new(declarations).map_err(StaticMemoryDeclarationError::Declaration)
+
+    for hook in registration_hooks {
+        let result = catch_unwind(AssertUnwindSafe(hook))
+            .map_err(|_| StaticMemoryDeclarationError::EagerInitPanicked)
+            .and_then(std::convert::identity);
+        if let Err(err) = result {
+            return fail_sealing(err);
+        }
+    }
+    for hook in eager_init_hooks {
+        if catch_unwind(AssertUnwindSafe(hook)).is_err() {
+            return fail_sealing(StaticMemoryDeclarationError::EagerInitPanicked);
+        }
+    }
+
+    let snapshot = {
+        let registry = lock_registry()?;
+        build_sealed_snapshot(&registry.declarations, &registry.ranges)
+    };
+    let snapshot = match snapshot {
+        Ok(snapshot) => snapshot,
+        Err(err) => return fail_sealing(err),
+    };
+    lock_registry()?.lifecycle = StaticRegistryLifecycle::Sealed(snapshot.clone());
+    Ok(snapshot)
+}
+
+fn fail_sealing<T>(err: StaticMemoryDeclarationError) -> Result<T, StaticMemoryDeclarationError> {
+    let mut registry = lock_registry()?;
+    registry.lifecycle = StaticRegistryLifecycle::Failed(err.clone());
+    Err(err)
+}
+
+fn build_sealed_snapshot(
+    declarations: &[StaticMemoryDeclaration],
+    ranges: &[StaticMemoryRangeDeclaration],
+) -> Result<SealedDeclarationSnapshot, StaticMemoryDeclarationError> {
+    let mut registered_declarations = declarations.to_vec();
+    registered_declarations.sort_by(|left, right| {
+        left.declaration()
+            .stable_key()
+            .cmp(right.declaration().stable_key())
+            .then_with(|| left.declaration().slot().cmp(right.declaration().slot()))
+            .then_with(|| left.authority().cmp(right.authority()))
+    });
+
+    let mut registered_ranges = ranges.to_vec();
+    registered_ranges.sort_by(|left, right| {
+        let left = left.record();
+        let right = right.record();
+        left.range()
+            .start()
+            .cmp(&right.range().start())
+            .then_with(|| left.range().end().cmp(&right.range().end()))
+            .then_with(|| left.authority().cmp(right.authority()))
+            .then_with(|| range_mode_order(left.mode()).cmp(&range_mode_order(right.mode())))
+            .then_with(|| left.purpose().cmp(&right.purpose()))
+    });
+
+    let mut allocation_declarations = Vec::with_capacity(registered_declarations.len() + 1);
+    allocation_declarations.push(internal_ledger_declaration()?);
+    allocation_declarations.extend(
+        registered_declarations
+            .iter()
+            .map(|registration| registration.declaration().clone()),
+    );
+    let allocation_snapshot = DeclarationSnapshot::new(allocation_declarations)?;
+
+    let mut authority_records = Vec::with_capacity(registered_ranges.len() + 1);
+    authority_records.push(internal_ledger_range()?);
+    authority_records.extend(
+        registered_ranges
+            .iter()
+            .map(|registration| registration.record().clone()),
+    );
+    let range_authority = MemoryManagerRangeAuthority::from_records(authority_records)?;
+
+    let mut declaration_authority = BTreeMap::new();
+    declaration_authority.insert(
+        IC_MEMORY_LEDGER_STABLE_KEY.to_string(),
+        RuntimeDeclarationAuthority::Internal,
+    );
+    for registration in &registered_declarations {
+        declaration_authority.insert(
+            registration.declaration().stable_key().as_str().to_string(),
+            RuntimeDeclarationAuthority::External(registration.authority().to_string()),
+        );
+    }
+
+    Ok(SealedDeclarationSnapshot {
+        inner: Arc::new(SealedDeclarationSnapshotInner {
+            allocation_snapshot,
+            registered_declarations,
+            registered_ranges,
+            range_authority,
+            declaration_authority,
+        }),
+    })
+}
+
+const fn range_mode_order(mode: MemoryManagerRangeMode) -> u8 {
+    match mode {
+        MemoryManagerRangeMode::Reserved => 0,
+        MemoryManagerRangeMode::Allowed => 1,
+    }
+}
+
+fn internal_ledger_declaration() -> Result<AllocationDeclaration, crate::DeclarationSnapshotError> {
+    AllocationDeclaration::memory_manager(
+        IC_MEMORY_LEDGER_STABLE_KEY,
+        MEMORY_MANAGER_LEDGER_ID,
+        IC_MEMORY_LEDGER_LABEL,
+    )
+}
+
+fn internal_ledger_range() -> Result<MemoryManagerAuthorityRecord, MemoryManagerRangeAuthorityError>
+{
+    MemoryManagerAuthorityRecord::new(
+        MemoryManagerIdRange::new(MEMORY_MANAGER_LEDGER_ID, MEMORY_MANAGER_GOVERNANCE_MAX_ID)?,
+        IC_MEMORY_AUTHORITY_OWNER,
+        MemoryManagerRangeMode::Reserved,
+        Some(IC_MEMORY_AUTHORITY_PURPOSE.to_string()),
+    )
 }
 
 #[cfg(test)]
@@ -350,12 +583,39 @@ pub fn reset_static_memory_declarations_for_tests() {
         .expect("static memory declaration registry poisoned");
     registry.declarations.clear();
     registry.ranges.clear();
-    registry.sealed = false;
+    registry.registration_hooks.clear();
+    registry.eager_init_hooks.clear();
+    registry.lifecycle = StaticRegistryLifecycle::Open;
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    static EAGER_INIT_RUNS: AtomicUsize = AtomicUsize::new(0);
+    static BLOCKING_HOOK_STARTED: AtomicUsize = AtomicUsize::new(0);
+    static RELEASE_BLOCKING_HOOK: AtomicUsize = AtomicUsize::new(0);
+
+    fn register_from_eager_init() {
+        EAGER_INIT_RUNS.fetch_add(1, Ordering::SeqCst);
+        register_static_memory_manager_declaration(101, "eager", "audit", "eager.audit.v1")
+            .expect("eager declaration");
+    }
+
+    fn block_during_sealing() {
+        BLOCKING_HOOK_STARTED.store(1, Ordering::SeqCst);
+        while RELEASE_BLOCKING_HOOK.load(Ordering::SeqCst) == 0 {
+            std::thread::yield_now();
+        }
+    }
+
+    fn record_reentrant_seal_error() {
+        let error = sealed_declaration_snapshot().expect_err("recursive seal must fail");
+        if error == StaticMemoryDeclarationError::ReentrantSealing {
+            EAGER_INIT_RUNS.fetch_add(1, Ordering::SeqCst);
+        }
+    }
 
     #[test]
     fn registers_and_seals_static_memory_declarations() {
@@ -365,7 +625,8 @@ mod tests {
         register_static_memory_manager_declaration(100, "icydb", "users", "icydb.users.data.v1")
             .expect("register declaration");
 
-        let registrations = static_memory_declarations().expect("registrations");
+        let snapshot = sealed_declaration_snapshot().expect("snapshot");
+        let registrations = snapshot.registered_declarations();
         assert_eq!(registrations.len(), 1);
         assert_eq!(registrations[0].authority(), "icydb");
         assert_eq!(
@@ -373,8 +634,7 @@ mod tests {
             "icydb.users.data.v1"
         );
 
-        let snapshot = static_memory_declaration_snapshot().expect("snapshot");
-        assert_eq!(snapshot.len(), 1);
+        assert_eq!(snapshot.allocation_snapshot().len(), 2);
 
         let err =
             register_static_memory_manager_declaration(101, "icydb", "orders", "icydb.orders.v1")
@@ -396,7 +656,8 @@ mod tests {
         )
         .expect("register range");
 
-        let ranges = static_memory_range_declarations().expect("ranges");
+        let snapshot = sealed_declaration_snapshot().expect("snapshot");
+        let ranges = snapshot.registered_ranges();
         assert_eq!(ranges.len(), 1);
         assert_eq!(ranges[0].authority(), "crate_a");
         assert_eq!(ranges[0].record().range().start(), 100);
@@ -472,13 +733,15 @@ mod tests {
         register_static_memory_manager_declaration(100, "icydb", "orders", "icydb.orders.v1")
             .expect("register duplicate slot declaration");
 
-        let err = static_memory_declaration_snapshot().expect_err("duplicate slot must fail");
+        let err = sealed_declaration_snapshot().expect_err("duplicate slot must fail");
+        let repeated = sealed_declaration_snapshot().expect_err("seal failure is stable");
         assert!(matches!(
             err,
             StaticMemoryDeclarationError::Declaration(
                 crate::DeclarationSnapshotError::DuplicateSlot(_)
             )
         ));
+        assert_eq!(repeated, err);
     }
 
     #[test]
@@ -530,5 +793,103 @@ mod tests {
             range_err,
             StaticMemoryDeclarationError::ReservedAuthority { .. }
         ));
+    }
+
+    #[test]
+    fn eager_hooks_run_once_before_the_canonical_snapshot_is_published() {
+        let _guard = TEST_REGISTRY_LOCK.lock().expect("test lock poisoned");
+        reset_static_memory_declarations_for_tests();
+        EAGER_INIT_RUNS.store(0, Ordering::SeqCst);
+        defer_eager_init(register_from_eager_init).expect("defer eager hook");
+
+        let first = sealed_declaration_snapshot().expect("first snapshot");
+        let second = sealed_declaration_snapshot().expect("second snapshot");
+
+        assert_eq!(EAGER_INIT_RUNS.load(Ordering::SeqCst), 1);
+        assert!(first.shares_storage_with(&second));
+        assert_eq!(
+            first.registered_declarations()[0]
+                .declaration()
+                .stable_key()
+                .as_str(),
+            "eager.audit.v1"
+        );
+    }
+
+    #[test]
+    fn snapshot_order_is_independent_of_registration_order() {
+        let _guard = TEST_REGISTRY_LOCK.lock().expect("test lock poisoned");
+        reset_static_memory_declarations_for_tests();
+        register_static_memory_manager_declaration(102, "order", "z", "order.z.v1")
+            .expect("z declaration");
+        register_static_memory_manager_declaration(101, "order", "a", "order.a.v1")
+            .expect("a declaration");
+        let first = sealed_declaration_snapshot().expect("first snapshot");
+
+        reset_static_memory_declarations_for_tests();
+        register_static_memory_manager_declaration(101, "order", "a", "order.a.v1")
+            .expect("a declaration");
+        register_static_memory_manager_declaration(102, "order", "z", "order.z.v1")
+            .expect("z declaration");
+        let second = sealed_declaration_snapshot().expect("second snapshot");
+
+        assert_eq!(first, second);
+        assert_eq!(
+            crate::test_cbor::to_vec(first.allocation_snapshot()).expect("first bytes"),
+            crate::test_cbor::to_vec(second.allocation_snapshot()).expect("second bytes")
+        );
+    }
+
+    #[test]
+    fn concurrent_snapshot_requests_share_one_complete_seal() {
+        let _guard = TEST_REGISTRY_LOCK.lock().expect("test lock poisoned");
+        reset_static_memory_declarations_for_tests();
+        defer_eager_init(register_from_eager_init).expect("defer eager hook");
+
+        let (first, second) = std::thread::scope(|scope| {
+            let first = scope.spawn(sealed_declaration_snapshot);
+            let second = scope.spawn(sealed_declaration_snapshot);
+            (
+                first.join().expect("first thread").expect("first seal"),
+                second.join().expect("second thread").expect("second seal"),
+            )
+        });
+
+        assert!(first.shares_storage_with(&second));
+        assert_eq!(first.registered_declarations().len(), 1);
+    }
+
+    #[test]
+    fn registration_from_another_thread_fails_after_sealing_begins() {
+        let _guard = TEST_REGISTRY_LOCK.lock().expect("test lock poisoned");
+        reset_static_memory_declarations_for_tests();
+        BLOCKING_HOOK_STARTED.store(0, Ordering::SeqCst);
+        RELEASE_BLOCKING_HOOK.store(0, Ordering::SeqCst);
+        defer_eager_init(block_during_sealing).expect("defer blocking hook");
+
+        std::thread::scope(|scope| {
+            let sealing = scope.spawn(sealed_declaration_snapshot);
+            while BLOCKING_HOOK_STARTED.load(Ordering::SeqCst) == 0 {
+                std::thread::yield_now();
+            }
+            let late =
+                register_static_memory_manager_declaration(101, "late", "late", "late.rows.v1")
+                    .expect_err("concurrent late registration");
+            assert_eq!(late, StaticMemoryDeclarationError::RegistrySealed);
+            RELEASE_BLOCKING_HOOK.store(1, Ordering::SeqCst);
+            sealing.join().expect("sealing thread").expect("snapshot");
+        });
+    }
+
+    #[test]
+    fn recursive_snapshot_request_from_eager_hook_is_typed() {
+        let _guard = TEST_REGISTRY_LOCK.lock().expect("test lock poisoned");
+        reset_static_memory_declarations_for_tests();
+        EAGER_INIT_RUNS.store(0, Ordering::SeqCst);
+        defer_eager_init(record_reentrant_seal_error).expect("defer recursive hook");
+
+        sealed_declaration_snapshot().expect("outer snapshot");
+
+        assert_eq!(EAGER_INIT_RUNS.load(Ordering::SeqCst), 1);
     }
 }

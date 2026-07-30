@@ -29,10 +29,10 @@ pub struct DiagnosticExport {
 }
 
 ///
-/// DefaultMemoryManagerDoctorReport
+/// MemoryRuntimeDoctorReport
 ///
-/// Preflight and runtime diagnostic report for the default `MemoryManager`
-/// integration.
+/// Preflight and runtime diagnostic report for one concrete
+/// [`crate::MemoryRuntime`].
 ///
 /// This report is intended for operator-facing diagnostics. Recoverable
 /// runtime problems, such as corrupt stable-cell bytes or commit recovery
@@ -41,10 +41,10 @@ pub struct DiagnosticExport {
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
-pub struct DefaultMemoryManagerDoctorReport {
-    /// Whether the default runtime has completed bootstrap validation.
+pub struct MemoryRuntimeDoctorReport {
+    /// Whether this runtime has completed bootstrap validation.
     pub bootstrapped: bool,
-    /// Ledger anchor descriptor used by the default runtime.
+    /// Ledger anchor descriptor used by this runtime.
     pub ledger_anchor: AllocationSlotDescriptor,
     /// Stable-cell ledger storage status.
     pub stable_cell: DiagnosticStableCell,
@@ -57,13 +57,12 @@ pub struct DefaultMemoryManagerDoctorReport {
     /// Static declarations registered by linked crates.
     pub registered_declarations: Vec<DiagnosticDeclaration>,
     /// Static range authority registered by linked crates and the effective
-    /// authority table used by the default runtime.
+    /// authority table supplied to this runtime.
     pub range_authority: DiagnosticRangeAuthority,
-    /// Current generic default-runtime declaration validation preflight result.
+    /// Current generic runtime declaration validation preflight result.
     ///
-    /// Caller-supplied policies passed to
-    /// [`crate::bootstrap_default_memory_manager_with_policy`] are not
-    /// represented in this check.
+    /// Caller-supplied policies passed to [`crate::MemoryRuntime::bootstrap`] or
+    /// the default TLS bootstrap wrapper are not represented in this check.
     pub validation: DiagnosticCheck,
 }
 
