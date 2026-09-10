@@ -1,7 +1,14 @@
-.PHONY: test maintainer-tools maintainer-toolcheck maintainer-check maintainer-build
+.PHONY: test maintainer-tools maintainer-toolcheck maintainer-check maintainer-build \
+        version ensure-clean validate wasm-size test-release-flow patch minor \
+        release-patch release-minor release-stage release-commit release-push \
+        package publish publish-dry-run
+
+# Match the compiler used for the existing CI Wasm size budgets.
+VALIDATION_TOOLCHAIN ?= 1.97.1
+RELEASE := python3 scripts/release.py
 
 test:
-	cargo test
+	cargo test -- --test-threads=1
 
 maintainer-tools:
 	@set -eu; \
@@ -58,3 +65,70 @@ maintainer-build:
 		cd whitepaper/lean && lake build; \
 		mdbook build whitepaper; \
 	fi
+
+# Source and the next numbered CHANGELOG.md entry must already be committed.
+version:
+	@$(RELEASE) version
+
+ensure-clean:
+	@$(RELEASE) ensure-clean
+
+validate:
+	$(MAKE) --no-print-directory test-release-flow
+	cargo +$(VALIDATION_TOOLCHAIN) fmt --check
+	cargo +$(VALIDATION_TOOLCHAIN) clippy --all-targets -- -D warnings
+	cargo +$(VALIDATION_TOOLCHAIN) test --locked -- --test-threads=1
+	cargo +$(VALIDATION_TOOLCHAIN) check --locked --target wasm32-unknown-unknown --tests
+	$(MAKE) --no-print-directory wasm-size
+	cargo +$$($(RELEASE) msrv) check --locked --all-targets
+	cargo +$(VALIDATION_TOOLCHAIN) package --locked
+
+wasm-size:
+	cargo +$(VALIDATION_TOOLCHAIN) build --locked --profile wasm-size --target wasm32-unknown-unknown \
+		--example wasm-core-size-probe --example wasm-diagnostics-size-probe
+	@set -eu; \
+	core_bytes=$$(wc -c < target/wasm32-unknown-unknown/wasm-size/examples/wasm_core_size_probe.wasm); \
+	diagnostics_bytes=$$(wc -c < target/wasm32-unknown-unknown/wasm-size/examples/wasm_diagnostics_size_probe.wasm); \
+	echo "Core raw Wasm: $$core_bytes bytes (budget: 245000 bytes)"; \
+	echo "Diagnostics raw Wasm: $$diagnostics_bytes bytes (budget: 290000 bytes)"; \
+	test "$$core_bytes" -le 245000; \
+	test "$$diagnostics_bytes" -le 290000
+
+test-release-flow:
+	PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tests -p 'test_release.py'
+
+patch:
+	$(RELEASE) patch
+
+minor:
+	$(RELEASE) minor
+
+release-patch:
+	$(MAKE) patch
+	$(MAKE) release-stage
+	$(MAKE) release-commit
+	$(MAKE) release-push
+
+release-minor:
+	$(MAKE) minor
+	$(MAKE) release-stage
+	$(MAKE) release-commit
+	$(MAKE) release-push
+
+release-stage:
+	$(RELEASE) stage
+
+release-commit:
+	$(RELEASE) commit
+
+release-push:
+	$(RELEASE) push
+
+package: ensure-clean
+	cargo package
+
+publish:
+	$(RELEASE) publish
+
+publish-dry-run:
+	$(RELEASE) publish --dry-run

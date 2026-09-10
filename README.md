@@ -351,6 +351,49 @@ Schema metadata is optional diagnostic metadata for the in-place store schema.
 Construct it with `SchemaMetadata::new(Some(version))`; version `0` is reserved
 for absence and is rejected.
 
+## Releases
+
+The release targets follow Canic's validate, bump, commit, tag, and push flow,
+adapted for this single library crate. They require Python 3.11+, Git, Make,
+Rust 1.97.1 with Clippy/rustfmt and `wasm32-unknown-unknown`, and the declared
+MSRV toolchain. Publishing also requires crates.io credentials configured for
+Cargo.
+
+Commit the implementation and a nonempty, numbered entry at the top of
+`CHANGELOG.md` for the next version before starting. Then use:
+
+```sh
+make release-patch   # Validate, bump patch, commit, annotate tag, push
+make release-minor   # Validate, bump minor/reset patch, commit, annotate tag, push
+make publish-dry-run # Verify the tagged release without uploading
+make publish        # Publish the tagged release to crates.io
+```
+
+The release targets push the current branch and its `vX.Y.Z` tag atomically to
+`origin`. Publication is a separate command. `PUBLISH_DRY_RUN=1 make publish`
+also performs a dry run. Branches must already exist on `origin`, and the
+refreshed remote branch must be an ancestor of the local source commit.
+
+`make patch` and `make minor` stop after validation and version preparation for
+local review. Finish with `make release-stage`, `make release-commit`, and
+`make release-push`, in that order. A rejected push can be retried with
+`make release-push`; do not bump the version again. A failed tag step can be
+retried with `make release-commit` without making another commit.
+
+Preparation updates only `Cargo.toml` and the README dependency example, and
+refreshes the ignored local `Cargo.lock`. It verifies the final package and
+restores those files if preparation fails. Release commits must contain only
+the expected version edits and are bound to the validated source commit.
+Dirty trees, stale prepared state, unrelated staged changes, and conflicting
+release tags are rejected. The lockfile remains untracked.
+
+`make validate` runs the release-flow regression tests, formatting, Clippy,
+serialized Rust tests and doctests, Wasm checks and size budgets, the declared
+MSRV check, and package verification. `VALIDATION_TOOLCHAIN` defaults to the
+existing CI compiler, Rust 1.97.1. `make test-release-flow` exercises the release
+commands in disposable repositories with a fake Cargo executable; it never
+publishes packages or contacts a hosted Git remote.
+
 ## More Detail
 
 The short version:

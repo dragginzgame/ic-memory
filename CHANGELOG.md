@@ -62,6 +62,18 @@ format and the default 128-page bucket size remain unchanged.
 - Updated trybuild to 1.0.121 and raised the declared MSRV and its CI check to
   Rust 1.88.0.
 
+### Release tooling
+
+- Added Canic-style `make release-patch` and `make release-minor` flows that
+  validate committed source, synchronize manifest/README versions, commit,
+  create an annotated tag, and atomically push the branch and release tag.
+- Added separate `make publish` and `make publish-dry-run` commands with clean
+  release-commit and tag checks. Local preparation and stage/commit/push steps
+  remain available individually for review and retry.
+- Added release-flow tests using disposable Git remotes and a fake Cargo,
+  including failed-validation/package rollback, staged-change rejection,
+  remote conflicts, atomic push rejection, and publication dry runs.
+
 ## 0.12.3
 
 This release hardens runtime policy identity and makes doctor diagnostics
