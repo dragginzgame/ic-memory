@@ -65,7 +65,7 @@ Declare both direct dependencies:
 
 ```toml
 [dependencies]
-ic-memory = "0.12.3"
+ic-memory = "0.13.0"
 ic-stable-structures = "0.7.2"
 ```
 
