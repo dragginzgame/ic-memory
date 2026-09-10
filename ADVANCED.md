@@ -436,9 +436,12 @@ kind of range is Canic policy, not an `ic-memory` rule.
 
 `ic-memory` does not replace `ic-stable-structures`.
 
-It owns allocation governance. Downstream code imports `ic-stable-structures`
-directly; `ic-memory` does not re-export or wrap collection types such as
-`StableBTreeMap`.
+It owns allocation governance and re-exports its exact substrate dependency as
+`ic_memory::ic_stable_structures`. Downstream code can import collections such
+as `StableBTreeMap`, backing memories, `Memory`, and `Storable` through that
+namespace without a separate dependency. These are the upstream types, used
+with `RuntimeMemory<M>` handles from the owned runtime. Re-exporting the
+collections does not wrap their behavior or change manager ownership.
 
 It also does not handle:
 

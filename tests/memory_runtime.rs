@@ -1,8 +1,9 @@
 use ic_memory::{
     AllocationPolicy, AllocationSlotDescriptor, MemoryRuntime, PolicyIdentity, PolicyIdentityError,
-    RuntimeBootstrapPolicy, StableKey, sealed_declaration_snapshot,
+    RuntimeBootstrapPolicy, StableKey,
+    ic_stable_structures::{Cell, Memory, VectorMemory},
+    sealed_declaration_snapshot,
 };
-use ic_stable_structures::{Memory, VectorMemory};
 
 const AUTHORITY: &str = "explicit_runtime";
 
@@ -59,7 +60,9 @@ fn public_explicit_runtime_bootstraps_opens_and_diagnoses_its_memory() {
     let rows = runtime
         .open_memory("explicit_runtime.rows.v1", 140)
         .expect("committed rows memory");
-    rows.grow(1);
+    let mut cell = Cell::init(rows, 7_u64);
+    cell.set(9);
+    assert_eq!(*cell.get(), 9);
 
     let export = runtime.diagnostic_export().expect("runtime diagnostics");
     assert_eq!(export.current_generation, generation);

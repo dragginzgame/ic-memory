@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.13.1
+
+- Re-exported the exact upstream substrate dependency as
+  `ic_memory::ic_stable_structures`, making collections, backing memories, and
+  traits available through the same dependency as `RuntimeMemory<M>`.
+- Updated the README and advanced guide to use the re-export and remove the
+  requirement for a separate direct `ic-stable-structures` dependency.
+- Explicitly selected the CI validation and MSRV toolchains, and declared the
+  development Wasm target, fixing target-installation mismatches caused by the
+  repository toolchain override.
+- Kept runtime ownership, allocation policy, bucket defaults, and the durable
+  format unchanged.
+
 ## 0.13.0
 
 This release adds bounded physical allocation attribution and explicit bucket

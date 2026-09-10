@@ -74,8 +74,9 @@
 //! [`LedgerPayloadEnvelope`] -> [`RecoveredLedger`] -> [`ValidatedAllocations`]
 //! -> [`CommittedAllocations`].
 //!
-//! `ic-memory` is not a replacement for `ic-stable-structures` collections and
-//! does not wrap typed stores such as `StableBTreeMap`.
+//! [`ic_stable_structures`] re-exports the exact substrate version used by this
+//! crate. Use its collections and traits with [`RuntimeMemory`] handles;
+//! `ic-memory` owns allocation governance without wrapping typed collections.
 
 mod bootstrap;
 mod capability;
@@ -122,6 +123,12 @@ mod test_cbor {
         map.push((key, value));
     }
 }
+
+/// Stable collections and traits from this crate's exact substrate dependency.
+///
+/// Use the upstream collections with [`RuntimeMemory`] handles obtained through
+/// the owned runtime. This re-export preserves upstream type identity.
+pub use ic_stable_structures;
 
 pub use bootstrap::{
     AllocationBootstrap, BootstrapError, BootstrapReservationError, BootstrapRetirementError,

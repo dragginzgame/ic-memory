@@ -61,13 +61,31 @@ orders data. `ic-memory` catches that mismatch first.
 
 ## Quick Start
 
-Declare both direct dependencies:
+Declare the dependency:
 
 ```toml
 [dependencies]
 ic-memory = "0.13.0"
-ic-stable-structures = "0.7.2"
 ```
+
+`ic-memory` re-exports its exact `ic-stable-structures` dependency through
+`ic_memory::ic_stable_structures`. Import collections, backing memories, and
+traits through that namespace to use the same upstream types as the runtime:
+
+```rust
+use ic_memory::{
+    RuntimeMemory,
+    ic_stable_structures::{Cell, DefaultMemoryImpl},
+};
+
+type CounterStore = Cell<u64, RuntimeMemory<DefaultMemoryImpl>>;
+```
+
+`Memory`, `Storable`, `storable::Bound`, and the other upstream collections are
+available through the same namespace. A separate `ic-stable-structures`
+dependency is unnecessary for these imports. Initialize stores with handles
+opened by `MemoryRuntime` or the default runtime, which owns the canister's
+memory manager.
 
 Declare the MemoryManager IDs your crate owns. A shared compile-time constant
 keeps the explicit authority identical across the range and each key:
