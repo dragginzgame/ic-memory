@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.13.2
+
+- Removed the redundant private backing adapter in favor of upstream's
+  `Memory` implementation for `Rc<M>`, and forwarded `RuntimeMemory::read_unsafe`
+  to the existing virtual memory. This removes wrapper-level destination
+  zeroing while preserving default implementations for custom backings.
+  Unsafe code remains denied by default, with scoped exceptions for the
+  forwarding method and its raw-read tests.
+- Added focused coverage for uninitialized destinations, specialized and
+  default backing reads, discontiguous buckets, cloned handles, partial read
+  failures, zero-length reads, upstream bounds behavior, and read-only effects.
+- Updated the README to document upstream read delegation. IC instruction
+  and cycle savings remain unmeasured.
+
 ## 0.13.1
 
 - Re-exported the exact upstream substrate dependency as

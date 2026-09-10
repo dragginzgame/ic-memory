@@ -311,6 +311,9 @@ Open operations and macros return `RuntimeMemory<M>`, implementing `Memory` and
 `Clone` without requiring `M: Clone`. Stable store type annotations must use
 `ic_memory::RuntimeMemory<DefaultMemoryImpl>`. The runtime retains one private
 shared backing for read-only attribution and owns exactly one manager.
+Both safe and unsafe reads delegate to upstream, preserving specialized
+`read_unsafe` implementations without extra destination initialization in the
+runtime. Custom backings can continue using the `Memory` trait's default method.
 
 The [CANIC-162 handoff](docs/canic162-memory-attribution.md) contains the exact
 Canic integration example, reproducible measurements, capacity tradeoffs, and

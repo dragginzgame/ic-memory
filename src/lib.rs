@@ -1,4 +1,4 @@
-#![forbid(unsafe_code)]
+#![deny(unsafe_code, unsafe_op_in_unsafe_fn)]
 #![deny(rustdoc::broken_intra_doc_links)]
 #![doc = include_str!("../README.md")]
 

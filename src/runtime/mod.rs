@@ -10,6 +10,12 @@ mod policy;
 #[cfg(test)]
 mod allocation_tests;
 #[cfg(test)]
+#[allow(
+    unsafe_code,
+    reason = "exercise raw reads with valid uninitialized destinations"
+)]
+mod read_tests;
+#[cfg(test)]
 mod tests;
 
 pub use allocations::{
@@ -43,7 +49,6 @@ use ic_stable_structures::{
     memory_manager::{MemoryId, MemoryManager},
 };
 
-use backing::SharedBacking;
 use std::rc::Rc;
 
 type LedgerCell<M> = Cell<StableCellLedgerRecord, RuntimeMemory<M>>;
@@ -76,7 +81,9 @@ struct RuntimeBootstrapBinding {
 ///
 
 pub struct MemoryRuntime<M: Memory> {
-    memory_manager: MemoryManager<SharedBacking<M>>,
+    memory_manager: MemoryManager<Rc<M>>,
+    // Share the owned backing using upstream's Memory implementation for Rc.
+    // Only the manager writes it; attribution borrows it read-only.
     backing: Rc<M>,
     bucket_size_pages: u16,
     ledger_cell: Option<LedgerCell<M>>,
@@ -133,7 +140,7 @@ impl<M: Memory> MemoryRuntime<M> {
         let backing = Rc::new(memory);
         Ok(Self {
             memory_manager: MemoryManager::init_with_bucket_size(
-                SharedBacking(Rc::clone(&backing)),
+                Rc::clone(&backing),
                 bucket_size_pages,
             ),
             backing,
