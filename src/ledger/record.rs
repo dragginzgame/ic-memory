@@ -269,7 +269,7 @@ impl AllocationHistory {
 
     /// Return true when the history has no allocation records and no generation records.
     #[must_use]
-    pub fn is_empty(&self) -> bool {
+    pub const fn is_empty(&self) -> bool {
         self.records.is_empty() && self.generations.is_empty()
     }
 

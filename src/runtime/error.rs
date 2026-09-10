@@ -14,6 +14,15 @@ use crate::{
 #[non_exhaustive]
 #[derive(Clone, Copy, Debug, Eq, thiserror::Error, PartialEq)]
 pub enum RuntimeConstructionError {
+    /// Zero pages cannot form a bucket.
+    #[error("bucket size must be nonzero")]
+    InvalidBucketSize,
+    /// Explicit policy differs from the actual durable setting.
+    #[error("persisted bucket size {persisted} pages differs from requested {requested}")]
+    BucketSizeMismatch { persisted: u16, requested: u16 },
+    /// Persisted manager metadata failed bounded validation.
+    #[error(transparent)]
+    Layout(#[from] super::MemoryManagerLayoutError),
     /// Nonempty backing memory does not contain a `MemoryManager` header.
     #[error(
         "nonempty backing memory is not an ic-stable-structures MemoryManager \
@@ -164,6 +173,12 @@ pub enum RuntimeOpenError {
 #[non_exhaustive]
 #[derive(Debug, thiserror::Error)]
 pub enum RuntimeDiagnosticError {
+    /// Persisted manager metadata is invalid or unsupported.
+    #[error(transparent)]
+    Construction(#[from] RuntimeConstructionError),
+    /// Current binding metadata exceeds the fixed usable ID domain.
+    #[error("allocation bindings exceed the bounded manager domain")]
+    AllocationBound,
     /// This runtime has not opened and validated its ledger cell.
     #[error("ic-memory runtime has not completed bootstrap validation")]
     NotBootstrapped,

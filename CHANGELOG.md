@@ -1,5 +1,67 @@
 # Changelog
 
+## 0.13.0
+
+This release adds bounded physical allocation attribution and explicit bucket
+configuration to the owned memory runtime. It is an intentional pre-1.0 API
+hard cut: runtime memory handles change type, while the durable allocation-ledger
+format and the default 128-page bucket size remain unchanged.
+
+### Runtime memory handles
+
+- Changed runtime opens and memory macros to return `RuntimeMemory<M>`, which
+  implements `Memory` and `Clone` without requiring a cloneable backing memory.
+  Update stable-store annotations from `VirtualMemory<DefaultMemoryImpl>` to
+  `ic_memory::RuntimeMemory<DefaultMemoryImpl>` directly.
+- Retained one manager per runtime, with private shared backing access for
+  attribution. Diagnostics do not grant allocation-open authority.
+
+### Bounded allocation diagnostics
+
+- Added `MemoryRuntime::memory_allocations()` and
+  `default_memory_manager_memory_allocations()`, returning owned reports for
+  all 255 usable IDs, including zero-size memories and the ic-memory ledger.
+- Reported the actual persisted bucket size, physical and virtual extents,
+  per-ID bucket allocation, current stable-key/owner bindings, manager metadata,
+  and separate unknown-binding and unmanaged residuals with checkable totals.
+- Distinguished bucket rounding slack from virtual extent and left payload
+  occupancy explicitly unavailable. Retired or absent current keys remain
+  unknown without omitting their physical allocations.
+- Bounded successful collection to 34,848 metadata bytes without reading or
+  decoding ledger history, initializing stores, writing, growing memory, or
+  advancing a generation. The default helper does not construct a missing
+  runtime.
+- Added a validated read-only manager-layout adapter and pinned
+  `ic-stable-structures` to exactly 0.7.2. Unsupported or corrupt metadata
+  returns typed errors before manager initialization can write.
+
+### Bucket configuration
+
+- Added immutable `MemoryManagerConfig`, `MemoryRuntime::new_with_config`, and
+  `bootstrap_default_memory_manager_with_config` for nonzero bucket sizes.
+- Kept the fresh-state default at 128 pages (8 MiB). Ordinary construction
+  honors the persisted setting; explicit configuration rejects mismatches
+  before effects, including repeated default-runtime bootstrap.
+- Bound configuration to the runtime's sole manager. Changing a requested
+  setting does not shrink existing memory or introduce a migration path.
+
+### Measurements and validation
+
+- Added disposable small-store and growing-store measurements comparing 128-,
+  16-, 8-, and 1-page buckets, with finite-table capacity and growth/access cost
+  accounting. Evidence supports opt-in sizing while retaining the default.
+- Added conservation, bucket-boundary, corrupt-metadata, access-separation,
+  no-write/no-growth, capacity-exhaustion, and same-release recovery/replay
+  coverage, including borrowed non-Clone backing memory.
+- Added the [CANIC-162 integration handoff](docs/canic162-memory-attribution.md)
+  with reproducible measurements and downstream adoption examples. Live Toko
+  attribution and Canic adoption remain separate outstanding work.
+- Included allocation-report serialization in the diagnostics Wasm probe.
+  Core and diagnostics remain within their existing raw Wasm budgets at
+  240,226 and 289,044 bytes respectively on Rust 1.97.1.
+- Updated trybuild to 1.0.121 and raised the declared MSRV and its CI check to
+  Rust 1.88.0.
+
 ## 0.12.3
 
 This release hardens runtime policy identity and makes doctor diagnostics

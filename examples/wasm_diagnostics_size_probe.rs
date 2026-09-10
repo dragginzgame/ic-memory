@@ -37,3 +37,15 @@ pub extern "C" fn ic_memory_wasm_diagnostics_size_probe_export() -> u32 {
     }
     u32::try_from(bytes.len()).unwrap_or(u32::MAX)
 }
+
+#[unsafe(no_mangle)]
+pub extern "C" fn ic_memory_wasm_diagnostics_size_probe_allocations() -> u32 {
+    let Ok(report) = ic_memory::default_memory_manager_memory_allocations() else {
+        return u32::MAX;
+    };
+    let mut bytes = Vec::new();
+    if ciborium::into_writer(&report, &mut bytes).is_err() {
+        return u32::MAX;
+    }
+    u32::try_from(bytes.len()).unwrap_or(u32::MAX)
+}

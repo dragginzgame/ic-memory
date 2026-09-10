@@ -1,22 +1,35 @@
+mod allocations;
+mod backing;
+mod config;
 mod default;
 mod diagnostics;
 mod error;
+mod layout;
 mod policy;
 
 #[cfg(test)]
+mod allocation_tests;
+#[cfg(test)]
 mod tests;
 
+pub use allocations::{
+    AllocationBinding, AllocationRangeClaim, MemoryAllocation, MemoryAllocations,
+};
+pub use backing::RuntimeMemory;
+pub use config::MemoryManagerConfig;
 pub use default::{
-    bootstrap_default_memory_manager, bootstrap_default_memory_manager_with_policy,
-    committed_allocations, default_memory_manager_commit_recovery_diagnostic,
-    default_memory_manager_diagnostic_export, default_memory_manager_doctor_report,
-    default_memory_manager_doctor_report_with_policy, is_default_memory_manager_bootstrapped,
+    bootstrap_default_memory_manager, bootstrap_default_memory_manager_with_config,
+    bootstrap_default_memory_manager_with_policy, committed_allocations,
+    default_memory_manager_commit_recovery_diagnostic, default_memory_manager_diagnostic_export,
+    default_memory_manager_doctor_report, default_memory_manager_doctor_report_with_policy,
+    default_memory_manager_memory_allocations, is_default_memory_manager_bootstrapped,
     open_default_memory_manager_memory,
 };
 pub use error::{
     RuntimeBootstrapError, RuntimeConstructionError, RuntimeDiagnosticError, RuntimeOpenError,
     RuntimePolicyError, RuntimeStateError,
 };
+pub use layout::MemoryManagerLayoutError;
 
 use self::policy::{RuntimeMemoryManagerPolicy, runtime_bootstrap_error_from_bootstrap};
 use crate::{
@@ -27,16 +40,13 @@ use crate::{
 };
 use ic_stable_structures::{
     Cell, Memory, Storable,
-    memory_manager::{MemoryId, MemoryManager, VirtualMemory},
+    memory_manager::{MemoryId, MemoryManager},
 };
 
-type LedgerCell<M> = Cell<StableCellLedgerRecord, VirtualMemory<M>>;
+use backing::SharedBacking;
+use std::rc::Rc;
 
-// `ic-stable-structures` 0.7.2 documents this four-byte prefix for its V1
-// `MemoryManager` layout but does not expose a fallible constructor or these
-// constants. Keep this preflight coupled to the pinned dependency version.
-const MEMORY_MANAGER_MAGIC: [u8; 3] = *b"MGR";
-const MEMORY_MANAGER_LAYOUT_VERSION: u8 = 1;
+type LedgerCell<M> = Cell<StableCellLedgerRecord, RuntimeMemory<M>>;
 
 enum RuntimeLifecycle {
     Unbootstrapped,
@@ -66,7 +76,9 @@ struct RuntimeBootstrapBinding {
 ///
 
 pub struct MemoryRuntime<M: Memory> {
-    memory_manager: MemoryManager<M>,
+    memory_manager: MemoryManager<SharedBacking<M>>,
+    backing: Rc<M>,
+    bucket_size_pages: u16,
     ledger_cell: Option<LedgerCell<M>>,
     lifecycle: RuntimeLifecycle,
 }
@@ -75,9 +87,9 @@ impl<M: Memory> MemoryRuntime<M> {
     /// Construct an unbootstrapped runtime without overwriting foreign memory.
     ///
     /// Empty backing memory is initialized as an
-    /// `ic_stable_structures::MemoryManager`. Nonempty memory must already
-    /// contain the current `MemoryManager` magic and layout version; otherwise
-    /// construction returns a typed error before `MemoryManager::init` can
+    /// `ic_stable_structures::MemoryManager`. Nonempty memory must pass bounded
+    /// validation of the current manager header, bucket table, and extents; otherwise
+    /// construction returns a typed error before the manager can
     /// write its header or allocation table. A pre-grown blank memory is
     /// nonempty and is therefore rejected rather than assumed disposable.
     ///
@@ -86,14 +98,56 @@ impl<M: Memory> MemoryRuntime<M> {
     /// Returns [`RuntimeConstructionError::ForeignMemory`] for nonempty memory
     /// without `MemoryManager` magic, or
     /// [`RuntimeConstructionError::UnsupportedMemoryManagerVersion`] when the
-    /// magic is recognized but the layout version is not current.
+    /// magic is recognized but the layout version is not current. Invalid
+    /// metadata returns [`RuntimeConstructionError::Layout`]. Reopening honors
+    /// the actual persisted bucket size; only fresh memory uses 128 pages.
     pub fn new(memory: M) -> Result<Self, RuntimeConstructionError> {
-        preflight_memory_manager_backing(&memory)?;
+        Self::construct(memory, None)
+    }
+
+    /// Construct with an explicit immutable bucket policy. Existing memory must
+    /// match exactly; mismatches fail before manager initialization or writes.
+    pub fn new_with_config(
+        memory: M,
+        config: MemoryManagerConfig,
+    ) -> Result<Self, RuntimeConstructionError> {
+        Self::construct(memory, Some(config))
+    }
+
+    fn construct(
+        memory: M,
+        requested: Option<MemoryManagerConfig>,
+    ) -> Result<Self, RuntimeConstructionError> {
+        if cfg!(target_endian = "big") {
+            return Err(MemoryManagerLayoutError::UnsupportedByteOrder.into());
+        }
+        let bucket_size_pages = if memory.size() == 0 {
+            requested.unwrap_or_default().bucket_size_pages()
+        } else {
+            let actual = layout::read(&memory)?.bucket_pages;
+            if let Some(config) = requested {
+                check_bucket_size(actual, config)?;
+            }
+            actual
+        };
+        let backing = Rc::new(memory);
         Ok(Self {
-            memory_manager: MemoryManager::init(memory),
+            memory_manager: MemoryManager::init_with_bucket_size(
+                SharedBacking(Rc::clone(&backing)),
+                bucket_size_pages,
+            ),
+            backing,
+            bucket_size_pages,
             ledger_cell: None,
             lifecycle: RuntimeLifecycle::Unbootstrapped,
         })
+    }
+
+    /// Return the actual policy bound to this runtime's sole manager.
+    #[must_use]
+    pub const fn memory_manager_config(&self) -> MemoryManagerConfig {
+        // Construction has already validated the nonzero persisted setting.
+        MemoryManagerConfig::from_validated(self.bucket_size_pages)
     }
 
     /// Return whether this runtime has published committed allocation authority.
@@ -193,7 +247,7 @@ impl<M: Memory> MemoryRuntime<M> {
         &self,
         stable_key: &str,
         expected_id: u8,
-    ) -> Result<VirtualMemory<M>, RuntimeOpenError> {
+    ) -> Result<RuntimeMemory<M>, RuntimeOpenError> {
         let key = StableKey::parse(stable_key)?;
         if crate::is_ic_memory_stable_key(key.as_str()) {
             return Err(RuntimeOpenError::ReservedStableKey {
@@ -240,34 +294,13 @@ impl<M: Memory> MemoryRuntime<M> {
         Ok(())
     }
 
-    fn memory(&self, id: u8) -> VirtualMemory<M> {
-        self.memory_manager.get(MemoryId::new(id))
+    fn memory(&self, id: u8) -> RuntimeMemory<M> {
+        RuntimeMemory(self.memory_manager.get(MemoryId::new(id)))
     }
 
     fn ledger_record_from_memory(&self) -> Result<StableCellLedgerRecord, StableCellLedgerError> {
         decode_stable_cell_ledger_record_from_memory(&self.memory(MEMORY_MANAGER_LEDGER_ID))
     }
-}
-
-fn preflight_memory_manager_backing<M: Memory>(memory: &M) -> Result<(), RuntimeConstructionError> {
-    if memory.size() == 0 {
-        return Ok(());
-    }
-
-    let mut prefix = [0_u8; 4];
-    memory.read(0, &mut prefix);
-    let observed_magic = [prefix[0], prefix[1], prefix[2]];
-    if observed_magic != MEMORY_MANAGER_MAGIC {
-        return Err(RuntimeConstructionError::ForeignMemory { observed_magic });
-    }
-    let observed = prefix[3];
-    if observed != MEMORY_MANAGER_LAYOUT_VERSION {
-        return Err(RuntimeConstructionError::UnsupportedMemoryManagerVersion {
-            observed,
-            supported: MEMORY_MANAGER_LAYOUT_VERSION,
-        });
-    }
-    Ok(())
 }
 
 impl RuntimeBootstrapBinding {
@@ -290,7 +323,7 @@ impl RuntimeBootstrapBinding {
 }
 
 fn ensure_ledger_cell_capacity<M: Memory, P>(
-    memory: &VirtualMemory<M>,
+    memory: &RuntimeMemory<M>,
     record: &StableCellLedgerRecord,
 ) -> Result<(), RuntimeBootstrapError<P>> {
     let value_size = record.to_bytes().len();
@@ -314,4 +347,17 @@ fn ensure_ledger_cell_capacity<M: Memory, P>(
 
 fn external_runtime_allocations(committed: CommittedAllocations) -> CommittedAllocations {
     committed.without_stable_key_prefix(crate::IC_MEMORY_STABLE_KEY_PREFIX)
+}
+
+const fn check_bucket_size(
+    actual: u16,
+    requested: MemoryManagerConfig,
+) -> Result<(), RuntimeConstructionError> {
+    if actual != requested.bucket_size_pages() {
+        return Err(RuntimeConstructionError::BucketSizeMismatch {
+            persisted: actual,
+            requested: requested.bucket_size_pages(),
+        });
+    }
+    Ok(())
 }

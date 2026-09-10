@@ -1,4 +1,5 @@
-use ic_stable_structures::{DefaultMemoryImpl, memory_manager::VirtualMemory};
+use ic_memory::RuntimeMemory;
+use ic_stable_structures::DefaultMemoryImpl;
 use std::{
     cell::RefCell,
     sync::atomic::{AtomicBool, Ordering},
@@ -16,7 +17,7 @@ ic_memory::eager_init!({
 });
 
 thread_local! {
-    static MACRO_MEMORY: RefCell<Option<VirtualMemory<DefaultMemoryImpl>>> = {
+    static MACRO_MEMORY: RefCell<Option<RuntimeMemory<DefaultMemoryImpl>>> = {
         assert!(
             ic_memory::is_default_memory_manager_bootstrapped()
                 .expect("default runtime lifecycle")

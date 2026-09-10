@@ -222,8 +222,10 @@ let diagnostics = runtime.diagnostic_export()?;
 
 Construction is fallible. Empty backing memory is initialized as an
 `ic-stable-structures` `MemoryManager`; nonempty backing memory must already
-contain the current `MGR` header and layout version. Foreign or unsupported
-memory is rejected before `MemoryManager::init()` can overwrite its header.
+pass validation of the current `MGR` header, bucket table, and virtual/physical
+extents. Foreign, unsupported, or corrupt metadata returns a typed error before
+manager initialization can write. The read-only layout adapter is coupled to the
+exact `ic-stable-structures = "=0.7.2"` dependency.
 A pre-grown blank memory is nonempty and is rejected rather than assumed
 disposable.
 
@@ -242,6 +244,61 @@ history and is not persisted in the allocation ledger.
 There is intentionally no public reset API. Native tests should construct a new
 explicit runtime or use the naturally independent default TLS runtime; changing
 global flags cannot reset a concrete stable-memory instance safely.
+
+## Bounded physical allocation attribution
+
+Use `runtime.memory_allocations()` or
+`default_memory_manager_memory_allocations()` for an owned `MemoryAllocations`
+report. Collection reads exactly 34,848 bytes of validated manager metadata and
+returns all 255 usable IDs in order, including zero-size IDs and the ledger at
+ID 0. It never decodes ledger history, initializes stores, writes, grows memory,
+or advances a generation. The default helper refuses to construct a missing
+runtime; an existing unbootstrapped runtime can report physical allocation with
+unknown current bindings.
+
+The report measures the actual persisted bucket size, physical and virtual
+extents, assigned buckets, manager metadata, known current stable-key/owner
+bindings, and unknown/unmanaged residuals. Virtual bytes are addressable extent,
+not payload occupancy. `payload_bytes` is unavailable. Bucket slack is only
+assigned bucket capacity beyond virtual extent. Conservation is explicit:
+
+```text
+physical bytes = manager metadata + assigned bucket bytes + unmanaged bytes
+assigned bucket bytes = sum(per-ID bucket bytes)
+                      = known binding bytes + unknown binding bytes
+                      = virtual bytes + bucket slack
+```
+
+A current range claim does not prove historical ownership or grant access.
+Retired/absent keys are explicitly unknown; the ledger's reserved ID is included
+without reading its payload. Keep operator/controller authorization in the
+integrating application. Full doctor/ledger diagnostics below still decode
+history and are not substitutes for this bounded report.
+
+## Bucket policy
+
+Fresh runtimes retain the 128-page (8 MiB) default. `MemoryRuntime::new` honors
+an existing same-release memory's actual setting. For an explicit setting use
+`MemoryRuntime::new_with_config(memory, MemoryManagerConfig::new(pages)?)`; all
+nonzero `u16` page counts are supported. Existing memory must match exactly or
+construction fails before effects. Configuration is immutable for that runtime.
+
+For a default runtime, select configuration through
+`bootstrap_default_memory_manager_with_config(config, &policy)` before any
+operation that constructs the runtime. Repeated explicit configuration must
+match the established manager, independently of the allocation policy identity.
+No bucket setting shrinks existing memory or migrates the durable format.
+
+Open operations and macros return `RuntimeMemory<M>`, implementing `Memory` and
+`Clone` without requiring `M: Clone`. Stable store type annotations must use
+`ic_memory::RuntimeMemory<DefaultMemoryImpl>`. The runtime retains one private
+shared backing for read-only attribution and owns exactly one manager.
+
+The [CANIC-162 handoff](docs/canic162-memory-attribution.md) contains the exact
+Canic integration example, reproducible measurements, capacity tradeoffs, and
+limitations. Fixture evidence supports configurable smaller buckets, but does
+not justify changing the default or selecting a Toko policy without live
+attribution and a capacity assessment.
 
 ## Diagnostics
 

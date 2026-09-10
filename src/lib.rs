@@ -42,6 +42,14 @@
 //! new generation, and only then publish committed allocation authority before
 //! opening slots through the storage owner.
 //!
+//! Bounded physical attribution is available through
+//! [`MemoryRuntime::memory_allocations`] and
+//! [`default_memory_manager_memory_allocations`]. It reports actual persisted
+//! buckets and explicit residuals without decoding ledger history. Virtual
+//! extent is not payload occupancy. Opens return [`RuntimeMemory`]; explicit
+//! [`MemoryManagerConfig`] selects fresh-state buckets or checks a persisted
+//! setting without migration. The default remains 128 pages.
+//!
 //! [`MemoryRuntime`] is the canonical owner for one backing memory instance. It
 //! contains that memory's manager, ledger cell, bootstrap lifecycle, committed
 //! capability, opens, and diagnostics. Linked code contributes declarations to
@@ -151,11 +159,14 @@ pub use registry::{
     register_static_memory_range_declaration, sealed_declaration_snapshot,
 };
 pub use runtime::{
-    MemoryRuntime, RuntimeBootstrapError, RuntimeConstructionError, RuntimeDiagnosticError,
-    RuntimeOpenError, RuntimePolicyError, RuntimeStateError, bootstrap_default_memory_manager,
-    bootstrap_default_memory_manager_with_policy, committed_allocations,
-    default_memory_manager_commit_recovery_diagnostic, default_memory_manager_diagnostic_export,
-    default_memory_manager_doctor_report, default_memory_manager_doctor_report_with_policy,
+    AllocationBinding, AllocationRangeClaim, MemoryAllocation, MemoryAllocations,
+    MemoryManagerConfig, MemoryManagerLayoutError, MemoryRuntime, RuntimeBootstrapError,
+    RuntimeConstructionError, RuntimeDiagnosticError, RuntimeMemory, RuntimeOpenError,
+    RuntimePolicyError, RuntimeStateError, bootstrap_default_memory_manager,
+    bootstrap_default_memory_manager_with_config, bootstrap_default_memory_manager_with_policy,
+    committed_allocations, default_memory_manager_commit_recovery_diagnostic,
+    default_memory_manager_diagnostic_export, default_memory_manager_doctor_report,
+    default_memory_manager_doctor_report_with_policy, default_memory_manager_memory_allocations,
     is_default_memory_manager_bootstrapped, open_default_memory_manager_memory,
 };
 pub use schema::{SchemaMetadata, SchemaMetadataError};

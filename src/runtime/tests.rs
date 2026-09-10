@@ -19,7 +19,7 @@ use crate::{
 use ic_stable_structures::{Memory, VectorMemory};
 use std::convert::Infallible;
 
-fn declarations() -> SealedDeclarationSnapshot {
+pub(super) fn declarations() -> SealedDeclarationSnapshot {
     reset_static_memory_declarations_for_tests();
     register_static_memory_manager_range(
         120,

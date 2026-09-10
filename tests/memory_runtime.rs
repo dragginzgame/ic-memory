@@ -65,3 +65,45 @@ fn public_explicit_runtime_bootstraps_opens_and_diagnoses_its_memory() {
     assert_eq!(export.current_generation, generation);
     assert!(runtime.doctor_report(&declarations, &AllowAll).bootstrapped);
 }
+
+#[test]
+fn owned_report_and_cloned_handles_support_borrowed_nonclone_backing() {
+    struct BorrowedMemory<'a>(&'a VectorMemory);
+    impl Memory for BorrowedMemory<'_> {
+        fn size(&self) -> u64 {
+            self.0.size()
+        }
+        fn grow(&self, pages: u64) -> i64 {
+            self.0.grow(pages)
+        }
+        fn read(&self, offset: u64, dst: &mut [u8]) {
+            self.0.read(offset, dst);
+        }
+        fn write(&self, offset: u64, src: &[u8]) {
+            self.0.write(offset, src);
+        }
+    }
+    let memory = VectorMemory::default();
+    let mut runtime = MemoryRuntime::new_with_config(
+        BorrowedMemory(&memory),
+        ic_memory::MemoryManagerConfig::new(8).unwrap(),
+    )
+    .unwrap();
+    runtime
+        .bootstrap(&sealed_declaration_snapshot().unwrap(), &AllowAll)
+        .unwrap();
+    let rows = runtime
+        .open_memory("explicit_runtime.rows.v1", 140)
+        .unwrap();
+    rows.grow(1);
+    rows.write(0, &[7]);
+    let clone = rows.clone();
+    let report = runtime.memory_allocations().unwrap();
+    drop(runtime);
+    drop(rows);
+    let mut value = [0];
+    clone.read(0, &mut value);
+    assert_eq!(value, [7]);
+    assert_eq!(report.memories[140].virtual_extent.wasm_pages, 1);
+    assert_eq!(report.bucket_size_pages, 8);
+}

@@ -315,13 +315,13 @@ impl DeclarationSnapshot {
 
     /// Return true when the snapshot has no declarations.
     #[must_use]
-    pub fn is_empty(&self) -> bool {
+    pub const fn is_empty(&self) -> bool {
         self.declarations.is_empty()
     }
 
     /// Return the number of declarations in the snapshot.
     #[must_use]
-    pub fn len(&self) -> usize {
+    pub const fn len(&self) -> usize {
         self.declarations.len()
     }
 

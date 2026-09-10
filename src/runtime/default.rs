@@ -1,18 +1,18 @@
 use super::{
     MemoryRuntime, RuntimeBootstrapError, RuntimeConstructionError, RuntimeDiagnosticError,
-    RuntimeOpenError, RuntimeStateError, policy::NoopPolicy,
+    RuntimeMemory, RuntimeOpenError, RuntimeStateError, policy::NoopPolicy,
 };
 use crate::{
     CommittedAllocations, DiagnosticExport, MemoryRuntimeDoctorReport, RuntimeBootstrapPolicy,
     physical::CommitStoreDiagnostic, registry::sealed_declaration_snapshot,
 };
-use ic_stable_structures::{DefaultMemoryImpl, memory_manager::VirtualMemory};
+use ic_stable_structures::DefaultMemoryImpl;
 use std::{cell::RefCell, convert::Infallible, fmt::Display};
 
 thread_local! {
     static DEFAULT_RUNTIME:
-        RefCell<Result<MemoryRuntime<DefaultMemoryImpl>, RuntimeConstructionError>> =
-        RefCell::new(MemoryRuntime::new(DefaultMemoryImpl::default()));
+        RefCell<Option<Result<MemoryRuntime<DefaultMemoryImpl>, RuntimeConstructionError>>> =
+        const { RefCell::new(None) };
 }
 
 fn with_default_runtime<T, E>(
@@ -22,10 +22,11 @@ where
     E: From<RuntimeStateError>,
 {
     match DEFAULT_RUNTIME.try_with(|runtime| {
-        let runtime = runtime
-            .try_borrow()
+        let mut runtime = runtime
+            .try_borrow_mut()
             .map_err(|_| E::from(RuntimeStateError::ReentrantAccess))?;
         let runtime = runtime
+            .get_or_insert_with(|| MemoryRuntime::new(DefaultMemoryImpl::default()))
             .as_ref()
             .map_err(|error| E::from(RuntimeStateError::Construction(*error)))?;
         operation(runtime)
@@ -46,6 +47,7 @@ where
             .try_borrow_mut()
             .map_err(|_| E::from(RuntimeStateError::ReentrantAccess))?;
         let runtime = runtime
+            .get_or_insert_with(|| MemoryRuntime::new(DefaultMemoryImpl::default()))
             .as_mut()
             .map_err(|error| E::from(RuntimeStateError::Construction(*error)))?;
         operation(runtime)
@@ -88,7 +90,7 @@ pub fn bootstrap_default_memory_manager_with_policy<P: RuntimeBootstrapPolicy>(
 pub fn open_default_memory_manager_memory(
     stable_key: &str,
     id: u8,
-) -> Result<VirtualMemory<DefaultMemoryImpl>, RuntimeOpenError> {
+) -> Result<RuntimeMemory<DefaultMemoryImpl>, RuntimeOpenError> {
     with_default_runtime(|runtime| runtime.open_memory(stable_key, id))
 }
 
@@ -130,4 +132,55 @@ pub(super) fn with_default_runtime_borrowed(
         let _borrow = runtime.borrow_mut();
         operation()
     })
+}
+
+/// Measure the existing default runtime without constructing a manager or
+/// initializing backing memory.
+///
+/// Returns `NotBootstrapped` if no runtime exists.
+/// A constructed runtime may be measured before bootstrap with unknown bindings.
+pub fn default_memory_manager_memory_allocations()
+-> Result<super::MemoryAllocations, RuntimeDiagnosticError> {
+    DEFAULT_RUNTIME
+        .try_with(|runtime| {
+            let runtime = runtime
+                .try_borrow()
+                .map_err(|_| RuntimeStateError::ReentrantAccess)?;
+            let runtime = runtime
+                .as_ref()
+                .ok_or(RuntimeDiagnosticError::NotBootstrapped)?
+                .as_ref()
+                .map_err(|error| RuntimeStateError::Construction(*error))?;
+            runtime.memory_allocations()
+        })
+        .map_err(|_| RuntimeStateError::Unavailable)?
+}
+
+/// Bootstrap the default runtime with an explicit bucket setting and allocation
+/// policy.
+///
+/// The first construction uses this setting; repeated calls and reopened
+/// memory must match it exactly before bootstrap effects. Call this during
+/// bootstrap before any operation that would construct the default runtime.
+pub fn bootstrap_default_memory_manager_with_config<P: RuntimeBootstrapPolicy>(
+    config: super::MemoryManagerConfig,
+    policy: &P,
+) -> Result<CommittedAllocations, RuntimeBootstrapError<P::Error>> {
+    DEFAULT_RUNTIME
+        .try_with(|runtime| {
+            let mut runtime = runtime
+                .try_borrow_mut()
+                .map_err(|_| RuntimeStateError::ReentrantAccess)?;
+            let runtime = runtime
+                .get_or_insert_with(|| {
+                    MemoryRuntime::new_with_config(DefaultMemoryImpl::default(), config)
+                })
+                .as_mut()
+                .map_err(|error| RuntimeStateError::Construction(*error))?;
+            super::check_bucket_size(runtime.bucket_size_pages, config)
+                .map_err(RuntimeStateError::Construction)?;
+            let declarations = sealed_declaration_snapshot()?;
+            runtime.bootstrap(&declarations, policy).cloned()
+        })
+        .map_err(|_| RuntimeStateError::Unavailable)?
 }
