@@ -3,7 +3,7 @@ use super::{
     RuntimeStateError,
     default::{is_default_memory_manager_bootstrapped, with_default_runtime_borrowed},
     diagnostics::diagnostic_validation_ledger,
-    policy::NoopPolicy,
+    policy::GenericRangePolicy,
 };
 use crate::{
     AllocationHistory, AllocationLedger, AllocationPolicy, AllocationRecord,
@@ -265,7 +265,7 @@ fn concurrent_independent_runtimes_do_not_share_bootstrap_state() {
         let first = scope.spawn(move || {
             let mut runtime = empty_runtime();
             let generation = runtime
-                .bootstrap(&first_declarations, &NoopPolicy)
+                .bootstrap(&first_declarations, &GenericRangePolicy)
                 .expect("first bootstrap")
                 .generation();
             let diagnostic_generation = runtime
@@ -277,7 +277,7 @@ fn concurrent_independent_runtimes_do_not_share_bootstrap_state() {
         let second = scope.spawn(move || {
             let mut runtime = empty_runtime();
             let generation = runtime
-                .bootstrap(&second_declarations, &NoopPolicy)
+                .bootstrap(&second_declarations, &GenericRangePolicy)
                 .expect("second bootstrap")
                 .generation();
             let diagnostic_generation = runtime
@@ -304,11 +304,11 @@ fn repeated_bootstrap_is_idempotent_and_existing_memory_recovers() {
     let generation = {
         let mut runtime = MemoryRuntime::new(backing.clone()).expect("empty backing memory");
         let first = runtime
-            .bootstrap(&declarations, &NoopPolicy)
+            .bootstrap(&declarations, &GenericRangePolicy)
             .expect("first bootstrap")
             .generation();
         let second = runtime
-            .bootstrap(&declarations, &NoopPolicy)
+            .bootstrap(&declarations, &GenericRangePolicy)
             .expect("idempotent bootstrap")
             .generation();
         assert_eq!(first, second);
@@ -323,7 +323,7 @@ fn repeated_bootstrap_is_idempotent_and_existing_memory_recovers() {
     let mut recovered_runtime =
         MemoryRuntime::new(backing).expect("existing MemoryManager backing memory");
     let recovered_generation = recovered_runtime
-        .bootstrap(&declarations, &NoopPolicy)
+        .bootstrap(&declarations, &GenericRangePolicy)
         .expect("recover existing backing memory")
         .generation();
     assert!(recovered_generation >= generation);
@@ -524,7 +524,7 @@ fn open_errors_and_failed_bootstrap_do_not_publish_authority() {
     );
 
     runtime
-        .bootstrap(&declarations, &NoopPolicy)
+        .bootstrap(&declarations, &GenericRangePolicy)
         .expect("successful retry");
     let Err(wrong_key) = runtime.open_memory("runtime_tests.missing.v1", 120) else {
         panic!("wrong key must fail");
@@ -550,7 +550,7 @@ fn doctor_and_diagnostics_report_the_same_runtime_lifecycle() {
 
     assert!(
         !runtime
-            .doctor_report(&declarations, &NoopPolicy)
+            .doctor_report(&declarations, &GenericRangePolicy)
             .bootstrapped
     );
     assert!(matches!(
@@ -559,13 +559,13 @@ fn doctor_and_diagnostics_report_the_same_runtime_lifecycle() {
     ));
 
     runtime
-        .bootstrap(&declarations, &NoopPolicy)
+        .bootstrap(&declarations, &GenericRangePolicy)
         .expect("bootstrap");
     let memory = runtime
         .open_memory("runtime_tests.rows.v1", 120)
         .expect("open");
     memory.grow(2);
-    let doctor = runtime.doctor_report(&declarations, &NoopPolicy);
+    let doctor = runtime.doctor_report(&declarations, &GenericRangePolicy);
     let export = runtime.diagnostic_export().expect("diagnostic export");
     assert!(doctor.bootstrapped);
     assert_eq!(
@@ -666,6 +666,10 @@ fn default_runtime_reentry_is_a_typed_state_error() {
         assert_eq!(
             is_default_memory_manager_bootstrapped().expect_err("re-entry"),
             RuntimeStateError::ReentrantAccess
+        );
+        assert_eq!(
+            super::committed_allocations().expect_err("re-entry"),
+            RuntimeOpenError::State(RuntimeStateError::ReentrantAccess)
         );
         Ok(())
     })

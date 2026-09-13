@@ -36,6 +36,7 @@ pub use error::{
     RuntimePolicyError, RuntimeStateError,
 };
 pub use layout::MemoryManagerLayoutError;
+pub use policy::GenericRangePolicy;
 
 use self::policy::{RuntimeMemoryManagerPolicy, runtime_bootstrap_error_from_bootstrap};
 use crate::{

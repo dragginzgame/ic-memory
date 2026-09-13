@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.13.3
+
+- Made default-runtime bootstrap status and committed-capability lookups
+  nonconstructing. Missing runtimes return `false` / `NotBootstrapped` without
+  initializing memory or selecting 128-page buckets; cached construction and
+  TLS access failures remain typed errors.
+- Exposed the existing built-in policy as `GenericRangePolicy` for use with
+  configured bootstrap. Range enforcement, policy identity, host-owned runtime
+  adoption, the durable format and the 128-page upstream default are unchanged.
+- Added focused coverage for observation before configured bootstrap, repeated
+  initialization, exact bucket matching and custom host-policy preservation.
+- Matched Rust 1.98.1 raw Wasm probes using the same dependency lockfile leave
+  core size unchanged at 240,387 bytes and reduce diagnostics from 289,422 to
+  289,389 bytes. IC instruction/cycle deltas remain unmeasured. No database
+  recreation is required by this change.
+
 ## 0.13.2
 
 - Removed the redundant private backing adapter in favor of upstream's

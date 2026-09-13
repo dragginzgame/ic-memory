@@ -166,10 +166,10 @@ pub use registry::{
     register_static_memory_range_declaration, sealed_declaration_snapshot,
 };
 pub use runtime::{
-    AllocationBinding, AllocationRangeClaim, MemoryAllocation, MemoryAllocations,
-    MemoryManagerConfig, MemoryManagerLayoutError, MemoryRuntime, RuntimeBootstrapError,
-    RuntimeConstructionError, RuntimeDiagnosticError, RuntimeMemory, RuntimeOpenError,
-    RuntimePolicyError, RuntimeStateError, bootstrap_default_memory_manager,
+    AllocationBinding, AllocationRangeClaim, GenericRangePolicy, MemoryAllocation,
+    MemoryAllocations, MemoryManagerConfig, MemoryManagerLayoutError, MemoryRuntime,
+    RuntimeBootstrapError, RuntimeConstructionError, RuntimeDiagnosticError, RuntimeMemory,
+    RuntimeOpenError, RuntimePolicyError, RuntimeStateError, bootstrap_default_memory_manager,
     bootstrap_default_memory_manager_with_config, bootstrap_default_memory_manager_with_policy,
     committed_allocations, default_memory_manager_commit_recovery_diagnostic,
     default_memory_manager_diagnostic_export, default_memory_manager_doctor_report,

@@ -1,6 +1,6 @@
 use super::{
     MemoryRuntime, RuntimeBootstrapError, RuntimeConstructionError, RuntimeDiagnosticError,
-    RuntimeMemory, RuntimeOpenError, RuntimeStateError, policy::NoopPolicy,
+    RuntimeMemory, RuntimeOpenError, RuntimeStateError, policy::GenericRangePolicy,
 };
 use crate::{
     CommittedAllocations, DiagnosticExport, MemoryRuntimeDoctorReport, RuntimeBootstrapPolicy,
@@ -57,20 +57,59 @@ where
     }
 }
 
+// Observation must not choose a bucket configuration or initialize backing
+// memory. Keep absence distinct from a cached construction failure.
+fn with_existing_default_runtime<T, E>(
+    operation: impl FnOnce(Option<&MemoryRuntime<DefaultMemoryImpl>>) -> Result<T, E>,
+) -> Result<T, E>
+where
+    E: From<RuntimeStateError>,
+{
+    DEFAULT_RUNTIME
+        .try_with(|runtime| {
+            let runtime = runtime
+                .try_borrow()
+                .map_err(|_| E::from(RuntimeStateError::ReentrantAccess))?;
+            let existing = runtime
+                .as_ref()
+                .map(|runtime| {
+                    runtime
+                        .as_ref()
+                        .map_err(|error| E::from(RuntimeStateError::Construction(*error)))
+                })
+                .transpose()?;
+            operation(existing)
+        })
+        .map_err(|_| E::from(RuntimeStateError::Unavailable))?
+}
+
 /// Return whether this thread's default runtime has completed bootstrap.
+///
+/// Does not construct an absent runtime or initialize backing memory. Returns
+/// `false` for an absent or unbootstrapped runtime, preserving construction and
+/// TLS access failures as typed errors.
 pub fn is_default_memory_manager_bootstrapped() -> Result<bool, RuntimeStateError> {
-    with_default_runtime(|runtime| Ok(runtime.is_bootstrapped()))
+    with_existing_default_runtime(|runtime| Ok(runtime.is_some_and(MemoryRuntime::is_bootstrapped)))
 }
 
 /// Return this thread's default runtime committed allocation capability.
+///
+/// Does not construct an absent runtime or initialize backing memory. Returns
+/// `NotBootstrapped` for an absent or unbootstrapped runtime. This lookup can
+/// precede configured bootstrap without selecting the default bucket size.
 pub fn committed_allocations() -> Result<CommittedAllocations, RuntimeOpenError> {
-    with_default_runtime(|runtime| runtime.committed_allocations().cloned())
+    with_existing_default_runtime(|runtime| {
+        runtime
+            .ok_or(RuntimeOpenError::NotBootstrapped)?
+            .committed_allocations()
+            .cloned()
+    })
 }
 
 /// Bootstrap this thread's default runtime using generic range policy.
 pub fn bootstrap_default_memory_manager()
 -> Result<CommittedAllocations, RuntimeBootstrapError<Infallible>> {
-    bootstrap_default_memory_manager_with_policy(&NoopPolicy)
+    bootstrap_default_memory_manager_with_policy(&GenericRangePolicy)
 }
 
 /// Bootstrap this thread's default runtime with caller-supplied policy.
@@ -109,7 +148,7 @@ pub fn default_memory_manager_commit_recovery_diagnostic()
 /// Build preflight and lifecycle diagnostics for this thread's default runtime.
 pub fn default_memory_manager_doctor_report()
 -> Result<MemoryRuntimeDoctorReport, RuntimeDiagnosticError> {
-    default_memory_manager_doctor_report_with_policy(&NoopPolicy)
+    default_memory_manager_doctor_report_with_policy(&GenericRangePolicy)
 }
 
 /// Build diagnostics for this thread's default runtime under one explicit policy.
@@ -141,19 +180,11 @@ pub(super) fn with_default_runtime_borrowed(
 /// A constructed runtime may be measured before bootstrap with unknown bindings.
 pub fn default_memory_manager_memory_allocations()
 -> Result<super::MemoryAllocations, RuntimeDiagnosticError> {
-    DEFAULT_RUNTIME
-        .try_with(|runtime| {
-            let runtime = runtime
-                .try_borrow()
-                .map_err(|_| RuntimeStateError::ReentrantAccess)?;
-            let runtime = runtime
-                .as_ref()
-                .ok_or(RuntimeDiagnosticError::NotBootstrapped)?
-                .as_ref()
-                .map_err(|error| RuntimeStateError::Construction(*error))?;
-            runtime.memory_allocations()
-        })
-        .map_err(|_| RuntimeStateError::Unavailable)?
+    with_existing_default_runtime(|runtime| {
+        runtime
+            .ok_or(RuntimeDiagnosticError::NotBootstrapped)?
+            .memory_allocations()
+    })
 }
 
 /// Bootstrap the default runtime with an explicit bucket setting and allocation
@@ -162,6 +193,8 @@ pub fn default_memory_manager_memory_allocations()
 /// The first construction uses this setting; repeated calls and reopened
 /// memory must match it exactly before bootstrap effects. Call this during
 /// bootstrap before any operation that would construct the default runtime.
+/// Use [`super::GenericRangePolicy`] to select the built-in policy, or pass the
+/// host's custom policy. This operation does not adopt a different bound policy.
 pub fn bootstrap_default_memory_manager_with_config<P: RuntimeBootstrapPolicy>(
     config: super::MemoryManagerConfig,
     policy: &P,
@@ -183,4 +216,82 @@ pub fn bootstrap_default_memory_manager_with_config<P: RuntimeBootstrapPolicy>(
             runtime.bootstrap(&declarations, policy).cloned()
         })
         .map_err(|_| RuntimeStateError::Unavailable)?
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn observations_leave_an_absent_runtime_absent() {
+        std::thread::spawn(|| {
+            for _ in 0..2 {
+                assert!(!is_default_memory_manager_bootstrapped().unwrap());
+                assert_eq!(
+                    committed_allocations(),
+                    Err(RuntimeOpenError::NotBootstrapped)
+                );
+                assert!(matches!(
+                    default_memory_manager_memory_allocations(),
+                    Err(RuntimeDiagnosticError::NotBootstrapped)
+                ));
+                DEFAULT_RUNTIME.with(|runtime| assert!(runtime.borrow().is_none()));
+            }
+        })
+        .join()
+        .unwrap();
+    }
+
+    #[test]
+    fn observations_preserve_unbootstrapped_configuration() {
+        std::thread::spawn(|| {
+            let config = super::super::MemoryManagerConfig::new(16).unwrap();
+            DEFAULT_RUNTIME.with(|runtime| {
+                *runtime.borrow_mut() = Some(MemoryRuntime::new_with_config(
+                    DefaultMemoryImpl::default(),
+                    config,
+                ));
+            });
+            let before = default_memory_manager_memory_allocations().unwrap();
+            assert!(!is_default_memory_manager_bootstrapped().unwrap());
+            assert_eq!(
+                committed_allocations(),
+                Err(RuntimeOpenError::NotBootstrapped)
+            );
+            assert_eq!(before.bucket_size_pages, 16);
+            assert_eq!(default_memory_manager_memory_allocations().unwrap(), before);
+        })
+        .join()
+        .unwrap();
+    }
+
+    #[test]
+    fn observations_preserve_cached_construction_failure() {
+        std::thread::spawn(|| {
+            let error = RuntimeConstructionError::ForeignMemory {
+                observed_magic: *b"BAD",
+            };
+            DEFAULT_RUNTIME.with(|runtime| *runtime.borrow_mut() = Some(Err(error)));
+            assert_eq!(
+                is_default_memory_manager_bootstrapped(),
+                Err(RuntimeStateError::Construction(error))
+            );
+            assert_eq!(
+                committed_allocations(),
+                Err(RuntimeOpenError::State(RuntimeStateError::Construction(
+                    error
+                )))
+            );
+            assert!(matches!(
+                default_memory_manager_memory_allocations(),
+                Err(RuntimeDiagnosticError::State(RuntimeStateError::Construction(cause)))
+                    if cause == error
+            ));
+            DEFAULT_RUNTIME.with(|runtime| {
+                assert!(matches!(runtime.borrow().as_ref(), Some(Err(cause)) if *cause == error));
+            });
+        })
+        .join()
+        .unwrap();
+    }
 }

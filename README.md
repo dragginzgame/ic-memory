@@ -148,8 +148,10 @@ Use helpers such as
 `ic_memory::open_default_memory_manager_memory(...)`, and the macros shown
 above; implementation modules are private.
 
-The no-argument bootstrap helper uses ic-memory's built-in versioned
-`PolicyIdentity`. A custom policy implements both `AllocationPolicy` and
+The no-argument bootstrap helper uses `GenericRangePolicy`, ic-memory's built-in
+policy with its existing versioned `PolicyIdentity`. The runtime enforces range
+ownership and internal reservations; this policy adds no application restrictions.
+A custom policy implements both `AllocationPolicy` and
 `RuntimeBootstrapPolicy`. Its bounded identity contains a policy-family name,
 a nonzero semantic version, and an optional caller-computed 32-byte
 configuration digest. Change the version when policy semantics change and use
@@ -306,6 +308,19 @@ For a default runtime, select configuration through
 operation that constructs the runtime. Repeated explicit configuration must
 match the established manager, independently of the allocation policy identity.
 No bucket setting shrinks existing memory or migrates the durable format.
+
+For configured bootstrap without a custom application policy, pass
+`&ic_memory::GenericRangePolicy` to the same helper. There is no second
+configured bootstrap path, profile state, or policy identity.
+
+`is_default_memory_manager_bootstrapped()` and `committed_allocations()` do not
+construct a missing runtime. They return `false` / `NotBootstrapped` respectively,
+without initializing backing memory or choosing bucket size. Frameworks may
+inspect committed allocations first, adopt an already bootstrapped host runtime,
+and otherwise bootstrap with their chosen configuration. Adoption still requires
+checking the framework's declarations; do not re-bootstrap with the generic policy
+to bypass an existing host policy. Cached construction and TLS access failures
+remain errors, not absence. Other runtime operations may still construct it.
 
 Open operations and macros return `RuntimeMemory<M>`, implementing `Memory` and
 `Clone` without requiring `M: Clone`. Stable store type annotations must use

@@ -129,9 +129,21 @@ impl<P: AllocationPolicy> RuntimeMemoryManagerPolicy<'_, P> {
     }
 }
 
-pub(super) struct NoopPolicy;
+///
+/// GenericRangePolicy
+///
+/// Built-in bootstrap policy used by the no-argument default-runtime helpers.
+/// The runtime enforces registered range ownership and internal reservations;
+/// this policy adds no application-specific restrictions. Passing it directly
+/// to allocation validation outside the runtime does not enforce those ranges.
+///
+/// Use with configured bootstrap when the host does not require a custom
+/// policy. It retains the built-in policy identity and does not authorize
+/// replacing a different policy already bound to the runtime.
+///
+pub struct GenericRangePolicy;
 
-impl AllocationPolicy for NoopPolicy {
+impl AllocationPolicy for GenericRangePolicy {
     type Error = Infallible;
 
     fn validate_key(&self, _key: &StableKey) -> Result<(), Self::Error> {
@@ -155,7 +167,7 @@ impl AllocationPolicy for NoopPolicy {
     }
 }
 
-impl RuntimeBootstrapPolicy for NoopPolicy {
+impl RuntimeBootstrapPolicy for GenericRangePolicy {
     fn runtime_bootstrap_identity(&self) -> Result<PolicyIdentity, PolicyIdentityError> {
         PolicyIdentity::new("ic-memory.noop-policy", 1)
     }

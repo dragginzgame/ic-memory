@@ -49,8 +49,30 @@ impl RuntimeBootstrapPolicy for CustomPolicy {
 
 #[test]
 fn custom_default_policy_bootstrap_is_identity_bound_and_idempotent() {
-    let first = ic_memory::bootstrap_default_memory_manager_with_policy(&CustomPolicy)
+    assert!(!ic_memory::is_default_memory_manager_bootstrapped().unwrap());
+    assert_eq!(
+        ic_memory::committed_allocations(),
+        Err(ic_memory::RuntimeOpenError::NotBootstrapped)
+    );
+    let config = ic_memory::MemoryManagerConfig::new(16).unwrap();
+    let first = ic_memory::bootstrap_default_memory_manager_with_config(config, &CustomPolicy)
         .expect("first custom-policy bootstrap");
+    assert!(ic_memory::is_default_memory_manager_bootstrapped().unwrap());
+    assert_eq!(ic_memory::committed_allocations().unwrap(), first);
+    let before = ic_memory::default_memory_manager_memory_allocations().unwrap();
+    assert_eq!(before.bucket_size_pages, 16);
+    assert!(matches!(
+        ic_memory::bootstrap_default_memory_manager_with_config(
+            config,
+            &ic_memory::GenericRangePolicy
+        ),
+        Err(ic_memory::RuntimeBootstrapError::PolicyIdentityMismatch { .. })
+    ));
+    assert_eq!(
+        ic_memory::default_memory_manager_memory_allocations().unwrap(),
+        before
+    );
+    assert_eq!(ic_memory::committed_allocations().unwrap(), first);
     let repeated = ic_memory::bootstrap_default_memory_manager_with_policy(&CustomPolicy)
         .expect("same custom-policy identity");
 

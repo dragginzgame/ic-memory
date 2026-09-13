@@ -1,6 +1,6 @@
 use super::{
     AllocationBinding, MemoryManagerLayoutError, MemoryRuntime, RuntimeConstructionError,
-    RuntimeDiagnosticError, RuntimeOpenError, layout, policy::NoopPolicy,
+    RuntimeDiagnosticError, RuntimeOpenError, layout, policy::GenericRangePolicy,
 };
 use crate::{IC_MEMORY_LEDGER_STABLE_KEY, MEMORY_MANAGER_LEDGER_ID, registry::TEST_REGISTRY_LOCK};
 use ic_stable_structures::{
@@ -55,7 +55,9 @@ fn bounded_conservation_bindings_and_no_effects() {
     let declarations = super::tests::declarations();
     let memory = Metered::default();
     let mut runtime = MemoryRuntime::new(memory.clone()).unwrap();
-    runtime.bootstrap(&declarations, &NoopPolicy).unwrap();
+    runtime
+        .bootstrap(&declarations, &GenericRangePolicy)
+        .unwrap();
     let rows = runtime.open_memory("runtime_tests.rows.v1", 120).unwrap();
     let zero = runtime.memory_allocations().unwrap();
     assert_eq!(zero.memories[120].allocated_buckets, 0);
@@ -107,7 +109,9 @@ fn diagnostics_never_read_even_a_corrupt_unbounded_ledger() {
     let declarations = super::tests::declarations();
     let memory = Metered::default();
     let mut runtime = MemoryRuntime::new(memory.clone()).unwrap();
-    runtime.bootstrap(&declarations, &NoopPolicy).unwrap();
+    runtime
+        .bootstrap(&declarations, &GenericRangePolicy)
+        .unwrap();
     // Advertise a huge stable-cell value; bounded attribution must not decode it.
     runtime
         .memory(MEMORY_MANAGER_LEDGER_ID)
@@ -235,14 +239,18 @@ fn explicit_configuration_validates_before_effects_and_replays() {
     let config = super::MemoryManagerConfig::new(8).unwrap();
     let mut runtime = MemoryRuntime::new_with_config(memory.clone(), config).unwrap();
     assert_eq!(runtime.memory_manager_config(), config);
-    runtime.bootstrap(&declarations, &NoopPolicy).unwrap();
+    runtime
+        .bootstrap(&declarations, &GenericRangePolicy)
+        .unwrap();
     let handle = runtime.open_memory("runtime_tests.rows.v1", 120).unwrap();
     handle.grow(9);
     handle.write(8 * 65_536 - 1, &[4, 5, 6]);
     drop(handle);
     let generation = runtime.committed_allocations().unwrap().generation();
     memory.reset();
-    runtime.bootstrap(&declarations, &NoopPolicy).unwrap();
+    runtime
+        .bootstrap(&declarations, &GenericRangePolicy)
+        .unwrap();
     assert_eq!(
         runtime.committed_allocations().unwrap().generation(),
         generation
@@ -264,7 +272,9 @@ fn explicit_configuration_validates_before_effects_and_replays() {
     let unbound = runtime.memory_allocations().unwrap();
     assert_eq!(unbound.physical_extent, before.physical_extent);
     assert_eq!(unbound.memories[120].binding, AllocationBinding::Unknown);
-    runtime.bootstrap(&declarations, &NoopPolicy).unwrap();
+    runtime
+        .bootstrap(&declarations, &GenericRangePolicy)
+        .unwrap();
     let handle = runtime.open_memory("runtime_tests.rows.v1", 120).unwrap();
     let mut bytes = [0; 3];
     handle.read(8 * 65_536 - 1, &mut bytes);
@@ -289,18 +299,20 @@ fn default_configuration_is_bound_before_repeated_bootstrap() {
     std::thread::spawn(|| {
         let config = super::MemoryManagerConfig::new(16).unwrap();
         let committed =
-            super::bootstrap_default_memory_manager_with_config(config, &NoopPolicy).unwrap();
+            super::bootstrap_default_memory_manager_with_config(config, &GenericRangePolicy)
+                .unwrap();
         let before = super::default_memory_manager_memory_allocations().unwrap();
         assert_eq!(before.bucket_size_pages, 16);
         assert!(
             super::bootstrap_default_memory_manager_with_config(
                 super::MemoryManagerConfig::default(),
-                &NoopPolicy
+                &GenericRangePolicy
             )
             .is_err()
         );
         let replay =
-            super::bootstrap_default_memory_manager_with_config(config, &NoopPolicy).unwrap();
+            super::bootstrap_default_memory_manager_with_config(config, &GenericRangePolicy)
+                .unwrap();
         assert_eq!(replay.generation(), committed.generation());
         assert_eq!(
             super::default_memory_manager_memory_allocations().unwrap(),
