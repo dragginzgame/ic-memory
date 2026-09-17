@@ -317,7 +317,10 @@ fn failed_persistence_retries_admission_without_partial_publication() {
     let backing = seeded();
     let before = backing.borrow().clone();
     let limit = std::rc::Rc::new(Counter::new(backing.size()));
-    let keys: Vec<_> = (0..200).map(|i| format!("app.new{i}.v1")).collect();
+    // Long valid keys force capacity growth even with compact byte-string payloads.
+    let keys: Vec<_> = (0..240)
+        .map(|i| format!("app.new{i}.{}.v1", "x".repeat(110)))
+        .collect();
     let refs: Vec<_> = keys.iter().map(String::as_str).collect();
     let current = snapshot(&refs, "app", 10, 254, &[]);
     let policy = AdmissionPolicy {
@@ -329,10 +332,15 @@ fn failed_persistence_retries_admission_without_partial_publication() {
         limit: limit.clone(),
     })
     .unwrap();
-    assert!(matches!(
-        runtime.bootstrap(&current, &policy),
-        Err(RuntimeBootstrapError::StableCellLedgerWriteTooLarge { .. })
-    ));
+    let result = runtime.bootstrap(&current, &policy);
+    assert!(
+        matches!(
+            result,
+            Err(RuntimeBootstrapError::StableCellLedgerWriteTooLarge { .. })
+        ),
+        "{:?}",
+        result.err()
+    );
     assert!(!runtime.is_bootstrapped());
     assert_eq!(*backing.borrow(), before);
     limit.set(100);

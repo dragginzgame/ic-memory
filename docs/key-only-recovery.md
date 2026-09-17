@@ -118,10 +118,11 @@ inputs. These did not establish a small history or pre-allocation bound.
 
 | Resource | Current ceiling | Earliest enforcement |
 | --- | ---: | --- |
-| Stable-cell ledger value | 67,112,960 bytes (64 MiB + 4 KiB) | Header check before payload allocation/read; direct record decode before CBOR |
+| Stable-cell ledger value | 33,558,528 bytes (32 MiB + 4 KiB) | Header check before payload allocation/read; direct record decode before CBOR |
 | Logical ledger CBOR | 16,777,216 bytes (16 MiB) | Envelope decode before payload copy/CBOR; writer before envelope creation or commit mutation |
 | CBOR container depth | 32 nested edges | Allocation-free syntax walk before serde |
-| Advertised CBOR string/byte length | Remaining input bytes | Syntax walk before serde allocation |
+| Advertised CBOR text length | Remaining input bytes | Syntax walk before serde allocation |
+| Opaque generation byte string | 16,777,240 bytes (16 MiB + 24-byte envelope) and remaining input bytes | Allocation-free syntax walk before serde; writer checks the same limit |
 | Advertised array/map entries | At least one remaining byte per element (two per map pair) | Syntax walk before serde allocation hints |
 | External fixed + logical declarations | 254 | Snapshot sealing before copying/canonicalizing inputs |
 | External range declarations | 254 | Snapshot sealing before copying inputs |
@@ -140,8 +141,10 @@ are not capabilities. Typed outer payload/envelope errors, codec errors and
 `LedgerIntegrityError::LimitExceeded` fail closed. Oversized existing storage
 cannot be replaced with genesis.
 
-The outer ceiling permits both maximum logical payloads even when CBOR encodes
-`Vec<u8>` elements using two bytes each, plus envelope/field overhead. Writers
+The outer ceiling permits two maximum byte-string payloads, including their
+24-byte envelopes, plus record metadata. The current persisted shape is a
+pre-1.0 hard cut: recreate earlier integer-array records; the format version
+remains 1. See [codec qualification](opaque-ledger-payloads.md). Writers
 validate structural bounds before encoding and byte bounds before mutating the
 commit store; runtimes also check outer bytes before memory growth/write.
 Staging rejects excessive prior history before cloning and checks the resulting

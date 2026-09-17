@@ -73,6 +73,11 @@ fn select_authoritative_slot<'slot>(
 /// This is an advanced low-level DTO for framework or stable-IO owners. Its
 /// recovered bytes are untrusted until marker/checksum validation and ledger
 /// decoding/integrity validation have both succeeded.
+/// Binary serde formats encode the payload as a bounded byte string; human-readable
+/// formats retain an array of bytes. Direct serde decoding is a DTO operation:
+/// maintained durable readers additionally preflight CBOR before allocation.
+///
+
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct CommittedGenerationBytes {
@@ -83,7 +88,59 @@ pub struct CommittedGenerationBytes {
     /// Checksum over the generation, marker, and payload bytes.
     pub(crate) checksum: u64,
     /// Encoded ledger generation payload.
+    #[serde(with = "opaque_payload")]
     pub(crate) payload: Vec<u8>,
+}
+
+// The binary representation belongs to the persisted codec. Human-readable DTOs
+// continue to round-trip byte arrays without accepting arrays in durable CBOR.
+mod opaque_payload {
+    use crate::constants::MAX_COMMITTED_PAYLOAD_BYTES;
+    use serde::{Deserializer, Serialize, Serializer, de::Visitor};
+
+    pub fn serialize<S: Serializer>(bytes: &[u8], serializer: S) -> Result<S::Ok, S::Error> {
+        if bytes.len() > MAX_COMMITTED_PAYLOAD_BYTES {
+            return Err(serde::ser::Error::custom(
+                "ledger byte string exceeds payload bound",
+            ));
+        }
+        if serializer.is_human_readable() {
+            bytes.serialize(serializer)
+        } else {
+            serializer.serialize_bytes(bytes)
+        }
+    }
+
+    pub fn deserialize<'de, D: Deserializer<'de>>(deserializer: D) -> Result<Vec<u8>, D::Error> {
+        struct Bytes;
+        impl Visitor<'_> for Bytes {
+            type Value = Vec<u8>;
+
+            fn expecting(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                f.write_str("a bounded opaque ledger byte string")
+            }
+
+            fn visit_bytes<E: serde::de::Error>(self, bytes: &[u8]) -> Result<Self::Value, E> {
+                if bytes.len() > MAX_COMMITTED_PAYLOAD_BYTES {
+                    return Err(E::custom("ledger byte string exceeds payload bound"));
+                }
+                Ok(bytes.to_vec())
+            }
+
+            fn visit_byte_buf<E: serde::de::Error>(self, bytes: Vec<u8>) -> Result<Self::Value, E> {
+                if bytes.len() > MAX_COMMITTED_PAYLOAD_BYTES {
+                    return Err(E::custom("ledger byte string exceeds payload bound"));
+                }
+                Ok(bytes)
+            }
+        }
+        if deserializer.is_human_readable() {
+            return crate::cbor::deserialize_bounded_vec::<D, u8, MAX_COMMITTED_PAYLOAD_BYTES>(
+                deserializer,
+            );
+        }
+        deserializer.deserialize_byte_buf(Bytes)
+    }
 }
 
 impl CommittedGenerationBytes {
@@ -444,6 +501,57 @@ const fn hash_byte(hash: u64, byte: u8) -> u64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn payload_uses_binary_bytes_and_human_readable_arrays() {
+        let record = CommittedGenerationBytes::new(7, vec![0, 24, 255]);
+        let bytes = crate::test_cbor::to_vec(&record).unwrap();
+        let value: ciborium::Value = crate::cbor::from_slice_exact(&bytes).unwrap();
+        let ciborium::Value::Map(mut fields) = value else {
+            panic!("record map")
+        };
+        let (_, payload) = fields
+            .iter_mut()
+            .find(|(key, _)| key.as_text() == Some("payload"))
+            .unwrap();
+        assert_eq!(*payload, ciborium::Value::Bytes(vec![0, 24, 255]));
+        // Removed durable integer-array representations must reject.
+        *payload = ciborium::Value::Array(vec![0.into(), 24.into(), 255.into()]);
+        let removed = crate::test_cbor::to_vec(&ciborium::Value::Map(fields)).unwrap();
+        assert!(crate::cbor::from_slice_exact::<CommittedGenerationBytes>(&removed).is_err());
+        assert_eq!(
+            crate::cbor::from_slice_exact::<CommittedGenerationBytes>(&bytes).unwrap(),
+            record
+        );
+        let json = serde_json::to_value(&record).unwrap();
+        assert_eq!(json["payload"], serde_json::json!([0, 24, 255]));
+        assert_eq!(
+            serde_json::from_value::<CommittedGenerationBytes>(json).unwrap(),
+            record
+        );
+    }
+
+    #[test]
+    fn maximum_payload_writer_reader_agree() {
+        let record = CommittedGenerationBytes::new(
+            0,
+            vec![0; crate::constants::MAX_COMMITTED_PAYLOAD_BYTES],
+        );
+        let store = DualCommitStore {
+            slot0: Some(record.clone()),
+            slot1: Some(record),
+        };
+        let bytes = crate::test_cbor::to_vec(&store).unwrap();
+        assert!(bytes.len() <= crate::constants::MAX_LEDGER_RECORD_BYTES);
+        let decoded: DualCommitStore = crate::cbor::from_slice_exact(&bytes).unwrap();
+        assert_eq!(decoded, store);
+        assert!(decoded.authoritative().is_ok());
+        let oversized = CommittedGenerationBytes::new(
+            0,
+            vec![0; crate::constants::MAX_COMMITTED_PAYLOAD_BYTES + 1],
+        );
+        assert!(crate::test_cbor::to_vec(&oversized).is_err());
+    }
 
     fn payload(value: u8) -> Vec<u8> {
         vec![value; 4]

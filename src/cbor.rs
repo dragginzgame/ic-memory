@@ -65,6 +65,9 @@ fn preflight(bytes: &[u8]) -> Result<(), ciborium::de::Error<std::io::Error>> {
             0 | 1 | 7 => (),
             2 | 3 => {
                 let n = usize::try_from(n).map_err(|_| invalid())?;
+                if major == 2 && n > crate::constants::MAX_COMMITTED_PAYLOAD_BYTES {
+                    return Err(invalid());
+                }
                 *pos = pos
                     .checked_add(n)
                     .filter(|end| *end <= bytes.len())
@@ -118,7 +121,7 @@ where
     deserialize_bounded_vec::<D, T, { crate::constants::MAX_LEDGER_GENERATIONS }>(deserializer)
 }
 
-fn deserialize_bounded_vec<'de, D, T, const LIMIT: usize>(
+pub fn deserialize_bounded_vec<'de, D, T, const LIMIT: usize>(
     deserializer: D,
 ) -> Result<Vec<T>, D::Error>
 where
@@ -149,4 +152,27 @@ where
         }
     }
     deserializer.deserialize_seq(Bounded::<T, LIMIT>(std::marker::PhantomData))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn oversized_byte_string_rejects_before_deserializer_runs() {
+        #[derive(Debug)]
+        struct MustNotDecode;
+        impl<'de> Deserialize<'de> for MustNotDecode {
+            fn deserialize<D: Deserializer<'de>>(_: D) -> Result<Self, D::Error> {
+                panic!("preflight must reject before serde can allocate");
+            }
+        }
+        let len = crate::constants::MAX_COMMITTED_PAYLOAD_BYTES + 1;
+        let mut bytes = vec![0x5a];
+        bytes.extend_from_slice(&u32::try_from(len).unwrap().to_be_bytes());
+        // Both a truncated advertisement and a fully backed oversized value reject.
+        assert!(from_slice_exact::<MustNotDecode>(&bytes).is_err());
+        bytes.resize(5 + len, 0);
+        assert!(from_slice_exact::<MustNotDecode>(&bytes).is_err());
+    }
 }

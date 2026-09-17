@@ -2,7 +2,7 @@ const LEDGER_PAYLOAD_MAGIC: &[u8; 8] = b"ICMEMLED";
 const LEDGER_PAYLOAD_FORMAT_MARKER: &[u8; 4] = b"ICMF";
 /// Current durable ledger payload format version.
 pub const LEDGER_PAYLOAD_FORMAT_VERSION: u32 = 1;
-const LEDGER_PAYLOAD_HEADER_LEN: usize = 8 + 4 + 4 + 8;
+use crate::constants::LEDGER_PAYLOAD_HEADER_LEN;
 
 ///
 /// LedgerPayloadEnvelope

@@ -268,6 +268,56 @@ mod tests {
     }
 
     #[test]
+    fn malformed_payload_bytes_fail_closed_without_mutating_memory() {
+        let original = hex_fixture(include_str!(
+            "../fixtures/current/stable_cell_record.cbor.hex"
+        ));
+        let start = original
+            .windows(8)
+            .position(|bytes| bytes == b"\x67payload")
+            .unwrap()
+            + 8;
+        let oversized = u32::try_from(crate::constants::MAX_COMMITTED_PAYLOAD_BYTES + 1).unwrap();
+        let mut cases = Vec::new();
+        for replacement in [
+            vec![0x5a, 0xff, 0xff, 0xff, 0xff],
+            vec![0x5f, 0xff],
+            vec![0x41],
+            vec![0xff],
+        ] {
+            let mut bytes = original[..start].to_vec();
+            bytes.extend(replacement);
+            cases.push(bytes);
+        }
+        let mut bytes = original[..start].to_vec();
+        bytes.push(0x5a);
+        bytes.extend_from_slice(&oversized.to_be_bytes());
+        bytes.resize(bytes.len() + oversized as usize, 0);
+        cases.push(bytes);
+        for bytes in cases {
+            let memory = VectorMemory::default();
+            let pages = (bytes.len() + STABLE_CELL_HEADER_SIZE).div_ceil(65_536);
+            memory.grow(pages as u64);
+            memory.write(0, STABLE_CELL_MAGIC);
+            memory.write(3, &[STABLE_CELL_LAYOUT_VERSION]);
+            memory.write(4, &u32::try_from(bytes.len()).unwrap().to_le_bytes());
+            memory.write(STABLE_CELL_VALUE_OFFSET, &bytes);
+            let before = memory.borrow().clone();
+            for _ in 0..2 {
+                assert!(matches!(
+                    decode_stable_cell_ledger_record_from_memory(&memory),
+                    Err(StableCellLedgerError::Record(_))
+                ));
+                assert!(matches!(
+                    validate_stable_cell_ledger_memory(&memory),
+                    Err(StableCellLedgerError::Record(_))
+                ));
+            }
+            assert_eq!(*memory.borrow(), before);
+        }
+    }
+
+    #[test]
     fn stable_cell_ledger_record_rejects_trailing_bytes() {
         let mut bytes = serialize_record(&StableCellLedgerRecord::default());
         bytes.push(0);

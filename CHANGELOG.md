@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.14.3
+
+- Encode opaque committed payloads as bounded CBOR byte strings, removing the
+  outer codec's per-byte integer encoding and syntax walk. The existing CBOR
+  preflight checks the 16 MiB + 24-byte payload ceiling before deserialization;
+  the stable-cell record ceiling is now 32 MiB + 4 KiB.
+- This is a pre-1.0 persisted-format hard cut. Recreate earlier data; format
+  version remains 1, with no compatibility reader or migration bridge.
+  Human-readable DTO serialization continues to round-trip byte arrays.
+- Replace current wire fixtures and qualify maximum-size writer/reader parity,
+  malformed payload rejection, and capacity-refusal/retry behavior. Recovery,
+  checksums, generation history and the persistence/publication boundary remain
+  unchanged. All four raw Wasm probes shrink by 346–521 bytes; IcyDB's
+  maintained lifecycle fixture passes with a worst phase of 5,133,140 instructions
+  under its unchanged 12,750,000 ceiling using a local dependency override.
+  Released-dependency adoption remains pending. See
+  [codec qualification](docs/opaque-ledger-payloads.md).
+
 ## 0.14.2
 
 - Removed the intermediate sealed snapshot from historical admission completion.

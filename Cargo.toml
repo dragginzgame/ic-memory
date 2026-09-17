@@ -46,6 +46,7 @@ serde = { version = "1.0", default-features = false, features = [
 thiserror = "2.0"
 
 [dev-dependencies]
+serde_json = "1.0"
 trybuild = "1.0.121"
 
 [profile.wasm-size]

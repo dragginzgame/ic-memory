@@ -13,6 +13,10 @@ Current logical payload envelopes carry the `ICMEMLED` family magic followed
 by the `ICMF` format marker, format version `1`, payload length, and CBOR
 ledger bytes.
 
+Opaque committed payloads use definite-length CBOR byte strings. This is a
+pre-1.0 persisted-format hard cut: recreate data written by earlier releases.
+The logical format version remains `1`; there is no old-shape reader.
+
 Fixture groups:
 
 - `*_payload_envelope.hex`: logical `LedgerPayloadEnvelope` bytes.

@@ -279,7 +279,10 @@ fn failed_persistence_publishes_no_mapping_and_retries_deterministically() {
     }
     let bytes = VectorMemory::default();
     let limit = std::rc::Rc::new(std::cell::Cell::new(2));
-    let keys: Vec<_> = (0..200).map(|i| format!("app.store{i:03}.v1")).collect();
+    // Long valid keys force capacity growth even with compact byte-string payloads.
+    let keys: Vec<_> = (0..239)
+        .map(|i| format!("app.store{i:03}.{}.v1", "x".repeat(110)))
+        .collect();
     let refs: Vec<_> = keys.iter().map(String::as_str).collect();
     let declarations = snapshot(&refs, "app", 16, 254, &[]);
     let mut runtime = MemoryRuntime::new_with_config(
@@ -290,10 +293,15 @@ fn failed_persistence_publishes_no_mapping_and_retries_deterministically() {
         MemoryManagerConfig::new(1).unwrap(),
     )
     .unwrap();
-    assert!(matches!(
-        runtime.bootstrap(&declarations, &GenericRangePolicy),
-        Err(RuntimeBootstrapError::StableCellLedgerWriteTooLarge { .. })
-    ));
+    let result = runtime.bootstrap(&declarations, &GenericRangePolicy);
+    assert!(
+        matches!(
+            result,
+            Err(RuntimeBootstrapError::StableCellLedgerWriteTooLarge { .. })
+        ),
+        "{:?}",
+        result.err()
+    );
     assert!(!runtime.is_bootstrapped());
     assert!(matches!(
         runtime.open_memory_by_key(&keys[0]),
