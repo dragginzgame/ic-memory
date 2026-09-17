@@ -53,7 +53,14 @@ without changing the host's policy or bucket profile. Hosts must declare or
 reserve allocations used by raw `MemoryManager` clients before admitting
 automatic requests; physical diagnostics cannot infer their ownership.
 
-See the runnable [standalone and composed example](examples/key_only.rs), and
+Hosts can also implement `RuntimeBootstrapPolicy::prepare_bootstrap` to inspect
+validated recovered allocation metadata and explicitly include known historical
+journals before the single commit. The context grants no memory access; unknown,
+retired or unauthorized selections reject. Warm adoption does not rerun admission.
+
+See the runnable [standalone and composed example](examples/key_only.rs),
+[recovered-journal example](examples/recovered_admission.rs),
+[admission contract](docs/recovered-admission.md), and
 [recovery limits and omitted-store inspection](docs/key-only-recovery.md).
 
 ## Why Use It?

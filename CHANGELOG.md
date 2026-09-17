@@ -1,5 +1,29 @@
 # Changelog
 
+## 0.14.1
+
+- Added `RuntimeBootstrapPolicy::prepare_bootstrap` inside the existing recovered
+  ledger bootstrap flow. Hosts can compose consumer identity admission and
+  explicitly complete historical declarations before resolution, final policy
+  validation and the single persistence/publication boundary.
+- Added bounded `BootstrapAdmission` metadata and known-only historical
+  selection. Unknown, retired, duplicate, unauthorized or oversized selections
+  reject the whole attempt, including when a callback ignores a selection error.
+  Selected allocations retain their durable ID and latest schema metadata.
+- Kept warm bootstrap and host adoption free of admission replay. Failed cold
+  attempts can retry against unchanged committed mappings; default and owned
+  runtimes use the same hook and preserve host policy and bucket configuration.
+  No durable format or allocation-open authority changes were introduced.
+- Added an IcyDB-shaped recovered-journal example, production runtime and
+  capability-boundary tests, and the [admission contract](docs/recovered-admission.md).
+  This addresses #5's allocation-level ordering gap. Actual generated IcyDB
+  adoption, identity semantics, journal-debt and pending-commit qualification
+  remain downstream work.
+- Matched Rust 1.97.1 raw Wasm probes increase core by 648 bytes, diagnostics by
+  342 bytes and key-only by 579 bytes. The new admission-enabled probe is
+  258,960 bytes and is enforced under a 260,000-byte budget; existing probe
+  budgets are unchanged. IC instruction/cycle costs remain unmeasured.
+
 ## 0.14.0
 
 This release adds key-only allocation and bounded ledger recovery. It is an

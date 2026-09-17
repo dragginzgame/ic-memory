@@ -45,6 +45,10 @@ impl<M: Memory> MemoryRuntime<M> {
     }
 
     /// Build preflight and lifecycle diagnostics for this runtime.
+    ///
+    /// Validation checks the supplied declarations and allocation policy only.
+    /// It does not execute `prepare_bootstrap`, predict its completed set, or
+    /// certify consumer admission. Diagnostics never replay preparation.
     #[must_use]
     pub fn doctor_report<P>(
         &self,

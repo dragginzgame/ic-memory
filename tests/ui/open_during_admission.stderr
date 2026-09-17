@@ -1,0 +1,5 @@
+error[E0599]: no method named `open_memory_by_key` found for reference `&BootstrapAdmission<'_>` in the current scope
+ --> tests/ui/open_during_admission.rs:4:15
+  |
+4 |     admission.open_memory_by_key("app.journal.v1");
+  |               ^^^^^^^^^^^^^^^^^^ method not found in `&BootstrapAdmission<'_>`

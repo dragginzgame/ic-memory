@@ -85,7 +85,7 @@ validate:
 
 wasm-size:
 	cargo +$(VALIDATION_TOOLCHAIN) build --locked --profile wasm-size --target wasm32-unknown-unknown \
-		--example wasm-core-size-probe --example wasm-diagnostics-size-probe --example wasm-key-only-size-probe
+		--example wasm-core-size-probe --example wasm-diagnostics-size-probe --example wasm-key-only-size-probe --example wasm-admission-size-probe
 	@set -eu; \
 	core_bytes=$$(wc -c < target/wasm32-unknown-unknown/wasm-size/examples/wasm_core_size_probe.wasm); \
 	diagnostics_bytes=$$(wc -c < target/wasm32-unknown-unknown/wasm-size/examples/wasm_diagnostics_size_probe.wasm); \
@@ -95,7 +95,10 @@ wasm-size:
 	test "$$diagnostics_bytes" -le 315000; \
 	key_only_bytes=$$(wc -c < target/wasm32-unknown-unknown/wasm-size/examples/wasm_key_only_size_probe.wasm); \
 	echo "Key-only raw Wasm: $$key_only_bytes bytes (budget: 260000 bytes)"; \
-	test "$$key_only_bytes" -le 260000
+	test "$$key_only_bytes" -le 260000; \
+	admission_bytes=$$(wc -c < target/wasm32-unknown-unknown/wasm-size/examples/wasm_admission_size_probe.wasm); \
+	echo "Admission raw Wasm: $$admission_bytes bytes (budget: 260000 bytes)"; \
+	test "$$admission_bytes" -le 260000
 
 test-release-flow:
 	PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tests -p 'test_release.py'

@@ -193,6 +193,19 @@ pub trait AllocationPolicy {
 ///
 
 pub trait RuntimeBootstrapPolicy: AllocationPolicy {
+    /// Admit recovered identity and complete declarations before resolution.
+    ///
+    /// Runs once per cold bootstrap attempt after validated recovery. Warm
+    /// bootstrap/adoption does not replay it. The default selects no historical
+    /// keys. Hosts compose generated consumers here under their existing policy
+    /// and bucket profile. Include these semantics in the policy identity.
+    fn prepare_bootstrap(
+        &self,
+        _admission: &mut crate::BootstrapAdmission<'_>,
+    ) -> Result<(), Self::Error> {
+        Ok(())
+    }
+
     /// Construct the bounded semantic identity of this policy configuration.
     fn runtime_bootstrap_identity(&self) -> Result<PolicyIdentity, PolicyIdentityError>;
 }

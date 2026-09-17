@@ -56,10 +56,14 @@ Opening an omitted or unknown key returns
 `RuntimeOpenError::StableKeyNotCommitted`. Diagnostics reporting an unknown
 current binding do not make the slot available.
 
-For lifecycle reconciliation, generated code must explicitly include each
-journal it needs to inspect in the declaration manifest **before sealing**,
-even when the corresponding application store has been removed. Key-only
-requests recover the original ID, so this manifest needs no physical IDs.
+For lifecycle reconciliation, every journal to inspect must be explicitly
+included before commitment. Consumers that already know the keys can include
+them in the original sealed manifest, as below. Consumers that discover roles
+from allocation metadata can instead contribute
+`RuntimeBootstrapPolicy::prepare_bootstrap` to the host policy and use
+`BootstrapAdmission::include_historical` before resolution. See the
+[admission contract and example](recovered-admission.md). Both routes retain the
+single persistence boundary and current grant/policy checks.
 
 ```rust
 ic_memory::ic_memory_range!(authority = "db", start = 100, end = 119, mode = Allowed);
@@ -77,14 +81,17 @@ fn reconcile() {
 }
 ```
 
-This uses the existing committed capability and single persistence boundary. It
-does not dynamically discover omitted keys from an unopened control store. The
-host/generator must know the reconciliation manifest independently (for example,
-from the prior generated schema). A consumer that only discovers those keys by
-reading its control store after bootstrap still needs integration work; it
-cannot extend a sealed snapshot. Naming a key in an open call grants nothing.
-An explicit declaration of a genuinely new key is an ordinary new allocation,
-not proof of historical existence; a typo therefore requires consumer checks.
+The static-manifest route requires keys independently known before sealing.
+The admission hook closes the allocation-metadata discovery gap without reading
+an unopened control store or extending the global sealed registry: it completes
+the runtime-local request set before resolution. Its historical selections reject
+unknown or retired keys, whereas ordinary new declarations may allocate fresh
+slots. Naming a key in an open call grants nothing.
+
+Allocation metadata does not contain IcyDB incarnation, journal debt or accepted
+schema. Consumers must supply their own identity/role interpretation and retain
+control-store and lifecycle checks after commitment. Actual generated IcyDB
+integration and its end-to-end qualification remain downstream work.
 
 A foreign authority without the slot grant or a revoked grant fails before
 persistence. Explicit generic retirement produces `RetiredAllocation` even if

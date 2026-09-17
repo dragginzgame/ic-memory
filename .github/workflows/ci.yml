@@ -27,12 +27,13 @@ jobs:
       - run: cargo test -- --test-threads=1
       - run: cargo test --doc
       - run: cargo check --target wasm32-unknown-unknown --tests
-      - name: Enforce core, key-only and diagnostics raw Wasm sizes
+      - name: Enforce bootstrap and diagnostics raw Wasm sizes
         run: |
           cargo build --profile wasm-size --target wasm32-unknown-unknown \
             --example wasm-core-size-probe \
             --example wasm-diagnostics-size-probe \
-            --example wasm-key-only-size-probe
+            --example wasm-key-only-size-probe \
+            --example wasm-admission-size-probe
 
           core_wasm=target/wasm32-unknown-unknown/wasm-size/examples/wasm_core_size_probe.wasm
           core_bytes=$(wc -c < "$core_wasm")
@@ -51,6 +52,12 @@ jobs:
           key_only_budget=260000
           echo "Key-only raw Wasm: $key_only_bytes bytes (budget: $key_only_budget bytes)"
           test "$key_only_bytes" -le "$key_only_budget"
+
+          admission_wasm=target/wasm32-unknown-unknown/wasm-size/examples/wasm_admission_size_probe.wasm
+          admission_bytes=$(wc -c < "$admission_wasm")
+          admission_budget=260000
+          echo "Admission raw Wasm: $admission_bytes bytes (budget: $admission_budget bytes)"
+          test "$admission_bytes" -le "$admission_budget"
       - run: cargo package
 
   msrv:

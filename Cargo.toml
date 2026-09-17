@@ -30,6 +30,11 @@ name = "wasm-key-only-size-probe"
 path = "examples/wasm_key_only_size_probe.rs"
 crate-type = ["cdylib"]
 
+[[example]]
+name = "wasm-admission-size-probe"
+path = "examples/wasm_admission_size_probe.rs"
+crate-type = ["cdylib"]
+
 [dependencies]
 ciborium = "0.2.2"
 ctor = "1.0"

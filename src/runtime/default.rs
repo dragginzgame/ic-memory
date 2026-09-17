@@ -301,4 +301,67 @@ mod tests {
         .join()
         .unwrap();
     }
+    #[test]
+    #[cfg(not(target_arch = "wasm32"))]
+    fn configured_default_prepares_once_and_warm_library_adoption_only_opens() {
+        use crate::registry::{TEST_REGISTRY_LOCK, reset_static_memory_declarations_for_tests};
+        use ic_stable_structures::Memory;
+        let _guard = TEST_REGISTRY_LOCK.lock().unwrap();
+        reset_static_memory_declarations_for_tests();
+        crate::register_static_memory_manager_range(
+            100,
+            110,
+            "app",
+            crate::MemoryManagerRangeMode::Allowed,
+            None,
+        )
+        .unwrap();
+        crate::register_memory_request(
+            crate::MemoryRequest::new(
+                "app",
+                "app.main.control.v1",
+                crate::SchemaMetadata::default(),
+            )
+            .unwrap(),
+        )
+        .unwrap();
+        let backing = super::super::admission_tests::seeded();
+        DEFAULT_RUNTIME
+            .with(|runtime| *runtime.borrow_mut() = Some(MemoryRuntime::new(backing.clone())));
+        let policy = super::super::admission_tests::AdmissionPolicy {
+            discover: true,
+            ..Default::default()
+        };
+        let config = super::super::MemoryManagerConfig::new(1).unwrap();
+        let committed = bootstrap_default_memory_manager_with_config(config, &policy).unwrap();
+        assert_eq!(committed.generation(), 2);
+        let before = backing.borrow().clone();
+        let mut marker = [0; 12];
+        open_default_memory_manager_memory_by_key("app.old.journal.v1")
+            .unwrap()
+            .read(0, &mut marker);
+        assert_eq!(&marker, b"pending/debt");
+        assert_eq!(committed_allocations().unwrap(), committed);
+        assert_eq!(
+            bootstrap_default_memory_manager_with_config(config, &policy).unwrap(),
+            committed
+        );
+        assert!(
+            bootstrap_default_memory_manager_with_config(
+                super::super::MemoryManagerConfig::new(2).unwrap(),
+                &policy
+            )
+            .is_err()
+        );
+        assert_eq!(policy.calls.get(), 1);
+        assert_eq!(*backing.borrow(), before);
+        assert_eq!(
+            default_memory_manager_memory_allocations()
+                .unwrap()
+                .bucket_size_pages,
+            1
+        );
+        DEFAULT_RUNTIME.with(|runtime| *runtime.borrow_mut() = None);
+        reset_static_memory_declarations_for_tests();
+    }
 }

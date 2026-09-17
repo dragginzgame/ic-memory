@@ -1,3 +1,6 @@
+mod admission;
+#[cfg(test)]
+mod admission_tests;
 mod allocations;
 mod backing;
 mod config;
@@ -19,6 +22,8 @@ mod read_tests;
 mod request_tests;
 #[cfg(test)]
 mod tests;
+
+pub use admission::{BootstrapAdmission, BootstrapAdmissionError, RecoveredAllocationMetadata};
 
 pub use allocations::{
     AllocationBinding, AllocationRangeClaim, MemoryAllocation, MemoryAllocations,
@@ -42,9 +47,9 @@ pub use policy::GenericRangePolicy;
 
 use self::policy::{RuntimeMemoryManagerPolicy, runtime_bootstrap_error_from_bootstrap};
 use crate::{
-    AllocationBootstrap, AllocationHistory, AllocationLedger, AllocationPolicy,
-    CommittedAllocations, PolicyIdentity, RuntimeBootstrapPolicy, STABLE_CELL_VALUE_OFFSET,
-    StableCellLedgerError, StableCellLedgerRecord, StableKey, registry::SealedDeclarationSnapshot,
+    AllocationBootstrap, AllocationHistory, AllocationLedger, CommittedAllocations, PolicyIdentity,
+    RuntimeBootstrapPolicy, STABLE_CELL_VALUE_OFFSET, StableCellLedgerError,
+    StableCellLedgerRecord, StableKey, registry::SealedDeclarationSnapshot,
     slot::MEMORY_MANAGER_LEDGER_ID, stable_cell::decode_stable_cell_ledger_record_from_memory,
 };
 use ic_stable_structures::{
@@ -169,8 +174,8 @@ impl<M: Memory> MemoryRuntime<M> {
 
     /// Bootstrap this backing memory from one immutable declaration snapshot.
     ///
-    /// Recovery, policy evaluation, staging, persistence, and capability
-    /// publication are local to this runtime. A repeated call is idempotent
+    /// Recovery, metadata admission, policy evaluation, staging, persistence,
+    /// and capability publication are local to this runtime. A repeated call is idempotent
     /// only when the sealed declaration snapshot and
     /// [`RuntimeBootstrapPolicy::runtime_bootstrap_identity`] match the
     /// successful bootstrap. A mismatch returns a typed error without
@@ -202,7 +207,7 @@ impl<M: Memory> MemoryRuntime<M> {
         }
     }
 
-    fn bootstrap_unbootstrapped<P: AllocationPolicy>(
+    fn bootstrap_unbootstrapped<P: RuntimeBootstrapPolicy>(
         &mut self,
         declarations: &SealedDeclarationSnapshot,
         policy: &P,
@@ -216,7 +221,11 @@ impl<M: Memory> MemoryRuntime<M> {
             .ok_or(RuntimeStateError::InconsistentLifecycle)?;
         let genesis = AllocationLedger::new(0, AllocationHistory::default())?;
         let recovered = record.store_mut().recover_or_initialize(&genesis)?;
-        let resolved = declarations.resolve(recovered.ledger())?;
+        let mut admission = BootstrapAdmission::new(recovered.ledger(), declarations);
+        let preparation = policy.prepare_bootstrap(&mut admission);
+        let completed = admission.complete()?;
+        preparation.map_err(RuntimeBootstrapError::AdmissionPolicy)?;
+        let resolved = completed.resolve(recovered.ledger())?;
         let runtime_policy = RuntimeMemoryManagerPolicy {
             declarations: &resolved,
             custom_policy: policy,

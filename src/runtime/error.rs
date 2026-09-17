@@ -77,6 +77,12 @@ pub enum RuntimeStateError {
 #[non_exhaustive]
 #[derive(Debug, thiserror::Error)]
 pub enum RuntimeBootstrapError<P> {
+    /// A known-only historical selection failed before commitment.
+    #[error(transparent)]
+    Admission(#[from] super::BootstrapAdmissionError),
+    /// Consumer identity or key-set admission rejected this attempt.
+    #[error("bootstrap admission policy rejected recovered allocation metadata")]
+    AdmissionPolicy(P),
     #[error(transparent)]
     Resolution(#[from] MemoryResolutionError),
     /// The policy did not provide a valid bounded semantic identity.

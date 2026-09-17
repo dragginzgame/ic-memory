@@ -1,12 +1,12 @@
 use super::*;
 use crate::{
-    AllocationDeclaration, AllocationRetirement, AllocationSlotDescriptor,
+    AllocationDeclaration, AllocationPolicy, AllocationRetirement, AllocationSlotDescriptor,
     MemoryManagerAuthorityRecord, MemoryManagerIdRange, MemoryManagerRangeMode, MemoryRequest,
     SchemaMetadata, StaticMemoryDeclaration, StaticMemoryRangeDeclaration,
 };
 use ic_stable_structures::VectorMemory;
 
-fn snapshot(
+pub(super) fn snapshot(
     keys: &[&str],
     owner: &str,
     start: u8,
