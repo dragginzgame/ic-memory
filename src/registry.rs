@@ -76,6 +76,64 @@ impl StaticMemoryDeclaration {
 }
 
 ///
+/// MemoryRequest
+///
+/// Key-only request resolved after ledger recovery. New keys require an explicit
+/// Allowed range owned by this authority; known keys retain their durable slot.
+///
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+pub struct MemoryRequest {
+    authority: String,
+    stable_key: crate::StableKey,
+    schema: SchemaMetadata,
+}
+
+impl MemoryRequest {
+    /// Build a checked logical request before sealing.
+    pub fn new(
+        authority: impl Into<String>,
+        stable_key: &str,
+        schema: SchemaMetadata,
+    ) -> Result<Self, StaticMemoryDeclarationError> {
+        let authority = authority.into();
+        validate_external_authority(&authority)?;
+        let stable_key =
+            crate::StableKey::parse(stable_key).map_err(crate::DeclarationSnapshotError::Key)?;
+        schema
+            .validate()
+            .map_err(crate::DeclarationSnapshotError::SchemaMetadata)?;
+        if is_ic_memory_stable_key(stable_key.as_str()) {
+            return Err(StaticMemoryDeclarationError::ReservedStableKey {
+                stable_key: stable_key.as_str().to_string(),
+            });
+        }
+        Ok(Self {
+            authority,
+            stable_key,
+            schema,
+        })
+    }
+
+    /// Borrow the requested durable key.
+    #[must_use]
+    pub const fn stable_key(&self) -> &crate::StableKey {
+        &self.stable_key
+    }
+
+    /// Borrow the declaring authority.
+    #[must_use]
+    pub fn authority(&self) -> &str {
+        &self.authority
+    }
+}
+
+/// Register a key-only request before the linked snapshot seals.
+pub fn register_memory_request(request: MemoryRequest) -> Result<(), StaticMemoryDeclarationError> {
+    with_unsealed_registry(|registry| registry.requests.push(request))
+}
+
+///
 /// StaticMemoryRangeDeclaration
 ///
 /// One `MemoryManager` authority range registered by crate-level generated or
@@ -122,6 +180,10 @@ impl StaticMemoryRangeDeclaration {
 #[non_exhaustive]
 #[derive(Clone, Debug, Eq, thiserror::Error, PartialEq)]
 pub enum StaticMemoryDeclarationError {
+    #[error("at most 254 external declarations and ranges are supported")]
+    TooManyDeclarations,
+    #[error("duplicate requested stable key {stable_key}")]
+    DuplicateRequest { stable_key: crate::StableKey },
     /// Static declaration registry lock was poisoned.
     #[error("static memory declaration registry lock poisoned")]
     RegistryPoisoned,
@@ -222,6 +284,7 @@ impl SealedDeclarationFingerprint {
 #[derive(Debug, Eq, PartialEq)]
 struct SealedDeclarationSnapshotInner {
     allocation_snapshot: DeclarationSnapshot,
+    requests: Vec<MemoryRequest>,
     registered_declarations: Vec<StaticMemoryDeclaration>,
     registered_ranges: Vec<StaticMemoryRangeDeclaration>,
     range_authority: MemoryManagerRangeAuthority,
@@ -236,7 +299,100 @@ pub enum RuntimeDeclarationAuthority {
 }
 
 impl SealedDeclarationSnapshot {
-    /// Borrow the canonical allocation snapshot, including runtime governance.
+    /// Seal explicitly owned inputs with the same rules as the linked registry.
+    pub fn new(
+        declarations: &[StaticMemoryDeclaration],
+        ranges: &[StaticMemoryRangeDeclaration],
+        requests: &[MemoryRequest],
+    ) -> Result<Self, StaticMemoryDeclarationError> {
+        build_snapshot(declarations, ranges, requests)
+    }
+
+    /// Borrow canonical unresolved key-only requests.
+    #[must_use]
+    pub fn requests(&self) -> &[MemoryRequest] {
+        &self.inner.requests
+    }
+
+    pub(crate) fn resolve(
+        &self,
+        ledger: &crate::AllocationLedger,
+    ) -> Result<Self, crate::MemoryResolutionError> {
+        if self.requests().is_empty() {
+            return Ok(self.clone());
+        }
+        let mut declarations = self.registered_declarations().to_vec();
+        let mut occupied = [false; 255];
+        for record in ledger.allocation_history().records() {
+            occupied[usize::from(
+                record
+                    .slot()
+                    .memory_manager_id()
+                    .expect("validated ledger slot"),
+            )] = true;
+        }
+        for fixed in &declarations {
+            occupied[usize::from(
+                fixed
+                    .declaration()
+                    .slot()
+                    .memory_manager_id()
+                    .expect("checked slot"),
+            )] = true;
+        }
+        for request in self.requests() {
+            let historical = ledger
+                .allocation_history()
+                .records()
+                .iter()
+                .find(|record| record.stable_key() == &request.stable_key);
+            let id = if let Some(record) = historical {
+                record
+                    .slot()
+                    .memory_manager_id()
+                    .expect("validated ledger slot")
+            } else {
+                (0..255_u8)
+                    .find(|id| {
+                        !occupied[usize::from(*id)]
+                            && self.range_authority().authorities().iter().any(|range| {
+                                range.authority() == request.authority
+                                    && range.mode() == MemoryManagerRangeMode::Allowed
+                                    && range.range().contains(*id)
+                            })
+                    })
+                    .ok_or_else(|| crate::MemoryResolutionError::Exhausted {
+                        stable_key: request.stable_key.clone(),
+                        authority: request.authority.clone(),
+                    })?
+            };
+            // Logical requests always need an explicit current grant, including recovered keys.
+            self.range_authority()
+                .validate_slot_authority(
+                    &crate::AllocationSlotDescriptor::memory_manager(id).expect("usable id"),
+                    &request.authority,
+                )
+                .map_err(crate::MemoryResolutionError::Range)?;
+            occupied[usize::from(id)] = true;
+            declarations.push(StaticMemoryDeclaration::new(
+                request.authority.clone(),
+                AllocationDeclaration::memory_manager_unlabeled_with_schema(
+                    request.stable_key.as_str(),
+                    id,
+                    request.schema.clone(),
+                )?,
+            )?);
+        }
+        Ok(build_snapshot(
+            &declarations,
+            self.registered_ranges(),
+            &[],
+        )?)
+    }
+
+    /// Borrow fixed declarations, including runtime governance. Key-only requests
+    /// are resolved by the runtime after recovery; inspect committed allocations
+    /// for the complete resolved set.
     #[must_use]
     pub fn allocation_snapshot(&self) -> &DeclarationSnapshot {
         &self.inner.allocation_snapshot
@@ -284,6 +440,7 @@ type StaticRegistrationHook = fn() -> Result<(), StaticMemoryDeclarationError>;
 #[derive(Debug)]
 struct StaticMemoryDeclarationRegistry {
     declarations: Vec<StaticMemoryDeclaration>,
+    requests: Vec<MemoryRequest>,
     ranges: Vec<StaticMemoryRangeDeclaration>,
     registration_hooks: Vec<StaticRegistrationHook>,
     eager_init_hooks: Vec<fn()>,
@@ -304,6 +461,7 @@ enum StaticRegistryLifecycle {
 static STATIC_MEMORY_DECLARATIONS: Mutex<StaticMemoryDeclarationRegistry> =
     Mutex::new(StaticMemoryDeclarationRegistry {
         declarations: Vec::new(),
+        requests: Vec::new(),
         ranges: Vec::new(),
         registration_hooks: Vec::new(),
         eager_init_hooks: Vec::new(),
@@ -556,13 +714,14 @@ pub fn sealed_declaration_snapshot()
         registry.lifecycle = StaticRegistryLifecycle::Failed(err.clone());
         return Err(err);
     }
-    let snapshot = match build_sealed_snapshot(&registry.declarations, &registry.ranges) {
-        Ok(snapshot) => snapshot,
-        Err(err) => {
-            registry.lifecycle = StaticRegistryLifecycle::Failed(err.clone());
-            return Err(err);
-        }
-    };
+    let snapshot =
+        match build_snapshot(&registry.declarations, &registry.ranges, &registry.requests) {
+            Ok(snapshot) => snapshot,
+            Err(err) => {
+                registry.lifecycle = StaticRegistryLifecycle::Failed(err.clone());
+                return Err(err);
+            }
+        };
     registry.lifecycle = StaticRegistryLifecycle::Sealed(snapshot.clone());
     Ok(snapshot)
 }
@@ -586,10 +745,25 @@ fn fail_sealing<T>(err: StaticMemoryDeclarationError) -> Result<T, StaticMemoryD
     Err(failure)
 }
 
-fn build_sealed_snapshot(
+fn build_snapshot(
     declarations: &[StaticMemoryDeclaration],
     ranges: &[StaticMemoryRangeDeclaration],
+    requests: &[MemoryRequest],
 ) -> Result<SealedDeclarationSnapshot, StaticMemoryDeclarationError> {
+    if declarations.len().saturating_add(requests.len()) > 254 || ranges.len() > 254 {
+        return Err(StaticMemoryDeclarationError::TooManyDeclarations);
+    }
+    let mut requests = requests.to_vec();
+    requests.sort_by(|a, b| a.stable_key.cmp(&b.stable_key));
+    let mut keys = std::collections::BTreeSet::new();
+    keys.extend(declarations.iter().map(|d| d.declaration().stable_key()));
+    for key in requests.iter().map(|r| &r.stable_key) {
+        if !keys.insert(key) {
+            return Err(StaticMemoryDeclarationError::DuplicateRequest {
+                stable_key: key.clone(),
+            });
+        }
+    }
     let mut registered_declarations = declarations.to_vec();
     registered_declarations.sort_by(|left, right| {
         left.declaration()
@@ -633,6 +807,7 @@ fn build_sealed_snapshot(
         &allocation_snapshot,
         &registered_declarations,
         range_authority.authorities(),
+        &requests,
     )?;
 
     let mut declaration_authority = BTreeMap::new();
@@ -650,6 +825,7 @@ fn build_sealed_snapshot(
     Ok(SealedDeclarationSnapshot {
         inner: Arc::new(SealedDeclarationSnapshotInner {
             allocation_snapshot,
+            requests,
             registered_declarations,
             registered_ranges,
             range_authority,
@@ -671,12 +847,14 @@ struct SealedDeclarationFingerprintMaterial<'a> {
     allocation_snapshot: &'a DeclarationSnapshot,
     registered_declarations: Vec<FingerprintDeclaration<'a>>,
     effective_ranges: &'a [MemoryManagerAuthorityRecord],
+    requests: &'a [MemoryRequest],
 }
 
 fn sealed_declaration_fingerprint(
     allocation_snapshot: &DeclarationSnapshot,
     registered_declarations: &[StaticMemoryDeclaration],
     effective_ranges: &[MemoryManagerAuthorityRecord],
+    requests: &[MemoryRequest],
 ) -> Result<SealedDeclarationFingerprint, StaticMemoryDeclarationError> {
     let material = SealedDeclarationFingerprintMaterial {
         format: "ic-memory.sealed-declaration-fingerprint.v1",
@@ -689,6 +867,7 @@ fn sealed_declaration_fingerprint(
             })
             .collect(),
         effective_ranges,
+        requests,
     };
     let mut bytes = Vec::new();
     ciborium::into_writer(&material, &mut bytes).map_err(|err| {
@@ -745,6 +924,7 @@ pub fn reset_static_memory_declarations_for_tests() {
         .lock()
         .expect("static memory declaration registry poisoned");
     registry.declarations.clear();
+    registry.requests.clear();
     registry.ranges.clear();
     registry.registration_hooks.clear();
     registry.eager_init_hooks.clear();

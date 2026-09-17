@@ -3,8 +3,49 @@ use crate::{declaration::validate_runtime_fingerprint, key::StableKey, validatio
 use std::collections::BTreeSet;
 
 impl AllocationLedger {
+    pub(crate) fn validate_bounds(&self) -> Result<(), LedgerIntegrityError> {
+        for (resource, count, limit) in [
+            (
+                "allocation records",
+                self.allocation_history.records().len(),
+                255,
+            ),
+            (
+                "generation history",
+                self.allocation_history.generations().len(),
+                crate::constants::MAX_LEDGER_GENERATIONS,
+            ),
+            (
+                "schema history",
+                self.allocation_history
+                    .records()
+                    .iter()
+                    .map(|r| r.schema_history.len())
+                    .sum(),
+                crate::constants::MAX_LEDGER_GENERATIONS,
+            ),
+        ] {
+            if count > limit {
+                return Err(LedgerIntegrityError::LimitExceeded { resource, limit });
+            }
+        }
+        Ok(())
+    }
+
+    pub(crate) fn validate_staging_bounds(&self) -> Result<(), LedgerIntegrityError> {
+        self.validate_bounds()?;
+        if self.allocation_history.generations().len() >= crate::constants::MAX_LEDGER_GENERATIONS {
+            return Err(LedgerIntegrityError::LimitExceeded {
+                resource: "generation history",
+                limit: crate::constants::MAX_LEDGER_GENERATIONS,
+            });
+        }
+        Ok(())
+    }
+
     /// Validate structural ledger invariants before recovery or commit.
     pub fn validate_integrity(&self) -> Result<(), LedgerIntegrityError> {
+        self.validate_bounds()?;
         let mut stable_keys = BTreeSet::new();
         let mut slots = BTreeSet::new();
 

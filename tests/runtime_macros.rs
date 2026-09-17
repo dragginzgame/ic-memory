@@ -12,6 +12,14 @@ const MACRO_AUTHORITY: &str = "runtime_macros";
 
 ic_memory::ic_memory_range!(authority = MACRO_AUTHORITY, start = 130, end = 139);
 
+ic_memory::ic_memory_range!(
+    authority = MACRO_AUTHORITY,
+    start = 140,
+    end = 149,
+    mode = Allowed
+);
+ic_memory::ic_memory_declaration!(authority = MACRO_AUTHORITY, key = "macro.logical.rows.v1");
+
 ic_memory::eager_init!({
     EAGER_INIT_RAN.store(true, Ordering::SeqCst);
 });
@@ -43,6 +51,17 @@ fn bootstrap_and_require_thread_local_ledger() {
             .declarations()
             .iter()
             .any(|declaration| declaration.stable_key().as_str() == "macro.integration.users.v1")
+    );
+    let logical = ic_memory::open_default_memory_manager_memory_by_key("macro.logical.rows.v1")
+        .expect("key-only host adoption");
+    assert_eq!(ic_stable_structures::Memory::size(&logical), 0);
+    assert_eq!(
+        validated
+            .slot_for(&ic_memory::StableKey::parse("macro.logical.rows.v1").unwrap())
+            .unwrap()
+            .memory_manager_id()
+            .unwrap(),
+        140
     );
     MACRO_MEMORY.with(|memory| assert!(memory.borrow().is_some()));
     ic_memory::open_default_memory_manager_memory("macro.integration.users.v1", 130)

@@ -298,7 +298,7 @@ fn snapshot_order_is_independent_of_registration_order() {
     );
     assert_eq!(first.fingerprint(), second.fingerprint());
     assert_eq!(first.fingerprint().algorithm_version(), 1);
-    assert_eq!(first.fingerprint().value(), 2_010_740_972_202_682_334);
+    assert_eq!(first.fingerprint().value(), 2_424_977_581_879_595_487);
 }
 
 #[test]

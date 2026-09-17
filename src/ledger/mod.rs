@@ -155,10 +155,18 @@ impl LedgerCommitStore {
             .validate_committed_integrity()
             .map_err(LedgerCommitError::Integrity)?;
         let codec = CborLedgerCodec;
-        let payload =
-            LedgerPayloadEnvelope::current(codec.encode(ledger).map_err(LedgerCommitError::Codec)?)
-                .try_encode()
-                .map_err(LedgerCommitError::PayloadEnvelope)?;
+        let encoded = codec.encode(ledger).map_err(LedgerCommitError::Codec)?;
+        if encoded.len() > crate::constants::MAX_LEDGER_BYTES {
+            return Err(LedgerCommitError::Integrity(
+                LedgerIntegrityError::LimitExceeded {
+                    resource: "ledger bytes",
+                    limit: crate::constants::MAX_LEDGER_BYTES,
+                },
+            ));
+        }
+        let payload = LedgerPayloadEnvelope::current(encoded)
+            .try_encode()
+            .map_err(LedgerCommitError::PayloadEnvelope)?;
         self.physical
             .commit_payload_at_generation(ledger.current_generation, payload)
             .map_err(LedgerCommitError::Recovery)?;
@@ -2041,6 +2049,132 @@ mod tests {
                 slot0_invalid: true,
                 slot1_invalid: false,
             })
+        ));
+    }
+    #[test]
+    fn history_boundary_round_trips_and_rejects_next_generation_without_mutation() {
+        let ledger = committed_ledger(crate::constants::MAX_LEDGER_GENERATIONS as u64);
+        let mut store = LedgerCommitStore::default();
+        let recovered = store.commit(&ledger).expect("boundary is admissible");
+        let record = crate::StableCellLedgerRecord::new(store.clone());
+        let bytes = crate::test_cbor::to_vec(&record).unwrap();
+        let recovered_record = crate::decode_stable_cell_ledger_record(&bytes).unwrap();
+        assert_eq!(
+            recovered_record.store().recover().unwrap().ledger(),
+            &ledger
+        );
+        let before = store.clone();
+        let err = crate::AllocationBootstrap::new(&mut store)
+            .validate_and_commit(
+                DeclarationSnapshot::new(Vec::new()).unwrap(),
+                &crate::GenericRangePolicy,
+                None,
+            )
+            .unwrap_err();
+        assert!(matches!(
+            err,
+            crate::BootstrapError::Staging(AllocationStageError::Integrity(
+                LedgerIntegrityError::LimitExceeded { .. }
+            ))
+        ));
+        assert_eq!(store, before);
+        assert_eq!(
+            recovered.current_generation(),
+            crate::constants::MAX_LEDGER_GENERATIONS as u64
+        );
+        let oversize = committed_ledger(crate::constants::MAX_LEDGER_GENERATIONS as u64 + 1);
+        assert!(matches!(
+            store.commit(&oversize),
+            Err(LedgerCommitError::Integrity(
+                LedgerIntegrityError::LimitExceeded { .. }
+            ))
+        ));
+        assert_eq!(store, before);
+    }
+
+    #[test]
+    fn record_count_boundary_and_malicious_history_reject_on_recovery() {
+        let mut ledger = committed_ledger(1);
+        ledger.allocation_history.records = (0..255_u8)
+            .map(|id| active_record(&format!("app.slot{id}.v1"), id))
+            .collect();
+        let mut store = LedgerCommitStore::default();
+        store.commit(&ledger).unwrap();
+        assert_eq!(
+            store
+                .recover()
+                .unwrap()
+                .ledger()
+                .allocation_history()
+                .records()
+                .len(),
+            255
+        );
+        ledger
+            .allocation_history
+            .records
+            .push(active_record("app.extra.v1", 254));
+        assert!(matches!(
+            store.commit(&ledger),
+            Err(LedgerCommitError::Integrity(
+                LedgerIntegrityError::LimitExceeded { .. }
+            ))
+        ));
+        let payload = enveloped_payload(&ledger);
+        let mut invalid = LedgerCommitStore {
+            physical: DualCommitStore {
+                slot0: Some(CommittedGenerationBytes::new(1, payload)),
+                slot1: None,
+            },
+        };
+        assert!(invalid.recover().is_err());
+        assert!(invalid.recover_or_initialize(&committed_ledger(0)).is_err());
+        for bytes in [
+            vec![0x9b, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff],
+            vec![0x81; 34],
+            vec![0xa1],
+        ] {
+            let payload = LedgerPayloadEnvelope::current(bytes).try_encode().unwrap();
+            let invalid = LedgerCommitStore {
+                physical: DualCommitStore {
+                    slot0: Some(CommittedGenerationBytes::new(1, payload)),
+                    slot1: None,
+                },
+            };
+            assert!(matches!(
+                invalid.recover(),
+                Err(LedgerCommitError::Codec(_))
+            ));
+        }
+    }
+    #[test]
+    fn encoded_byte_limit_rejects_before_commit_mutation() {
+        let mut store = LedgerCommitStore::default();
+        store.commit(&committed_ledger(0)).unwrap();
+        let before = store.clone();
+        let mut ledger = committed_ledger(crate::constants::MAX_LEDGER_GENERATIONS as u64);
+        for generation in ledger.allocation_history.generations_mut() {
+            generation.runtime_fingerprint =
+                Some("x".repeat(crate::constants::DIAGNOSTIC_STRING_MAX_BYTES));
+        }
+        assert!(matches!(
+            store.commit(&ledger),
+            Err(LedgerCommitError::Integrity(
+                LedgerIntegrityError::LimitExceeded {
+                    resource: "ledger bytes",
+                    ..
+                }
+            ))
+        ));
+        assert_eq!(store, before);
+        let mut envelope = LedgerPayloadEnvelope::current(Vec::new())
+            .try_encode()
+            .unwrap();
+        envelope[16..24]
+            .copy_from_slice(&((crate::constants::MAX_LEDGER_BYTES + 1) as u64).to_le_bytes());
+        assert!(matches!(
+            LedgerPayloadEnvelope::decode(&envelope),
+            Err(LedgerPayloadEnvelopeError::PayloadTooLarge { .. })
         ));
     }
 }

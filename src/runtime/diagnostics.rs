@@ -174,7 +174,7 @@ impl<M: Memory> MemoryRuntime<M> {
             RuntimeLifecycle::Unbootstrapped => None,
             RuntimeLifecycle::Bootstrapped { binding, .. } => Some(DiagnosticRuntimeBinding::new(
                 binding.policy_identity.clone(),
-                binding.declarations.fingerprint(),
+                binding.source.fingerprint(),
             )),
         }
     }
@@ -238,15 +238,17 @@ where
         Ok(recovered) => recovered,
         Err(failure) => return DiagnosticCheck::not_run(failure.code, failure.message),
     };
+    let resolved = match declarations.resolve(recovered.ledger()) {
+        Ok(resolved) => resolved,
+        Err(err) => {
+            return DiagnosticCheck::failed(DiagnosticCode::AllocationValidation, err.to_string());
+        }
+    };
     let policy = super::policy::RuntimeMemoryManagerPolicy {
-        declarations,
+        declarations: &resolved,
         custom_policy,
     };
-    match crate::validate_allocations(
-        &recovered,
-        declarations.allocation_snapshot().clone(),
-        &policy,
-    ) {
+    match crate::validate_allocations(&recovered, resolved.allocation_snapshot().clone(), &policy) {
         Ok(_) => DiagnosticCheck::passed(),
         Err(err) => DiagnosticCheck::failed(DiagnosticCode::AllocationValidation, err.to_string()),
     }

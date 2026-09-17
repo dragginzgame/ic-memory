@@ -77,6 +77,8 @@ pub enum RuntimeStateError {
 #[non_exhaustive]
 #[derive(Debug, thiserror::Error)]
 pub enum RuntimeBootstrapError<P> {
+    #[error(transparent)]
+    Resolution(#[from] MemoryResolutionError),
     /// The policy did not provide a valid bounded semantic identity.
     #[error(transparent)]
     PolicyIdentity(#[from] PolicyIdentityError),
@@ -225,4 +227,26 @@ pub enum RuntimePolicyError<P> {
     /// Caller-supplied policy rejected the declaration.
     #[error(transparent)]
     Custom(P),
+}
+
+///
+/// MemoryResolutionError
+///
+/// Logical placement failed before publishing allocation authority.
+///
+
+#[non_exhaustive]
+#[derive(Debug, thiserror::Error)]
+pub enum MemoryResolutionError {
+    #[error("no eligible free slot for {stable_key} under authority {authority}")]
+    Exhausted {
+        stable_key: crate::StableKey,
+        authority: String,
+    },
+    #[error(transparent)]
+    Range(#[from] crate::MemoryManagerRangeAuthorityError),
+    #[error(transparent)]
+    Registry(#[from] StaticMemoryDeclarationError),
+    #[error(transparent)]
+    Declaration(#[from] crate::DeclarationSnapshotError),
 }

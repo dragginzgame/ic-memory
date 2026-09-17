@@ -29,6 +29,7 @@ impl AllocationLedger {
                 ledger_generation: self.current_generation,
             });
         }
+        self.validate_staging_bounds()?;
         let next_generation = checked_next_generation(self.current_generation)
             .map_err(|generation| AllocationStageError::GenerationOverflow { generation })?;
         let staged_declarations = validated.declarations();
@@ -58,6 +59,7 @@ impl AllocationLedger {
             committed_at,
         });
 
+        next.validate_bounds()?;
         Ok(next)
     }
 
@@ -74,6 +76,7 @@ impl AllocationLedger {
         reservations: &[AllocationDeclaration],
         committed_at: Option<u64>,
     ) -> Result<Self, AllocationReservationError> {
+        self.validate_staging_bounds()?;
         let next_generation = checked_next_generation(self.current_generation)
             .map_err(|generation| AllocationReservationError::GenerationOverflow { generation })?;
         let Some(declaration_count) = checked_declaration_count(reservations.len()) else {
@@ -97,6 +100,7 @@ impl AllocationLedger {
             committed_at,
         });
 
+        next.validate_bounds()?;
         Ok(next)
     }
 
@@ -110,6 +114,7 @@ impl AllocationLedger {
         committed_at: Option<u64>,
     ) -> Result<Self, AllocationRetirementError> {
         retirement.validate()?;
+        self.validate_staging_bounds()?;
         let next_generation = checked_next_generation(self.current_generation)
             .map_err(|generation| AllocationRetirementError::GenerationOverflow { generation })?;
         let mut next = self.clone();
@@ -148,6 +153,7 @@ impl AllocationLedger {
             committed_at,
         });
 
+        next.validate_bounds()?;
         Ok(next)
     }
 }
@@ -242,7 +248,7 @@ const fn checked_next_generation(current_generation: u64) -> Result<u64, u64> {
 }
 
 fn checked_declaration_count(count: usize) -> Option<u32> {
-    u32::try_from(count).ok()
+    (count <= 255).then(|| u32::try_from(count).expect("bounded declaration count"))
 }
 
 fn map_declaration_stage_conflict(
@@ -309,7 +315,8 @@ mod tests {
 
     #[test]
     fn declaration_count_fails_closed_on_overflow() {
-        assert_eq!(checked_declaration_count(u32::MAX as usize), Some(u32::MAX));
+        assert_eq!(checked_declaration_count(255), Some(255));
+        assert_eq!(checked_declaration_count(256), None);
         assert_eq!(checked_declaration_count(u32::MAX as usize + 1), None);
     }
 }

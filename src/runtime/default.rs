@@ -133,6 +133,13 @@ pub fn open_default_memory_manager_memory(
     with_default_runtime(|runtime| runtime.open_memory(stable_key, id))
 }
 
+/// Open a key already committed by the host's default runtime without changing policy.
+pub fn open_default_memory_manager_memory_by_key(
+    stable_key: &str,
+) -> Result<RuntimeMemory<DefaultMemoryImpl>, RuntimeOpenError> {
+    with_default_runtime(|runtime| runtime.open_memory_by_key(stable_key))
+}
+
 /// Export this thread's default runtime ledger and live memory sizes.
 pub fn default_memory_manager_diagnostic_export() -> Result<DiagnosticExport, RuntimeDiagnosticError>
 {

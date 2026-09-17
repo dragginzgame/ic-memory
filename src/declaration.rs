@@ -356,6 +356,8 @@ impl DeclarationSnapshot {
 #[non_exhaustive]
 #[derive(Clone, Debug, Eq, thiserror::Error, PartialEq)]
 pub enum DeclarationSnapshotError {
+    #[error("at most 255 allocation declarations are supported")]
+    TooManyDeclarations,
     /// Stable-key grammar failure.
     #[error(transparent)]
     Key(StableKeyError),
@@ -419,6 +421,9 @@ fn validate_label(label: Option<&str>) -> Result<(), DeclarationSnapshotError> {
 fn validate_declarations(
     declarations: &[AllocationDeclaration],
 ) -> Result<(), DeclarationSnapshotError> {
+    if declarations.len() > 255 {
+        return Err(DeclarationSnapshotError::TooManyDeclarations);
+    }
     for declaration in declarations {
         declaration.validate()?;
     }

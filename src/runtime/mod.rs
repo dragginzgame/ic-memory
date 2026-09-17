@@ -16,6 +16,8 @@ mod allocation_tests;
 )]
 mod read_tests;
 #[cfg(test)]
+mod request_tests;
+#[cfg(test)]
 mod tests;
 
 pub use allocations::{
@@ -29,11 +31,11 @@ pub use default::{
     default_memory_manager_commit_recovery_diagnostic, default_memory_manager_diagnostic_export,
     default_memory_manager_doctor_report, default_memory_manager_doctor_report_with_policy,
     default_memory_manager_memory_allocations, is_default_memory_manager_bootstrapped,
-    open_default_memory_manager_memory,
+    open_default_memory_manager_memory, open_default_memory_manager_memory_by_key,
 };
 pub use error::{
-    RuntimeBootstrapError, RuntimeConstructionError, RuntimeDiagnosticError, RuntimeOpenError,
-    RuntimePolicyError, RuntimeStateError,
+    MemoryResolutionError, RuntimeBootstrapError, RuntimeConstructionError, RuntimeDiagnosticError,
+    RuntimeOpenError, RuntimePolicyError, RuntimeStateError,
 };
 pub use layout::MemoryManagerLayoutError;
 pub use policy::GenericRangePolicy;
@@ -63,6 +65,7 @@ enum RuntimeLifecycle {
 }
 
 struct RuntimeBootstrapBinding {
+    source: SealedDeclarationSnapshot,
     declarations: SealedDeclarationSnapshot,
     policy_identity: PolicyIdentity,
 }
@@ -211,15 +214,17 @@ impl<M: Memory> MemoryRuntime<M> {
             .as_ref()
             .map(|cell| cell.get().clone())
             .ok_or(RuntimeStateError::InconsistentLifecycle)?;
+        let genesis = AllocationLedger::new(0, AllocationHistory::default())?;
+        let recovered = record.store_mut().recover_or_initialize(&genesis)?;
+        let resolved = declarations.resolve(recovered.ledger())?;
         let runtime_policy = RuntimeMemoryManagerPolicy {
-            declarations,
+            declarations: &resolved,
             custom_policy: policy,
         };
-        let genesis = AllocationLedger::new(0, AllocationHistory::default())?;
         let commit = AllocationBootstrap::new(record.store_mut())
-            .initialize_validate_and_commit(
-                &genesis,
-                declarations.allocation_snapshot().clone(),
+            .validate_against(
+                recovered,
+                resolved.allocation_snapshot().clone(),
                 &runtime_policy,
                 None,
             )
@@ -232,7 +237,8 @@ impl<M: Memory> MemoryRuntime<M> {
         self.lifecycle = RuntimeLifecycle::Bootstrapped {
             committed_allocations: committed,
             binding: RuntimeBootstrapBinding {
-                declarations: declarations.clone(),
+                source: declarations.clone(),
+                declarations: resolved,
                 policy_identity,
             },
         };
@@ -250,23 +256,21 @@ impl<M: Memory> MemoryRuntime<M> {
         }
     }
 
+    /// Open by durable key using only this runtime's persisted current capability.
+    pub fn open_memory_by_key(
+        &self,
+        stable_key: &str,
+    ) -> Result<RuntimeMemory<M>, RuntimeOpenError> {
+        Ok(self.memory(self.committed_memory_id(stable_key)?))
+    }
+
     /// Open this runtime's committed memory by stable key and expected ID.
     pub fn open_memory(
         &self,
         stable_key: &str,
         expected_id: u8,
     ) -> Result<RuntimeMemory<M>, RuntimeOpenError> {
-        let key = StableKey::parse(stable_key)?;
-        if crate::is_ic_memory_stable_key(key.as_str()) {
-            return Err(RuntimeOpenError::ReservedStableKey {
-                stable_key: stable_key.to_string(),
-            });
-        }
-        let committed = self.committed_allocations()?;
-        let slot = committed
-            .slot_for(&key)
-            .ok_or_else(|| RuntimeOpenError::StableKeyNotCommitted(stable_key.to_string()))?;
-        let committed_id = slot.memory_manager_id()?;
+        let committed_id = self.committed_memory_id(stable_key)?;
         if committed_id != expected_id {
             return Err(RuntimeOpenError::MemoryIdMismatch {
                 stable_key: stable_key.to_string(),
@@ -274,7 +278,21 @@ impl<M: Memory> MemoryRuntime<M> {
                 requested_id: expected_id,
             });
         }
-        Ok(self.memory(expected_id))
+        Ok(self.memory(committed_id))
+    }
+
+    fn committed_memory_id(&self, stable_key: &str) -> Result<u8, RuntimeOpenError> {
+        let key = StableKey::parse(stable_key)?;
+        if crate::is_ic_memory_stable_key(key.as_str()) {
+            return Err(RuntimeOpenError::ReservedStableKey {
+                stable_key: stable_key.to_string(),
+            });
+        }
+        let slot = self
+            .committed_allocations()?
+            .slot_for(&key)
+            .ok_or_else(|| RuntimeOpenError::StableKeyNotCommitted(stable_key.to_string()))?;
+        Ok(slot.memory_manager_id()?)
     }
 
     fn initialize_ledger_cell<P>(&mut self) -> Result<(), RuntimeBootstrapError<P>> {
@@ -283,7 +301,12 @@ impl<M: Memory> MemoryRuntime<M> {
         }
         let memory = self.memory(MEMORY_MANAGER_LEDGER_ID);
         crate::validate_stable_cell_ledger_memory(&memory)?;
-        ensure_ledger_cell_capacity(&memory, &StableCellLedgerRecord::default())?;
+        ensure_ledger_cell_capacity(
+            &memory,
+            self.backing.as_ref(),
+            self.bucket_size_pages,
+            &StableCellLedgerRecord::default(),
+        )?;
         self.ledger_cell = Some(Cell::init(memory, StableCellLedgerRecord::default()));
         Ok(())
     }
@@ -293,7 +316,12 @@ impl<M: Memory> MemoryRuntime<M> {
         record: StableCellLedgerRecord,
     ) -> Result<(), RuntimeBootstrapError<P>> {
         let memory = self.memory(MEMORY_MANAGER_LEDGER_ID);
-        ensure_ledger_cell_capacity(&memory, &record)?;
+        ensure_ledger_cell_capacity(
+            &memory,
+            self.backing.as_ref(),
+            self.bucket_size_pages,
+            &record,
+        )?;
         let cell = self
             .ledger_cell
             .as_mut()
@@ -317,7 +345,7 @@ impl RuntimeBootstrapBinding {
         declarations: &SealedDeclarationSnapshot,
         policy_identity: &PolicyIdentity,
     ) -> Result<(), RuntimeBootstrapError<P>> {
-        if !self.declarations.shares_storage_with(declarations) {
+        if !self.source.shares_storage_with(declarations) {
             return Err(RuntimeBootstrapError::DeclarationSnapshotMismatch);
         }
         if &self.policy_identity != policy_identity {
@@ -332,9 +360,14 @@ impl RuntimeBootstrapBinding {
 
 fn ensure_ledger_cell_capacity<M: Memory, P>(
     memory: &RuntimeMemory<M>,
+    backing: &M,
+    bucket_size_pages: u16,
     record: &StableCellLedgerRecord,
 ) -> Result<(), RuntimeBootstrapError<P>> {
     let value_size = record.to_bytes().len();
+    if value_size > crate::constants::MAX_LEDGER_RECORD_BYTES {
+        return Err(RuntimeBootstrapError::StableCellLedgerWriteTooLarge { value_size });
+    }
     let value_size_u32 = u32::try_from(value_size)
         .map_err(|_| RuntimeBootstrapError::StableCellLedgerWriteTooLarge { value_size })?;
     let required_bytes = STABLE_CELL_VALUE_OFFSET
@@ -347,6 +380,21 @@ fn ensure_ledger_cell_capacity<M: Memory, P>(
     let grow_by = required_bytes
         .saturating_sub(available_bytes)
         .div_ceil(crate::WASM_PAGE_SIZE_BYTES);
+    // Upstream writes its bucket table before backing.grow and panics on -1.
+    // Reserve physical capacity first so an ordinary growth refusal stays typed
+    // and cannot leave a partially assigned manager table.
+    let layout = layout::read(backing).map_err(RuntimeStateError::Construction)?;
+    let bucket_pages = u64::from(bucket_size_pages);
+    let extra_buckets =
+        (memory.size() + grow_by).div_ceil(bucket_pages) - memory.size().div_ceil(bucket_pages);
+    let total_buckets = u64::from(layout.allocated_buckets) + extra_buckets;
+    if total_buckets > 32_768 {
+        return Err(RuntimeBootstrapError::StableCellLedgerWriteTooLarge { value_size });
+    }
+    let physical_pages = 1 + total_buckets * bucket_pages;
+    if physical_pages > backing.size() && backing.grow(physical_pages - backing.size()) < 0 {
+        return Err(RuntimeBootstrapError::StableCellLedgerWriteTooLarge { value_size });
+    }
     if memory.grow(grow_by) < 0 {
         return Err(RuntimeBootstrapError::StableCellLedgerWriteTooLarge { value_size });
     }

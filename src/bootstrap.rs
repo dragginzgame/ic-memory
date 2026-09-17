@@ -187,7 +187,7 @@ impl<'store> AllocationBootstrap<'store> {
             .map_err(BootstrapRetirementError::Ledger)
     }
 
-    fn validate_against<P>(
+    pub(crate) fn validate_against<P>(
         &mut self,
         prior: crate::RecoveredLedger,
         snapshot: DeclarationSnapshot,

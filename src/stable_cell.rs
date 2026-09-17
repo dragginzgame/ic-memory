@@ -79,6 +79,9 @@ impl Storable for StableCellLedgerRecord {
 #[non_exhaustive]
 #[derive(Clone, Debug, Eq, Error, PartialEq)]
 pub enum StableCellPayloadError {
+    /// Declared bytes exceed the current recovery ceiling before allocation.
+    #[error("stable-cell ledger payload length {value_len} exceeds recovery limit")]
+    TooLarge { value_len: u64 },
     /// Memory contents do not start with the stable-cell marker.
     #[error("memory is not an ic-stable-structures Cell")]
     NotStableCell,
@@ -150,6 +153,9 @@ pub fn decode_stable_cell_payload<M: Memory>(
             value_len,
             available_bytes: payload_capacity,
         });
+    }
+    if value_len > crate::constants::MAX_LEDGER_RECORD_BYTES as u64 {
+        return Err(StableCellPayloadError::TooLarge { value_len });
     }
     let value_len = usize::try_from(value_len)
         .map_err(|_| StableCellPayloadError::LengthOverflow { value_len })?;
@@ -362,5 +368,47 @@ mod tests {
             validate_stable_cell_ledger_memory(&memory).expect_err("bad record must be classified");
 
         assert!(matches!(err, StableCellLedgerError::Record(_)));
+    }
+    #[test]
+    fn oversized_cell_length_is_rejected_before_payload_read() {
+        struct HeaderOnly;
+        impl Memory for HeaderOnly {
+            fn size(&self) -> u64 {
+                2048
+            }
+            fn grow(&self, _: u64) -> i64 {
+                panic!("must not grow")
+            }
+            fn write(&self, _: u64, _: &[u8]) {
+                panic!("must not write")
+            }
+            fn read(&self, offset: u64, bytes: &mut [u8]) {
+                assert_eq!(offset, 0);
+                assert_eq!(bytes.len(), STABLE_CELL_HEADER_SIZE);
+                bytes[..4].copy_from_slice(b"SCL\x01");
+                bytes[4..8].copy_from_slice(
+                    &u32::try_from(crate::constants::MAX_LEDGER_RECORD_BYTES + 1)
+                        .unwrap()
+                        .to_le_bytes(),
+                );
+            }
+        }
+        assert!(matches!(
+            decode_stable_cell_ledger_record_from_memory(&HeaderOnly),
+            Err(StableCellLedgerError::Payload(
+                StableCellPayloadError::TooLarge { .. }
+            ))
+        ));
+    }
+
+    #[test]
+    fn hostile_cbor_is_rejected_on_production_record_decode() {
+        let huge_array = [0x9b, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff];
+        let huge_string = [0x7b, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff];
+        let mut nested = vec![0x81; crate::constants::MAX_LEDGER_NESTING + 1];
+        nested.push(0);
+        for bytes in [&huge_array[..], &huge_string[..], &nested, &[0xa1], &[0xff]] {
+            assert!(decode_stable_cell_ledger_record(bytes).is_err());
+        }
     }
 }

@@ -45,8 +45,10 @@ pub struct AllocationLedger {
 #[serde(deny_unknown_fields)]
 pub struct AllocationHistory {
     /// Stable-key allocation records.
+    #[serde(deserialize_with = "crate::cbor::deserialize_records")]
     pub(crate) records: Vec<AllocationRecord>,
     /// Committed generation records.
+    #[serde(deserialize_with = "crate::cbor::deserialize_history")]
     pub(crate) generations: Vec<GenerationRecord>,
 }
 
@@ -74,6 +76,7 @@ pub struct AllocationRecord {
     /// Latest committed generation that observed this allocation declaration.
     pub(crate) last_seen_generation: u64,
     /// Per-generation schema metadata history.
+    #[serde(deserialize_with = "crate::cbor::deserialize_history")]
     pub(crate) schema_history: Vec<SchemaMetadataRecord>,
 }
 

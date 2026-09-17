@@ -32,8 +32,8 @@ impl LedgerPayloadEnvelope {
     ///
     /// # Panics
     ///
-    /// Panics only on a platform where an in-memory payload length cannot fit
-    /// into the envelope's `u64` length field.
+    /// Panics if the payload exceeds the current ledger byte ceiling or its
+    /// encoded length cannot be represented. Use `try_encode` for typed errors.
     #[must_use]
     pub fn encode(&self) -> Vec<u8> {
         self.try_encode()
@@ -42,6 +42,11 @@ impl LedgerPayloadEnvelope {
 
     /// Try to encode the logical payload envelope.
     pub fn try_encode(&self) -> Result<Vec<u8>, LedgerPayloadEnvelopeError> {
+        if self.payload.len() > crate::constants::MAX_LEDGER_BYTES {
+            return Err(LedgerPayloadEnvelopeError::PayloadTooLarge {
+                len: self.payload.len() as u64,
+            });
+        }
         let total_len = LEDGER_PAYLOAD_HEADER_LEN
             .checked_add(self.payload.len())
             .ok_or(LedgerPayloadEnvelopeError::PayloadLengthOverflow {
@@ -117,6 +122,11 @@ impl LedgerPayloadEnvelope {
         let payload_len = u64::from_le_bytes(payload_len);
         let payload_len = usize::try_from(payload_len)
             .map_err(|_| LedgerPayloadEnvelopeError::PayloadTooLarge { len: payload_len })?;
+        if payload_len > crate::constants::MAX_LEDGER_BYTES {
+            return Err(LedgerPayloadEnvelopeError::PayloadTooLarge {
+                len: payload_len as u64,
+            });
+        }
         let expected_len = LEDGER_PAYLOAD_HEADER_LEN
             .checked_add(payload_len)
             .ok_or(LedgerPayloadEnvelopeError::PayloadLengthOverflow { len: payload_len })?;

@@ -135,7 +135,10 @@ pub use bootstrap::{
     PendingBootstrapCommit,
 };
 pub use capability::{CommittedAllocations, ValidatedAllocations};
-pub use constants::WASM_PAGE_SIZE_BYTES;
+pub use constants::{
+    MAX_LEDGER_BYTES, MAX_LEDGER_GENERATIONS, MAX_LEDGER_NESTING, MAX_LEDGER_RECORD_BYTES,
+    WASM_PAGE_SIZE_BYTES,
+};
 pub use declaration::{
     AllocationDeclaration, DeclarationCollector, DeclarationSnapshot, DeclarationSnapshotError,
 };
@@ -159,22 +162,24 @@ pub use physical::{
 };
 pub use policy::{AllocationPolicy, PolicyIdentity, PolicyIdentityError, RuntimeBootstrapPolicy};
 pub use registry::{
-    SealedDeclarationFingerprint, SealedDeclarationSnapshot, StaticMemoryDeclaration,
-    StaticMemoryDeclarationError, StaticMemoryRangeDeclaration, register_static_memory_declaration,
+    MemoryRequest, SealedDeclarationFingerprint, SealedDeclarationSnapshot,
+    StaticMemoryDeclaration, StaticMemoryDeclarationError, StaticMemoryRangeDeclaration,
+    register_memory_request, register_static_memory_declaration,
     register_static_memory_manager_declaration,
     register_static_memory_manager_declaration_with_schema, register_static_memory_manager_range,
     register_static_memory_range_declaration, sealed_declaration_snapshot,
 };
 pub use runtime::{
     AllocationBinding, AllocationRangeClaim, GenericRangePolicy, MemoryAllocation,
-    MemoryAllocations, MemoryManagerConfig, MemoryManagerLayoutError, MemoryRuntime,
-    RuntimeBootstrapError, RuntimeConstructionError, RuntimeDiagnosticError, RuntimeMemory,
-    RuntimeOpenError, RuntimePolicyError, RuntimeStateError, bootstrap_default_memory_manager,
-    bootstrap_default_memory_manager_with_config, bootstrap_default_memory_manager_with_policy,
-    committed_allocations, default_memory_manager_commit_recovery_diagnostic,
-    default_memory_manager_diagnostic_export, default_memory_manager_doctor_report,
-    default_memory_manager_doctor_report_with_policy, default_memory_manager_memory_allocations,
-    is_default_memory_manager_bootstrapped, open_default_memory_manager_memory,
+    MemoryAllocations, MemoryManagerConfig, MemoryManagerLayoutError, MemoryResolutionError,
+    MemoryRuntime, RuntimeBootstrapError, RuntimeConstructionError, RuntimeDiagnosticError,
+    RuntimeMemory, RuntimeOpenError, RuntimePolicyError, RuntimeStateError,
+    bootstrap_default_memory_manager, bootstrap_default_memory_manager_with_config,
+    bootstrap_default_memory_manager_with_policy, committed_allocations,
+    default_memory_manager_commit_recovery_diagnostic, default_memory_manager_diagnostic_export,
+    default_memory_manager_doctor_report, default_memory_manager_doctor_report_with_policy,
+    default_memory_manager_memory_allocations, is_default_memory_manager_bootstrapped,
+    open_default_memory_manager_memory, open_default_memory_manager_memory_by_key,
 };
 pub use schema::{SchemaMetadata, SchemaMetadataError};
 pub use slot::{
@@ -214,6 +219,19 @@ pub mod __reexports {
 /// them against the ledger, commit the generation, and then open memory handles.
 #[macro_export]
 macro_rules! ic_memory_declaration {
+    (authority = $authority:expr, key = $stable_key:literal $(,)?) => {
+        const _: () = {
+            fn __ic_memory_register_request() -> Result<(), $crate::StaticMemoryDeclarationError> {
+                $crate::register_memory_request($crate::MemoryRequest::new(
+                    $authority, $stable_key, $crate::SchemaMetadata::default(),
+                )?)
+            }
+            #[ $crate::__reexports::ctor::ctor(unsafe, anonymous, crate_path = $crate::__reexports::ctor) ]
+            fn __ic_memory_defer_request() {
+                $crate::defer_static_memory_registration(__ic_memory_register_request);
+            }
+        };
+    };
     (authority = $authority:expr, key = $stable_key:literal, ty = $label:path, id = $id:expr $(,)?) => {
         const _: () = {
             const __IC_MEMORY_AUTHORITY: &str = $authority;
@@ -297,6 +315,10 @@ macro_rules! ic_memory_range {
 /// returns the typed default-runtime open result at expression use time.
 #[macro_export]
 macro_rules! ic_memory_key {
+    (authority = $authority:expr, key = $stable_key:literal $(,)?) => {{
+        $crate::ic_memory_declaration!(authority = $authority, key = $stable_key);
+        $crate::open_default_memory_manager_memory_by_key($stable_key)
+    }};
     (authority = $authority:expr, key = $stable_key:literal, ty = $label:path, id = $id:expr $(,)?) => {{
         $crate::ic_memory_declaration!(
             authority = $authority,

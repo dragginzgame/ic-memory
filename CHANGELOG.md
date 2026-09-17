@@ -1,5 +1,51 @@
 # Changelog
 
+## 0.14.0
+
+This release adds key-only allocation and bounded ledger recovery. It is an
+intentional pre-1.0 admission hard cut: recovery rejects inputs outside the new
+byte, collection and nesting limits, including indefinite-length CBOR. The
+durable version-1 ledger shape remains unchanged; no legacy reader, automatic
+history compaction or migration path is provided.
+
+- Added `MemoryRequest`, static registration and key-only declaration/open
+  macro forms, plus explicitly owned `SealedDeclarationSnapshot::new` inputs.
+  After recovery, known keys retain their committed IDs; new requests resolve
+  in stable-key order to the lowest free ID in an explicit host-owned `Allowed`
+  grant. Fixed claims, governance slots, reservations, omitted allocations and
+  retired slots remain unavailable to new keys.
+- Added `MemoryRuntime::open_memory_by_key` and
+  `open_default_memory_manager_memory_by_key`. Libraries can inspect committed
+  assignments and adopt a bootstrapped host without replacing its policy or
+  bucket configuration. Both runtime forms persist the complete resolved set
+  before publishing allocation-open authority.
+- Bounded logical ledger payloads to 16 MiB, stable-cell ledger values to
+  64 MiB + 4 KiB, CBOR nesting to 32, allocation records to 255, and generation
+  history and total schema history to 65,536 entries each. Added pre-allocation
+  length checks, an allocation-free CBOR preflight, bounded collection decoding,
+  and writer/staging checks with typed, fail-closed errors. Recreated runtimes
+  still append a generation for unchanged declarations; history exhaustion is
+  explicit and does not discard ownership or tombstones.
+- Hardened ledger persistence against backing-memory growth refusal by reserving
+  physical capacity before upstream manager bucket assignment. Failed bootstrap
+  publishes no mapping; IC trap rollback remains the interrupted-write boundary.
+- Clarified and tested omitted-store access through explicit reconciliation
+  declarations supplied before sealing. Omitted keys cannot open through current
+  authority, and revoked grants or explicit retirement reject redeclaration.
+  **IcyDB integration for #4 remains unresolved:** its generated bootstrap must
+  establish whether removed journal keys are available before sealing, then
+  qualify journal-debt and pending-commit checks end to end. No unrestricted
+  historical-open capability was added.
+- Added a runnable standalone/composed-host example and the
+  [recovery and integration qualification report](docs/key-only-recovery.md),
+  covering deterministic placement, reservation activation, failed persistence,
+  omitted/retired ownership, hostile decoding and history/record boundaries.
+- Matched Rust 1.97.1 raw Wasm probes increased core from 240,300 to 255,112 bytes
+  and diagnostics from 289,090 to 307,589 bytes. The equivalent key-only probe is
+  254,762 bytes. Updated enforced budgets to 260,000 bytes for core/key-only and
+  315,000 for diagnostics. Identical resolved declarations add no durable
+  metadata fields; IC instruction/cycle measurements remain unavailable.
+
 ## 0.13.3
 
 - Made default-runtime bootstrap status and committed-capability lookups

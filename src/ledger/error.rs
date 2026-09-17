@@ -16,6 +16,12 @@ use crate::{
 #[non_exhaustive]
 #[derive(Clone, Debug, Eq, thiserror::Error, PartialEq)]
 pub enum LedgerIntegrityError {
+    /// Current structural recovery ceiling exceeded.
+    #[error("ledger exceeds {resource} limit {limit}")]
+    LimitExceeded {
+        resource: &'static str,
+        limit: usize,
+    },
     /// Stable-key grammar was invalid after durable decode.
     #[error(transparent)]
     InvalidStableKey(StableKeyError),
@@ -225,6 +231,8 @@ pub enum LedgerCommitError {
 #[non_exhaustive]
 #[derive(Clone, Debug, Eq, thiserror::Error, PartialEq)]
 pub enum AllocationStageError {
+    #[error(transparent)]
+    Integrity(#[from] LedgerIntegrityError),
     /// Validated declarations were produced against a different ledger generation.
     #[error(
         "validated allocations were produced at generation {validated_generation}, but ledger is at generation {ledger_generation}"
@@ -301,6 +309,8 @@ pub enum AllocationStageError {
 #[non_exhaustive]
 #[derive(Clone, Debug, Eq, thiserror::Error, PartialEq)]
 pub enum AllocationReservationError {
+    #[error(transparent)]
+    Integrity(#[from] LedgerIntegrityError),
     /// Ledger generation cannot be advanced without overflow.
     #[error("ledger generation {generation} cannot be advanced without overflow")]
     GenerationOverflow {
@@ -369,6 +379,8 @@ pub enum AllocationReservationError {
 #[non_exhaustive]
 #[derive(Clone, Debug, Eq, thiserror::Error, PartialEq)]
 pub enum AllocationRetirementError {
+    #[error(transparent)]
+    Integrity(#[from] LedgerIntegrityError),
     /// Stable-key grammar failure.
     #[error(transparent)]
     Key(StableKeyError),

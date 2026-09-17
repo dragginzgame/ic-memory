@@ -23,6 +23,39 @@ If a future version tries to move that store to a different slot, or reuse that
 slot for a different store, `ic-memory` rejects the layout before stable-memory
 handles are opened.
 
+## Key-only allocation
+
+Applications can request durable keys while the host grants an explicit pool:
+
+```rust
+ic_memory::ic_memory_range!(authority = "app", start = 10, end = 254, mode = Allowed);
+ic_memory::ic_memory_declaration!(authority = "app", key = "app.users.v1");
+
+fn initialize() {
+    let committed = ic_memory::bootstrap_default_memory_manager().unwrap();
+    let key = ic_memory::StableKey::parse("app.users.v1").unwrap();
+    let assigned_id = committed.slot_for(&key).unwrap().memory_manager_id().unwrap();
+    let users = ic_memory::open_default_memory_manager_memory_by_key(key.as_str()).unwrap();
+    # let _ = (assigned_id, users);
+}
+```
+
+Known keys retain their committed IDs. New requests are sorted by stable key
+and take the lowest unclaimed ID in their authority's explicit `Allowed`
+grants. Governance IDs, fixed claims, reservations, omitted allocations and
+retired allocations remain unavailable. `Reserved` ranges do not supply new
+automatic slots. A matching historical reservation activates through normal
+claim validation and current policy.
+
+A composed host grants each library only its intended ranges and bootstraps
+once. Libraries inspect `committed_allocations().slot_for(...)` and open by key
+without changing the host's policy or bucket profile. Hosts must declare or
+reserve allocations used by raw `MemoryManager` clients before admitting
+automatic requests; physical diagnostics cannot infer their ownership.
+
+See the runnable [standalone and composed example](examples/key_only.rs), and
+[recovery limits and omitted-store inspection](docs/key-only-recovery.md).
+
 ## Why Use It?
 
 Use `ic-memory` when a canister has more than one stable store and the layout
