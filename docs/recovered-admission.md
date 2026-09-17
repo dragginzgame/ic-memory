@@ -108,8 +108,9 @@ crash-atomic by this hook.
 Recovered metadata has at most 255 records; iteration borrows key/slot/state and
 latest-schema references without copying histories. At most 254 external
 requests, including the original set, can be completed. Each selection performs
-bounded scans of current declarations, recovered records and grants; completion
-runs the existing canonical snapshot builder and resolver once. With S selected
+bounded scans of current declarations, recovered records and grants. Completion
+returns the selected requests directly; the resolver builds the final canonical
+snapshot once, without constructing an intermediate completed snapshot. With S selected
 keys, D current declarations, H historical records and G grants, selection work
 is O(S × (D + H + G)); all four counts are at most 255. The consumer's own
 computation is trusted code, not metered by ic-memory. No new persisted fields,
@@ -134,12 +135,9 @@ admission probe also limited to 260,000 bytes. IC instructions/cycles for fresh
 bootstrap and repeated opens are **unmeasured**: no IC execution harness is
 configured here. No native timing is substituted. Opening itself is unchanged.
 
-Implementation size: the new admission module is 208 lines including metadata,
-errors and rustdoc; the bootstrap policy adds a 13-line optional hook, and the
-runtime adds four preparation statements before its existing resolution call.
-No additional lifecycle state is stored. Qualification adds a 434-line runtime
-test module, 63 lines of default-runtime coverage and one compile-fail case.
-Examples, documentation, re-exports and probe configuration are separate.
+The original 0.14.1 implementation added one preparation context and no stored
+lifecycle state. The [logical bootstrap cleanup report](logical-bootstrap-cleanup.md)
+records the subsequent construction/snapshot simplification and matched sizes.
 
 ## Source boundary
 

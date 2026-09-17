@@ -223,9 +223,9 @@ impl<M: Memory> MemoryRuntime<M> {
         let recovered = record.store_mut().recover_or_initialize(&genesis)?;
         let mut admission = BootstrapAdmission::new(recovered.ledger(), declarations);
         let preparation = policy.prepare_bootstrap(&mut admission);
-        let completed = admission.complete()?;
+        let historical = admission.complete()?;
         preparation.map_err(RuntimeBootstrapError::AdmissionPolicy)?;
-        let resolved = completed.resolve(recovered.ledger())?;
+        let resolved = declarations.resolve(recovered.ledger(), historical)?;
         let runtime_policy = RuntimeMemoryManagerPolicy {
             declarations: &resolved,
             custom_policy: policy,

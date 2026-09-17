@@ -177,32 +177,25 @@ impl<'a> BootstrapAdmission<'a> {
                 authority: authority.to_string(),
                 source,
             })?;
-        self.selected.push(MemoryRequest::new(
-            authority,
-            stable_key,
-            record
-                .schema_history()
-                .last()
-                .expect("validated schema history")
-                .schema()
-                .clone(),
-        )?);
+        self.selected.push(
+            request
+                .with_schema(
+                    record
+                        .schema_history()
+                        .last()
+                        .expect("validated schema history")
+                        .schema()
+                        .clone(),
+                )
+                .map_err(crate::StaticMemoryDeclarationError::Declaration)?,
+        );
         Ok(())
     }
 
-    pub(super) fn complete(self) -> Result<SealedDeclarationSnapshot, BootstrapAdmissionError> {
+    pub(super) fn complete(self) -> Result<Vec<MemoryRequest>, BootstrapAdmissionError> {
         if let Some(error) = self.failure {
             return Err(error);
         }
-        if self.selected.is_empty() {
-            return Ok(self.declarations.clone());
-        }
-        let mut requests = self.declarations.requests().to_vec();
-        requests.extend(self.selected);
-        Ok(SealedDeclarationSnapshot::new(
-            self.declarations.registered_declarations(),
-            self.declarations.registered_ranges(),
-            &requests,
-        )?)
+        Ok(self.selected)
     }
 }

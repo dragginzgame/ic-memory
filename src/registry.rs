@@ -115,6 +115,17 @@ impl MemoryRequest {
         })
     }
 
+    pub(crate) fn with_schema(
+        mut self,
+        schema: SchemaMetadata,
+    ) -> Result<Self, crate::DeclarationSnapshotError> {
+        schema
+            .validate()
+            .map_err(crate::DeclarationSnapshotError::SchemaMetadata)?;
+        self.schema = schema;
+        Ok(self)
+    }
+
     /// Borrow the requested durable key.
     #[must_use]
     pub const fn stable_key(&self) -> &crate::StableKey {
@@ -317,9 +328,13 @@ impl SealedDeclarationSnapshot {
     pub(crate) fn resolve(
         &self,
         ledger: &crate::AllocationLedger,
+        historical: Vec<MemoryRequest>,
     ) -> Result<Self, crate::MemoryResolutionError> {
-        if self.requests().is_empty() {
+        if self.requests().is_empty() && historical.is_empty() {
             return Ok(self.clone());
+        }
+        if self.registered_declarations().len() + self.requests().len() + historical.len() > 254 {
+            return Err(StaticMemoryDeclarationError::TooManyDeclarations.into());
         }
         let mut declarations = self.registered_declarations().to_vec();
         let mut occupied = [false; 255];
@@ -340,7 +355,11 @@ impl SealedDeclarationSnapshot {
                     .expect("checked slot"),
             )] = true;
         }
-        for request in self.requests() {
+        // Only the original requests can allocate new slots and they are already
+        // canonical. Admission selections are known-only: all their slots are
+        // occupied above regardless of selection order. Final declarations are
+        // canonicalized and checked together below.
+        for request in self.requests().iter().chain(&historical) {
             let historical = ledger
                 .allocation_history()
                 .records()
@@ -754,7 +773,8 @@ fn build_snapshot(
         return Err(StaticMemoryDeclarationError::TooManyDeclarations);
     }
     let mut requests = requests.to_vec();
-    requests.sort_by(|a, b| a.stable_key.cmp(&b.stable_key));
+    // Accepted keys are unique; equal keys reject below, so stability adds no meaning.
+    requests.sort_unstable_by(|a, b| a.stable_key.cmp(&b.stable_key));
     let mut keys = std::collections::BTreeSet::new();
     keys.extend(declarations.iter().map(|d| d.declaration().stable_key()));
     for key in requests.iter().map(|r| &r.stable_key) {

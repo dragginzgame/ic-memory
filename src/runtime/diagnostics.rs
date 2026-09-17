@@ -242,7 +242,7 @@ where
         Ok(recovered) => recovered,
         Err(failure) => return DiagnosticCheck::not_run(failure.code, failure.message),
     };
-    let resolved = match declarations.resolve(recovered.ledger()) {
+    let resolved = match declarations.resolve(recovered.ledger(), Vec::new()) {
         Ok(resolved) => resolved,
         Err(err) => {
             return DiagnosticCheck::failed(DiagnosticCode::AllocationValidation, err.to_string());

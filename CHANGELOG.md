@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.14.2
+
+- Removed the intermediate sealed snapshot from historical admission completion.
+  The resolver consumes known-only selections alongside the original canonical
+  requests, then builds and validates one final resolved snapshot. Original
+  warm-bootstrap identity and resolved diagnostic fingerprints remain distinct.
+- Reused validated request authority/key values when applying recovered schema
+  metadata, preserving early bounds, current-grant checks and sticky rejection.
+  Switched only unique-key request ordering to unstable sorting; fixed declaration
+  and range comparators retain their existing ordering behavior.
+- Added canonical-permutation, duplicate-rejection and resolved-fingerprint
+  equivalence coverage. No API, durable format, lifecycle state, persistence
+  boundary or recovery preflight changes were introduced.
+- Recorded mixed matched Rust 1.97.1 raw Wasm results: admission decreases by
+  159 bytes; core increases by 339, diagnostics by 718 and key-only by 331 bytes.
+  All existing size budgets pass. Historical completion eliminates one snapshot
+  build/fingerprint; IC instructions/cycles remain unmeasured. Further range-table
+  sharing was deferred after its measured code-size increase. See the
+  [cleanup qualification report](docs/logical-bootstrap-cleanup.md).
+
 ## 0.14.1
 
 - Added `RuntimeBootstrapPolicy::prepare_bootstrap` inside the existing recovered

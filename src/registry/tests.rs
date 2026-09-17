@@ -398,3 +398,112 @@ fn recursive_snapshot_request_from_eager_hook_is_typed() {
 
     assert_eq!(EAGER_INIT_RUNS.load(Ordering::SeqCst), 1);
 }
+
+#[test]
+fn request_permutations_are_canonical_and_duplicate_keys_reject() {
+    let requests: Vec<_> = ["app.a.v1", "app.m.v1", "app.z.v1"]
+        .iter()
+        .map(|key| MemoryRequest::new("app", key, SchemaMetadata::default()).unwrap())
+        .collect();
+    let expected = SealedDeclarationSnapshot::new(&[], &[], &requests).unwrap();
+    for order in [
+        [0, 1, 2],
+        [0, 2, 1],
+        [1, 0, 2],
+        [1, 2, 0],
+        [2, 0, 1],
+        [2, 1, 0],
+    ] {
+        let permuted: Vec<_> = order.iter().map(|i| requests[*i].clone()).collect();
+        let actual = SealedDeclarationSnapshot::new(&[], &[], &permuted).unwrap();
+        assert_eq!(actual, expected);
+        assert_eq!(actual.fingerprint(), expected.fingerprint());
+    }
+    let conflicting =
+        MemoryRequest::new("other", "app.m.v1", SchemaMetadata::new(Some(2)).unwrap()).unwrap();
+    for duplicate in [
+        vec![requests[1].clone(), conflicting.clone()],
+        vec![conflicting, requests[1].clone()],
+    ] {
+        assert!(matches!(
+            SealedDeclarationSnapshot::new(&[], &[], &duplicate),
+            Err(StaticMemoryDeclarationError::DuplicateRequest { .. })
+        ));
+    }
+    let fixed = StaticMemoryDeclaration::new(
+        "app",
+        AllocationDeclaration::memory_manager_unlabeled("app.m.v1", 100).unwrap(),
+    )
+    .unwrap();
+    assert!(matches!(
+        SealedDeclarationSnapshot::new(&[fixed], &[], &requests),
+        Err(StaticMemoryDeclarationError::DuplicateRequest { .. })
+    ));
+}
+
+#[test]
+fn resolved_history_permutations_match_fully_sealed_declarations_and_fingerprints() {
+    let range = StaticMemoryRangeDeclaration::new(
+        MemoryManagerAuthorityRecord::new(
+            MemoryManagerIdRange::new(100, 110).unwrap(),
+            "app",
+            MemoryManagerRangeMode::Allowed,
+            None,
+        )
+        .unwrap(),
+    )
+    .unwrap();
+    let fixed = |key, id| {
+        StaticMemoryDeclaration::new(
+            "app",
+            AllocationDeclaration::memory_manager_unlabeled(key, id).unwrap(),
+        )
+        .unwrap()
+    };
+    let request = |key| MemoryRequest::new("app", key, SchemaMetadata::default()).unwrap();
+    let mut store = crate::LedgerCommitStore::default();
+    let genesis = crate::AllocationLedger::new(0, crate::AllocationHistory::default()).unwrap();
+    crate::AllocationBootstrap::new(&mut store)
+        .initialize_validate_and_commit(
+            &genesis,
+            DeclarationSnapshot::new(vec![
+                fixed("app.m.v1", 101).into_declaration(),
+                fixed("app.n.v1", 104).into_declaration(),
+            ])
+            .unwrap(),
+            &crate::GenericRangePolicy,
+            None,
+        )
+        .unwrap();
+    let recovered = store.recover().unwrap();
+    let original = SealedDeclarationSnapshot::new(
+        &[fixed("app.fixed.v1", 100)],
+        std::slice::from_ref(&range),
+        &[request("app.z.v1"), request("app.a.v1")],
+    )
+    .unwrap();
+    let original_fingerprint = original.fingerprint();
+    let expected = SealedDeclarationSnapshot::new(
+        &[
+            fixed("app.fixed.v1", 100),
+            fixed("app.a.v1", 102),
+            fixed("app.z.v1", 103),
+            fixed("app.m.v1", 101),
+            fixed("app.n.v1", 104),
+        ],
+        &[range],
+        &[],
+    )
+    .unwrap();
+    for historical in [
+        vec![request("app.n.v1"), request("app.m.v1")],
+        vec![request("app.m.v1"), request("app.n.v1")],
+    ] {
+        let resolved = original.resolve(recovered.ledger(), historical).unwrap();
+        assert_eq!(resolved, expected);
+        assert_eq!(resolved.fingerprint(), expected.fingerprint());
+        assert_ne!(resolved.fingerprint(), original_fingerprint);
+        assert_eq!(original.fingerprint(), original_fingerprint);
+        assert!(!resolved.shares_storage_with(&original));
+    }
+}
