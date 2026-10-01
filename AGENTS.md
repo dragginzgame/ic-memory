@@ -1,5 +1,22 @@
 # Repository Instructions
 
+## User-Owned Commits and Pushes
+
+The user exclusively owns committing and pushing. LLM agents must never create,
+amend, or rewrite commits, push branches or tags, or invoke scripts that perform
+those actions. Requests to prepare a release or push changes do not authorize an
+agent to perform these user-owned actions.
+
+- Leave edits unstaged and uncommitted for the user to review.
+- Do not create, move, or delete release tags.
+- Do not run `make release-commit`, `make release-push`, `make release-minor`, or
+  `make release-patch`; these commands commit, tag, or push.
+- Prepare source, documentation, and validation within the working tree, then
+  report the result and any commands the user needs to run.
+- If a workflow requires committed source or a clean working tree, stop before
+  that prerequisite and explain the required user action. Never commit or push
+  merely to satisfy a workflow's preconditions.
+
 ## Pre-1.0 Hard-Cut Policy
 
 Until `1.0.0`, every release uses the current API and durable format only. Do
