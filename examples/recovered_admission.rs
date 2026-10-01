@@ -96,7 +96,7 @@ fn main() {
         .bootstrap(&declarations(&[CONTROL, OLD_JOURNAL]), &HostPolicy)
         .unwrap();
     let journal = runtime.open_memory_by_key(OLD_JOURNAL).unwrap();
-    journal.grow(1);
+    journal.grow(1).unwrap();
     journal.write(0, b"debt");
     drop(journal);
     drop(runtime);

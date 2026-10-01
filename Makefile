@@ -85,7 +85,8 @@ validate:
 
 wasm-size:
 	cargo +$(VALIDATION_TOOLCHAIN) build --locked --profile wasm-size --target wasm32-unknown-unknown \
-		--example wasm-core-size-probe --example wasm-diagnostics-size-probe --example wasm-key-only-size-probe --example wasm-admission-size-probe
+		--example wasm-core-size-probe --example wasm-diagnostics-size-probe --example wasm-key-only-size-probe --example wasm-admission-size-probe \
+		--example wasm-runtime-integration-size-probe
 	@set -eu; \
 	core_bytes=$$(wc -c < target/wasm32-unknown-unknown/wasm-size/examples/wasm_core_size_probe.wasm); \
 	diagnostics_bytes=$$(wc -c < target/wasm32-unknown-unknown/wasm-size/examples/wasm_diagnostics_size_probe.wasm); \
@@ -98,7 +99,10 @@ wasm-size:
 	test "$$key_only_bytes" -le 260000; \
 	admission_bytes=$$(wc -c < target/wasm32-unknown-unknown/wasm-size/examples/wasm_admission_size_probe.wasm); \
 	echo "Admission raw Wasm: $$admission_bytes bytes (budget: 260000 bytes)"; \
-	test "$$admission_bytes" -le 260000
+	test "$$admission_bytes" -le 260000; \
+	integration_bytes=$$(wc -c < target/wasm32-unknown-unknown/wasm-size/examples/wasm_runtime_integration_size_probe.wasm); \
+	echo "Runtime integration raw Wasm: $$integration_bytes bytes (budget: 270000 bytes)"; \
+	test "$$integration_bytes" -le 270000
 
 test-release-flow:
 	PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tests -p 'test_release.py'

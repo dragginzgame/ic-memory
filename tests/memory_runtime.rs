@@ -98,7 +98,7 @@ fn owned_report_and_cloned_handles_support_borrowed_nonclone_backing() {
     let rows = runtime
         .open_memory("explicit_runtime.rows.v1", 140)
         .unwrap();
-    rows.grow(1);
+    rows.grow(1).unwrap();
     rows.write(0, &[7]);
     let clone = rows.clone();
     let report = runtime.memory_allocations().unwrap();

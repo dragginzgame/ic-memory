@@ -35,6 +35,11 @@ name = "wasm-admission-size-probe"
 path = "examples/wasm_admission_size_probe.rs"
 crate-type = ["cdylib"]
 
+[[example]]
+name = "wasm-runtime-integration-size-probe"
+path = "examples/wasm_runtime_integration_size_probe.rs"
+crate-type = ["cdylib"]
+
 [dependencies]
 ciborium = "0.2.2"
 ctor = "1.0"

@@ -1,0 +1,6 @@
+probe,baseline_bytes,candidate_bytes,delta_bytes,budget_bytes,baseline_commit,toolchain,profile
+core,255716,255999,283,260000,b2aabaf,1.97.1,wasm-size
+diagnostics,308097,309031,934,315000,b2aabaf,1.97.1,wasm-size
+key-only,255287,255602,315,260000,b2aabaf,1.97.1,wasm-size
+admission,258370,258585,215,260000,b2aabaf,1.97.1,wasm-size
+runtime-integration,,263847,,270000,,1.97.1,wasm-size

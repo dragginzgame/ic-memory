@@ -1,6 +1,9 @@
 mod admission;
 #[cfg(test)]
 mod admission_tests;
+mod adoption;
+#[cfg(test)]
+mod adoption_tests;
 mod allocations;
 mod backing;
 mod config;
@@ -13,6 +16,8 @@ mod policy;
 #[cfg(test)]
 mod allocation_tests;
 #[cfg(test)]
+mod growth_tests;
+#[cfg(test)]
 #[allow(
     unsafe_code,
     reason = "exercise raw reads with valid uninitialized destinations"
@@ -24,9 +29,11 @@ mod request_tests;
 mod tests;
 
 pub use admission::{BootstrapAdmission, BootstrapAdmissionError, RecoveredAllocationMetadata};
+pub use adoption::RuntimeAdoptionError;
 
 pub use allocations::{
-    AllocationBinding, AllocationRangeClaim, MemoryAllocation, MemoryAllocations,
+    AllocationBinding, AllocationRangeClaim, MemoryAllocation, MemoryAllocationSummary,
+    MemoryAllocations, MemoryBindingSummary,
 };
 pub use backing::RuntimeMemory;
 pub use config::MemoryManagerConfig;
@@ -35,12 +42,14 @@ pub use default::{
     bootstrap_default_memory_manager_with_policy, committed_allocations,
     default_memory_manager_commit_recovery_diagnostic, default_memory_manager_diagnostic_export,
     default_memory_manager_doctor_report, default_memory_manager_doctor_report_with_policy,
-    default_memory_manager_memory_allocations, is_default_memory_manager_bootstrapped,
+    default_memory_manager_memory_allocation_summary, default_memory_manager_memory_allocations,
+    default_memory_manager_memory_id, is_default_memory_manager_bootstrapped,
     open_default_memory_manager_memory, open_default_memory_manager_memory_by_key,
+    verify_default_memory_manager_authority,
 };
 pub use error::{
     MemoryResolutionError, RuntimeBootstrapError, RuntimeConstructionError, RuntimeDiagnosticError,
-    RuntimeOpenError, RuntimePolicyError, RuntimeStateError,
+    RuntimeGrowError, RuntimeOpenError, RuntimePolicyError, RuntimeStateError,
 };
 pub use layout::MemoryManagerLayoutError;
 pub use policy::GenericRangePolicy;
@@ -92,9 +101,11 @@ struct RuntimeBootstrapBinding {
 pub struct MemoryRuntime<M: Memory> {
     memory_manager: MemoryManager<Rc<M>>,
     // Share the owned backing using upstream's Memory implementation for Rc.
-    // Only the manager writes it; attribution borrows it read-only.
+    // Handles reserve physical capacity; the manager owns bucket metadata.
+    // Attribution borrows the backing read-only.
     backing: Rc<M>,
     bucket_size_pages: u16,
+    growth: Rc<backing::GrowthState<M>>,
     ledger_cell: Option<LedgerCell<M>>,
     lifecycle: RuntimeLifecycle,
 }
@@ -137,16 +148,22 @@ impl<M: Memory> MemoryRuntime<M> {
         if cfg!(target_endian = "big") {
             return Err(MemoryManagerLayoutError::UnsupportedByteOrder.into());
         }
-        let bucket_size_pages = if memory.size() == 0 {
-            requested.unwrap_or_default().bucket_size_pages()
+        let (bucket_size_pages, allocated_buckets) = if memory.size() == 0 {
+            (requested.unwrap_or_default().bucket_size_pages(), 0)
         } else {
-            let actual = layout::read(&memory)?.bucket_pages;
+            let measured = layout::read(&memory)?;
+            let actual = measured.bucket_pages;
             if let Some(config) = requested {
                 check_bucket_size(actual, config)?;
             }
-            actual
+            (actual, measured.allocated_buckets)
         };
         let backing = Rc::new(memory);
+        let growth = Rc::new(backing::GrowthState {
+            backing: Rc::clone(&backing),
+            bucket_size_pages,
+            allocated_buckets: std::cell::RefCell::new(allocated_buckets),
+        });
         Ok(Self {
             memory_manager: MemoryManager::init_with_bucket_size(
                 Rc::clone(&backing),
@@ -154,6 +171,7 @@ impl<M: Memory> MemoryRuntime<M> {
             ),
             backing,
             bucket_size_pages,
+            growth,
             ledger_cell: None,
             lifecycle: RuntimeLifecycle::Unbootstrapped,
         })
@@ -270,7 +288,7 @@ impl<M: Memory> MemoryRuntime<M> {
         &self,
         stable_key: &str,
     ) -> Result<RuntimeMemory<M>, RuntimeOpenError> {
-        Ok(self.memory(self.committed_memory_id(stable_key)?))
+        Ok(self.memory(self.memory_id(stable_key)?))
     }
 
     /// Open this runtime's committed memory by stable key and expected ID.
@@ -279,7 +297,7 @@ impl<M: Memory> MemoryRuntime<M> {
         stable_key: &str,
         expected_id: u8,
     ) -> Result<RuntimeMemory<M>, RuntimeOpenError> {
-        let committed_id = self.committed_memory_id(stable_key)?;
+        let committed_id = self.memory_id(stable_key)?;
         if committed_id != expected_id {
             return Err(RuntimeOpenError::MemoryIdMismatch {
                 stable_key: stable_key.to_string(),
@@ -290,7 +308,9 @@ impl<M: Memory> MemoryRuntime<M> {
         Ok(self.memory(committed_id))
     }
 
-    fn committed_memory_id(&self, stable_key: &str) -> Result<u8, RuntimeOpenError> {
+    /// Resolve an application key's committed ID without opening memory,
+    /// reading history, or changing the host's policy or bucket configuration.
+    pub fn memory_id(&self, stable_key: &str) -> Result<u8, RuntimeOpenError> {
         let key = StableKey::parse(stable_key)?;
         if crate::is_ic_memory_stable_key(key.as_str()) {
             return Err(RuntimeOpenError::ReservedStableKey {
@@ -310,12 +330,7 @@ impl<M: Memory> MemoryRuntime<M> {
         }
         let memory = self.memory(MEMORY_MANAGER_LEDGER_ID);
         crate::validate_stable_cell_ledger_memory(&memory)?;
-        ensure_ledger_cell_capacity(
-            &memory,
-            self.backing.as_ref(),
-            self.bucket_size_pages,
-            &StableCellLedgerRecord::default(),
-        )?;
+        ensure_ledger_cell_capacity(&memory, &StableCellLedgerRecord::default())?;
         self.ledger_cell = Some(Cell::init(memory, StableCellLedgerRecord::default()));
         Ok(())
     }
@@ -325,12 +340,7 @@ impl<M: Memory> MemoryRuntime<M> {
         record: StableCellLedgerRecord,
     ) -> Result<(), RuntimeBootstrapError<P>> {
         let memory = self.memory(MEMORY_MANAGER_LEDGER_ID);
-        ensure_ledger_cell_capacity(
-            &memory,
-            self.backing.as_ref(),
-            self.bucket_size_pages,
-            &record,
-        )?;
+        ensure_ledger_cell_capacity(&memory, &record)?;
         let cell = self
             .ledger_cell
             .as_mut()
@@ -340,7 +350,10 @@ impl<M: Memory> MemoryRuntime<M> {
     }
 
     fn memory(&self, id: u8) -> RuntimeMemory<M> {
-        RuntimeMemory(self.memory_manager.get(MemoryId::new(id)))
+        RuntimeMemory {
+            memory: self.memory_manager.get(MemoryId::new(id)),
+            growth: Rc::clone(&self.growth),
+        }
     }
 
     fn ledger_record_from_memory(&self) -> Result<StableCellLedgerRecord, StableCellLedgerError> {
@@ -369,8 +382,6 @@ impl RuntimeBootstrapBinding {
 
 fn ensure_ledger_cell_capacity<M: Memory, P>(
     memory: &RuntimeMemory<M>,
-    backing: &M,
-    bucket_size_pages: u16,
     record: &StableCellLedgerRecord,
 ) -> Result<(), RuntimeBootstrapError<P>> {
     let value_size = record.to_bytes().len();
@@ -389,24 +400,7 @@ fn ensure_ledger_cell_capacity<M: Memory, P>(
     let grow_by = required_bytes
         .saturating_sub(available_bytes)
         .div_ceil(crate::WASM_PAGE_SIZE_BYTES);
-    // Upstream writes its bucket table before backing.grow and panics on -1.
-    // Reserve physical capacity first so an ordinary growth refusal stays typed
-    // and cannot leave a partially assigned manager table.
-    let layout = layout::read(backing).map_err(RuntimeStateError::Construction)?;
-    let bucket_pages = u64::from(bucket_size_pages);
-    let extra_buckets =
-        (memory.size() + grow_by).div_ceil(bucket_pages) - memory.size().div_ceil(bucket_pages);
-    let total_buckets = u64::from(layout.allocated_buckets) + extra_buckets;
-    if total_buckets > 32_768 {
-        return Err(RuntimeBootstrapError::StableCellLedgerWriteTooLarge { value_size });
-    }
-    let physical_pages = 1 + total_buckets * bucket_pages;
-    if physical_pages > backing.size() && backing.grow(physical_pages - backing.size()) < 0 {
-        return Err(RuntimeBootstrapError::StableCellLedgerWriteTooLarge { value_size });
-    }
-    if memory.grow(grow_by) < 0 {
-        return Err(RuntimeBootstrapError::StableCellLedgerWriteTooLarge { value_size });
-    }
+    memory.grow(grow_by)?;
     Ok(())
 }
 

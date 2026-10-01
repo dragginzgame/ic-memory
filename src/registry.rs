@@ -132,6 +132,12 @@ impl MemoryRequest {
         &self.stable_key
     }
 
+    /// Borrow the requested diagnostic schema metadata.
+    #[must_use]
+    pub const fn schema(&self) -> &SchemaMetadata {
+        &self.schema
+    }
+
     /// Borrow the declaring authority.
     #[must_use]
     pub fn authority(&self) -> &str {

@@ -6,7 +6,8 @@ use crate::WASM_PAGE_SIZE_BYTES;
 use ic_stable_structures::Memory;
 
 pub(super) const IDS: usize = 255;
-pub(super) const BUCKETS: usize = 32_768;
+pub(super) const BUCKET_CAPACITY: u16 = 32_768;
+pub(super) const BUCKETS: usize = BUCKET_CAPACITY as usize;
 pub(super) const HEADER_BYTES: usize = 40 + IDS * 8;
 pub(super) const METADATA_BYTES: usize = HEADER_BYTES + BUCKETS;
 

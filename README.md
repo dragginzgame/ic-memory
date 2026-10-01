@@ -32,10 +32,9 @@ ic_memory::ic_memory_range!(authority = "app", start = 10, end = 254, mode = All
 ic_memory::ic_memory_declaration!(authority = "app", key = "app.users.v1");
 
 fn initialize() {
-    let committed = ic_memory::bootstrap_default_memory_manager().unwrap();
-    let key = ic_memory::StableKey::parse("app.users.v1").unwrap();
-    let assigned_id = committed.slot_for(&key).unwrap().memory_manager_id().unwrap();
-    let users = ic_memory::open_default_memory_manager_memory_by_key(key.as_str()).unwrap();
+    ic_memory::bootstrap_default_memory_manager().unwrap();
+    let assigned_id = ic_memory::default_memory_manager_memory_id("app.users.v1").unwrap();
+    let users = ic_memory::open_default_memory_manager_memory_by_key("app.users.v1").unwrap();
     # let _ = (assigned_id, users);
 }
 ```
@@ -48,10 +47,35 @@ automatic slots. A matching historical reservation activates through normal
 claim validation and current policy.
 
 A composed host grants each library only its intended ranges and bootstraps
-once. Libraries inspect `committed_allocations().slot_for(...)` and open by key
-without changing the host's policy or bucket profile. Hosts must declare or
+once. Libraries resolve IDs with `default_memory_manager_memory_id(...)` and open
+by key without changing the host's policy or bucket profile. Hosts must declare or
 reserve allocations used by raw `MemoryManager` clients before admitting
 automatic requests; physical diagnostics cannot infer their ownership.
+
+Libraries can verify their requirements against the host's current commitment:
+
+```rust
+fn adopt_host() -> Result<(), Box<dyn std::error::Error>> {
+    let requirements = ic_memory::sealed_declaration_snapshot()?;
+    ic_memory::verify_default_memory_manager_authority(&requirements, "icydb.example")?;
+    Ok(())
+}
+```
+
+For an owned runtime, use `runtime.verify_authority(&requirements, authority)`
+and `runtime.memory_id(key)`. Verification requires at least one fixed declaration
+or logical request under that authority and checks every matching requirement.
+Fixed declarations must match key, ID, label and diagnostic schema. Logical
+requests must match key, authority and diagnostic schema while adopting the host's
+assigned ID. Other authorities and additional committed keys are ignored.
+Typed errors identify missing keys, wrong IDs, authority mismatches and metadata
+mismatches. These helpers never bootstrap, replay admission or change policy,
+grants or bucket configuration. Application schema and lifecycle checks remain
+with the consumer.
+
+`CommittedAllocations` contains immutable declarations with validated metadata
+and unique keys and slots. Consumers may rely on those guarantees without
+rebuilding uniqueness sets; they still validate live store and journal contents.
 
 Hosts can also implement `RuntimeBootstrapPolicy::prepare_bootstrap` to inspect
 validated recovered allocation metadata and explicitly include known historical
@@ -316,6 +340,17 @@ or advances a generation. The default helper refuses to construct a missing
 runtime; an existing unbootstrapped runtime can report physical allocation with
 unknown current bindings.
 
+For recurring numeric metrics, use `runtime.memory_allocation_summary()` or
+`default_memory_manager_memory_allocation_summary()`. The owned, copyable
+`MemoryAllocationSummary` returns the same totals and capacity facts plus
+allocated bytes and bucket slack for `current_binding`, `ledger_binding` and
+`unknown_binding`. It checks all 255 IDs with the same 34,848-byte metadata read,
+without constructing per-ID rows or copying keys, owners or range claims. It
+does not decode history or measure payload occupancy. Both reports share the
+same validated measurement and accounting path; the detailed report remains
+available for protected inspection. The default summary helper does not
+construct a missing runtime.
+
 The report measures the actual persisted bucket size, physical and virtual
 extents, assigned buckets, manager metadata, known current stable-key/owner
 bindings, and unknown/unmanaged residuals. Virtual bytes are addressable extent,
@@ -362,6 +397,11 @@ checking the framework's declarations; do not re-bootstrap with the generic poli
 to bypass an existing host policy. Cached construction and TLS access failures
 remain errors, not absence. Other runtime operations may still construct it.
 
+Default-runtime opens and `default_memory_manager_memory_id()` also leave a
+missing runtime untouched. An early open returns `NotBootstrapped`; it cannot
+silently select 128-page buckets and prevent a later configured bootstrap.
+Full doctor/ledger diagnostic operations can still construct a missing runtime.
+
 Open operations and macros return `RuntimeMemory<M>`, implementing `Memory` and
 `Clone` without requiring `M: Clone`. Stable store type annotations must use
 `ic_memory::RuntimeMemory<DefaultMemoryImpl>`. The runtime retains one private
@@ -369,6 +409,21 @@ shared backing for read-only attribution and owns exactly one manager.
 Both safe and unsafe reads delegate to upstream, preserving specialized
 `read_unsafe` implementations without extra destination initialization in the
 runtime. Custom backings can continue using the `Memory` trait's default method.
+
+`RuntimeMemory::grow` reserves physical backing capacity before assigning manager
+buckets and returns `Result<u64, RuntimeGrowError>` with the previous page count
+on success. Backing refusal, arithmetic overflow, reentry and bucket exhaustion
+return distinct typed errors without changing virtual extents or manager
+metadata. All handles, including
+clones and the ledger, share one live bucket count recovered from validated
+metadata at construction. Growth performs no metadata reads or table scans.
+The count is transient; the current durable format is unchanged. Native backing
+panics and partial writes remain outside this refusal guarantee. This is a hard
+cut for direct callers: replace integer checks with `?`, `match`, or an explicit
+error handler. The `ic_stable_structures::Memory` trait requires an `i64` result;
+only that adapter converts typed growth errors to `-1`. Collections retain their
+own behavior at that trait boundary. Ledger bootstrap propagates growth errors
+through `RuntimeBootstrapError::LedgerGrowth`.
 
 The [CANIC-162 handoff](docs/canic162-memory-attribution.md) contains the exact
 Canic integration example, reproducible measurements, capacity tradeoffs, and

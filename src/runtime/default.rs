@@ -106,6 +106,29 @@ pub fn committed_allocations() -> Result<CommittedAllocations, RuntimeOpenError>
     })
 }
 
+/// Resolve an application key's committed ID in the existing default runtime.
+/// Does not construct a manager, open memory, or choose a bucket configuration.
+pub fn default_memory_manager_memory_id(stable_key: &str) -> Result<u8, RuntimeOpenError> {
+    with_existing_default_runtime(|runtime| {
+        runtime
+            .ok_or(RuntimeOpenError::NotBootstrapped)?
+            .memory_id(stable_key)
+    })
+}
+
+/// Verify one consumer's allocation requirements against the existing host
+/// runtime. Does not construct, bootstrap, replay admission or change configuration.
+pub fn verify_default_memory_manager_authority(
+    requirements: &crate::SealedDeclarationSnapshot,
+    authority: &str,
+) -> Result<(), super::RuntimeAdoptionError> {
+    with_existing_default_runtime(|runtime| {
+        runtime
+            .ok_or(RuntimeOpenError::NotBootstrapped)?
+            .verify_authority(requirements, authority)
+    })
+}
+
 /// Bootstrap this thread's default runtime using generic range policy.
 pub fn bootstrap_default_memory_manager()
 -> Result<CommittedAllocations, RuntimeBootstrapError<Infallible>> {
@@ -126,18 +149,28 @@ pub fn bootstrap_default_memory_manager_with_policy<P: RuntimeBootstrapPolicy>(
 }
 
 /// Open a committed memory from this thread's default runtime.
+/// Does not construct an absent runtime or select its bucket configuration.
 pub fn open_default_memory_manager_memory(
     stable_key: &str,
     id: u8,
 ) -> Result<RuntimeMemory<DefaultMemoryImpl>, RuntimeOpenError> {
-    with_default_runtime(|runtime| runtime.open_memory(stable_key, id))
+    with_existing_default_runtime(|runtime| {
+        runtime
+            .ok_or(RuntimeOpenError::NotBootstrapped)?
+            .open_memory(stable_key, id)
+    })
 }
 
 /// Open a key already committed by the host's default runtime without changing policy.
+/// Does not construct an absent runtime or select its bucket configuration.
 pub fn open_default_memory_manager_memory_by_key(
     stable_key: &str,
 ) -> Result<RuntimeMemory<DefaultMemoryImpl>, RuntimeOpenError> {
-    with_default_runtime(|runtime| runtime.open_memory_by_key(stable_key))
+    with_existing_default_runtime(|runtime| {
+        runtime
+            .ok_or(RuntimeOpenError::NotBootstrapped)?
+            .open_memory_by_key(stable_key)
+    })
 }
 
 /// Export this thread's default runtime ledger and live memory sizes.
@@ -191,6 +224,19 @@ pub fn default_memory_manager_memory_allocations()
         runtime
             .ok_or(RuntimeDiagnosticError::NotBootstrapped)?
             .memory_allocations()
+    })
+}
+
+/// Measure numeric allocation totals in the existing default runtime.
+///
+/// Does not copy binding names or construct per-ID rows. Absence returns
+/// `NotBootstrapped` without initializing memory or choosing configuration.
+pub fn default_memory_manager_memory_allocation_summary()
+-> Result<super::MemoryAllocationSummary, RuntimeDiagnosticError> {
+    with_existing_default_runtime(|runtime| {
+        runtime
+            .ok_or(RuntimeDiagnosticError::NotBootstrapped)?
+            .memory_allocation_summary()
     })
 }
 
@@ -294,6 +340,16 @@ mod tests {
                 Err(RuntimeDiagnosticError::State(RuntimeStateError::Construction(cause)))
                     if cause == error
             ));
+            for result in [
+                open_default_memory_manager_memory_by_key("app.rows.v1").err(),
+                open_default_memory_manager_memory("app.rows.v1", 100).err(),
+                default_memory_manager_memory_id("app.rows.v1").err(),
+            ] {
+                assert_eq!(result, Some(RuntimeOpenError::State(RuntimeStateError::Construction(error))));
+            }
+            let requirements = crate::SealedDeclarationSnapshot::new(&[], &[], &[]).unwrap();
+            assert_eq!(verify_default_memory_manager_authority(&requirements, "app"), Err(super::super::RuntimeAdoptionError::Open(RuntimeOpenError::State(RuntimeStateError::Construction(error)))));
+            assert!(matches!(default_memory_manager_memory_allocation_summary(), Err(RuntimeDiagnosticError::State(RuntimeStateError::Construction(cause))) if cause == error));
             DEFAULT_RUNTIME.with(|runtime| {
                 assert!(matches!(runtime.borrow().as_ref(), Some(Err(cause)) if *cause == error));
             });

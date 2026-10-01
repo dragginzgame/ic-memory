@@ -3,7 +3,7 @@ use ic_memory::{
     AllocationBootstrap, AllocationDeclaration, AllocationHistory, AllocationLedger,
     GenericRangePolicy, LedgerCommitStore, MemoryManagerAuthorityRecord, MemoryManagerIdRange,
     MemoryManagerRangeMode, MemoryRequest, MemoryRuntime, SchemaMetadata,
-    SealedDeclarationSnapshot, StableCellLedgerRecord, StableKey, StaticMemoryDeclaration,
+    SealedDeclarationSnapshot, StableCellLedgerRecord, StaticMemoryDeclaration,
     StaticMemoryRangeDeclaration,
 };
 use ic_stable_structures::{
@@ -44,7 +44,7 @@ fn main() {
         .bootstrap(&declarations, &GenericRangePolicy)
         .unwrap();
     let users = standalone.open_memory_by_key("app.users.v1").unwrap();
-    users.grow(1);
+    users.grow(1).unwrap();
     users.write(0, b"users");
 
     // A host's existing persistence owner may seed a reservation before runtime
@@ -82,23 +82,9 @@ fn main() {
     .unwrap();
     let mut host = MemoryRuntime::new(backing).unwrap();
     host.bootstrap(&declarations, &GenericRangePolicy).unwrap();
-    let committed = host.committed_allocations().unwrap();
-    assert_eq!(
-        committed
-            .slot_for(&StableKey::parse("db.journal.v1").unwrap())
-            .unwrap()
-            .memory_manager_id()
-            .unwrap(),
-        101
-    );
-    assert_eq!(
-        committed
-            .slot_for(&StableKey::parse("db.rows.v1").unwrap())
-            .unwrap()
-            .memory_manager_id()
-            .unwrap(),
-        100
-    );
+    host.verify_authority(&declarations, "db").unwrap();
+    assert_eq!(host.memory_id("db.journal.v1"), Ok(101));
+    assert_eq!(host.memory_id("db.rows.v1"), Ok(100));
     // A library adopts current host authority without running bootstrap again.
     let _journal = host.open_memory_by_key("db.journal.v1").unwrap();
     let _rows = host.open_memory_by_key("db.rows.v1").unwrap();

@@ -33,7 +33,8 @@ jobs:
             --example wasm-core-size-probe \
             --example wasm-diagnostics-size-probe \
             --example wasm-key-only-size-probe \
-            --example wasm-admission-size-probe
+            --example wasm-admission-size-probe \
+            --example wasm-runtime-integration-size-probe
 
           core_wasm=target/wasm32-unknown-unknown/wasm-size/examples/wasm_core_size_probe.wasm
           core_bytes=$(wc -c < "$core_wasm")
@@ -58,6 +59,12 @@ jobs:
           admission_budget=260000
           echo "Admission raw Wasm: $admission_bytes bytes (budget: $admission_budget bytes)"
           test "$admission_bytes" -le "$admission_budget"
+
+          integration_wasm=target/wasm32-unknown-unknown/wasm-size/examples/wasm_runtime_integration_size_probe.wasm
+          integration_bytes=$(wc -c < "$integration_wasm")
+          integration_budget=270000
+          echo "Runtime integration raw Wasm: $integration_bytes bytes (budget: $integration_budget bytes)"
+          test "$integration_bytes" -le "$integration_budget"
       - run: cargo package
 
   msrv:

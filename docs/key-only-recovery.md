@@ -34,17 +34,26 @@ the host; no diagnostic can infer their ownership.
 
 `MemoryResolutionError::Exhausted` identifies the bounded key and authority;
 range errors identify the rejected slot/authority. Historical conflicts and
-retirement retain `AllocationValidationError` variants. Persistence refusal
-returns `RuntimeBootstrapError::StableCellLedgerWriteTooLarge`. No failed
-bootstrap publishes a capability. Ledger growth reserves backing capacity
-before upstream manager bucket assignment, avoiding its panic-on-growth-refusal
-path. A fresh failed attempt can leave an initialized empty ledger cell; an
-existing committed mapping remains unchanged.
+retirement retain `AllocationValidationError` variants. Persistence growth refusal
+returns `RuntimeBootstrapError::LedgerGrowth` carrying a `RuntimeGrowError`;
+an oversized encoded record returns `StableCellLedgerWriteTooLarge`. No failed
+bootstrap publishes a capability. `RuntimeMemory::grow` reserves backing capacity
+before upstream manager bucket assignment for application and ledger handles.
+Direct growth returns `Result<u64, RuntimeGrowError>`; ordinary refusal preserves
+virtual extents and manager metadata. Only the upstream `Memory` trait adapter
+maps these errors to its required `-1` sentinel. A fresh failed attempt
+can leave an initialized empty ledger cell; an existing committed mapping remains
+unchanged.
 
-A library adopting a bootstrapped host calls `committed_allocations().slot_for`
-for its requested keys and `open_memory_by_key`, or the default-runtime
-`open_default_memory_manager_memory_by_key`. These calls neither bootstrap nor
-replace policy/configuration. They do not read history. The runnable
+A library adopting a bootstrapped host uses `verify_authority` to check every
+fixed declaration and logical request under its authority, then `memory_id`
+and `open_memory_by_key`. Default-runtime equivalents are
+`verify_default_memory_manager_authority`, `default_memory_manager_memory_id`
+and `open_default_memory_manager_memory_by_key`. These calls neither bootstrap nor
+replace policy/configuration. They do not read history or construct an absent
+default runtime. Verification reports typed missing-key, fixed-ID, current
+authority and diagnostic-metadata mismatches; it does not validate application
+schema semantics or replay admission. The runnable
 [`key_only` example](../examples/key_only.rs) covers standalone ownership and a
 composed host with automatic requests, a fixed control slot and a prior journal
 reservation.
@@ -168,7 +177,7 @@ The Cell is not a crash-atomic file protocol on arbitrary native backing memory;
 arbitrary partially persisted writes fail closed. Existing dual-slot corruption
 and interrupted-commit tests remain in the suite.
 
-## Qualification and costs
+## 0.14.0 qualification and costs
 
 Raw, uncompressed Wasm is measured with matching Rust 1.97.1, the committed
 `wasm-size` profile, `wasm32-unknown-unknown`, and the same maintained core and
@@ -200,8 +209,11 @@ and bounded range grants. Key-only opens retain the existing bounded linear
 capability lookup. Recovery
 adds one allocation-free linear CBOR scan per decoded layer and bounded vector
 visitors; history validation retains its existing ordered-set work. Persistence
-capacity preflight adds the existing fixed 34,848-byte manager-layout read only
-when the ledger virtual memory needs to grow. No accounting framework or
+capacity preflight in that release added the fixed 34,848-byte manager-layout
+read when ledger virtual memory needed to grow. The 0.15 runtime instead shares
+one live assigned-bucket count, seeded from validated construction metadata and
+updated after successful growth, across all handles. Growth performs no metadata
+reads or table scans. No accounting framework or
 allocator-strategy configuration was introduced.
 
 The patch touches 18 existing `src` files (+733/−60 lines, including embedded

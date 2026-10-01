@@ -63,7 +63,7 @@ fn runtime(bucket_pages: u16) -> MemoryRuntime<ObservedMemory> {
 // Exercise the private transport independently of declaration registration.
 // Public open authority and reserved IDs are covered by the runtime tests.
 fn handle<M: Memory>(runtime: &MemoryRuntime<M>, id: u8) -> RuntimeMemory<M> {
-    RuntimeMemory(runtime.memory_manager.get(MemoryId::new(id)))
+    runtime.memory(id)
 }
 
 fn read_uninitialized<const N: usize>(memory: &impl Memory, offset: u64) -> [u8; N] {
@@ -78,7 +78,7 @@ fn read_uninitialized<const N: usize>(memory: &impl Memory, offset: u64) -> [u8;
 fn safe_and_uninitialized_reads_reach_specialized_backing_without_effects() {
     let runtime = runtime(1);
     let memory = handle(&runtime, 1);
-    assert_eq!(memory.grow(1), 0);
+    assert_eq!(memory.grow(1), Ok(0));
     memory.write(7, &[11, 22, 33, 44]);
     let backing = &runtime.backing;
     backing.unsafe_reads.borrow_mut().clear();
@@ -103,7 +103,7 @@ fn safe_and_uninitialized_reads_reach_specialized_backing_without_effects() {
 fn forwarding_does_not_zero_the_destination_before_a_backing_failure() {
     let runtime = runtime(1);
     let memory = handle(&runtime, 1);
-    memory.grow(1);
+    memory.grow(1).unwrap();
     runtime.backing.unsafe_reads.borrow_mut().clear();
     runtime.backing.fail_on_read.set(Some(1));
     let mut dst = [0xA5; 4];
@@ -124,11 +124,11 @@ fn uninitialized_reads_translate_discontiguous_buckets_and_partial_failures() {
     let runtime = runtime(1);
     let memory = handle(&runtime, 1);
     let other = handle(&runtime, 2);
-    memory.grow(1);
-    other.grow(1);
-    memory.grow(1);
-    other.grow(1);
-    memory.grow(1);
+    memory.grow(1).unwrap();
+    other.grow(1).unwrap();
+    memory.grow(1).unwrap();
+    other.grow(1).unwrap();
+    memory.grow(1).unwrap();
     let mut expected = vec![0x6D; COUNT];
     expected[..4].copy_from_slice(&[1, 2, 3, 4]);
     expected[COUNT - 4..].copy_from_slice(&[5, 6, 7, 8]);
@@ -177,7 +177,7 @@ fn default_read_unsafe_and_clones_support_borrowed_nonclone_backing() {
             .unwrap();
     let memory = handle(&runtime, 1);
     let cold_clone = memory.clone();
-    memory.grow(1);
+    memory.grow(1).unwrap();
     memory.write(PAGE - 3, &[1, 2, 3]);
     assert_eq!(read_uninitialized::<3>(&memory, PAGE - 3), [1, 2, 3]);
     let warm_clone = memory.clone();
@@ -194,7 +194,7 @@ fn empty_reads_and_source_bounds_match_upstream_for_cold_and_warm_handles() {
     let empty = NonNull::<u8>::dangling().as_ptr();
     // SAFETY: Non-null aligned pointers are valid for these zero-byte reads.
     unsafe { memory.read_unsafe(0, empty, 0) };
-    memory.grow(1);
+    memory.grow(1).unwrap();
     unsafe { memory.read_unsafe(PAGE, empty, 0) };
     assert_eq!(read_uninitialized::<1>(&memory, PAGE - 1), [0]);
 

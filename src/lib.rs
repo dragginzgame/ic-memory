@@ -171,16 +171,19 @@ pub use registry::{
 };
 pub use runtime::{
     AllocationBinding, AllocationRangeClaim, BootstrapAdmission, BootstrapAdmissionError,
-    GenericRangePolicy, MemoryAllocation, MemoryAllocations, MemoryManagerConfig,
-    MemoryManagerLayoutError, MemoryResolutionError, MemoryRuntime, RecoveredAllocationMetadata,
-    RuntimeBootstrapError, RuntimeConstructionError, RuntimeDiagnosticError, RuntimeMemory,
+    GenericRangePolicy, MemoryAllocation, MemoryAllocationSummary, MemoryAllocations,
+    MemoryBindingSummary, MemoryManagerConfig, MemoryManagerLayoutError, MemoryResolutionError,
+    MemoryRuntime, RecoveredAllocationMetadata, RuntimeAdoptionError, RuntimeBootstrapError,
+    RuntimeConstructionError, RuntimeDiagnosticError, RuntimeGrowError, RuntimeMemory,
     RuntimeOpenError, RuntimePolicyError, RuntimeStateError, bootstrap_default_memory_manager,
     bootstrap_default_memory_manager_with_config, bootstrap_default_memory_manager_with_policy,
     committed_allocations, default_memory_manager_commit_recovery_diagnostic,
     default_memory_manager_diagnostic_export, default_memory_manager_doctor_report,
-    default_memory_manager_doctor_report_with_policy, default_memory_manager_memory_allocations,
-    is_default_memory_manager_bootstrapped, open_default_memory_manager_memory,
-    open_default_memory_manager_memory_by_key,
+    default_memory_manager_doctor_report_with_policy,
+    default_memory_manager_memory_allocation_summary, default_memory_manager_memory_allocations,
+    default_memory_manager_memory_id, is_default_memory_manager_bootstrapped,
+    open_default_memory_manager_memory, open_default_memory_manager_memory_by_key,
+    verify_default_memory_manager_authority,
 };
 pub use schema::{SchemaMetadata, SchemaMetadataError};
 pub use slot::{

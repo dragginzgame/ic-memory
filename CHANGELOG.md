@@ -1,5 +1,43 @@
 # Changelog
 
+## 0.15.0
+
+- Make default-runtime opens nonconstructing. An early open returns
+  `NotBootstrapped` without initializing a manager or selecting its bucket size;
+  cached construction and TLS access failures remain typed errors.
+- Protect application and ledger growth through `RuntimeMemory`. Reserve
+  physical backing capacity before assigning buckets. Hard-cut direct `grow`
+  calls to `Result<u64, RuntimeGrowError>`; distinguish ordinary backing refusal,
+  arithmetic overflow, reentrant growth and bucket exhaustion. Only the required
+  upstream `Memory` trait adapter translates failures to `-1`. Propagate ledger
+  capacity failures through `RuntimeBootstrapError::LedgerGrowth`; retain
+  `StableCellLedgerWriteTooLarge` for the encoded record ceiling.
+  Refusal preserves virtual extents and manager metadata and supports retry.
+  All handles share one transient assigned-bucket count seeded on construction;
+  remove the ledger's separate capacity preflight and metadata scan. The current
+  durable format, policy and default bucket size are unchanged.
+- Add `MemoryAllocationSummary`, `MemoryBindingSummary`,
+  `MemoryRuntime::memory_allocation_summary` and the nonconstructing default
+  helper. Numeric totals and current/ledger/unknown binding partitions share
+  accounting with detailed attribution, retain the 34,848-byte metadata-read
+  bound, and avoid per-ID rows and copied binding names. Payload occupancy
+  remains unavailable.
+- Add committed ID resolution and authority-scoped adoption verification for
+  owned/default runtimes, plus `RuntimeAdoptionError`. Check fixed and logical
+  requirements with typed missing-key, wrong-ID, current-authority and metadata
+  errors without replaying admission or changing host configuration. Document
+  the immutable declaration invariants of `CommittedAllocations` and update the
+  composed-host example.
+- Qualify refusal/retry, cloned and detached handles, interleaved allocations,
+  reopen, reentry, bounded summary parity, and effect-free host adoption. Reject
+  the superseded integer-returning growth API with a compile-fail test.
+  Matched Rust 1.97.1 raw Wasm deltas against 0.14.3 are +283 bytes core,
+  +934 diagnostics, +315 key-only and +215 admission; all existing budgets remain
+  unchanged and pass. Add an integration probe exercising growth, summary
+  serialization and adoption: 263,847 bytes under a new 270,000-byte budget.
+  IC instruction/cycle costs and downstream lifecycle qualification are
+  unmeasured. See the [raw size measurements](docs/measurements/0.15-runtime-integration.csv).
+
 ## 0.14.3
 
 - Encode opaque committed payloads as bounded CBOR byte strings, removing the

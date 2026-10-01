@@ -95,6 +95,11 @@ impl ValidatedAllocations {
 /// [`crate::MemoryRuntime`] stores it only after that runtime's stable-cell write
 /// succeeds.
 ///
+/// Its immutable declarations have validated keys, slots and diagnostic
+/// metadata, with unique keys and slots. Consumers may rely on those invariants
+/// without rebuilding uniqueness sets. The capability does not validate live
+/// store bytes, application schemas, journals or lifecycle readiness.
+///
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CommittedAllocations {

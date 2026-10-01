@@ -1,6 +1,8 @@
 # CANIC-162: bounded physical allocation attribution
 
-Date: 2026-09-10. Workspace implementation only; package version remains 0.12.3.
+Original qualification: 2026-09-10, prepared against 0.12.3.
+The API guidance below includes the changes prepared for 0.15.0; the fixture
+measurements retain their original qualification scope.
 Canic and Toko Miner were inspected read-only. Their pending integration and the
 reported 232 MiB live observation remain separate from this fixture evidence.
 
@@ -10,16 +12,23 @@ reported 232 MiB live observation remain separate from this fixture evidence.
 impl<M: ic_stable_structures::Memory> MemoryRuntime<M> {
     pub fn memory_allocations(&self)
         -> Result<MemoryAllocations, RuntimeDiagnosticError>;
+    pub fn memory_allocation_summary(&self)
+        -> Result<MemoryAllocationSummary, RuntimeDiagnosticError>;
     pub fn new(memory: M) -> Result<Self, RuntimeConstructionError>;
     pub fn new_with_config(memory: M, config: MemoryManagerConfig)
         -> Result<Self, RuntimeConstructionError>;
     pub const fn memory_manager_config(&self) -> MemoryManagerConfig;
     pub fn open_memory(&self, stable_key: &str, expected_id: u8)
         -> Result<RuntimeMemory<M>, RuntimeOpenError>;
+    pub fn memory_id(&self, stable_key: &str) -> Result<u8, RuntimeOpenError>;
+    pub fn verify_authority(&self, requirements: &SealedDeclarationSnapshot,
+        authority: &str) -> Result<(), RuntimeAdoptionError>;
 }
 
 pub fn default_memory_manager_memory_allocations()
     -> Result<MemoryAllocations, RuntimeDiagnosticError>;
+pub fn default_memory_manager_memory_allocation_summary()
+    -> Result<MemoryAllocationSummary, RuntimeDiagnosticError>;
 pub fn bootstrap_default_memory_manager_with_config<P: RuntimeBootstrapPolicy>(
     config: MemoryManagerConfig, policy: &P,
 ) -> Result<CommittedAllocations, RuntimeBootstrapError<P::Error>>;
@@ -152,6 +161,24 @@ fabricated strings or `Active` state. If maintaining a derived current-only
 view, label it as such and retain all excluded allocation bytes in explicit
 residuals so that its conservation still works.
 
+For periodic numeric metrics, use
+`default_memory_manager_memory_allocation_summary()` with the same completed
+bootstrap check. It returns all numeric totals and allocated/slack bytes for
+current, ledger and unknown bindings without constructing 255 rows or copying
+binding names. It retains the two-read, 34,848-byte metadata budget and does not
+decode history. Keep the detailed report for protected per-store inspection.
+
+Consumers adopting an existing host can use
+`verify_default_memory_manager_authority(&requirements, authority)` and
+`default_memory_manager_memory_id(key)` to check their requirements and resolve
+IDs without replaying bootstrap or changing host policy. Opens and these helpers
+leave an absent runtime untouched, so they can precede a configured bootstrap.
+`RuntimeMemory::grow` now returns `Result<u64, RuntimeGrowError>`; update direct
+Canic callers to handle typed errors instead of checking an integer sentinel.
+Ordinary backing refusal precedes bucket assignment and preserves manager
+metadata for retry. The upstream `Memory` trait adapter alone maps these errors
+to the trait's required `-1` result.
+
 `RuntimeOpenError` and policy validation still govern opens. Update stable-store
 annotations such as `Cell<T, VirtualMemory<DefaultMemoryImpl>>` directly to
 `Cell<T, ic_memory::RuntimeMemory<DefaultMemoryImpl>>`. Update imports in Canic
@@ -234,8 +261,9 @@ one-page lower bound. Their finite-table consequences justify comparing them:
 not reclaimed when application contents are deleted. Capacity figures exclude
 the metadata page and any stricter backing/platform limits. Sparse exhaustion
 tests reach the table limit without allocating GiBs on the host and verify that
-a further bucket returns `-1` without changing the report. Upstream backing
-growth failure itself can panic; this work does not change growth atomicity.
+a further bucket returns `RuntimeGrowError::BucketExhausted` without changing
+the report. Ordinary backing refusal is also typed and precedes bucket
+assignment. Backing traps and partial writes are not native transactions.
 
 | Bucket pages | After growing-store physical bytes | Total virtual bytes | Total buckets | Append backing grow calls | Random-get backing reads |
 | ---: | ---: | ---: | ---: | ---: | ---: |

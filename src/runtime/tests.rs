@@ -223,7 +223,7 @@ fn separate_runtimes_have_independent_bootstrap_authority_and_memory() {
     let memory_a = runtime_a
         .open_memory("runtime_tests.rows.v1", 120)
         .expect("runtime A memory");
-    memory_a.grow(1);
+    memory_a.grow(1).unwrap();
     memory_a.write(0, b"runtime-a");
 
     runtime_b
@@ -234,7 +234,7 @@ fn separate_runtimes_have_independent_bootstrap_authority_and_memory() {
         .open_memory("runtime_tests.rows.v1", 120)
         .expect("runtime B memory");
     assert_eq!(memory_b.size(), 0);
-    memory_b.grow(1);
+    memory_b.grow(1).unwrap();
     let mut bytes = [0; 9];
     memory_b.read(0, &mut bytes);
     assert_eq!(&bytes, &[0; 9]);
@@ -315,7 +315,7 @@ fn repeated_bootstrap_is_idempotent_and_existing_memory_recovers() {
         let memory = runtime
             .open_memory("runtime_tests.rows.v1", 120)
             .expect("first runtime memory");
-        memory.grow(1);
+        memory.grow(1).unwrap();
         memory.write(0, b"persisted");
         first
     };
@@ -564,7 +564,7 @@ fn doctor_and_diagnostics_report_the_same_runtime_lifecycle() {
     let memory = runtime
         .open_memory("runtime_tests.rows.v1", 120)
         .expect("open");
-    memory.grow(2);
+    memory.grow(2).unwrap();
     let doctor = runtime.doctor_report(&declarations, &GenericRangePolicy);
     let export = runtime.diagnostic_export().expect("diagnostic export");
     assert!(doctor.bootstrapped);

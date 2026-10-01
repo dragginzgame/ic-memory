@@ -71,7 +71,7 @@ fn deterministic_requests_preserve_history_and_explicit_inspection() {
         (101, 102)
     );
     let b = runtime.open_memory_by_key("app.b.v1").unwrap();
-    assert_eq!(b.grow(1), 0);
+    assert_eq!(b.grow(1), Ok(0));
     b.write(0, b"journal debt");
     drop(b);
     let fresh = VectorMemory::default();
@@ -216,7 +216,7 @@ fn reservation_activation_and_retirement_use_existing_claim_rules() {
         .unwrap();
     assert_eq!(id(&runtime, "app.b.v1"), 101);
     let memory = runtime.open_memory_by_key("app.b.v1").unwrap();
-    memory.grow(1);
+    memory.grow(1).unwrap();
     memory.write(0, b"pending");
     let mut record = runtime.ledger_record_from_memory().unwrap();
     AllocationBootstrap::new(record.store_mut())
@@ -297,7 +297,9 @@ fn failed_persistence_publishes_no_mapping_and_retries_deterministically() {
     assert!(
         matches!(
             result,
-            Err(RuntimeBootstrapError::StableCellLedgerWriteTooLarge { .. })
+            Err(RuntimeBootstrapError::LedgerGrowth(
+                super::RuntimeGrowError::BackingRefused { .. }
+            ))
         ),
         "{:?}",
         result.err()

@@ -89,7 +89,7 @@ pub(super) fn seeded() -> VectorMemory {
         )
         .unwrap();
     let journal = runtime.open_memory_by_key(JOURNAL).unwrap();
-    journal.grow(1);
+    journal.grow(1).unwrap();
     journal.write(0, b"pending/debt");
     backing
 }
@@ -336,7 +336,9 @@ fn failed_persistence_retries_admission_without_partial_publication() {
     assert!(
         matches!(
             result,
-            Err(RuntimeBootstrapError::StableCellLedgerWriteTooLarge { .. })
+            Err(RuntimeBootstrapError::LedgerGrowth(
+                super::RuntimeGrowError::BackingRefused { .. }
+            ))
         ),
         "{:?}",
         result.err()

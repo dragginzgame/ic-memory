@@ -49,6 +49,84 @@ fn conservation(report: &super::MemoryAllocations) {
     }
 }
 
+fn summary_matches_report(runtime: &MemoryRuntime<Metered>, memory: &Metered) {
+    let report = runtime.memory_allocations().unwrap();
+    let before = memory.bytes.borrow().clone();
+    memory.reset();
+    let summary = runtime.memory_allocation_summary().unwrap();
+    assert_eq!(memory.counts().reads, 2);
+    assert_eq!(memory.counts().read_bytes, 34_848);
+    assert_eq!(memory.counts().writes, 0);
+    assert_eq!(memory.counts().grows, 0);
+    assert_eq!(*memory.bytes.borrow(), before);
+    assert_eq!(summary.memories_measured, 255);
+    // Compare every shared numeric field; independently project the detailed
+    // rows into provenance partitions, including zero-sized and unknown IDs.
+    let mut detailed = serde_json::to_value(&report).unwrap();
+    detailed.as_object_mut().unwrap().remove("memories");
+    let mut numeric = serde_json::to_value(summary).unwrap();
+    for name in [
+        "memories_measured",
+        "current_binding",
+        "ledger_binding",
+        "unknown_binding",
+    ] {
+        numeric.as_object_mut().unwrap().remove(name);
+    }
+    assert_eq!(numeric, detailed);
+    let mut groups = [super::MemoryBindingSummary::default(); 3];
+    for row in &report.memories {
+        let index = match row.binding {
+            AllocationBinding::Current { .. } => 0,
+            AllocationBinding::Ledger { .. } => 1,
+            AllocationBinding::Unknown => 2,
+        };
+        groups[index].allocated_bytes += row.allocated_bytes;
+        groups[index].bucket_slack_bytes += row.bucket_slack_bytes;
+    }
+    assert_eq!(
+        [
+            summary.current_binding,
+            summary.ledger_binding,
+            summary.unknown_binding
+        ],
+        groups
+    );
+}
+
+#[test]
+fn numeric_summary_matches_detailed_accounting_before_and_after_bootstrap_and_reopen() {
+    let memory = Metered::default();
+    let mut runtime =
+        MemoryRuntime::new_with_config(memory.clone(), super::MemoryManagerConfig::new(8).unwrap())
+            .unwrap();
+    summary_matches_report(&runtime, &memory);
+    let declarations = super::request_tests::snapshot(&["app.rows.v1"], "app", 100, 101, &[]);
+    runtime
+        .bootstrap(&declarations, &GenericRangePolicy)
+        .unwrap();
+    runtime
+        .open_memory_by_key("app.rows.v1")
+        .unwrap()
+        .grow(9)
+        .unwrap();
+    runtime.memory(121).grow(1).unwrap();
+    memory.grow(3);
+    summary_matches_report(&runtime, &memory);
+    // Summaries remain history-independent even with a corrupt ledger length.
+    runtime
+        .memory(MEMORY_MANAGER_LEDGER_ID)
+        .write(4, &u32::MAX.to_le_bytes());
+    summary_matches_report(&runtime, &memory);
+    drop(runtime);
+    let runtime = MemoryRuntime::new(memory.clone()).unwrap();
+    summary_matches_report(&runtime, &memory);
+    let summary = runtime.memory_allocation_summary().unwrap();
+    assert_eq!(summary.current_generation, None);
+    assert_eq!(summary.current_binding.allocated_bytes, 0);
+    assert!(summary.unknown_binding.allocated_bytes > 0);
+}
+
 #[test]
 fn bounded_conservation_bindings_and_no_effects() {
     let _guard = TEST_REGISTRY_LOCK.lock().unwrap();
@@ -65,9 +143,9 @@ fn bounded_conservation_bindings_and_no_effects() {
         zero.memories[120].binding,
         AllocationBinding::Current { .. }
     ));
-    assert_eq!(rows.grow(129), 0);
+    assert_eq!(rows.grow(129), Ok(0));
     // Test-only unmanaged backing tail and an ID with no current declaration.
-    assert_eq!(runtime.memory(121).grow(1), 0);
+    assert_eq!(runtime.memory(121).grow(1), Ok(0));
     memory.grow(3);
     let before = memory.bytes.borrow().clone();
     let generation = runtime.committed_allocations().unwrap().generation();
@@ -243,7 +321,7 @@ fn explicit_configuration_validates_before_effects_and_replays() {
         .bootstrap(&declarations, &GenericRangePolicy)
         .unwrap();
     let handle = runtime.open_memory("runtime_tests.rows.v1", 120).unwrap();
-    handle.grow(9);
+    handle.grow(9).unwrap();
     handle.write(8 * 65_536 - 1, &[4, 5, 6]);
     drop(handle);
     let generation = runtime.committed_allocations().unwrap().generation();
@@ -380,12 +458,18 @@ fn finite_bucket_table_capacity_and_overflow_are_checked() {
         )
         .unwrap();
         let pages = 32_768 * u64::from(bucket);
-        assert_eq!(runtime.memory(120).grow(pages), 0);
+        assert_eq!(runtime.memory(120).grow(pages), Ok(0));
         let full = runtime.memory_allocations().unwrap();
         conservation(&full);
         assert_eq!(full.remaining_buckets, 0);
         assert_eq!(full.maximum_bucket_bytes, pages * 65_536);
-        assert_eq!(runtime.memory(121).grow(1), -1);
+        assert_eq!(
+            runtime.memory(121).grow(1),
+            Err(super::RuntimeGrowError::BucketExhausted {
+                required_buckets: 32_769,
+                capacity: 32_768,
+            })
+        );
         assert_eq!(runtime.memory_allocations().unwrap(), full);
     }
     assert!(matches!(

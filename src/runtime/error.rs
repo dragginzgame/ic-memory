@@ -5,6 +5,37 @@ use crate::{
 };
 
 ///
+/// RuntimeGrowError
+///
+/// Failure to grow a runtime memory before assigning new manager buckets.
+/// Ordinary capacity failures preserve virtual extents and manager metadata.
+/// Backing traps and partial writes remain outside this guarantee.
+///
+
+#[non_exhaustive]
+#[derive(Clone, Copy, Debug, Eq, thiserror::Error, PartialEq)]
+pub enum RuntimeGrowError {
+    /// The requested virtual extent overflows the page count.
+    #[error("virtual memory page count overflows")]
+    ArithmeticOverflow,
+    /// The sole manager has insufficient bucket slots.
+    #[error("growth requires {required_buckets} buckets, exceeding capacity {capacity}")]
+    BucketExhausted {
+        required_buckets: u64,
+        capacity: u16,
+    },
+    /// The backing memory refused the physical capacity reservation.
+    #[error("backing memory refused growth by {additional_pages} pages")]
+    BackingRefused { additional_pages: u64 },
+    /// Growth re-entered while another handle held a capacity reservation.
+    #[error("runtime memory growth is already in progress")]
+    ReentrantAccess,
+    /// The manager refused growth despite the runtime's successful preflight.
+    #[error("memory manager refused preflighted growth")]
+    ManagerRefused,
+}
+
+///
 /// RuntimeConstructionError
 ///
 /// Failure to construct a memory runtime without overwriting unrecognized
@@ -111,12 +142,15 @@ pub enum RuntimeBootstrapError<P> {
     /// Stable-cell ledger storage is corrupt before protected recovery can run.
     #[error(transparent)]
     StableCellLedger(#[from] StableCellLedgerError),
-    /// Stable-cell ledger storage cannot fit the next protected ledger record.
+    /// The encoded stable-cell ledger record exceeds its bounded size ceiling.
     #[error("stable-cell ledger record size {value_size} cannot be written to stable memory")]
     StableCellLedgerWriteTooLarge {
         /// Encoded stable-cell ledger record size in bytes.
         value_size: usize,
     },
+    /// Stable-cell ledger capacity reservation failed before commitment.
+    #[error(transparent)]
+    LedgerGrowth(#[from] RuntimeGrowError),
     /// Declaration validation failed.
     #[error(transparent)]
     Validation(#[from] crate::AllocationValidationError<RuntimePolicyError<P>>),
