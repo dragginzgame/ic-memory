@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.15.1
+
+- Pin development and primary CI validation to Rust 1.99.0. Read the compiler
+  pin from `rust-toolchain.toml` in CI and Make to prevent validation drift;
+  retain the declared Rust 1.88.0 MSRV.
+- Address Rust 1.99 Clippy diagnostics by removing a redundant iterator
+  `must_use` attribute and showing unexpected ledger contents in empty-value
+  assertions.
+- Share raw Wasm size enforcement between CI and Make and remove duplicate
+  macro-test and doctest runs already covered by the serialized full suite.
+- Matched-source, matched-lockfile Rust 1.99.0 builds add 2,924–3,383 raw Wasm
+  bytes over Rust 1.97.1. Rebaseline only the admission budget from 260,000 to
+  264,000 bytes; all other budgets and the `wasm-size` profile remain unchanged.
+  See the [compiler comparison](docs/measurements/rust-1.99-toolchain.csv).
+
 ## 0.15.0
 
 - Make default-runtime opens nonconstructing. An early open returns

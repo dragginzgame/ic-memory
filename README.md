@@ -486,7 +486,7 @@ for absence and is rejected.
 
 The release targets follow Canic's validate, bump, commit, tag, and push flow,
 adapted for this single library crate. They require Python 3.11+, Git, Make,
-Rust 1.97.1 with Clippy/rustfmt and `wasm32-unknown-unknown`, and the declared
+Rust 1.99.0 with Clippy/rustfmt and `wasm32-unknown-unknown`, and the declared
 MSRV toolchain. Publishing also requires crates.io credentials configured for
 Cargo.
 
@@ -520,10 +520,11 @@ release tags are rejected. The lockfile remains untracked.
 
 `make validate` runs the release-flow regression tests, formatting, Clippy,
 serialized Rust tests and doctests, Wasm checks and size budgets, the declared
-MSRV check, and package verification. `VALIDATION_TOOLCHAIN` defaults to the
-existing CI compiler, Rust 1.97.1. `make test-release-flow` exercises the release
-commands in disposable repositories with a fake Cargo executable; it never
-publishes packages or contacts a hosted Git remote.
+MSRV check, and package verification. Development, CI, and the default
+`VALIDATION_TOOLCHAIN` read the Rust 1.99.0 pin from `rust-toolchain.toml`.
+The crate's declared MSRV remains Rust 1.88.0. `make test-release-flow` exercises
+the release commands in disposable repositories with a fake Cargo executable;
+it never publishes packages or contacts a hosted Git remote.
 
 ## More Detail
 

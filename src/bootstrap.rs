@@ -541,7 +541,7 @@ mod tests {
 
         assert!(matches!(err, BootstrapReservationError::Policy(_)));
         assert_eq!(recovered.current_generation(), 0);
-        assert!(recovered.ledger().allocation_history().records().is_empty());
+        assert_eq!(recovered.ledger().allocation_history().records(), []);
     }
 
     #[test]
@@ -631,6 +631,6 @@ mod tests {
 
         assert!(matches!(err, BootstrapRetirementError::Retirement(_)));
         assert_eq!(recovered.current_generation(), 0);
-        assert!(recovered.ledger().allocation_history().records().is_empty());
+        assert_eq!(recovered.ledger().allocation_history().records(), []);
     }
 }

@@ -599,8 +599,8 @@ mod tests {
         ));
 
         assert_eq!(ledger.current_generation, 0);
-        assert!(ledger.allocation_history.records().is_empty());
-        assert!(ledger.allocation_history.generations().is_empty());
+        assert_eq!(ledger.allocation_history.records(), []);
+        assert_eq!(ledger.allocation_history.generations(), []);
     }
 
     #[test]
@@ -745,7 +745,7 @@ mod tests {
             .expect("empty validated generation");
 
         assert_eq!(staged.current_generation, 4);
-        assert!(staged.allocation_history.records().is_empty());
+        assert_eq!(staged.allocation_history.records(), []);
         assert_eq!(staged.allocation_history.generations().len(), 1);
         assert_eq!(staged.allocation_history.generations()[0].generation(), 4);
         assert_eq!(
@@ -951,7 +951,7 @@ mod tests {
             .expect("empty reservation generation");
 
         assert_eq!(staged.current_generation, 4);
-        assert!(staged.allocation_history.records().is_empty());
+        assert_eq!(staged.allocation_history.records(), []);
         assert_eq!(staged.allocation_history.generations().len(), 1);
         assert_eq!(staged.allocation_history.generations()[0].generation(), 4);
         assert_eq!(
@@ -1872,13 +1872,7 @@ mod tests {
             .recover_or_initialize(&genesis)
             .expect("current-format genesis ledger");
         assert_eq!(recovered.current_generation(), 0);
-        assert!(
-            recovered
-                .ledger()
-                .allocation_history()
-                .generations()
-                .is_empty()
-        );
+        assert_eq!(recovered.ledger().allocation_history().generations(), []);
 
         let first = recovered
             .ledger()
