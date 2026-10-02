@@ -317,6 +317,6 @@ mod tests {
     fn declaration_count_fails_closed_on_overflow() {
         assert_eq!(checked_declaration_count(255), Some(255));
         assert_eq!(checked_declaration_count(256), None);
-        assert_eq!(checked_declaration_count(u32::MAX as usize + 1), None);
+        assert_eq!(checked_declaration_count(usize::MAX), None);
     }
 }

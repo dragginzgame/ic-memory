@@ -18,7 +18,7 @@ mod allocation_tests;
 #[cfg(test)]
 mod growth_tests;
 #[cfg(test)]
-#[allow(
+#[expect(
     unsafe_code,
     reason = "exercise raw reads with valid uninitialized destinations"
 )]

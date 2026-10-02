@@ -21,32 +21,36 @@ ic_memory::ic_memory_declaration!(
     id = MEMORY_ID,
 );
 
+fn assert_unbootstrapped_observations() {
+    assert!(!is_default_memory_manager_bootstrapped().unwrap());
+    assert_eq!(
+        committed_allocations(),
+        Err(RuntimeOpenError::NotBootstrapped)
+    );
+    assert!(matches!(
+        open_default_memory_manager_memory(KEY, MEMORY_ID),
+        Err(RuntimeOpenError::NotBootstrapped)
+    ));
+    assert!(matches!(
+        open_default_memory_manager_memory_by_key(KEY),
+        Err(RuntimeOpenError::NotBootstrapped)
+    ));
+    assert!(matches!(
+        default_memory_manager_memory_allocations(),
+        Err(ic_memory::RuntimeDiagnosticError::NotBootstrapped)
+    ));
+    assert_eq!(
+        default_memory_manager_memory_id(KEY),
+        Err(RuntimeOpenError::NotBootstrapped)
+    );
+}
+
 #[test]
 fn observations_allow_configured_generic_bootstrap_and_repeated_adoption() {
     for pages in [4, 16, 128] {
         // Each setting needs a fresh backing memory and TLS runtime.
         std::thread::spawn(move || {
-            assert!(!is_default_memory_manager_bootstrapped().unwrap());
-            assert_eq!(
-                committed_allocations(),
-                Err(RuntimeOpenError::NotBootstrapped)
-            );
-            assert!(matches!(
-                open_default_memory_manager_memory(KEY, MEMORY_ID),
-                Err(RuntimeOpenError::NotBootstrapped)
-            ));
-            assert!(matches!(
-                open_default_memory_manager_memory_by_key(KEY),
-                Err(RuntimeOpenError::NotBootstrapped)
-            ));
-            assert!(matches!(
-                default_memory_manager_memory_allocations(),
-                Err(ic_memory::RuntimeDiagnosticError::NotBootstrapped)
-            ));
-            assert_eq!(
-                default_memory_manager_memory_id(KEY),
-                Err(RuntimeOpenError::NotBootstrapped)
-            );
+            assert_unbootstrapped_observations();
             let declarations = ic_memory::sealed_declaration_snapshot().unwrap();
             assert_eq!(
                 verify_default_memory_manager_authority(&declarations, AUTHORITY),

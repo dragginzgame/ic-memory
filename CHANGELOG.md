@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.15.2
+
+- Keep unsupported-format diagnostic coverage on `DiagnosticCode` rather than
+  human-readable message wording.
+- Replace narrow registration-hook and raw-read lint allowances with justified
+  expectations so stale exceptions are reported. Preserve the existing unsafe
+  read contract and test coverage. Addresses IcyDB feedback in
+  [#8](https://github.com/dragginzgame/ic-memory/issues/8).
+- Use the target's maximum `usize` in the declaration-count rejection test so
+  its input does not overflow on 32-bit Wasm.
+- Give the recovered-allocation iterator an explicit `must_use` reason to
+  satisfy both Rust 1.88 and Rust 1.99 Clippy without lint allowances.
+- Extract pre-bootstrap observation assertions into one test helper, reducing
+  the configured-runtime test's cognitive complexity for Rust 1.88 Clippy
+  while preserving fresh-thread isolation and assertion order.
+
 ## 0.15.1
 
 - Pin development and primary CI validation to Rust 1.99.0. Read the compiler

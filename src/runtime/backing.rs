@@ -97,7 +97,7 @@ impl<M: Memory> Memory for RuntimeMemory<M> {
     fn read(&self, offset: u64, dst: &mut [u8]) {
         self.memory.read(offset, dst);
     }
-    #[allow(
+    #[expect(
         unsafe_code,
         reason = "delegate the upstream raw-read contract unchanged"
     )]

@@ -689,9 +689,4 @@ fn validation_diagnostic_preserves_unsupported_format_code() {
         .expect_err("unsupported format must block validation");
 
     assert_eq!(failure.code, DiagnosticCode::UnsupportedFormat);
-    assert!(
-        failure
-            .message
-            .contains("unsupported ic-memory ledger payload format")
-    );
 }

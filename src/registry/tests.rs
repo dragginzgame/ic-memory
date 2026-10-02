@@ -25,7 +25,10 @@ fn record_reentrant_seal_error() {
     }
 }
 
-#[allow(clippy::unnecessary_wraps)]
+#[expect(
+    clippy::unnecessary_wraps,
+    reason = "the registration hook requires a fallible callback even when it does nothing"
+)]
 fn no_registration() -> Result<(), StaticMemoryDeclarationError> {
     Ok(())
 }

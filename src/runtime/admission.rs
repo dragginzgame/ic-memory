@@ -91,6 +91,7 @@ impl<'a> BootstrapAdmission<'a> {
     /// # Panics
     ///
     /// Panics only if an internal validated-ledger invariant is broken.
+    #[must_use = "recovered allocation metadata is inspected only when the iterator is consumed"]
     pub fn recovered_allocations(
         &self,
     ) -> impl ExactSizeIterator<Item = RecoveredAllocationMetadata<'_>> {
