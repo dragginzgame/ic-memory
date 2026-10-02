@@ -206,11 +206,15 @@ ic_memory::bootstrap_default_memory_manager_with_config(
 )?;
 ```
 
-Supply it before eager store initialization or any helper that constructs the
-default runtime, including a bootstrap-readiness helper. Existing 128-page
-memory explicitly rejects 16; it is not reduced in place. Use the same setting
-on later bootstrap calls. This example is an adoption option, not a change to
-Canic or Toko in this workspace.
+Supply it as the bootstrap owner's first bootstrap choice, before store
+initialization. Default readiness, open and diagnostic helpers observe only an
+existing runtime; they do not select a bucket configuration. Absent-runtime
+diagnostics return `RuntimeDiagnosticError::NotBootstrapped`. For prebootstrap
+recovery or doctor inspection with explicit configuration, construct an owned
+`MemoryRuntime::new_with_config(memory, config)` first. Existing 128-page memory
+explicitly rejects 16; it is not reduced in place. Use the same setting on later
+bootstrap calls. This example is an adoption option, not a change to Canic or
+Toko in this workspace.
 
 ## Disposable measurements and policy assessment
 

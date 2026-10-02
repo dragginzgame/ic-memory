@@ -1,8 +1,10 @@
 use ic_memory::ic_stable_structures::Memory;
 use ic_memory::{
     GenericRangePolicy, MemoryManagerConfig, RuntimeBootstrapError, RuntimeConstructionError,
-    RuntimeOpenError, RuntimeStateError, bootstrap_default_memory_manager,
+    RuntimeDiagnosticError, RuntimeOpenError, RuntimeStateError, bootstrap_default_memory_manager,
     bootstrap_default_memory_manager_with_config, committed_allocations,
+    default_memory_manager_commit_recovery_diagnostic, default_memory_manager_diagnostic_export,
+    default_memory_manager_doctor_report, default_memory_manager_doctor_report_with_policy,
     default_memory_manager_memory_allocation_summary, default_memory_manager_memory_allocations,
     default_memory_manager_memory_id, is_default_memory_manager_bootstrapped,
     open_default_memory_manager_memory, open_default_memory_manager_memory_by_key,
@@ -43,6 +45,21 @@ fn assert_unbootstrapped_observations() {
         default_memory_manager_memory_id(KEY),
         Err(RuntimeOpenError::NotBootstrapped)
     );
+    for result in diagnostic_observations() {
+        assert!(matches!(
+            result,
+            Err(RuntimeDiagnosticError::NotBootstrapped)
+        ));
+    }
+}
+
+fn diagnostic_observations() -> [Result<(), RuntimeDiagnosticError>; 4] {
+    [
+        default_memory_manager_diagnostic_export().map(|_| ()),
+        default_memory_manager_commit_recovery_diagnostic().map(|_| ()),
+        default_memory_manager_doctor_report().map(|_| ()),
+        default_memory_manager_doctor_report_with_policy(&GenericRangePolicy).map(|_| ()),
+    ]
 }
 
 #[test]
@@ -75,6 +92,10 @@ fn observations_allow_configured_generic_bootstrap_and_repeated_adoption() {
             memory.write(0, &[7, 8, 9]);
             let before = default_memory_manager_memory_allocations().unwrap();
             assert_eq!(before.bucket_size_pages, pages);
+            for result in diagnostic_observations() {
+                result.unwrap();
+            }
+            assert_eq!(default_memory_manager_memory_allocations().unwrap(), before);
             let summary = default_memory_manager_memory_allocation_summary().unwrap();
             assert_eq!(summary.physical_extent, before.physical_extent);
             assert_eq!(summary.current_generation, Some(committed.generation()));

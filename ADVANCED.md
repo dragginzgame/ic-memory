@@ -183,8 +183,14 @@ internally.
 `MemoryRuntime::doctor_report(&snapshot, &policy)` builds a serializable report
 for that runtime before or after bootstrap and runs validation through the
 supplied policy. The default
-`default_memory_manager_doctor_report()` entry point seals the linked snapshot,
-enters the calling thread's runtime fallibly, and evaluates the built-in policy.
+`default_memory_manager_doctor_report()` entry point observes an existing runtime,
+seals the linked snapshot, and evaluates the built-in policy. If no runtime exists,
+it returns `RuntimeDiagnosticError::NotBootstrapped` before sealing declarations
+or initializing memory. Default export and commit-recovery diagnostics also
+leave an absent runtime untouched. Only bootstrap constructs the default runtime
+and selects its bucket configuration. For prebootstrap diagnostics with explicit
+configuration, construct an owned `MemoryRuntime::new_with_config(memory, config)`
+and call its recovery or doctor methods.
 Custom-policy default runtimes should use
 `default_memory_manager_doctor_report_with_policy(&policy)`. Reports include
 stable-cell status, protected commit recovery, recovered ledger export,

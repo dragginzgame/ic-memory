@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.15.3
+
+- Make default export, commit-recovery and both doctor diagnostic helpers
+  nonconstructing. An absent runtime returns `RuntimeDiagnosticError::NotBootstrapped`
+  without initializing memory or choosing 128-page buckets, preserving later
+  configured bootstrap. Doctor inspection also leaves declarations unsealed
+  when no runtime exists. Existing runtimes retain prebootstrap recovery/doctor
+  inspection and typed construction/TLS errors. Addresses Canic's 0.15.2 feedback.
+
 ## 0.15.2
 
 - Keep unsupported-format diagnostic coverage on `DiagnosticCode` rather than

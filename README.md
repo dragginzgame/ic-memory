@@ -395,12 +395,14 @@ inspect committed allocations first, adopt an already bootstrapped host runtime,
 and otherwise bootstrap with their chosen configuration. Adoption still requires
 checking the framework's declarations; do not re-bootstrap with the generic policy
 to bypass an existing host policy. Cached construction and TLS access failures
-remain errors, not absence. Other runtime operations may still construct it.
+remain errors, not absence. Default runtime construction belongs to bootstrap.
 
 Default-runtime opens and `default_memory_manager_memory_id()` also leave a
 missing runtime untouched. An early open returns `NotBootstrapped`; it cannot
 silently select 128-page buckets and prevent a later configured bootstrap.
-Full doctor/ledger diagnostic operations can still construct a missing runtime.
+Default export, commit-recovery and doctor diagnostics also leave a missing
+runtime untouched and return `RuntimeDiagnosticError::NotBootstrapped`. Early
+inspection therefore preserves the bootstrap owner's bucket configuration.
 
 Open operations and macros return `RuntimeMemory<M>`, implementing `Memory` and
 `Clone` without requiring `M: Clone`. Stable store type annotations must use
@@ -434,8 +436,10 @@ attribution and a capacity assessment.
 ## Diagnostics
 
 Use `default_memory_manager_doctor_report()` for operator-facing preflight and
-runtime diagnostics. It returns a typed error if the default TLS runtime is
-re-entered. Otherwise it can be called before or after bootstrap and reports the
+runtime diagnostics. It returns `NotBootstrapped` if no default runtime exists,
+without initializing memory, choosing configuration or sealing declarations.
+TLS access and construction failures remain typed errors. An existing runtime
+can be inspected before or after bootstrap; the report includes the
 stable-cell status, protected commit recovery state, recovered ledger export,
 registered declarations, range authority, validation preflight, and live
 `MemoryManager` slot sizes when they can be recovered. This no-argument entry
@@ -454,7 +458,11 @@ human-readable messages for operator automation.
 
 Use `default_memory_manager_commit_recovery_diagnostic()` when you only need
 commit-slot presence and validity, the selected authoritative generation, and
-any corruption or ambiguity error.
+any corruption or ambiguity error. It also requires an existing runtime;
+`default_memory_manager_diagnostic_export()` additionally requires completed
+bootstrap. For prebootstrap inspection with explicit configuration, construct
+`MemoryRuntime::new_with_config(memory, config)` and call its recovery or doctor
+methods before bootstrap.
 
 ## Stable Keys
 

@@ -221,7 +221,7 @@ pub enum RuntimeDiagnosticError {
     /// Current binding metadata exceeds the fixed usable ID domain.
     #[error("allocation bindings exceed the bounded manager domain")]
     AllocationBound,
-    /// This runtime has not opened and validated its ledger cell.
+    /// No default runtime exists, or this operation requires completed bootstrap.
     #[error("ic-memory runtime has not completed bootstrap validation")]
     NotBootstrapped,
     /// Linked-program declaration snapshot sealing failed.

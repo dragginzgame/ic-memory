@@ -15,27 +15,6 @@ thread_local! {
         const { RefCell::new(None) };
 }
 
-fn with_default_runtime<T, E>(
-    operation: impl FnOnce(&MemoryRuntime<DefaultMemoryImpl>) -> Result<T, E>,
-) -> Result<T, E>
-where
-    E: From<RuntimeStateError>,
-{
-    match DEFAULT_RUNTIME.try_with(|runtime| {
-        let mut runtime = runtime
-            .try_borrow_mut()
-            .map_err(|_| E::from(RuntimeStateError::ReentrantAccess))?;
-        let runtime = runtime
-            .get_or_insert_with(|| MemoryRuntime::new(DefaultMemoryImpl::default()))
-            .as_ref()
-            .map_err(|error| E::from(RuntimeStateError::Construction(*error)))?;
-        operation(runtime)
-    }) {
-        Ok(result) => result,
-        Err(_) => Err(E::from(RuntimeStateError::Unavailable)),
-    }
-}
-
 fn with_default_runtime_mut<T, E>(
     operation: impl FnOnce(&mut MemoryRuntime<DefaultMemoryImpl>) -> Result<T, E>,
 ) -> Result<T, E>
@@ -174,24 +153,45 @@ pub fn open_default_memory_manager_memory_by_key(
 }
 
 /// Export this thread's default runtime ledger and live memory sizes.
+///
+/// Returns `NotBootstrapped` for an absent or unbootstrapped runtime without
+/// initializing backing memory or choosing a bucket configuration.
 pub fn default_memory_manager_diagnostic_export() -> Result<DiagnosticExport, RuntimeDiagnosticError>
 {
-    with_default_runtime(MemoryRuntime::diagnostic_export)
+    with_existing_default_runtime(|runtime| {
+        runtime
+            .ok_or(RuntimeDiagnosticError::NotBootstrapped)?
+            .diagnostic_export()
+    })
 }
 
 /// Diagnose protected commit recovery for this thread's default runtime.
+///
+/// Returns `NotBootstrapped` if no runtime exists without initializing memory
+/// or choosing configuration. An existing runtime can be inspected before bootstrap.
 pub fn default_memory_manager_commit_recovery_diagnostic()
 -> Result<CommitStoreDiagnostic, RuntimeDiagnosticError> {
-    with_default_runtime(MemoryRuntime::commit_recovery_diagnostic)
+    with_existing_default_runtime(|runtime| {
+        runtime
+            .ok_or(RuntimeDiagnosticError::NotBootstrapped)?
+            .commit_recovery_diagnostic()
+    })
 }
 
 /// Build preflight and lifecycle diagnostics for this thread's default runtime.
+///
+/// Returns `NotBootstrapped` if no runtime exists without initializing memory
+/// or choosing configuration. An existing runtime can be inspected before bootstrap.
 pub fn default_memory_manager_doctor_report()
 -> Result<MemoryRuntimeDoctorReport, RuntimeDiagnosticError> {
     default_memory_manager_doctor_report_with_policy(&GenericRangePolicy)
 }
 
 /// Build diagnostics for this thread's default runtime under one explicit policy.
+///
+/// Returns `NotBootstrapped` if no runtime exists without sealing declarations,
+/// initializing memory or choosing configuration. The policy is evaluated only;
+/// it does not construct or bootstrap the runtime.
 pub fn default_memory_manager_doctor_report_with_policy<P>(
     policy: &P,
 ) -> Result<MemoryRuntimeDoctorReport, RuntimeDiagnosticError>
@@ -199,8 +199,19 @@ where
     P: RuntimeBootstrapPolicy,
     P::Error: Display,
 {
+    // Check presence before running registration hooks, but release the TLS
+    // borrow so hooks can inspect the existing runtime during snapshot sealing.
+    with_existing_default_runtime(|runtime| {
+        runtime
+            .ok_or(RuntimeDiagnosticError::NotBootstrapped)
+            .map(|_| ())
+    })?;
     let declarations = sealed_declaration_snapshot()?;
-    with_default_runtime(|runtime| Ok(runtime.doctor_report(&declarations, policy)))
+    with_existing_default_runtime(|runtime| {
+        Ok(runtime
+            .ok_or(RuntimeDiagnosticError::NotBootstrapped)?
+            .doctor_report(&declarations, policy))
+    })
 }
 
 #[cfg(test)]
@@ -275,8 +286,25 @@ pub fn bootstrap_default_memory_manager_with_config<P: RuntimeBootstrapPolicy>(
 mod tests {
     use super::*;
 
+    fn diagnostic_observations() -> [Result<(), RuntimeDiagnosticError>; 4] {
+        [
+            default_memory_manager_diagnostic_export().map(|_| ()),
+            default_memory_manager_commit_recovery_diagnostic().map(|_| ()),
+            default_memory_manager_doctor_report().map(|_| ()),
+            default_memory_manager_doctor_report_with_policy(&GenericRangePolicy).map(|_| ()),
+        ]
+    }
+
     #[test]
     fn observations_leave_an_absent_runtime_absent() {
+        use crate::registry::{
+            TEST_REGISTRY_LOCK, defer_eager_init, reset_static_memory_declarations_for_tests,
+        };
+        use std::sync::atomic::{AtomicBool, Ordering};
+        static REGISTRATION_RAN: AtomicBool = AtomicBool::new(false);
+        let _guard = TEST_REGISTRY_LOCK.lock().unwrap();
+        reset_static_memory_declarations_for_tests();
+        defer_eager_init(|| REGISTRATION_RAN.store(true, Ordering::SeqCst));
         std::thread::spawn(|| {
             for _ in 0..2 {
                 assert!(!is_default_memory_manager_bootstrapped().unwrap());
@@ -288,15 +316,26 @@ mod tests {
                     default_memory_manager_memory_allocations(),
                     Err(RuntimeDiagnosticError::NotBootstrapped)
                 ));
+                for result in diagnostic_observations() {
+                    assert!(matches!(
+                        result,
+                        Err(RuntimeDiagnosticError::NotBootstrapped)
+                    ));
+                }
                 DEFAULT_RUNTIME.with(|runtime| assert!(runtime.borrow().is_none()));
             }
         })
         .join()
         .unwrap();
+        assert!(!REGISTRATION_RAN.load(Ordering::SeqCst));
+        reset_static_memory_declarations_for_tests();
     }
 
     #[test]
     fn observations_preserve_unbootstrapped_configuration() {
+        use crate::registry::{TEST_REGISTRY_LOCK, reset_static_memory_declarations_for_tests};
+        let _guard = TEST_REGISTRY_LOCK.lock().unwrap();
+        reset_static_memory_declarations_for_tests();
         std::thread::spawn(|| {
             let config = super::super::MemoryManagerConfig::new(16).unwrap();
             DEFAULT_RUNTIME.with(|runtime| {
@@ -312,10 +351,22 @@ mod tests {
                 Err(RuntimeOpenError::NotBootstrapped)
             );
             assert_eq!(before.bucket_size_pages, 16);
+            assert!(matches!(
+                default_memory_manager_diagnostic_export(),
+                Err(RuntimeDiagnosticError::NotBootstrapped)
+            ));
+            default_memory_manager_commit_recovery_diagnostic().unwrap();
+            assert!(!default_memory_manager_doctor_report().unwrap().bootstrapped);
+            assert!(
+                !default_memory_manager_doctor_report_with_policy(&GenericRangePolicy)
+                    .unwrap()
+                    .bootstrapped
+            );
             assert_eq!(default_memory_manager_memory_allocations().unwrap(), before);
         })
         .join()
         .unwrap();
+        reset_static_memory_declarations_for_tests();
     }
 
     #[test]
@@ -325,6 +376,9 @@ mod tests {
                 observed_magic: *b"BAD",
             };
             DEFAULT_RUNTIME.with(|runtime| *runtime.borrow_mut() = Some(Err(error)));
+            for result in diagnostic_observations() {
+                assert!(matches!(result, Err(RuntimeDiagnosticError::State(RuntimeStateError::Construction(cause))) if cause == error));
+            }
             assert_eq!(
                 is_default_memory_manager_bootstrapped(),
                 Err(RuntimeStateError::Construction(error))
@@ -355,6 +409,22 @@ mod tests {
             });
         })
         .join()
+        .unwrap();
+    }
+
+    #[test]
+    fn diagnostic_observations_preserve_reentrant_access_errors() {
+        with_default_runtime_borrowed(|| {
+            for result in diagnostic_observations() {
+                assert!(matches!(
+                    result,
+                    Err(RuntimeDiagnosticError::State(
+                        RuntimeStateError::ReentrantAccess
+                    ))
+                ));
+            }
+            Ok(())
+        })
         .unwrap();
     }
     #[test]
