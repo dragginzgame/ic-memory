@@ -1,5 +1,26 @@
 # Changelog
 
+## 0.16.1
+
+- Remove the sealed snapshot's duplicate authority map and private authority
+  enum. Policy validation and host adoption share one lookup over canonical
+  registered declarations. Preserve governance restrictions, external authority
+  checks, custom-policy ordering and sealed declaration fingerprints.
+- Stream recovered-ledger memory measurements into diagnostic export and doctor
+  reports without collecting an intermediate vector. Keep public diagnostic
+  DTOs and measurement behavior unchanged.
+- Simplify ledger capacity reservation after the existing encoded-size limit
+  establishes safe arithmetic bounds. Remove unreachable conversion/overflow
+  branches and redundant saturating subtraction; preserve size rejection, typed
+  growth failures, persistence ordering and retry behavior.
+- Validate 260 library tests, integration and compile-fail tests, doctests,
+  strict Clippy and Rustdoc, Rust 1.88 all-target checking, Wasm test compilation
+  and offline package verification. All five existing raw Wasm budgets pass;
+  core is 249,863 bytes under its 260,000-byte ceiling. Public API signatures,
+  durable formats, checksums and declaration fingerprints are unchanged.
+  Release-flow tests were not rerun because they create commits and tags reserved
+  for the maintainer.
+
 ## 0.16.0
 
 - Hard cut: `MemoryRuntime::memory_manager_config()` is no longer a `const fn`.

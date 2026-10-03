@@ -398,18 +398,13 @@ fn ensure_ledger_cell_capacity<M: Memory, P>(
     if value_size > crate::constants::MAX_LEDGER_RECORD_BYTES {
         return Err(RuntimeBootstrapError::StableCellLedgerWriteTooLarge { value_size });
     }
-    let value_size_u32 = u32::try_from(value_size)
-        .map_err(|_| RuntimeBootstrapError::StableCellLedgerWriteTooLarge { value_size })?;
-    let required_bytes = STABLE_CELL_VALUE_OFFSET
-        .checked_add(u64::from(value_size_u32))
-        .ok_or(RuntimeBootstrapError::StableCellLedgerWriteTooLarge { value_size })?;
+    // The record limit is below u32::MAX, including the eight-byte cell header.
+    let required_bytes = STABLE_CELL_VALUE_OFFSET + value_size as u64;
     let available_bytes = memory.size().saturating_mul(crate::WASM_PAGE_SIZE_BYTES);
     if required_bytes <= available_bytes {
         return Ok(());
     }
-    let grow_by = required_bytes
-        .saturating_sub(available_bytes)
-        .div_ceil(crate::WASM_PAGE_SIZE_BYTES);
+    let grow_by = (required_bytes - available_bytes).div_ceil(crate::WASM_PAGE_SIZE_BYTES);
     memory.grow(grow_by)?;
     Ok(())
 }

@@ -132,16 +132,16 @@ impl<M: Memory> MemoryRuntime<M> {
         }
     }
 
-    fn memory_sizes(
-        &self,
-        recovered: &RecoveredLedger,
-    ) -> Vec<(AllocationSlotDescriptor, DiagnosticMemorySize)> {
+    fn memory_sizes<'a>(
+        &'a self,
+        recovered: &'a RecoveredLedger,
+    ) -> impl Iterator<Item = (AllocationSlotDescriptor, DiagnosticMemorySize)> + 'a {
         recovered
             .ledger()
             .allocation_history()
             .records()
             .iter()
-            .map(|record| {
+            .map(move |record| {
                 let id = record
                     .slot()
                     .memory_manager_id()
@@ -151,7 +151,6 @@ impl<M: Memory> MemoryRuntime<M> {
                     DiagnosticMemorySize::from_wasm_pages(self.memory(id).size()),
                 )
             })
-            .collect()
     }
 
     fn established_bootstrap_binding(&self) -> Option<DiagnosticRuntimeBinding> {

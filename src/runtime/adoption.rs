@@ -94,9 +94,7 @@ impl<M: Memory> MemoryRuntime<M> {
         };
         let registration = binding
             .declarations
-            .registered_declarations()
-            .iter()
-            .find(|registration| registration.declaration().stable_key() == key)
+            .registered_declaration(key)
             .ok_or_else(|| RuntimeOpenError::StableKeyNotCommitted(key.to_string()))?;
         if registration.authority() != authority {
             return Err(RuntimeAdoptionError::AuthorityMismatch {

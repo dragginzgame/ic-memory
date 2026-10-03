@@ -2,8 +2,10 @@ use super::{RuntimeBootstrapError, RuntimePolicyError};
 use crate::{
     AllocationPolicy, AllocationSlotDescriptor, PolicyIdentity, PolicyIdentityError,
     RuntimeBootstrapPolicy, StableKey,
-    registry::{RuntimeDeclarationAuthority, SealedDeclarationSnapshot},
-    slot::{IC_MEMORY_AUTHORITY_OWNER, MemoryManagerRangeAuthorityError},
+    registry::SealedDeclarationSnapshot,
+    slot::{
+        IC_MEMORY_AUTHORITY_OWNER, IC_MEMORY_LEDGER_STABLE_KEY, MemoryManagerRangeAuthorityError,
+    },
 };
 use std::convert::Infallible;
 
@@ -27,7 +29,7 @@ impl<P: AllocationPolicy> AllocationPolicy for RuntimeMemoryManagerPolicy<'_, P>
 
     fn validate_key(&self, key: &StableKey) -> Result<(), Self::Error> {
         let authority = self.declaration_authority(key)?;
-        if matches!(authority, RuntimeDeclarationAuthority::Internal) {
+        if authority == IC_MEMORY_AUTHORITY_OWNER {
             return Ok(());
         }
         self.custom_policy
@@ -42,7 +44,7 @@ impl<P: AllocationPolicy> AllocationPolicy for RuntimeMemoryManagerPolicy<'_, P>
     ) -> Result<(), Self::Error> {
         let authority = self.declaration_authority(key)?;
         self.validate_runtime_range(authority, slot)?;
-        if matches!(authority, RuntimeDeclarationAuthority::Internal) {
+        if authority == IC_MEMORY_AUTHORITY_OWNER {
             return Ok(());
         }
         self.custom_policy
@@ -57,7 +59,7 @@ impl<P: AllocationPolicy> AllocationPolicy for RuntimeMemoryManagerPolicy<'_, P>
     ) -> Result<(), Self::Error> {
         let authority = self.declaration_authority(key)?;
         self.validate_runtime_range(authority, slot)?;
-        if matches!(authority, RuntimeDeclarationAuthority::Internal) {
+        if authority == IC_MEMORY_AUTHORITY_OWNER {
             return Ok(());
         }
         self.custom_policy
@@ -67,33 +69,22 @@ impl<P: AllocationPolicy> AllocationPolicy for RuntimeMemoryManagerPolicy<'_, P>
 }
 
 impl<P: AllocationPolicy> RuntimeMemoryManagerPolicy<'_, P> {
-    fn declaration_authority(
-        &self,
-        key: &StableKey,
-    ) -> Result<&RuntimeDeclarationAuthority, RuntimePolicyError<P::Error>> {
+    fn declaration_authority(&self, key: &StableKey) -> Result<&str, RuntimePolicyError<P::Error>> {
+        if key.as_str() == IC_MEMORY_LEDGER_STABLE_KEY {
+            return Ok(IC_MEMORY_AUTHORITY_OWNER);
+        }
         self.declarations
-            .declaration_authority()
-            .get(key.as_str())
+            .registered_declaration(key)
+            .map(crate::StaticMemoryDeclaration::authority)
             .ok_or_else(|| RuntimePolicyError::MissingDeclarationMetadata(key.as_str().to_string()))
     }
 
     fn validate_runtime_range(
         &self,
-        authority: &RuntimeDeclarationAuthority,
+        authority: &str,
         slot: &AllocationSlotDescriptor,
     ) -> Result<(), RuntimePolicyError<P::Error>> {
-        let authority = match authority {
-            RuntimeDeclarationAuthority::Internal => {
-                return self
-                    .declarations
-                    .range_authority()
-                    .validate_slot_authority(slot, IC_MEMORY_AUTHORITY_OWNER)
-                    .map(|_| ())
-                    .map_err(RuntimePolicyError::Range);
-            }
-            RuntimeDeclarationAuthority::External(authority) => authority,
-        };
-        if self.declarations.user_ranges_registered() {
+        if authority == IC_MEMORY_AUTHORITY_OWNER || self.declarations.user_ranges_registered() {
             self.declarations
                 .range_authority()
                 .validate_slot_authority(slot, authority)?;

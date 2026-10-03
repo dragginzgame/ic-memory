@@ -11,7 +11,6 @@ use crate::{
 };
 use serde::{Deserialize, Serialize};
 use std::{
-    collections::BTreeMap,
     panic::{AssertUnwindSafe, catch_unwind},
     sync::{Arc, Mutex, MutexGuard},
     thread::ThreadId,
@@ -305,14 +304,7 @@ struct SealedDeclarationSnapshotInner {
     registered_declarations: Vec<StaticMemoryDeclaration>,
     registered_ranges: Vec<StaticMemoryRangeDeclaration>,
     range_authority: MemoryManagerRangeAuthority,
-    declaration_authority: BTreeMap<String, RuntimeDeclarationAuthority>,
     fingerprint: SealedDeclarationFingerprint,
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub enum RuntimeDeclarationAuthority {
-    Internal,
-    External(String),
 }
 
 impl SealedDeclarationSnapshot {
@@ -447,8 +439,16 @@ impl SealedDeclarationSnapshot {
         self.inner.fingerprint
     }
 
-    pub(crate) fn declaration_authority(&self) -> &BTreeMap<String, RuntimeDeclarationAuthority> {
-        &self.inner.declaration_authority
+    pub(crate) fn registered_declaration(
+        &self,
+        key: &crate::StableKey,
+    ) -> Option<&StaticMemoryDeclaration> {
+        let declarations = self.registered_declarations();
+        // Sealing establishes unique keys in ascending canonical order.
+        declarations
+            .binary_search_by(|registration| registration.declaration().stable_key().cmp(key))
+            .ok()
+            .map(|index| &declarations[index])
     }
 
     pub(crate) fn user_ranges_registered(&self) -> bool {
@@ -832,18 +832,6 @@ fn build_snapshot(
         &requests,
     )?;
 
-    let mut declaration_authority = BTreeMap::new();
-    declaration_authority.insert(
-        IC_MEMORY_LEDGER_STABLE_KEY.to_string(),
-        RuntimeDeclarationAuthority::Internal,
-    );
-    for registration in &registered_declarations {
-        declaration_authority.insert(
-            registration.declaration().stable_key().as_str().to_string(),
-            RuntimeDeclarationAuthority::External(registration.authority().to_string()),
-        );
-    }
-
     Ok(SealedDeclarationSnapshot {
         inner: Arc::new(SealedDeclarationSnapshotInner {
             allocation_snapshot,
@@ -851,7 +839,6 @@ fn build_snapshot(
             registered_declarations,
             registered_ranges,
             range_authority,
-            declaration_authority,
             fingerprint,
         }),
     })
