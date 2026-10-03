@@ -128,6 +128,79 @@ fn numeric_summary_matches_detailed_accounting_before_and_after_bootstrap_and_re
 }
 
 #[test]
+fn full_external_id_domain_preserves_bounded_read_only_attribution() {
+    let ids = (crate::MEMORY_MANAGER_GOVERNANCE_MAX_ID + 1)..crate::MEMORY_MANAGER_INVALID_ID;
+    let declarations: Vec<_> = ids
+        .clone()
+        .map(|id| {
+            crate::StaticMemoryDeclaration::new(
+                "app",
+                crate::AllocationDeclaration::memory_manager(
+                    format!("app.slot{id}.v1"),
+                    id,
+                    "rows",
+                )
+                .unwrap(),
+            )
+            .unwrap()
+        })
+        .collect();
+    let ranges: Vec<_> = ids
+        .clone()
+        .map(|id| {
+            crate::StaticMemoryRangeDeclaration::new(
+                crate::MemoryManagerAuthorityRecord::new(
+                    crate::MemoryManagerIdRange::new(id, id).unwrap(),
+                    "app",
+                    crate::MemoryManagerRangeMode::Allowed,
+                    None,
+                )
+                .unwrap(),
+            )
+            .unwrap()
+        })
+        .collect();
+    let snapshot = crate::SealedDeclarationSnapshot::new(&declarations, &ranges, &[]).unwrap();
+    let memory = Metered::default();
+    let mut runtime =
+        MemoryRuntime::new_with_config(memory.clone(), super::MemoryManagerConfig::new(1).unwrap())
+            .unwrap();
+    runtime.bootstrap(&snapshot, &GenericRangePolicy).unwrap();
+    runtime
+        .open_memory_by_key("app.slot16.v1")
+        .unwrap()
+        .grow(1)
+        .unwrap();
+    runtime
+        .open_memory_by_key("app.slot254.v1")
+        .unwrap()
+        .grow(2)
+        .unwrap();
+
+    let before = memory.bytes.borrow().clone();
+    memory.reset();
+    let report = runtime.memory_allocations().unwrap();
+    conservation(&report);
+    for id in ids {
+        let row = &report.memories[usize::from(id)];
+        assert_eq!(
+            row.binding,
+            AllocationBinding::Current {
+                stable_key: format!("app.slot{id}.v1"),
+                owner: "app".to_string(),
+            }
+        );
+        assert_eq!(row.range_claim.as_ref().unwrap().authority, "app");
+    }
+    assert_eq!(memory.counts().read_bytes, 34_848);
+    assert_eq!(memory.counts().reads, 2);
+    assert_eq!(memory.counts().writes, 0);
+    assert_eq!(memory.counts().grows, 0);
+    assert_eq!(*memory.bytes.borrow(), before);
+    summary_matches_report(&runtime, &memory);
+}
+
+#[test]
 fn bounded_conservation_bindings_and_no_effects() {
     let _guard = TEST_REGISTRY_LOCK.lock().unwrap();
     let declarations = super::tests::declarations();

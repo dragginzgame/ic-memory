@@ -176,7 +176,7 @@ impl<M: Memory> MemoryRuntime<M> {
     /// current declaration/range bindings are then unavailable.
     pub fn memory_allocations(&self) -> Result<MemoryAllocations, RuntimeDiagnosticError> {
         let (measured, summary) = self.measure_allocations()?;
-        let declarations = self.allocation_declarations()?;
+        let declarations = self.allocation_declarations();
         let mut memories = Vec::with_capacity(layout::IDS);
         for id in 0..255_u8 {
             let index = usize::from(id);
@@ -228,27 +228,18 @@ impl<M: Memory> MemoryRuntime<M> {
         self.measure_allocations().map(|(_, summary)| summary)
     }
 
-    fn allocation_declarations(
-        &self,
-    ) -> Result<Option<&crate::SealedDeclarationSnapshot>, RuntimeDiagnosticError> {
-        let declarations = match &self.lifecycle {
+    const fn allocation_declarations(&self) -> Option<&crate::SealedDeclarationSnapshot> {
+        // Sealing already bounds declarations/ranges and validates every slot.
+        match &self.lifecycle {
             RuntimeLifecycle::Unbootstrapped => None,
             RuntimeLifecycle::Bootstrapped { binding, .. } => Some(&binding.declarations),
-        };
-        // Bound collection before reading metadata or copying any declarations.
-        if declarations.is_some_and(|snapshot| {
-            snapshot.registered_declarations().len() >= layout::IDS
-                || snapshot.range_authority().authorities().len() > layout::IDS
-        }) {
-            return Err(RuntimeDiagnosticError::AllocationBound);
         }
-        Ok(declarations)
     }
 
     fn measure_allocations(
         &self,
     ) -> Result<(layout::Layout, MemoryAllocationSummary), RuntimeDiagnosticError> {
-        let declarations = self.allocation_declarations()?;
+        let declarations = self.allocation_declarations();
         let measured = layout::read(self.growth.backing.as_ref())?;
         let live_buckets = self
             .growth
@@ -267,7 +258,11 @@ impl<M: Memory> MemoryRuntime<M> {
         let mut current = [false; layout::IDS];
         if let Some(snapshot) = declarations {
             for registration in snapshot.registered_declarations() {
-                let id = registration.declaration().slot().memory_manager_id()?;
+                let id = registration
+                    .declaration()
+                    .slot()
+                    .memory_manager_id()
+                    .expect("sealed declaration slot");
                 current[usize::from(id)] = true;
             }
         }

@@ -107,12 +107,7 @@ impl<M: Memory> MemoryRuntime<M> {
             established_bootstrap_binding.as_ref(),
         );
         let validation = match &tested_policy_identity {
-            Ok(_) => diagnostic_validation(
-                declarations,
-                policy,
-                stable_cell.record.as_ref(),
-                recovered.as_ref(),
-            ),
+            Ok(_) => diagnostic_validation(declarations, policy, recovered.as_ref()),
             Err(failure) => DiagnosticCheck::not_run(failure.code, failure.message.clone()),
         };
 
@@ -212,13 +207,12 @@ const fn ledger_anchor_descriptor() -> AllocationSlotDescriptor {
 fn diagnostic_validation<P: AllocationPolicy>(
     declarations: &SealedDeclarationSnapshot,
     custom_policy: &P,
-    stable_cell_record: Option<&StableCellLedgerRecord>,
     recovered: Option<&Result<crate::RecoveredLedger, LedgerCommitError>>,
 ) -> DiagnosticCheck
 where
     P::Error: Display,
 {
-    let recovered = match diagnostic_validation_ledger(stable_cell_record, recovered) {
+    let recovered = match diagnostic_validation_ledger(recovered) {
         Ok(recovered) => recovered,
         Err(failure) => return DiagnosticCheck::not_run(failure.code, failure.message),
     };
@@ -271,15 +265,18 @@ fn diagnostic_bootstrap_binding(
     )
 }
 
-pub(super) fn diagnostic_validation_ledger<'recovery>(
-    stable_cell_record: Option<&StableCellLedgerRecord>,
-    recovered: Option<&'recovery Result<crate::RecoveredLedger, LedgerCommitError>>,
-) -> Result<Cow<'recovery, crate::RecoveredLedger>, DiagnosticFailure> {
+pub(super) fn diagnostic_validation_ledger(
+    recovered: Option<&Result<crate::RecoveredLedger, LedgerCommitError>>,
+) -> Result<Cow<'_, crate::RecoveredLedger>, DiagnosticFailure> {
     if let Some(Ok(recovered)) = recovered {
         return Ok(Cow::Borrowed(recovered));
     }
     if let Some(Err(err)) = recovered {
-        if stable_cell_record.is_some_and(|record| record.store().physical().is_uninitialized()) {
+        // Protected recovery returns NoValidGeneration only for two absent slots.
+        if matches!(
+            err,
+            LedgerCommitError::Recovery(crate::CommitRecoveryError::NoValidGeneration)
+        ) {
             return diagnostic_genesis_recovered_ledger().map(Cow::Owned);
         }
         let code = if matches!(
@@ -296,9 +293,6 @@ pub(super) fn diagnostic_validation_ledger<'recovery>(
             code,
             format!("protected ledger recovery: {err}"),
         ));
-    }
-    if stable_cell_record.is_some() {
-        return diagnostic_genesis_recovered_ledger().map(Cow::Owned);
     }
     Err(DiagnosticFailure::new(
         DiagnosticCode::StableCell,

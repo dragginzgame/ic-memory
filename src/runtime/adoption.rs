@@ -112,11 +112,11 @@ impl<M: Memory> MemoryRuntime<M> {
                 committed_id: committed
                     .slot()
                     .memory_manager_id()
-                    .map_err(RuntimeOpenError::from)?,
+                    .expect("sealed host declaration slot"),
                 requested_id: expected
                     .slot()
                     .memory_manager_id()
-                    .map_err(RuntimeOpenError::from)?,
+                    .expect("sealed requirement slot"),
             }
             .into());
         }

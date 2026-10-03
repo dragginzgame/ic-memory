@@ -602,13 +602,19 @@ fn open_errors_and_failed_bootstrap_do_not_publish_authority() {
         wrong_key,
         RuntimeOpenError::StableKeyNotCommitted(_)
     ));
-    let Err(wrong_id) = runtime.open_memory("runtime_tests.rows.v1", 121) else {
-        panic!("wrong ID must fail");
-    };
-    assert!(matches!(
-        wrong_id,
-        RuntimeOpenError::MemoryIdMismatch { .. }
-    ));
+    for requested_id in [121, crate::MEMORY_MANAGER_INVALID_ID] {
+        let Err(wrong_id) = runtime.open_memory("runtime_tests.rows.v1", requested_id) else {
+            panic!("wrong ID must fail");
+        };
+        assert_eq!(
+            wrong_id,
+            RuntimeOpenError::MemoryIdMismatch {
+                stable_key: "runtime_tests.rows.v1".to_string(),
+                committed_id: 120,
+                requested_id,
+            }
+        );
+    }
 }
 
 #[test]
@@ -797,6 +803,49 @@ fn doctor_preserves_distinct_record_decode_causes_without_writes() {
 }
 
 #[test]
+fn doctor_uses_genesis_only_for_empty_commit_storage() {
+    let declarations = SealedDeclarationSnapshot::new(&[], &[], &[]).unwrap();
+    let backing = VectorMemory::default();
+    let mut runtime = MemoryRuntime::new(backing.clone()).unwrap();
+    for initialized in [false, true] {
+        if initialized {
+            runtime.initialize_ledger_cell::<Infallible>().unwrap();
+        }
+        let before = backing.borrow().clone();
+        let report = runtime.doctor_report(&declarations, &GenericRangePolicy);
+        assert!(!report.bootstrapped);
+        assert!(matches!(report.validation, DiagnosticCheck::Passed));
+        assert!(report.ledger.is_none());
+        assert_eq!(*backing.borrow(), before);
+    }
+
+    // A present invalid physical slot must never be treated as empty storage.
+    let mut record = runtime.ledger_record_from_memory().unwrap();
+    let genesis = crate::AllocationLedger::new(0, crate::AllocationHistory::default()).unwrap();
+    record
+        .store_mut()
+        .write_corrupt_inactive_ledger(&genesis)
+        .unwrap();
+    runtime.persist_ledger_record::<Infallible>(record).unwrap();
+    let before = backing.borrow().clone();
+    let report = runtime.doctor_report(&declarations, &GenericRangePolicy);
+    assert!(matches!(
+        report.stable_cell.status,
+        crate::DiagnosticStableCellStatus::Readable
+    ));
+    assert!(matches!(
+        report.validation,
+        DiagnosticCheck::NotRun {
+            code: DiagnosticCode::LedgerRecovery,
+            ..
+        }
+    ));
+    assert!(report.ledger.is_none());
+    assert!(!runtime.is_bootstrapped());
+    assert_eq!(*backing.borrow(), before);
+}
+
+#[test]
 fn validation_diagnostic_preserves_unsupported_format_code() {
     let recovered = Err(LedgerCommitError::PayloadEnvelope(
         LedgerPayloadEnvelopeError::UnsupportedFormat {
@@ -805,7 +854,7 @@ fn validation_diagnostic_preserves_unsupported_format_code() {
         },
     ));
 
-    let failure = diagnostic_validation_ledger(None, Some(&recovered))
+    let failure = diagnostic_validation_ledger(Some(&recovered))
         .expect_err("unsupported format must block validation");
 
     assert_eq!(failure.code, DiagnosticCode::UnsupportedFormat);

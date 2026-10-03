@@ -1,5 +1,38 @@
 # Changelog
 
+## 0.17.0
+
+- Hard cut: remove `RuntimeDiagnosticError::AllocationBound`,
+  `RuntimeDiagnosticError::MemoryManagerSlot` and
+  `RuntimeOpenError::MemoryManagerSlot`, plus the corresponding
+  `From<MemoryManagerSlotError>` conversions into both runtime error types.
+  Remove obsolete match arms or constructions; handle raw slot errors at the
+  declaration or recovery boundary. These variants were unreachable through
+  maintained runtime operations.
+- Rely on sealed declaration bounds and validated slots during allocation
+  reporting. Remove redundant count checks and their fallible binding lookup;
+  preserve persisted manager-layout validation, live-manager agreement, reentry
+  checks and bounded reads without writes or growth. Add coverage declaring
+  every usable external ID and comparing detailed and numeric reports.
+- Make the recovery result authoritative for doctor validation. Remove the
+  redundant decoded-record argument and unreachable genesis branch. Preserve
+  validation against genesis only for empty commit storage, borrowed successful
+  recovery and typed rejection of unreadable, corrupt or unsupported records.
+  Add coverage for both empty storage representations and a readable record
+  containing a corrupt physical slot, with unchanged backing bytes.
+- Remove unreachable slot-error conversions from committed ID lookup and host
+  adoption. Preserve key, readiness, governance, authority, metadata and fixed-ID
+  rejection. Extend the opening regression to check the exact
+  `MemoryIdMismatch` for caller-supplied sentinel ID 255.
+- Record the [simplification audit](docs/audits/recurring/simplification-followup-0.16.1.md).
+  Validate 262 library tests, integration and compile-fail tests, doctests,
+  strict Clippy and Rustdoc, Rust 1.88 all-target checking, Wasm test compilation
+  and offline package verification. All five existing raw Wasm budgets pass;
+  core is 249,906 bytes under its 260,000-byte ceiling. Persisted formats,
+  diagnostic DTO shapes, checksums and declaration fingerprints are unchanged.
+  Release-flow tests were not rerun because they create commits and tags reserved
+  for the maintainer.
+
 ## 0.16.1
 
 - Remove the sealed snapshot's duplicate authority map and private authority

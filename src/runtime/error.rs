@@ -1,7 +1,6 @@
 use crate::{
     LedgerCommitError, PolicyIdentity, PolicyIdentityError, StableCellLedgerError,
-    registry::StaticMemoryDeclarationError,
-    slot::{MemoryManagerRangeAuthorityError, MemoryManagerSlotError},
+    registry::StaticMemoryDeclarationError, slot::MemoryManagerRangeAuthorityError,
 };
 
 ///
@@ -192,9 +191,6 @@ pub enum RuntimeOpenError {
         /// Reserved stable key.
         stable_key: String,
     },
-    /// The committed slot is not a usable `MemoryManager` ID.
-    #[error(transparent)]
-    MemoryManagerSlot(#[from] MemoryManagerSlotError),
     /// The requested memory ID does not match the committed stable-key binding.
     #[error(
         "stable key '{stable_key}' is committed for MemoryManager ID {committed_id}, not requested ID {requested_id}"
@@ -221,9 +217,6 @@ pub enum RuntimeDiagnosticError {
     /// Persisted manager metadata is invalid or unsupported.
     #[error(transparent)]
     Construction(#[from] RuntimeConstructionError),
-    /// Current binding metadata exceeds the fixed usable ID domain.
-    #[error("allocation bindings exceed the bounded manager domain")]
-    AllocationBound,
     /// No default runtime exists, or this operation requires completed bootstrap.
     #[error("ic-memory runtime has not completed bootstrap validation")]
     NotBootstrapped,
@@ -239,9 +232,6 @@ pub enum RuntimeDiagnosticError {
     /// Stable-cell ledger storage is corrupt before protected recovery can run.
     #[error(transparent)]
     StableCellLedger(#[from] StableCellLedgerError),
-    /// A committed allocation slot was not a usable `MemoryManager` ID.
-    #[error(transparent)]
-    MemoryManagerSlot(#[from] MemoryManagerSlotError),
 }
 
 ///
