@@ -1,5 +1,39 @@
 # Changelog
 
+## 0.18.0
+
+- Hard cut: remove `AllocationStageError::TooManyDeclarations`,
+  `AllocationStageError::InvalidSchemaMetadata` and
+  `AllocationStageError::GenerationOverflow`. Remove obsolete match arms or
+  constructions. Declaration count and schema failures belong to snapshot
+  validation; the finite committed-history limit remains an integrity error.
+  These variants were unreachable with publicly obtained validated authority.
+  Raw reservation and retirement overflow errors remain supported.
+- Rely on immutable `ValidatedAllocations` facts during active staging. Remove
+  repeated declaration count, schema and numeric-overflow checks. Preserve
+  stale-proof rejection, receiver/output resource bounds, historical claim
+  conflicts, retirement rejection and cloning before mutation. Document the
+  proof's declaration and committed-history guarantees.
+- Make private allocation-record construction and schema observation infallible
+  after input validation. Remove the forwarding reservation observer and keep
+  one schema-history update owner. Preserve reserved-to-active promotion,
+  unchanged-schema suppression and last-seen updates. Public metadata
+  constructors and raw reservation staging retain their validation boundaries.
+- Replace tests that fabricate invalid schema or overflow proofs with decoded
+  snapshot rejection and a real proof rejecting a `u64::MAX` receiver as stale.
+  Add public-boundary coverage validating, staging, committing and recovering
+  all 255 allocation slots. Strengthen the historical-conflict regression with
+  a proof from a different valid ledger at the same generation and unchanged
+  rejected receiver state.
+- Record the [staging audit](docs/audits/recurring/simplification-followup-0.17.1.md)
+  and mark the previous findings as released in 0.17.1. Validate 263 library
+  tests, integration and compile-fail tests, doctests, strict Clippy and Rustdoc,
+  Rust 1.88 all-target checking, Wasm test compilation and offline package
+  verification. All five existing raw Wasm budgets pass; core is 249,456 bytes
+  under its 260,000-byte ceiling. Persisted formats, diagnostic DTO shapes,
+  checksums and declaration fingerprints are unchanged. Release-flow tests were
+  not rerun because they create commits and tags reserved for the maintainer.
+
 ## 0.17.1
 
 - Remove duplicate physical-generation state from `RecoveredLedger`. Recovery

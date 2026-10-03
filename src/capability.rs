@@ -13,6 +13,9 @@ use std::sync::Arc;
 ///
 /// This is an in-memory capability, not a serde DTO. It has no public
 /// constructor and should only be produced by validation or bootstrap paths.
+/// Its declarations have valid schema metadata and at most 255 unique keys and
+/// slots. These facts are established before the proof is constructed.
+/// The base generation has passed bounded committed-history validation.
 ///
 
 #[derive(Clone, Debug, Eq, PartialEq)]

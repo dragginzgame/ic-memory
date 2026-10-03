@@ -18,6 +18,10 @@ impl AllocationLedger {
     /// Empty validated generations are valid. They record an explicit generation
     /// boundary, optional runtime fingerprint, and commit timestamp even when no
     /// allocation records changed.
+    ///
+    /// # Panics
+    ///
+    /// Panics only if an internal validated-allocation invariant is broken.
     pub fn stage_validated_generation(
         &self,
         validated: &ValidatedAllocations,
@@ -30,24 +34,16 @@ impl AllocationLedger {
             });
         }
         self.validate_staging_bounds()?;
-        let next_generation = checked_next_generation(self.current_generation)
-            .map_err(|generation| AllocationStageError::GenerationOverflow { generation })?;
+        // The matching proof's base generation passed bounded committed-history
+        // validation; adding one cannot overflow even for a different receiver.
+        let next_generation = self.current_generation + 1;
         let staged_declarations = validated.declarations();
-        let Some(declaration_count) = checked_declaration_count(staged_declarations.len()) else {
-            return Err(AllocationStageError::TooManyDeclarations {
-                count: staged_declarations.len(),
-            });
-        };
+        let declaration_count =
+            u32::try_from(staged_declarations.len()).expect("validated declaration count");
         let mut next = self.clone();
         next.current_generation = next_generation;
 
         for declaration in staged_declarations {
-            declaration.schema.validate().map_err(|error| {
-                AllocationStageError::InvalidSchemaMetadata {
-                    stable_key: declaration.stable_key.clone(),
-                    error,
-                }
-            })?;
             record_declaration(&mut next, next_generation, declaration)?;
         }
 
@@ -166,21 +162,11 @@ fn record_declaration(
     match validate_declaration_claim(ledger, declaration) {
         Ok(ClaimOutcome::Existing { record_index }) => {
             ledger.allocation_history.records_mut()[record_index]
-                .observe_declaration(generation, declaration)
-                .map_err(|error| AllocationStageError::InvalidSchemaMetadata {
-                    stable_key: declaration.stable_key.clone(),
-                    error,
-                })?;
+                .observe_declaration(generation, declaration);
             Ok(())
         }
         Ok(ClaimOutcome::New) => {
-            let record =
-                AllocationRecord::active(generation, declaration.clone()).map_err(|error| {
-                    AllocationStageError::InvalidSchemaMetadata {
-                        stable_key: declaration.stable_key.clone(),
-                        error,
-                    }
-                })?;
+            let record = AllocationRecord::active(generation, declaration.clone());
             ledger.allocation_history.push_record(record);
             Ok(())
         }
@@ -200,21 +186,11 @@ fn record_reservation(
     match validate_reservation_claim(ledger, reservation) {
         Ok(ClaimOutcome::Existing { record_index }) => {
             ledger.allocation_history.records_mut()[record_index]
-                .observe_reservation(generation, reservation)
-                .map_err(|error| AllocationReservationError::InvalidSchemaMetadata {
-                    stable_key: reservation.stable_key.clone(),
-                    error,
-                })?;
+                .observe_schema(generation, &reservation.schema);
             Ok(())
         }
         Ok(ClaimOutcome::New) => {
-            let record =
-                AllocationRecord::reserved(generation, reservation.clone()).map_err(|error| {
-                    AllocationReservationError::InvalidSchemaMetadata {
-                        stable_key: reservation.stable_key.clone(),
-                        error,
-                    }
-                })?;
+            let record = AllocationRecord::reserved(generation, reservation.clone());
             ledger.allocation_history.push_record(record);
             Ok(())
         }

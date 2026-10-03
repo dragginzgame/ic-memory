@@ -507,7 +507,7 @@ mod tests {
         let ledger = AllocationLedger {
             current_generation: 3,
             allocation_history: AllocationHistory::from_parts(
-                vec![AllocationRecord::active(3, declaration).expect("valid schema metadata")],
+                vec![AllocationRecord::active(3, declaration)],
                 vec![GenerationRecord {
                     generation: 3,
                     parent_generation: 2,
@@ -655,7 +655,7 @@ mod tests {
         let ledger = AllocationLedger {
             current_generation: 3,
             allocation_history: AllocationHistory::from_parts(
-                vec![AllocationRecord::active(3, declaration).expect("valid schema metadata")],
+                vec![AllocationRecord::active(3, declaration)],
                 Vec::new(),
             ),
         };
@@ -690,8 +690,8 @@ mod tests {
             current_generation: 3,
             allocation_history: AllocationHistory::from_parts(
                 vec![
-                    AllocationRecord::active(3, users).expect("users record"),
-                    AllocationRecord::active(3, orders).expect("orders record"),
+                    AllocationRecord::active(3, users),
+                    AllocationRecord::active(3, orders),
                 ],
                 Vec::new(),
             ),

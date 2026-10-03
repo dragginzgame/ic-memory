@@ -228,6 +228,8 @@ pub enum LedgerCommitError {
 /// AllocationStageError
 ///
 /// Failure to stage a validated allocation generation.
+///
+
 #[non_exhaustive]
 #[derive(Clone, Debug, Eq, thiserror::Error, PartialEq)]
 pub enum AllocationStageError {
@@ -242,26 +244,6 @@ pub enum AllocationStageError {
         validated_generation: u64,
         /// Current ledger generation.
         ledger_generation: u64,
-    },
-    /// Ledger generation cannot be advanced without overflow.
-    #[error("ledger generation {generation} cannot be advanced without overflow")]
-    GenerationOverflow {
-        /// Current ledger generation.
-        generation: u64,
-    },
-    /// Declaration count exceeds the usable allocation-slot domain.
-    #[error("generation contains {count} declarations, exceeding the 255-allocation limit")]
-    TooManyDeclarations {
-        /// Number of declarations in the staged generation.
-        count: usize,
-    },
-    /// A staged declaration carries invalid schema metadata.
-    #[error("stable key '{stable_key}' has invalid schema metadata")]
-    InvalidSchemaMetadata {
-        /// Stable key whose schema metadata is invalid.
-        stable_key: StableKey,
-        /// Schema metadata validation error.
-        error: SchemaMetadataError,
     },
     /// Stable key was historically bound to a different slot.
     #[error("stable key '{stable_key}' was historically bound to a different allocation slot")]

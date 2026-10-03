@@ -218,7 +218,7 @@ mod tests {
     }
 
     fn active_record(key: &str, id: u8) -> AllocationRecord {
-        AllocationRecord::active(1, declaration(key, id)).expect("valid schema metadata")
+        AllocationRecord::active(1, declaration(key, id))
     }
 
     fn recovered(records: Vec<AllocationRecord>) -> RecoveredLedger {
@@ -317,5 +317,61 @@ mod tests {
             .expect_err("policy failure");
 
         assert_eq!(err, AllocationValidationError::Policy("bad key"));
+    }
+
+    #[test]
+    fn decoded_snapshot_rejects_invalid_schema_and_count_before_minting_authority() {
+        let recovered = recovered(Vec::new());
+        let source = serde_json::to_value(
+            DeclarationSnapshot::new(vec![declaration("app.users.v1", 100)]).unwrap(),
+        )
+        .unwrap();
+        let mut invalid_schema = source.clone();
+        invalid_schema["declarations"][0]["schema"]["schema_version"] = 0.into();
+        let mut oversized = source;
+        oversized["declarations"] =
+            serde_json::Value::Array(vec![oversized["declarations"][0].clone(); 256]);
+
+        for (value, expected) in [
+            (
+                invalid_schema,
+                DeclarationSnapshotError::SchemaMetadata(
+                    crate::SchemaMetadataError::InvalidVersion,
+                ),
+            ),
+            (oversized, DeclarationSnapshotError::TooManyDeclarations),
+        ] {
+            let snapshot: DeclarationSnapshot = serde_json::from_value(value).unwrap();
+            assert_eq!(
+                validate_allocations(&recovered, snapshot, &TestPolicy),
+                Err(AllocationValidationError::Snapshot(expected))
+            );
+        }
+    }
+
+    #[test]
+    fn full_slot_domain_validates_stages_and_commits_through_public_boundaries() {
+        let mut store = crate::LedgerCommitStore::default();
+        let genesis = AllocationLedger::new(0, AllocationHistory::default()).unwrap();
+        let recovered = store.recover_or_initialize(&genesis).unwrap();
+        let snapshot = DeclarationSnapshot::new(
+            (0..=crate::MEMORY_MANAGER_MAX_ID)
+                .map(|id| declaration(&format!("app.store{id}.v1"), id))
+                .collect(),
+        )
+        .unwrap();
+        let validated = validate_allocations(&recovered, snapshot, &TestPolicy).unwrap();
+        let staged = recovered
+            .ledger()
+            .stage_validated_generation(&validated, None)
+            .unwrap();
+        assert_eq!(staged.allocation_history().records().len(), 255);
+        assert_eq!(
+            staged.allocation_history().generations()[0].declaration_count(),
+            255
+        );
+        let committed = store.commit(&staged).unwrap();
+        assert_eq!(committed.current_generation(), 1);
+        assert_eq!(store.recover().unwrap(), committed);
     }
 }

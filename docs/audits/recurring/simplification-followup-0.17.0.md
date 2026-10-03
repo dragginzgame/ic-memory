@@ -1,8 +1,10 @@
 # Simplification follow-up — 0.17.0 baseline
 
 Reviewed on 2026-10-03 against released commit `a72a4a4`, with a clean starting
-tree. The changes below are uncommitted local follow-ups. The
+tree. The changes below shipped in **0.17.1**, released at `197477b`. The
 [previous audit](simplification-followup-0.16.1.md) is fully released in 0.17.0.
+The validation below records this audit's pre-release evidence; subsequent work
+is recorded in the [0.17.1 follow-up](simplification-followup-0.17.1.md).
 
 This follow-up removes duplicate generation state from recovered authority,
 repeated empty-store guards after physical selection, and repeated lifecycle

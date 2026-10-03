@@ -246,7 +246,7 @@ mod tests {
     }
 
     fn active_record(key: &str, id: u8) -> AllocationRecord {
-        AllocationRecord::active(1, declaration(key, id, None)).expect("valid schema metadata")
+        AllocationRecord::active(1, declaration(key, id, None))
     }
 
     fn validated(
@@ -796,51 +796,48 @@ mod tests {
     }
 
     #[test]
-    fn stage_validated_generation_rejects_invalid_schema_metadata() {
-        let validated = crate::capability::ValidatedAllocations::new(
-            3,
-            vec![declaration_with_invalid_schema("app.users.v1", 100)],
-            None,
-        );
-
-        let err = ledger()
-            .stage_validated_generation(&validated, None)
-            .expect_err("invalid schema metadata");
-
-        assert_eq!(
-            err,
-            AllocationStageError::InvalidSchemaMetadata {
-                stable_key: StableKey::parse("app.users.v1").expect("stable key"),
-                error: SchemaMetadataError::InvalidVersion,
-            }
-        );
-    }
-
-    #[test]
-    fn stage_validated_generation_rejects_generation_overflow() {
-        let ledger = AllocationLedger {
-            current_generation: u64::MAX,
-            ..ledger()
-        };
-        let validated = validated(u64::MAX, vec![declaration("app.users.v1", 100, Some(1))]);
+    fn stage_validated_generation_rejects_overflowing_receiver_as_stale() {
+        let mut store = LedgerCommitStore::default();
+        let recovered = store.commit(&committed_ledger(0)).unwrap();
+        let validated = crate::validate_allocations(
+            &recovered,
+            DeclarationSnapshot::new(vec![declaration("app.users.v1", 100, Some(1))]).unwrap(),
+            &crate::GenericRangePolicy,
+        )
+        .unwrap();
+        let ledger = AllocationLedger::new(u64::MAX, AllocationHistory::default()).unwrap();
+        let before = ledger.clone();
 
         let err = ledger
             .stage_validated_generation(&validated, None)
-            .expect_err("overflow must fail");
+            .expect_err("receiver cannot match a bounded recovered generation");
 
         assert_eq!(
             err,
-            AllocationStageError::GenerationOverflow {
-                generation: u64::MAX
+            AllocationStageError::StaleValidatedAllocations {
+                validated_generation: 0,
+                ledger_generation: u64::MAX,
             }
         );
+        assert_eq!(ledger, before);
     }
 
     #[test]
     fn stage_validated_generation_rejects_same_key_different_slot() {
-        let mut ledger = ledger();
+        let mut ledger = committed_ledger(3);
         *ledger.allocation_history.records_mut() = vec![active_record("app.users.v1", 100)];
-        let validated = validated(3, vec![declaration("app.users.v1", 101, None)]);
+        ledger.validate_committed_integrity().unwrap();
+        // A proof minted against another valid history at the same generation
+        // cannot override this receiver's allocation facts.
+        let mut other_store = LedgerCommitStore::default();
+        let other_recovered = other_store.commit(&committed_ledger(3)).unwrap();
+        let validated = crate::validate_allocations(
+            &other_recovered,
+            DeclarationSnapshot::new(vec![declaration("app.users.v1", 101, None)]).unwrap(),
+            &crate::GenericRangePolicy,
+        )
+        .unwrap();
+        let before = ledger.clone();
 
         let err = ledger
             .stage_validated_generation(&validated, None)
@@ -850,6 +847,7 @@ mod tests {
             err,
             AllocationStageError::StableKeySlotConflict { .. }
         ));
+        assert_eq!(ledger, before);
     }
 
     #[test]
@@ -1063,10 +1061,10 @@ mod tests {
     #[test]
     fn stage_reservation_generation_rejects_same_key_different_slot() {
         let mut ledger = ledger();
-        *ledger.allocation_history.records_mut() = vec![
-            AllocationRecord::reserved(3, declaration("app.future_store.v1", 100, None))
-                .expect("valid schema metadata"),
-        ];
+        *ledger.allocation_history.records_mut() = vec![AllocationRecord::reserved(
+            3,
+            declaration("app.future_store.v1", 100, None),
+        )];
         let reservations = vec![declaration("app.future_store.v1", 101, None)];
 
         let err = ledger
@@ -1082,10 +1080,10 @@ mod tests {
     #[test]
     fn stage_reservation_generation_rejects_same_slot_different_key() {
         let mut ledger = ledger();
-        *ledger.allocation_history.records_mut() = vec![
-            AllocationRecord::reserved(3, declaration("app.future_store.v1", 100, None))
-                .expect("valid schema metadata"),
-        ];
+        *ledger.allocation_history.records_mut() = vec![AllocationRecord::reserved(
+            3,
+            declaration("app.future_store.v1", 100, None),
+        )];
         let reservations = vec![declaration("app.other_future_store.v1", 100, None)];
 
         let err = ledger
@@ -1813,9 +1811,12 @@ mod tests {
     fn committed_integrity_rejects_allocation_references_to_genesis() {
         for generation in [0, 1] {
             let mut ledger = committed_ledger(generation);
-            ledger.allocation_history.push_record(
-                AllocationRecord::active(0, declaration("app.genesis.v1", 100, None)).unwrap(),
-            );
+            ledger
+                .allocation_history
+                .push_record(AllocationRecord::active(
+                    0,
+                    declaration("app.genesis.v1", 100, None),
+                ));
             assert_eq!(
                 ledger.validate_committed_integrity(),
                 Err(LedgerIntegrityError::UnknownRecordGeneration {

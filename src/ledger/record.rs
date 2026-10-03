@@ -365,34 +365,33 @@ impl GenerationRecord {
 }
 
 impl AllocationRecord {
+    // Staging supplies checked schema metadata: active declarations come from
+    // ValidatedAllocations, and raw reservations are validated before mutation.
     fn from_declaration(
         generation: u64,
         declaration: AllocationDeclaration,
         state: AllocationState,
-    ) -> Result<Self, SchemaMetadataError> {
-        Ok(Self {
+    ) -> Self {
+        Self {
             stable_key: declaration.stable_key,
             slot: declaration.slot,
             state,
             first_generation: generation,
             last_seen_generation: generation,
-            schema_history: vec![SchemaMetadataRecord::new(generation, declaration.schema)?],
-        })
+            schema_history: vec![SchemaMetadataRecord {
+                generation,
+                schema: declaration.schema,
+            }],
+        }
     }
 
-    /// Create a new active allocation record from a declaration.
-    pub(crate) fn active(
-        generation: u64,
-        declaration: AllocationDeclaration,
-    ) -> Result<Self, SchemaMetadataError> {
+    /// Create an active record from a declaration with validated schema metadata.
+    pub(crate) fn active(generation: u64, declaration: AllocationDeclaration) -> Self {
         Self::from_declaration(generation, declaration, AllocationState::Active)
     }
 
-    /// Create a new reserved allocation record from a declaration.
-    pub(crate) fn reserved(
-        generation: u64,
-        declaration: AllocationDeclaration,
-    ) -> Result<Self, SchemaMetadataError> {
+    /// Create a reserved record from a declaration with validated schema metadata.
+    pub(crate) fn reserved(generation: u64, declaration: AllocationDeclaration) -> Self {
         Self::from_declaration(generation, declaration, AllocationState::Reserved)
     }
 
@@ -436,34 +435,23 @@ impl AllocationRecord {
         &mut self,
         generation: u64,
         declaration: &AllocationDeclaration,
-    ) -> Result<(), SchemaMetadataError> {
+    ) {
         if self.state == AllocationState::Reserved {
             self.state = AllocationState::Active;
         }
-        self.observe_schema(generation, &declaration.schema)
+        self.observe_schema(generation, &declaration.schema);
     }
 
-    pub(crate) fn observe_reservation(
-        &mut self,
-        generation: u64,
-        reservation: &AllocationDeclaration,
-    ) -> Result<(), SchemaMetadataError> {
-        self.observe_schema(generation, &reservation.schema)
-    }
-
-    fn observe_schema(
-        &mut self,
-        generation: u64,
-        schema: &SchemaMetadata,
-    ) -> Result<(), SchemaMetadataError> {
+    pub(super) fn observe_schema(&mut self, generation: u64, schema: &SchemaMetadata) {
         self.last_seen_generation = generation;
 
         let latest_schema = self.schema_history.last().map(|record| &record.schema);
         if latest_schema != Some(schema) {
-            self.schema_history
-                .push(SchemaMetadataRecord::new(generation, schema.clone())?);
+            self.schema_history.push(SchemaMetadataRecord {
+                generation,
+                schema: schema.clone(),
+            });
         }
-        Ok(())
     }
 }
 
