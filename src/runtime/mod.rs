@@ -211,6 +211,11 @@ impl<M: Memory> MemoryRuntime<M> {
     /// successful bootstrap. A mismatch returns a typed error without
     /// advancing the durable generation or re-evaluating policy.
     /// Independently sealed snapshots match when their canonical contents are equal.
+    ///
+    /// # Panics
+    ///
+    /// Panics if a private runtime or encoding invariant is broken, or backing
+    /// memory or a policy callback panics.
     pub fn bootstrap<P: RuntimeBootstrapPolicy>(
         &mut self,
         declarations: &SealedDeclarationSnapshot,
@@ -232,9 +237,9 @@ impl<M: Memory> MemoryRuntime<M> {
                 committed_allocations,
                 ..
             } => Ok(committed_allocations),
-            RuntimeLifecycle::Unbootstrapped => Err(RuntimeBootstrapError::State(
-                RuntimeStateError::InconsistentLifecycle,
-            )),
+            RuntimeLifecycle::Unbootstrapped => {
+                unreachable!("successful bootstrap publishes committed allocations")
+            }
         }
     }
 
@@ -248,8 +253,9 @@ impl<M: Memory> MemoryRuntime<M> {
         let mut record = self
             .ledger_cell
             .as_ref()
-            .map(|cell| cell.get().clone())
-            .ok_or(RuntimeStateError::InconsistentLifecycle)?;
+            .expect("successful ledger initialization establishes the cell")
+            .get()
+            .clone();
         let genesis = AllocationLedger::empty_genesis();
         let recovered = record.store_mut().recover_or_initialize(&genesis)?;
         let mut admission = BootstrapAdmission::new(recovered.ledger(), declarations);
@@ -358,7 +364,7 @@ impl<M: Memory> MemoryRuntime<M> {
         let cell = self
             .ledger_cell
             .as_mut()
-            .ok_or(RuntimeStateError::InconsistentLifecycle)?;
+            .expect("ledger persistence follows successful initialization");
         let _previous = cell.set(record);
         Ok(())
     }

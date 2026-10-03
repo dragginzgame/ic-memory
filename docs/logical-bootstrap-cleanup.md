@@ -20,7 +20,8 @@ and fixed/logical duplicate keys.
 Historical selection still calls `MemoryRequest::new` first, preserving early
 key/authority bounds and namespace checks. After duplicate, count, known-key,
 retirement and grant checks, it consumes that request with the recovered schema.
-Only the schema is revalidated; authority/key allocation and parsing are reused.
+The immutable recovered ledger has already validated that schema; attachment is
+infallible. Authority/key allocation and parsing are reused.
 Selection errors remain sticky even when a callback discards their results.
 
 Admission completion now returns its selected requests instead of constructing a

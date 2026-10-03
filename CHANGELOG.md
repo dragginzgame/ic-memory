@@ -1,5 +1,39 @@
 # Changelog
 
+## 0.21.0
+
+- Hard cut: remove `RuntimeStateError::InconsistentLifecycle`,
+  `StaticMemoryDeclarationError::InconsistentLifecycle` and
+  `StaticMemoryDeclarationError::SnapshotFingerprintEncoding`. Remove obsolete
+  constructions or match arms directly; no aliases or compatibility paths remain.
+  The known IcyDB error-classification fixture is updated without removing its
+  coverage of live internal failures.
+- Express private runtime and registry lifecycle guarantees as invariant
+  assertions. Preserve typed construction, corruption, reentry, poisoning,
+  deferred-hook, growth-refusal and policy errors, persistence-before-publication,
+  and failed-bootstrap retry behavior. Document the invariant panic boundary.
+- Build private ledger declarations and governance metadata infallibly from
+  checked constants. Reuse the authoritative governance-range helper instead of
+  reconstructing its bounds. Public declaration and range constructors retain
+  their fallible validation boundaries.
+- Attach historical schema metadata directly from the immutable recovered ledger,
+  removing repeated validation and fallible propagation. Public metadata
+  constructors and untrusted recovery still validate schemas; historical
+  selection retains authorization, retirement, bounds and sticky failure checks.
+- Make concrete ledger and declaration-fingerprint encoding into byte vectors
+  infallible. Retain typed decoding errors, writer byte limits, current fixtures,
+  checksums, canonical ordering and fingerprint bytes. Durable formats and
+  diagnostic wire shapes remain unchanged.
+- Validate 205 focused library tests across both cleanup passes, six public
+  integration tests, two composed host tests, all seven compile-fail cases and
+  five doctests. Strict all-target
+  Clippy, Rust 1.88 all-target checking and Wasm test compilation pass. All five
+  raw Wasm budgets pass; core is 247,953 bytes under its 260,000-byte ceiling.
+  Twenty focused IcyDB native tests pass in an isolated copy with the initial
+  local API hard cut patched in; consumer manifests and lockfiles remain unchanged.
+  Package verification, installed-canister qualification and release-flow tests
+  were not repeated; release-flow tests create maintainer-owned commits and tags.
+
 ## 0.20.0
 
 - Hard cut: remove `RuntimePolicyError::MissingDeclarationMetadata`,

@@ -108,3 +108,23 @@ validation.
 requested by Canic. Downstream adoption and qualification remain consumer-owned;
 closure does not certify those activities. This section records the ic-memory
 changes only.
+
+## Released 0.20.0 consumer recheck
+
+The [2026-10-03 qualification receipt](consumer-qualification-0.20.0.md) records
+fresh checks against published ic-memory **0.20.0** after the consumer dependency
+updates finished. IcyDB passes 16 focused native admission/default/participant
+tests, four public bootstrap error tests, three installed lifecycle tests, and
+three installed logical-memory retirement/rejection/recovery tests. Its worst
+measured lifecycle phase is **4,610,556 instructions** against the unchanged
+12,750,000 ceiling; empty and populated stable extents are 23,134,208 bytes.
+
+Canic passes native and Wasm `canic-core` checks and 13 focused native memory
+tests on its direct 0.20.0 dependency. Its optional published-IcyDB test
+composition still resolves 0.18.0 and remains unqualified. These focused results
+do not resolve the maintainer's separate report that Canic is not working.
+They are local checks of dirty consumer worktrees, not complete downstream CI or
+a matched performance comparison. Subsequent IcyDB query edits are outside
+these passing receipts; both dependency lockfiles stayed unchanged. The existing
+issue closures and historical release evidence remain unchanged; no GitHub
+issue or comment was updated.

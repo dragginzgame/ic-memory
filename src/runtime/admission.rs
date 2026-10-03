@@ -178,16 +178,14 @@ impl<'a> BootstrapAdmission<'a> {
                 source,
             })?;
         self.selected.push(
-            request
-                .with_schema(
-                    record
-                        .schema_history()
-                        .last()
-                        .expect("validated schema history")
-                        .schema()
-                        .clone(),
-                )
-                .map_err(crate::StaticMemoryDeclarationError::Declaration)?,
+            request.with_schema(
+                record
+                    .schema_history()
+                    .last()
+                    .expect("validated schema history")
+                    .schema()
+                    .clone(),
+            ),
         );
         Ok(())
     }

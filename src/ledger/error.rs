@@ -216,7 +216,7 @@ pub enum LedgerCommitError {
         /// Generation decoded from the logical allocation ledger.
         logical_generation: u64,
     },
-    /// Built-in ledger codec failed.
+    /// Built-in ledger decoding failed.
     #[error("allocation ledger codec failed: {0}")]
     Codec(String),
     /// Decoded ledger violates structural allocation-history invariants.

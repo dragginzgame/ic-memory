@@ -3,9 +3,9 @@ use crate::{
     schema::SchemaMetadata,
     slot::{
         IC_MEMORY_AUTHORITY_OWNER, IC_MEMORY_AUTHORITY_PURPOSE, IC_MEMORY_LEDGER_LABEL,
-        IC_MEMORY_LEDGER_STABLE_KEY, MEMORY_MANAGER_GOVERNANCE_MAX_ID, MEMORY_MANAGER_LEDGER_ID,
-        MemoryManagerAuthorityRecord, MemoryManagerIdRange, MemoryManagerRangeAuthority,
-        MemoryManagerRangeAuthorityError, MemoryManagerRangeMode, is_ic_memory_stable_key,
+        IC_MEMORY_LEDGER_STABLE_KEY, MEMORY_MANAGER_LEDGER_ID, MemoryManagerAuthorityRecord,
+        MemoryManagerIdRange, MemoryManagerRangeAuthority, MemoryManagerRangeAuthorityError,
+        MemoryManagerRangeMode, is_ic_memory_stable_key, memory_manager_governance_range,
     },
     text::validate_diagnostic_text,
 };
@@ -114,15 +114,10 @@ impl MemoryRequest {
         })
     }
 
-    pub(crate) fn with_schema(
-        mut self,
-        schema: SchemaMetadata,
-    ) -> Result<Self, crate::DeclarationSnapshotError> {
-        schema
-            .validate()
-            .map_err(crate::DeclarationSnapshotError::SchemaMetadata)?;
+    /// Attach schema metadata from the immutable, integrity-checked recovered ledger.
+    pub(crate) const fn with_schema(mut self, schema: SchemaMetadata) -> Self {
         self.schema = schema;
-        Ok(self)
+        self
     }
 
     /// Borrow the requested durable key.
@@ -209,9 +204,6 @@ pub enum StaticMemoryDeclarationError {
     /// Snapshot sealing was called recursively from an eager hook.
     #[error("static memory declaration snapshot sealing is already active on this thread")]
     ReentrantSealing,
-    /// Internal declaration-registry lifecycle state was inconsistent.
-    #[error("static memory declaration registry lifecycle is internally inconsistent")]
-    InconsistentLifecycle,
     /// A deferred eager initialization hook panicked while declarations were sealing.
     #[error("static memory declaration eager-init hook panicked")]
     EagerInitPanicked,
@@ -221,12 +213,6 @@ pub enum StaticMemoryDeclarationError {
     /// Range authority validation failed.
     #[error(transparent)]
     Range(#[from] MemoryManagerRangeAuthorityError),
-    /// Canonical sealed-snapshot diagnostic fingerprint encoding failed.
-    #[error("failed to encode canonical sealed declaration fingerprint material: {message}")]
-    SnapshotFingerprintEncoding {
-        /// Encoder failure.
-        message: String,
-    },
     /// External registration attempted to use an invalid authority identifier.
     #[error("authority {reason}")]
     InvalidAuthority {
@@ -678,6 +664,11 @@ pub fn register_static_memory_manager_declaration_with_schema(
 /// canonicalizes declarations and ranges, validates duplicates and range
 /// authority, and publishes one immutable snapshot. Concurrent and subsequent
 /// callers receive clones backed by that same snapshot.
+///
+/// # Panics
+///
+/// Panics only if a private governance-metadata, sealing or fingerprint-encoding
+/// invariant is broken.
 pub fn sealed_declaration_snapshot()
 -> Result<SealedDeclarationSnapshot, StaticMemoryDeclarationError> {
     {
@@ -736,7 +727,7 @@ pub fn sealed_declaration_snapshot()
         StaticRegistryLifecycle::Sealing { deferred_error, .. } => deferred_error.clone(),
         StaticRegistryLifecycle::Failed(err) => return Err(err.clone()),
         StaticRegistryLifecycle::Open | StaticRegistryLifecycle::Sealed(_) => {
-            return Err(StaticMemoryDeclarationError::InconsistentLifecycle);
+            unreachable!("seal lock preserves the in-progress registry lifecycle");
         }
     };
     let result = match deferred_error {
@@ -809,7 +800,7 @@ fn build_snapshot(
     });
 
     let mut allocation_declarations = Vec::with_capacity(registered_declarations.len() + 1);
-    allocation_declarations.push(internal_ledger_declaration()?);
+    allocation_declarations.push(internal_ledger_declaration());
     allocation_declarations.extend(
         registered_declarations
             .iter()
@@ -818,7 +809,7 @@ fn build_snapshot(
     let allocation_snapshot = DeclarationSnapshot::new(allocation_declarations)?;
 
     let mut authority_records = Vec::with_capacity(registered_ranges.len() + 1);
-    authority_records.push(internal_ledger_range()?);
+    authority_records.push(internal_ledger_range());
     authority_records.extend(
         registered_ranges
             .iter()
@@ -830,7 +821,7 @@ fn build_snapshot(
         &registered_declarations,
         range_authority.authorities(),
         &requests,
-    )?;
+    );
 
     Ok(SealedDeclarationSnapshot {
         inner: Arc::new(SealedDeclarationSnapshotInner {
@@ -864,7 +855,7 @@ fn sealed_declaration_fingerprint(
     registered_declarations: &[StaticMemoryDeclaration],
     effective_ranges: &[MemoryManagerAuthorityRecord],
     requests: &[MemoryRequest],
-) -> Result<SealedDeclarationFingerprint, StaticMemoryDeclarationError> {
+) -> SealedDeclarationFingerprint {
     let material = SealedDeclarationFingerprintMaterial {
         format: "ic-memory.sealed-declaration-fingerprint.v1",
         allocation_snapshot,
@@ -879,16 +870,14 @@ fn sealed_declaration_fingerprint(
         requests,
     };
     let mut bytes = Vec::new();
-    ciborium::into_writer(&material, &mut bytes).map_err(|err| {
-        StaticMemoryDeclarationError::SnapshotFingerprintEncoding {
-            message: err.to_string(),
-        }
-    })?;
+    // Concrete derived serializers and a Vec writer have no recoverable failures.
+    ciborium::into_writer(&material, &mut bytes)
+        .expect("sealed declaration fingerprint encodes into Vec");
 
-    Ok(SealedDeclarationFingerprint {
+    SealedDeclarationFingerprint {
         algorithm_version: SEALED_DECLARATION_FINGERPRINT_VERSION,
         value: crate::hash::fnv64(crate::hash::FNV_OFFSET, &bytes),
-    })
+    }
 }
 
 const SEALED_DECLARATION_FINGERPRINT_VERSION: u8 = 1;
@@ -899,22 +888,23 @@ const fn range_mode_order(mode: MemoryManagerRangeMode) -> u8 {
     }
 }
 
-fn internal_ledger_declaration() -> Result<AllocationDeclaration, crate::DeclarationSnapshotError> {
+fn internal_ledger_declaration() -> AllocationDeclaration {
     AllocationDeclaration::memory_manager(
         IC_MEMORY_LEDGER_STABLE_KEY,
         MEMORY_MANAGER_LEDGER_ID,
         IC_MEMORY_LEDGER_LABEL,
     )
+    .unwrap_or_else(|_| unreachable!("built-in ledger declaration constants are valid"))
 }
 
-fn internal_ledger_range() -> Result<MemoryManagerAuthorityRecord, MemoryManagerRangeAuthorityError>
-{
+fn internal_ledger_range() -> MemoryManagerAuthorityRecord {
     MemoryManagerAuthorityRecord::new(
-        MemoryManagerIdRange::new(MEMORY_MANAGER_LEDGER_ID, MEMORY_MANAGER_GOVERNANCE_MAX_ID)?,
+        memory_manager_governance_range(),
         IC_MEMORY_AUTHORITY_OWNER,
         MemoryManagerRangeMode::Reserved,
         Some(IC_MEMORY_AUTHORITY_PURPOSE.to_string()),
     )
+    .unwrap_or_else(|_| unreachable!("built-in governance range metadata constants are valid"))
 }
 
 #[cfg(test)]

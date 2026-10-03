@@ -41,10 +41,11 @@ pub use stage::validate_reservation_declaration;
 struct CborLedgerCodec;
 
 impl CborLedgerCodec {
-    fn encode(ledger: &AllocationLedger) -> Result<Vec<u8>, String> {
+    fn encode(ledger: &AllocationLedger) -> Vec<u8> {
         let mut bytes = Vec::new();
-        ciborium::into_writer(ledger, &mut bytes).map_err(|err| err.to_string())?;
-        Ok(bytes)
+        // Concrete derived serializers and a Vec writer have no recoverable failures.
+        ciborium::into_writer(ledger, &mut bytes).expect("allocation ledger encodes into Vec");
+        bytes
     }
 
     fn decode(bytes: &[u8]) -> Result<AllocationLedger, String> {
@@ -141,6 +142,10 @@ impl LedgerCommitStore {
     }
 
     /// Commit one logical allocation ledger generation through the native CBOR ledger codec.
+    ///
+    /// # Panics
+    ///
+    /// Panics only if the private concrete ledger-encoding invariant is broken.
     pub fn commit(
         &mut self,
         ledger: &AllocationLedger,
@@ -148,7 +153,7 @@ impl LedgerCommitStore {
         ledger
             .validate_committed_integrity()
             .map_err(LedgerCommitError::Integrity)?;
-        let encoded = CborLedgerCodec::encode(ledger).map_err(LedgerCommitError::Codec)?;
+        let encoded = CborLedgerCodec::encode(ledger);
         if encoded.len() > crate::constants::MAX_LEDGER_BYTES {
             return Err(LedgerCommitError::Integrity(
                 LedgerIntegrityError::LimitExceeded {
@@ -175,11 +180,9 @@ impl LedgerCommitStore {
         &mut self,
         ledger: &AllocationLedger,
     ) -> Result<(), LedgerCommitError> {
-        let payload = LedgerPayloadEnvelope::current(
-            CborLedgerCodec::encode(ledger).map_err(LedgerCommitError::Codec)?,
-        )
-        .try_encode()
-        .map_err(LedgerCommitError::PayloadEnvelope)?;
+        let payload = LedgerPayloadEnvelope::current(CborLedgerCodec::encode(ledger))
+            .try_encode()
+            .map_err(LedgerCommitError::PayloadEnvelope)?;
         self.physical
             .write_corrupt_inactive_slot(ledger.current_generation, payload);
         Ok(())
@@ -266,8 +269,7 @@ mod tests {
     }
 
     fn enveloped_payload(ledger: &AllocationLedger) -> Vec<u8> {
-        LedgerPayloadEnvelope::current(CborLedgerCodec::encode(ledger).expect("CBOR payload"))
-            .encode()
+        LedgerPayloadEnvelope::current(CborLedgerCodec::encode(ledger)).encode()
     }
 
     fn ledger_from_payload_fixture(contents: &str) -> AllocationLedger {
@@ -427,7 +429,7 @@ mod tests {
     fn cbor_ledger_codec_round_trips_allocation_ledger() {
         let ledger = committed_ledger(2);
 
-        let encoded = CborLedgerCodec::encode(&ledger).expect("encode ledger");
+        let encoded = CborLedgerCodec::encode(&ledger);
         let decoded = CborLedgerCodec::decode(&encoded).expect("decode ledger");
 
         assert_eq!(decoded, ledger);
@@ -435,7 +437,7 @@ mod tests {
 
     #[test]
     fn cbor_ledger_codec_rejects_trailing_bytes() {
-        let mut encoded = CborLedgerCodec::encode(&committed_ledger(2)).expect("encode ledger");
+        let mut encoded = CborLedgerCodec::encode(&committed_ledger(2));
         encoded.push(0);
 
         let err = CborLedgerCodec::decode(&encoded).expect_err("trailing bytes must fail closed");
@@ -1893,10 +1895,7 @@ mod tests {
 
         let committed = store.physical().authoritative().expect("authoritative");
         let envelope = LedgerPayloadEnvelope::decode(committed.payload()).expect("envelope");
-        assert_eq!(
-            envelope.payload(),
-            CborLedgerCodec::encode(&ledger).expect("payload")
-        );
+        assert_eq!(envelope.payload(), CborLedgerCodec::encode(&ledger));
     }
 
     #[test]

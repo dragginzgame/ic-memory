@@ -96,9 +96,6 @@ pub enum RuntimeStateError {
     /// The thread-local default runtime is being destroyed and cannot be entered.
     #[error("ic-memory default runtime is unavailable during thread-local destruction")]
     Unavailable,
-    /// Internal runtime lifecycle state was inconsistent.
-    #[error("ic-memory runtime lifecycle is internally inconsistent")]
-    InconsistentLifecycle,
 }
 
 ///
