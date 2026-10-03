@@ -1,5 +1,8 @@
 use crate::{
-    constants::DIAGNOSTIC_STRING_MAX_BYTES, key::StableKey, slot::AllocationSlotDescriptor,
+    constants::DIAGNOSTIC_STRING_MAX_BYTES,
+    key::StableKey,
+    slot::AllocationSlotDescriptor,
+    text::{DiagnosticTextError, validate_diagnostic_text},
 };
 use serde::{Deserialize, Deserializer, Serialize, de::Error as _};
 
@@ -121,22 +124,15 @@ pub enum PolicyIdentityError {
 }
 
 fn validate_policy_identity_name(name: &str) -> Result<(), PolicyIdentityError> {
-    if name.is_empty() {
-        return Err(PolicyIdentityError::EmptyName);
-    }
-    if name.len() > DIAGNOSTIC_STRING_MAX_BYTES {
-        return Err(PolicyIdentityError::NameTooLong {
+    validate_diagnostic_text(name).map_err(|error| match error {
+        DiagnosticTextError::Empty => PolicyIdentityError::EmptyName,
+        DiagnosticTextError::TooLong => PolicyIdentityError::NameTooLong {
             length: name.len(),
             maximum: DIAGNOSTIC_STRING_MAX_BYTES,
-        });
-    }
-    if !name.is_ascii() {
-        return Err(PolicyIdentityError::NonAsciiName);
-    }
-    if name.bytes().any(|byte| byte.is_ascii_control()) {
-        return Err(PolicyIdentityError::ControlCharacterName);
-    }
-    Ok(())
+        },
+        DiagnosticTextError::NonAscii => PolicyIdentityError::NonAsciiName,
+        DiagnosticTextError::ControlCharacter => PolicyIdentityError::ControlCharacterName,
+    })
 }
 
 ///

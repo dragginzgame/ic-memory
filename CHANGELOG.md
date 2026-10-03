@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.15.6
+
+- Reuse protected slot-selection evidence in commit diagnostics, validating each
+  present slot once instead of repeating payload checksum scans. Preserve
+  fail-closed recovery and ambiguity classification; add coverage for valid ties,
+  conflicting ties and corruption on either slot.
+- Remove the unused public `AllocationValidationError::LedgerIntegrity` variant.
+  Allocation validation requires `RecoveredLedger`; integrity failures are
+  reported at the ledger recovery boundary.
+- Share printable diagnostic-text validation across labels, runtime fingerprints,
+  policy names, authorities and range purposes. Preserve the 256-byte ceiling,
+  optional-field semantics, field-specific errors and rejection order. Add two
+  public-API regressions for accepted boundaries and overlapping invalid inputs.
+- Validate 249 library tests, integration and compile-fail tests, doctests,
+  strict Clippy and Rustdoc, Rust 1.88 all-target compilation and Wasm test
+  compilation. All five unchanged raw Wasm budgets pass; core is 259,455 bytes
+  under its 260,000-byte ceiling. Persisted encoding, checksums and declaration
+  fingerprints are unchanged.
+
 ## 0.15.5
 
 - Fix configured default bootstrap holding a mutable TLS borrow while sealing

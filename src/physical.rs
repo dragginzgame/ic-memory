@@ -380,12 +380,20 @@ impl CommitStoreDiagnostic {
     /// Build a read-only recovery diagnostic from a dual commit store.
     #[must_use]
     pub fn from_store(store: &DualCommitStore) -> Self {
+        let recovery = store.authoritative_slot();
+        // Selection validates every present slot before considering generations.
+        // Reuse that evidence rather than scanning their payloads again.
+        let (slot0_invalid, slot1_invalid) = match &recovery {
+            Err(CommitRecoveryError::InvalidCommitSlots {
+                slot0_invalid,
+                slot1_invalid,
+            }) => (*slot0_invalid, *slot1_invalid),
+            _ => (false, false),
+        };
         Self {
-            slot0: CommitSlotDiagnostic::from_slot(store.slot0()),
-            slot1: CommitSlotDiagnostic::from_slot(store.slot1()),
-            recovery: store
-                .authoritative_slot()
-                .map(|slot| slot.record.generation()),
+            slot0: CommitSlotDiagnostic::from_slot(store.slot0(), slot0_invalid),
+            slot1: CommitSlotDiagnostic::from_slot(store.slot1(), slot1_invalid),
+            recovery: recovery.map(|slot| slot.record.generation()),
         }
     }
 }
@@ -414,9 +422,9 @@ pub enum CommitSlotDiagnostic {
 }
 
 impl CommitSlotDiagnostic {
-    fn from_slot(slot: Option<&CommittedGenerationBytes>) -> Self {
+    const fn from_slot(slot: Option<&CommittedGenerationBytes>, invalid: bool) -> Self {
         match slot {
-            Some(record) if record.validates() => Self::Valid {
+            Some(record) if !invalid => Self::Valid {
                 generation: record.generation(),
             },
             Some(record) => Self::Invalid {
@@ -743,6 +751,71 @@ mod tests {
         let decoded: CommitStoreDiagnostic =
             crate::test_cbor::from_slice(&bytes).expect("diagnostic round trip");
         assert_eq!(decoded, diagnostic);
+    }
+
+    #[test]
+    fn diagnostic_selection_covers_valid_ties_and_corruption_on_either_slot() {
+        let mut store = DualCommitStore {
+            slot0: None,
+            slot1: Some(CommittedGenerationBytes::new(8, payload(2))),
+        };
+        assert_eq!(store.diagnostic().recovery, Ok(8));
+        assert_eq!(store.diagnostic().slot0, CommitSlotDiagnostic::Empty);
+        store.slot0 = Some(CommittedGenerationBytes::new(7, payload(1)));
+        assert_eq!(store.diagnostic().recovery, Ok(8));
+        store.slot1.clone_from(&store.slot0);
+        assert_eq!(store.diagnostic().recovery, Ok(7));
+
+        store.slot1 = Some(CommittedGenerationBytes::new(7, payload(2)));
+        let diagnostic = store.diagnostic();
+        assert_eq!(
+            diagnostic.recovery,
+            Err(CommitRecoveryError::AmbiguousGeneration { generation: 7 })
+        );
+        assert_eq!(
+            diagnostic.slot0,
+            CommitSlotDiagnostic::Valid { generation: 7 }
+        );
+        assert_eq!(
+            diagnostic.slot1,
+            CommitSlotDiagnostic::Valid { generation: 7 }
+        );
+
+        store.slot0.as_mut().unwrap().checksum ^= 1;
+        let diagnostic = store.diagnostic();
+        assert_eq!(
+            diagnostic.recovery,
+            Err(CommitRecoveryError::InvalidCommitSlots {
+                slot0_invalid: true,
+                slot1_invalid: false,
+            })
+        );
+        assert_eq!(
+            diagnostic.slot0,
+            CommitSlotDiagnostic::Invalid { generation: 7 }
+        );
+        assert_eq!(
+            diagnostic.slot1,
+            CommitSlotDiagnostic::Valid { generation: 7 }
+        );
+
+        store.slot1.as_mut().unwrap().commit_marker = 0;
+        let diagnostic = store.diagnostic();
+        assert_eq!(
+            diagnostic.recovery,
+            Err(CommitRecoveryError::InvalidCommitSlots {
+                slot0_invalid: true,
+                slot1_invalid: true,
+            })
+        );
+        assert_eq!(
+            diagnostic.slot0,
+            CommitSlotDiagnostic::Invalid { generation: 7 }
+        );
+        assert_eq!(
+            diagnostic.slot1,
+            CommitSlotDiagnostic::Invalid { generation: 7 }
+        );
     }
 
     #[test]

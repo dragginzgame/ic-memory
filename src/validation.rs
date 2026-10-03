@@ -3,8 +3,8 @@ use crate::{
     declaration::{DeclarationSnapshot, DeclarationSnapshotError},
     key::StableKey,
     ledger::{
-        AllocationLedger, ClaimConflict, LedgerIntegrityError, RecoveredLedger,
-        claim_conflict_record, validate_declaration_claim,
+        AllocationLedger, ClaimConflict, RecoveredLedger, claim_conflict_record,
+        validate_declaration_claim,
     },
     policy::AllocationPolicy,
     slot::AllocationSlotDescriptor,
@@ -27,12 +27,12 @@ pub trait Validate {
 /// AllocationValidationError
 ///
 /// Failure to validate declarations against policy and historical ledger facts.
+/// Recovered ledger integrity is established before this boundary.
+///
+
 #[non_exhaustive]
 #[derive(Clone, Debug, Eq, thiserror::Error, PartialEq)]
 pub enum AllocationValidationError<P> {
-    /// Historical ledger was decoded or assembled with invalid committed state.
-    #[error(transparent)]
-    LedgerIntegrity(LedgerIntegrityError),
     /// Declaration snapshot was decoded or assembled with invalid DTOs.
     #[error(transparent)]
     Snapshot(DeclarationSnapshotError),

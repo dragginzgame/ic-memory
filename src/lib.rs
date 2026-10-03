@@ -96,6 +96,7 @@ mod runtime;
 mod schema;
 mod slot;
 mod stable_cell;
+mod text;
 mod validation;
 
 #[cfg(test)]

@@ -1,8 +1,8 @@
 use crate::{
-    constants::DIAGNOSTIC_STRING_MAX_BYTES,
     key::{StableKey, StableKeyError},
     schema::{SchemaMetadata, SchemaMetadataError},
     slot::{AllocationSlotDescriptor, MemoryManagerSlotError},
+    text::{DiagnosticTextError, validate_diagnostic_text},
     validation::Validate,
 };
 use serde::{Deserialize, Serialize};
@@ -403,19 +403,12 @@ fn validate_label(label: Option<&str>) -> Result<(), DeclarationSnapshotError> {
     let Some(label) = label else {
         return Ok(());
     };
-    if label.is_empty() {
-        return Err(DeclarationSnapshotError::EmptyLabel);
-    }
-    if label.len() > DIAGNOSTIC_STRING_MAX_BYTES {
-        return Err(DeclarationSnapshotError::LabelTooLong);
-    }
-    if !label.is_ascii() {
-        return Err(DeclarationSnapshotError::NonAsciiLabel);
-    }
-    if label.bytes().any(|byte| byte.is_ascii_control()) {
-        return Err(DeclarationSnapshotError::ControlCharacterLabel);
-    }
-    Ok(())
+    validate_diagnostic_text(label).map_err(|error| match error {
+        DiagnosticTextError::Empty => DeclarationSnapshotError::EmptyLabel,
+        DiagnosticTextError::TooLong => DeclarationSnapshotError::LabelTooLong,
+        DiagnosticTextError::NonAscii => DeclarationSnapshotError::NonAsciiLabel,
+        DiagnosticTextError::ControlCharacter => DeclarationSnapshotError::ControlCharacterLabel,
+    })
 }
 
 fn validate_declarations(
@@ -436,19 +429,14 @@ pub fn validate_runtime_fingerprint(
     let Some(fingerprint) = fingerprint else {
         return Ok(());
     };
-    if fingerprint.is_empty() {
-        return Err(DeclarationSnapshotError::EmptyRuntimeFingerprint);
-    }
-    if fingerprint.len() > DIAGNOSTIC_STRING_MAX_BYTES {
-        return Err(DeclarationSnapshotError::RuntimeFingerprintTooLong);
-    }
-    if !fingerprint.is_ascii() {
-        return Err(DeclarationSnapshotError::NonAsciiRuntimeFingerprint);
-    }
-    if fingerprint.bytes().any(|byte| byte.is_ascii_control()) {
-        return Err(DeclarationSnapshotError::ControlCharacterRuntimeFingerprint);
-    }
-    Ok(())
+    validate_diagnostic_text(fingerprint).map_err(|error| match error {
+        DiagnosticTextError::Empty => DeclarationSnapshotError::EmptyRuntimeFingerprint,
+        DiagnosticTextError::TooLong => DeclarationSnapshotError::RuntimeFingerprintTooLong,
+        DiagnosticTextError::NonAscii => DeclarationSnapshotError::NonAsciiRuntimeFingerprint,
+        DiagnosticTextError::ControlCharacter => {
+            DeclarationSnapshotError::ControlCharacterRuntimeFingerprint
+        }
+    })
 }
 
 fn reject_duplicates(

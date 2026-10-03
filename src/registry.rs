@@ -1,5 +1,4 @@
 use crate::{
-    constants::DIAGNOSTIC_STRING_MAX_BYTES,
     declaration::{AllocationDeclaration, DeclarationSnapshot},
     schema::SchemaMetadata,
     slot::{
@@ -8,6 +7,7 @@ use crate::{
         MemoryManagerAuthorityRecord, MemoryManagerIdRange, MemoryManagerRangeAuthority,
         MemoryManagerRangeAuthorityError, MemoryManagerRangeMode, is_ic_memory_stable_key,
     },
+    text::validate_diagnostic_text,
 };
 use serde::{Deserialize, Serialize};
 use std::{
@@ -616,27 +616,11 @@ fn validate_external_authority(value: &str) -> Result<(), StaticMemoryDeclaratio
             authority: value.to_string(),
         });
     }
-    if value.is_empty() {
-        return Err(StaticMemoryDeclarationError::InvalidAuthority {
-            reason: "must not be empty",
-        });
-    }
-    if value.len() > DIAGNOSTIC_STRING_MAX_BYTES {
-        return Err(StaticMemoryDeclarationError::InvalidAuthority {
-            reason: "must be at most 256 bytes",
-        });
-    }
-    if !value.is_ascii() {
-        return Err(StaticMemoryDeclarationError::InvalidAuthority {
-            reason: "must be ASCII",
-        });
-    }
-    if value.bytes().any(|byte| byte.is_ascii_control()) {
-        return Err(StaticMemoryDeclarationError::InvalidAuthority {
-            reason: "must not contain ASCII control characters",
-        });
-    }
-    Ok(())
+    validate_diagnostic_text(value).map_err(|error| {
+        StaticMemoryDeclarationError::InvalidAuthority {
+            reason: error.reason(),
+        }
+    })
 }
 
 /// Register one `MemoryManager` declaration before bootstrap seals the snapshot.

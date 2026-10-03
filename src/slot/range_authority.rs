@@ -3,7 +3,7 @@ use super::memory_manager::{
     MEMORY_MANAGER_INVALID_ID, MEMORY_MANAGER_MAX_ID, MEMORY_MANAGER_MIN_ID,
     MemoryManagerSlotError, validate_memory_manager_id,
 };
-use crate::constants::DIAGNOSTIC_STRING_MAX_BYTES;
+use crate::text::validate_diagnostic_text;
 use serde::{Deserialize, Deserializer, Serialize, de::Error as _};
 
 ///
@@ -655,29 +655,10 @@ fn validate_diagnostic_string(
     field: &'static str,
     value: &str,
 ) -> Result<(), MemoryManagerRangeAuthorityError> {
-    if value.is_empty() {
-        return Err(MemoryManagerRangeAuthorityError::InvalidDiagnosticString {
+    validate_diagnostic_text(value).map_err(|error| {
+        MemoryManagerRangeAuthorityError::InvalidDiagnosticString {
             field,
-            reason: "must not be empty",
-        });
-    }
-    if value.len() > DIAGNOSTIC_STRING_MAX_BYTES {
-        return Err(MemoryManagerRangeAuthorityError::InvalidDiagnosticString {
-            field,
-            reason: "must be at most 256 bytes",
-        });
-    }
-    if !value.is_ascii() {
-        return Err(MemoryManagerRangeAuthorityError::InvalidDiagnosticString {
-            field,
-            reason: "must be ASCII",
-        });
-    }
-    if value.bytes().any(|byte| byte.is_ascii_control()) {
-        return Err(MemoryManagerRangeAuthorityError::InvalidDiagnosticString {
-            field,
-            reason: "must not contain ASCII control characters",
-        });
-    }
-    Ok(())
+            reason: error.reason(),
+        }
+    })
 }
