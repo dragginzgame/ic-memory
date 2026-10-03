@@ -15,13 +15,14 @@
 //! active stable key cannot move to a different physical slot, and an active
 //! physical slot cannot be reused by a different stable key.
 //!
-//! The intended integration flow is:
+//! The intended runtime integration flow is:
 //!
 //! 1. Recover the persisted allocation ledger.
-//! 2. Declare the stable stores expected by the current binary.
-//! 3. Validate those declarations against ledger history and any framework
-//!    policy.
-//! 4. Commit the next generation.
+//! 2. Admit consumer identity and authorized historical selections from bounded
+//!    metadata under the host's `RuntimeBootstrapPolicy`.
+//! 3. Resolve logical requests under explicit host grants, combine them with
+//!    sealed fixed declarations, then validate against history and current policy.
+//! 4. Stage and durably persist the next generation.
 //! 5. Only then open stable-memory handles through committed allocation
 //!    authority.
 //!
@@ -32,15 +33,16 @@
 //! For the default `MemoryManager` runtime, registered `ic-memory` range claims
 //! are generic allocation policy and are enforced before caller-supplied
 //! policy. A framework such as Canic that wants higher-level range semantics
-//! should adapt to this contract deliberately: either register the ranges it
-//! wants `ic-memory` to enforce, or omit user ranges and enforce application
-//! space through its own [`AllocationPolicy`].
+//! should adapt to this contract deliberately. Register explicit grants for
+//! logical placement and historical selection. When no user ranges are
+//! registered, the framework's [`AllocationPolicy`] can enforce fixed
+//! application claims directly.
 //!
 //! Use these primitives before opening stable-memory handles. Integrations
 //! should recover the historical ledger, declare the stores expected by the
-//! current binary, validate declarations against history and policy, commit a
-//! new generation, and only then publish committed allocation authority before
-//! opening slots through the storage owner.
+//! current binary, admit recovered identity, resolve requests, validate against
+//! history and policy, persist a new generation, and only then publish authority
+//! before opening slots through the storage owner.
 //!
 //! Bounded physical attribution is available through
 //! [`MemoryRuntime::memory_allocations`] and
@@ -84,6 +86,7 @@ mod cbor;
 mod constants;
 mod declaration;
 mod diagnostics;
+mod hash;
 mod key;
 mod ledger;
 mod physical;
@@ -121,6 +124,23 @@ mod test_cbor {
 
     pub fn map_insert(map: &mut Vec<(Value, Value)>, key: Value, value: Value) {
         map.push((key, value));
+    }
+
+    pub fn hex_fixture(contents: &str) -> Vec<u8> {
+        let hex = contents
+            .chars()
+            .filter(|char| !char.is_whitespace())
+            .collect::<String>();
+        assert_eq!(hex.len() % 2, 0, "fixture hex must have byte pairs");
+        hex.as_bytes()
+            .as_chunks::<2>()
+            .0
+            .iter()
+            .map(|pair| {
+                let pair = std::str::from_utf8(pair).expect("fixture hex is utf8");
+                u8::from_str_radix(pair, 16).expect("fixture hex byte")
+            })
+            .collect()
     }
 }
 

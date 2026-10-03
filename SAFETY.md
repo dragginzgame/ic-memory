@@ -62,7 +62,7 @@ authorization, or endpoint safety.
 - Every present commit slot must pass marker and checksum validation. Recovery
   must not discard an invalid slot and fall back to an older generation because
   doing so could forget committed allocation history.
-- Recovered ledgers are untrusted until the explicit current-format
+- Decoded ledger DTOs are untrusted until the explicit current-format
   discriminator and committed-integrity checks succeed.
 - Stable-cell ledger storage used by every `MemoryRuntime` must be preflighted
   before opening it through `ic-stable-structures::Cell`, so envelope or record
@@ -71,6 +71,10 @@ authorization, or endpoint safety.
 - Each runtime's internal `ic_memory.*` governance allocations must stay
   recoverable in the durable ledger, but must not be published or opened through
   public application-memory helpers.
+- Maintained recovery must enforce encoded-byte, collection, nesting and history
+  limits before the corresponding untrusted allocation or decoding. Writers and
+  readers must admit the same current bounded shape; oversized or corrupt state
+  must never be replaced with an empty ledger.
 
 ## Validation-Before-Open Invariant
 
@@ -78,11 +82,13 @@ Storage integrations must validate layout before opening stable-memory handles:
 
 1. Construct the runtime only after its raw backing memory is classified as
    empty or as the current `ic-stable-structures` `MemoryManager` layout.
-2. Recover the persisted allocation ledger.
-3. Declare the stores expected by the current binary.
-4. Validate those declarations against ledger history and framework policy.
-5. Commit the new allocation generation.
-6. Only then open stable-memory handles using committed allocation authority.
+2. Supply the sealed declarations, logical requests and explicit host grants
+   expected by the current binary, and recover the persisted allocation ledger.
+3. Run host/consumer admission against bounded recovered metadata, then resolve
+   requests while retaining existing assignments.
+4. Validate the completed declarations against ledger history and current policy.
+5. Stage and durably persist one new allocation generation.
+6. Publish committed authority, then open application stable-memory handles.
 
 `MemoryRuntime::new()` performs the first step and is fallible. It rejects
 nonempty foreign or unsupported manager bytes before calling
@@ -93,6 +99,11 @@ Runtime policy implementations also provide an explicit
 `RuntimeBootstrapPolicy` identity. Repeated bootstrap is accepted only when
 that identity and the sealed declaration snapshot match the successful
 bootstrap, preventing a later policy argument from being silently ignored.
+Matching warm bootstrap and consumer authority verification must not replay
+admission, advance the generation or replace the host's policy or bucket size.
+Historical selections of unknown or retired keys, or without current grant and
+policy authorization, must reject before persistence. Naming a recovered key
+never grants an open capability.
 
 Opening stable-memory handles before validation defeats the purpose of this
 crate.
@@ -135,6 +146,10 @@ each thread therefore has independent default memory and runtime state. On
 single-threaded IC Wasm, the TLS runtime naturally has canister-instance
 lifetime. There is no public reset operation because resetting process flags
 cannot reset or replace the concrete backing memory that owns durable facts.
+Each native worker must bootstrap its host before consumer adoption or touching
+thread-local stable stores. Default readiness, open, ID-resolution, adoption and
+diagnostic helpers must observe existing state without constructing an absent
+runtime or choosing its bucket geometry.
 
 A successful runtime bootstrap also binds that runtime in memory to a validated
 `PolicyIdentity` and deterministic sealed-declaration fingerprint. Those values
@@ -142,6 +157,21 @@ prevent a repeated call from silently substituting different policy semantics
 or declarations, and doctor reports expose the same binding. They are
 diagnostic lifecycle metadata, not persisted ledger authority or upgrade audit
 history. The snapshot fingerprint is non-cryptographic.
+
+## Growth and Physical Accounting
+
+`RuntimeMemory::grow` must reserve physical backing capacity before the manager
+assigns buckets. Typed refusal preserves virtual extents and manager metadata
+and permits retry; only the required substrate `Memory::grow` adapter translates
+failure to `-1`. Native backing panics or partial writes are outside this refusal
+guarantee. All handles share the runtime's assigned-bucket count.
+
+Physical reports and numeric summaries must remain read-only and bounded to
+34,848 bytes of validated manager metadata, without decoding ledger history.
+They distinguish current, ledger and unknown bindings and preserve physical,
+bucket, virtual, slack and unmanaged-byte conservation. Virtual extent is not
+payload occupancy; a reported range claim is not historical ownership or access
+authority.
 
 ## Retirement Invariants
 

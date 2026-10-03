@@ -18,7 +18,6 @@ use std::sync::Arc;
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ValidatedAllocations {
     inner: Arc<ValidatedState>,
-    _private: (),
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -43,7 +42,6 @@ impl ValidatedAllocations {
                 declarations,
                 runtime_fingerprint,
             }),
-            _private: (),
         }
     }
 
@@ -78,7 +76,6 @@ impl ValidatedAllocations {
         CommittedAllocations {
             validated: self,
             generation,
-            _private: (),
         }
     }
 }
@@ -105,7 +102,6 @@ impl ValidatedAllocations {
 pub struct CommittedAllocations {
     validated: ValidatedAllocations,
     generation: u64,
-    _private: (),
 }
 
 impl CommittedAllocations {
@@ -134,11 +130,50 @@ impl CommittedAllocations {
     }
 
     pub(crate) fn without_stable_key_prefix(mut self, prefix: &str) -> Self {
-        let mut state = (*self.validated.inner).clone();
+        let mut state = Arc::unwrap_or_clone(self.validated.inner);
         state
             .declarations
             .retain(|declaration| !declaration.stable_key.as_str().starts_with(prefix));
         self.validated.inner = Arc::new(state);
         self
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn filtering_governance_does_not_change_shared_capabilities() {
+        let validated = ValidatedAllocations::new(
+            1,
+            vec![
+                AllocationDeclaration::memory_manager(
+                    crate::IC_MEMORY_LEDGER_STABLE_KEY,
+                    0,
+                    "ledger",
+                )
+                .unwrap(),
+                AllocationDeclaration::memory_manager("app.rows.v1", 100, "rows").unwrap(),
+            ],
+            Some("host".to_string()),
+        );
+        let committed = validated.clone().confirm_persisted(2);
+        let filtered = committed
+            .clone()
+            .without_stable_key_prefix(crate::IC_MEMORY_STABLE_KEY_PREFIX);
+
+        assert_eq!(validated.declarations().len(), 2);
+        assert_eq!(committed.declarations().len(), 2);
+        assert_eq!(filtered.declarations().len(), 1);
+        assert_eq!(
+            filtered.declarations()[0].stable_key().as_str(),
+            "app.rows.v1"
+        );
+        assert_eq!(filtered.generation(), committed.generation());
+        assert_eq!(
+            filtered.runtime_fingerprint(),
+            committed.runtime_fingerprint()
+        );
     }
 }

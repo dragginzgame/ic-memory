@@ -17,9 +17,9 @@ S = \{0,1,\ldots,254\}
 $$
 
 ID `255` is reserved by `ic-stable-structures` as the unallocated sentinel. In
-the default runtime, `ic-memory` reserves IDs `0..=9` for governance and uses ID
+each `MemoryRuntime`, `ic-memory` reserves IDs `0..=9` for governance and uses ID
 `0` for the allocation ledger. Lower-level bootstrap owners that bypass the
-default runtime must enforce equivalent policy themselves.
+runtime must enforce equivalent policy themselves.
 
 ## Substrate Correspondence
 
@@ -39,7 +39,11 @@ allocated-bucket count, the bucket size, 32 reserved bytes, and one page-count
 entry for each managed memory `0..=254`. The bucket-owner table follows the
 header. With the default bucket size of 128 Wasm pages and 32,768 managed
 buckets, the manager can address 256 GiB of bucket-backed stable memory through
-this layout.
+this layout. Fresh ic-memory runtimes retain that 128-page default. Hosts may
+select any nonzero `u16` page count through `MemoryManagerConfig`; reopening with
+an explicit configuration requires an exact match to the persisted geometry.
+Smaller buckets reduce allocation granularity and total table capacity. They
+do not shrink or migrate existing memory.
 
 `ic-memory`'s default ledger anchor also relies on
 `ic-stable-structures::Cell`. The relevant Cell V1 envelope begins with magic

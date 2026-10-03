@@ -1,5 +1,9 @@
 # CBOR Codec Raw Wasm Size Check — 2026-07-14
 
+Historical measurement of the pinned codec/toolchain probe below. Dependency
+observations and byte counts describe that run; current release gates are in
+the [Makefile](../../Makefile).
+
 ## Question
 
 Does replacing `serde_cbor` with `ciborium` increase the non-gzipped WebAssembly

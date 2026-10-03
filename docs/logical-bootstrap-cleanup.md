@@ -1,6 +1,10 @@
 # Logical bootstrap cleanup (#6)
 
 Baseline: release 0.14.1, commit `91288c45e450d98c96e447a6f64487223d004087`.
+Implemented and released in 0.14.2; issue #6 is closed. The implementation
+discussion remains applicable, while the measurements and validation budgets
+below describe that release. See [the reconciliation](issue-reconciliation.md)
+for subsequent adoption and the current [Makefile](../Makefile) for size gates.
 This is a construction/repeated-work cleanup with no public API or durable-format
 change and no additional lifecycle state, cache or allocator.
 
@@ -45,7 +49,7 @@ The counts below describe snapshot builds inside runtime bootstrap, excluding
 initial linked-input sealing. They are source-level work counts, not instruction
 or cycle measurements.
 
-| Path | 0.14.1 | Current |
+| Path | 0.14.1 | 0.14.2 |
 | --- | --- | --- |
 | Fresh key-only bootstrap, no historical selection | One resolved build | One resolved build |
 | Ordinary cold reopen, no historical selection | One resolved build | One resolved build |
@@ -67,13 +71,13 @@ builder retains its existing range reconstruction and validation.
 
 ## Matched raw Wasm qualification
 
-Both baseline and current sources use Rust 1.97.1, the same lockfile, unchanged
+Both 0.14.1 and 0.14.2 sources use Rust 1.97.1, the same lockfile, unchanged
 probe sources/exports, `wasm32-unknown-unknown` and the committed `wasm-size`
 profile (size optimization, fat LTO, one codegen unit, stripped symbols).
 Artifacts are raw and uncompressed. The baseline was built from `git archive`
 in a separate temporary checkout.
 
-| Probe | Baseline bytes | Current bytes | Delta |
+| Probe | 0.14.1 bytes | 0.14.2 bytes | Delta |
 | --- | ---: | ---: | ---: |
 | Core | 255,760 | 256,099 | +339 |
 | Diagnostics | 307,939 | 308,657 | +718 |
@@ -95,11 +99,15 @@ native or wall-clock timing substitutes for them. The issue's IcyDB integration
 size delta and shallow sorting-symbol attribution are separate measurements and
 are not treated as attributable savings here.
 
-Run the maintained comparison workload with:
+Run the maintained workload and current size gates with:
 
 ```sh
 make wasm-size
 ```
+
+Reproducing the table additionally requires both pinned release sources and
+the matching toolchain/lockfile described above; a current run alone is not a
+historical before/after comparison.
 
 Production changes are limited to request schema replacement/sorting and resolver
 inputs in `registry.rs`, completion in `runtime/admission.rs`, and the existing

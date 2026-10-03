@@ -7,7 +7,7 @@ Recovery still follows recover → prepare → resolve → validate → persist 
 There is no additional decoder, cache, runtime mode or commit boundary.
 
 This is an intentional pre-1.0 persisted-format hard cut. Recreate stable data
-written by earlier releases. Logical format version remains **1**; no array
+written before 0.14.3. Logical format version remains **1**; no array
 reader, format dispatch or migration bridge is supplied. The four affected
 current fixtures have been replaced in place; logical envelope fixtures and
 checksums are unchanged.
@@ -60,7 +60,7 @@ Matched raw Wasm builds use baseline `31e3116` (0.14.2), Rust 1.97.1, the same
 resolved dependencies, unchanged exports and the maintained `wasm-size` profile.
 These are raw uncompressed bytes, not native timing measurements.
 
-| Probe | Baseline bytes | Candidate bytes | Delta |
+| Probe | 0.14.2 bytes | 0.14.3 bytes | Delta |
 | --- | ---: | ---: | ---: |
 | Core | 256,101 | 255,754 | −347 |
 | Diagnostics | 308,657 | 308,136 | −521 |
@@ -72,7 +72,7 @@ there is no added production dependency. Production edits touch four files:
 `physical.rs`, `cbor.rs`, `constants.rs` and `ledger/payload.rs`. The flow is unchanged and opaque-byte processing is simpler; the serde
 adapter adds local code to retain human-readable DTO behavior.
 
-## Consumer execution
+## Original candidate consumer execution
 
 The maintained IcyDB `testing/integration/tests/lifecycle_participant.rs` was run
 from a disposable copy of the sibling worktree with a local ic-memory override,
@@ -115,7 +115,7 @@ status changes. The codec subsequently shipped in 0.14.3 and IcyDB adopted the
 published package under the unchanged ceiling. Its
 [released 0.15.0 follow-up](https://github.com/dragginzgame/ic-memory/issues/7#issuecomment-5947699680)
 reports a worst phase of 5,169,089 instructions, and the
-[0.15.3 follow-up](https://github.com/dragginzgame/ic-memory/issues/8#issuecomment-5948796045)
+[recorded 0.15.3 follow-up](https://github.com/dragginzgame/ic-memory/issues/8#issuecomment-5948796045)
 reports 5,169,206, both below 12,750,000. These are downstream acceptance results,
 not matched performance deltas against the original compiler/dependency graph.
 See the [current issue reconciliation](issue-reconciliation.md) for disposition

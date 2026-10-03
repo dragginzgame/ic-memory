@@ -1,8 +1,8 @@
 # Key-only allocation and bounded recovery
 
-This is the current contract for issues #2–#4. Fixed declarations remain useful
-for host composition. Logical requests add no fields to the durable ledger and
-create no second allocation map.
+This is the current contract for completed issues #2–#4. Fixed declarations
+remain useful for host composition. Logical requests add no fields to the
+durable ledger and create no second allocation map.
 
 ## Placement and host adoption
 
@@ -12,10 +12,11 @@ authority identifier and schema metadata. Register it with
 `ic_memory_declaration!` form, or pass it to `SealedDeclarationSnapshot::new`
 with explicitly owned fixed declarations and range grants.
 
-The runtime opens its fixed ledger root (ID 0), recovers history, resolves
-requests, validates the complete resolved snapshot under current policy, stages
-one generation, persists it, then publishes `CommittedAllocations`. The default
-runtime delegates to this same implementation. Resolution does not commit.
+The runtime opens its fixed ledger root (ID 0), recovers history, runs host
+admission, resolves requests, validates the complete resolved snapshot under
+current policy, stages one generation, persists it, then publishes
+`CommittedAllocations`. The default runtime delegates to this same
+implementation. Resolution does not commit.
 
 Resolution sorts requests by stable key. Every known key retains its durable
 slot. Every new key takes the lowest unused ID covered by an explicit `Allowed`
@@ -56,7 +57,8 @@ authority and diagnostic-metadata mismatches; it does not validate application
 schema semantics or replay admission. The runnable
 [`key_only` example](../examples/key_only.rs) covers standalone ownership and a
 composed host with automatic requests, a fixed control slot and a prior journal
-reservation.
+reservation. The [composed-host regression](../examples/composed_host.rs) adds
+consumer admission, two cold reopens and bootstrap on each native worker.
 
 ## Omitted-store inspection
 
@@ -99,8 +101,11 @@ slots. Naming a key in an open call grants nothing.
 
 Allocation metadata does not contain IcyDB incarnation, journal debt or accepted
 schema. Consumers must supply their own identity/role interpretation and retain
-control-store and lifecycle checks after commitment. Actual generated IcyDB
-integration and its end-to-end qualification remain downstream work.
+control-store and lifecycle checks after commitment. IcyDB's maintained generated
+upgrade qualification now covers omitted-journal reconciliation, debt and pending
+markers; see the [issue reconciliation](issue-reconciliation.md#downstream-acceptance).
+Application-specific host composition and lifecycle qualification remain
+consumer responsibilities.
 
 A foreign authority without the slot grant or a revoked grant fails before
 persistence. Explicit generic retirement produces `RetiredAllocation` even if
@@ -119,7 +124,7 @@ redeclaration does not promise that IcyDB can reintroduce a retired database.
 
 ## Recovery and admission limits
 
-Previously, the stable-cell header was checked against physical capacity and
+Before 0.14.0, the stable-cell header was checked against physical capacity and
 `usize`, then allocated. CBOR decoding checked trailing bytes after decoding;
 metadata and ownership invariants were validated after DTO construction.
 Generation staging cloned history and appended a record even for unchanged
@@ -152,8 +157,9 @@ cannot be replaced with genesis.
 
 The outer ceiling permits two maximum byte-string payloads, including their
 24-byte envelopes, plus record metadata. The current persisted shape is a
-pre-1.0 hard cut: recreate earlier integer-array records; the format version
-remains 1. See [codec qualification](opaque-ledger-payloads.md). Writers
+pre-1.0 hard cut introduced in 0.14.3: recreate records written before that
+release; the format version remains 1. See
+[codec qualification](opaque-ledger-payloads.md). Writers
 validate structural bounds before encoding and byte bounds before mutating the
 commit store; runtimes also check outer bytes before memory growth/write.
 Staging rejects excessive prior history before cloning and checks the resulting
@@ -184,7 +190,7 @@ Raw, uncompressed Wasm is measured with matching Rust 1.97.1, the committed
 diagnostics probe sources at baseline and after the change. No native timing is
 used. Baseline is release commit `4a5cd22` (0.13.3).
 
-| Probe | Baseline bytes | Current bytes | Delta |
+| Probe | 0.13.3 bytes | 0.14.0 bytes | Delta |
 | --- | ---: | ---: | ---: |
 | Core, unchanged fixed-declaration probe | 240,300 | 255,112 | +14,812 |
 | Diagnostics, unchanged probe | 289,090 | 307,589 | +18,499 |
@@ -192,7 +198,7 @@ used. Baseline is release commit `4a5cd22` (0.13.3).
 
 The key-only probe preserves the core export names and one-slot workload while
 replacing the fixed declaration/open with an explicit `Allowed` grant and
-key-only request/open. It is 350 bytes smaller than the current fixed probe.
+key-only request/open. It is 350 bytes smaller than the 0.14.0 fixed probe.
 CI and `make wasm-size` now enforce 260,000 bytes for core/key-only and 315,000
 for diagnostics, admitting the measured implementation with limited headroom.
 The old 245,000/290,000 budgets were exceeded, not silently left failing.

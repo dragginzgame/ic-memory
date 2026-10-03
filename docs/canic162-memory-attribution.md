@@ -1,15 +1,20 @@
 # CANIC-162: bounded physical allocation attribution
 
 Original qualification: 2026-09-10, prepared against 0.12.3.
-The API guidance below includes the changes prepared for 0.15.0; the fixture
-measurements retain their original qualification scope.
-Canic and Toko Miner were inspected read-only. Their pending integration and the
-reported 232 MiB live observation remain separate from this fixture evidence.
+The API guidance is current through 0.15.4; the fixture measurements and original
+validation counts retain their 2026-09-10 scope. A read-only sibling review on
+2026-10-03 confirms Canic selects 0.15.3, uses the detailed report and numeric
+summary, exposes the full allocation DTO, and configures 16-page buckets at its
+bootstrap owner. This is source-adoption evidence, not a live Toko measurement
+or a new consumer lifecycle qualification. The reported 232 MiB observation
+remains separate from this fixture evidence.
 
 ## Supported API and accounting
 
-```rust
-impl<M: ic_stable_structures::Memory> MemoryRuntime<M> {
+The following signatures summarize the API; they are not a standalone program.
+
+```rust,ignore
+impl<M: ic_memory::ic_stable_structures::Memory> MemoryRuntime<M> {
     pub fn memory_allocations(&self)
         -> Result<MemoryAllocations, RuntimeDiagnosticError>;
     pub fn memory_allocation_summary(&self)
@@ -132,19 +137,18 @@ commit: these are separate lifecycle actions, not diagnostic work.
 
 ## Canic adoption example
 
-Keep controller authorization on the existing protected observation and Root
-relay. In the ops owner, replace the current committed-handle loop with this
-substrate call (existing Canic error mapping shown):
+Canic's operations owner now uses the substrate report and maps it into its
+protected response DTO. Keep controller authorization and error projection in
+the integration. A complete upstream collection example is:
 
 ```rust
-fn allocation_snapshot() -> Result<ic_memory::MemoryAllocations, InternalError> {
-    let report = ic_memory::default_memory_manager_memory_allocations()
-        .map_err(MemoryRegistryOpsError::from)?;
-    // Preserve Canic's current requirement for completed bootstrap.
+fn allocation_snapshot()
+    -> Result<ic_memory::MemoryAllocations, ic_memory::RuntimeDiagnosticError>
+{
+    let report = ic_memory::default_memory_manager_memory_allocations()?;
+    // A protected integration may require completed bootstrap.
     if report.current_generation.is_none() {
-        return Err(InternalError::public(
-            crate::diagnostics::codes::STATE_INVALID,
-        ));
+        return Err(ic_memory::RuntimeDiagnosticError::NotBootstrapped);
     }
     Ok(report)
 }
@@ -152,12 +156,11 @@ fn allocation_snapshot() -> Result<ic_memory::MemoryAllocations, InternalError> 
 
 This is the ops collection boundary. Map the owned report into Canic's own
 Candid DTO at its existing DTO boundary; ic-memory does not add Candid or an
-endpoint. The current `MemoryAllocationsResponse` cannot express this report
-fully: change it directly to carry all 255 rows, binding variants, optional
-range claims, per-ID bucket/slack values, manager metadata and separate
-unknown-binding/unmanaged residuals. Preserve `payload_bytes = None` and the
-measurement meaning. Do not filter to current keys or coerce unknown keys into
-fabricated strings or `Active` state. If maintaining a derived current-only
+endpoint. Canic's `MemoryAllocationsResponse` now carries all 255 rows, binding
+variants, optional range claims, per-ID bucket/slack values, manager metadata
+and separate unknown-binding/unmanaged residuals. Preserve `payload_bytes = None`
+and the measurement meaning. Do not filter to current keys or coerce unknown
+keys into fabricated strings or `Active` state. If maintaining a derived current-only
 view, label it as such and retain all excluded allocation bytes in explicit
 residuals so that its conservation still works.
 
@@ -173,36 +176,28 @@ Consumers adopting an existing host can use
 `default_memory_manager_memory_id(key)` to check their requirements and resolve
 IDs without replaying bootstrap or changing host policy. Opens and these helpers
 leave an absent runtime untouched, so they can precede a configured bootstrap.
-`RuntimeMemory::grow` now returns `Result<u64, RuntimeGrowError>`; update direct
-Canic callers to handle typed errors instead of checking an integer sentinel.
+`RuntimeMemory::grow` returns `Result<u64, RuntimeGrowError>`; direct callers
+handle its typed result.
 Ordinary backing refusal precedes bucket assignment and preserves manager
 metadata for retry. The upstream `Memory` trait adapter alone maps these errors
 to the trait's required `-1` result.
 
-`RuntimeOpenError` and policy validation still govern opens. Update stable-store
-annotations such as `Cell<T, VirtualMemory<DefaultMemoryImpl>>` directly to
-`Cell<T, ic_memory::RuntimeMemory<DefaultMemoryImpl>>`. Update imports in Canic
-core/control-plane stores and any downstream store aliases that require the
-concrete handle type; do not add a renamed `VirtualMemory` compatibility alias.
-The existing macros already obtain the current handle from the default runtime.
+`RuntimeOpenError` and policy validation govern opens. Stable-store annotations
+use `Cell<T, ic_memory::RuntimeMemory<DefaultMemoryImpl>>`; import collections
+and backing traits through `ic_memory::ic_stable_structures`. The macros obtain
+the current handle from the default runtime.
 
-Retain Canic's existing bootstrap call for the default/adopt-persisted behavior:
+Canic's owner selects the artifact's configured bucket size and composes
+consumer admission into its host policy. Applications use that owner rather
+than creating another runtime or bootstrapping with an unrelated policy. The
+equivalent upstream pattern for a host-selected 16-page configuration is:
 
-```rust
-ic_memory::bootstrap_default_memory_manager_with_policy(
-    &policy::CanicMemoryManagerPolicy::new(),
-)?;
-```
-
-For a separately approved fresh-state 16-page policy, the memory bootstrap owner
-could instead use:
-
-```rust
+```rust,ignore
 let config = ic_memory::MemoryManagerConfig::new(16)
     .map_err(ic_memory::RuntimeStateError::from)?;
 ic_memory::bootstrap_default_memory_manager_with_config(
     config,
-    &policy::CanicMemoryManagerPolicy::new(),
+    &host_policy,
 )?;
 ```
 
@@ -213,12 +208,15 @@ diagnostics return `RuntimeDiagnosticError::NotBootstrapped`. For prebootstrap
 recovery or doctor inspection with explicit configuration, construct an owned
 `MemoryRuntime::new_with_config(memory, config)` first. Existing 128-page memory
 explicitly rejects 16; it is not reduced in place. Use the same setting on later
-bootstrap calls. This example is an adoption option, not a change to Canic or
-Toko in this workspace.
+bootstrap calls. Current Canic source selects 16 pages; ic-memory itself retains
+128 pages as the fresh-state default. This review does not change any consumer
+or deployed memory. The [composed-host example](../examples/composed_host.rs)
+qualifies native thread ordering and repeated substrate reopens; Canic owns its
+participant/store-restoration lifecycle proof.
 
 ## Disposable measurements and policy assessment
 
-Reproduce three independent fresh-state runs:
+Run the maintained workload for three independent fresh-state runs:
 
 ```sh
 cargo run --release --offline --example allocation_measurements > /tmp/run-1.csv
@@ -226,6 +224,10 @@ for run in 2 3; do
   target/release/examples/allocation_measurements > "/tmp/run-${run}.csv"
 done
 ```
+
+These commands use the current source and toolchain. Reproducing the retained
+numbers requires the original 2026-09-10 source and Rust 1.98.1 environment;
+current runs are new measurements, not replacements for the historical CSVs.
 
 Retained CSVs: [run 1](measurements/canic162/run-1.csv),
 [run 2](measurements/canic162/run-2.csv), [run 3](measurements/canic162/run-3.csv).
@@ -301,15 +303,16 @@ bytes. A separate corrupt-ledger test advertises an enormous cell length and
 proves that attribution never reads or decodes it. Unmanaged-tail tests add
 physical pages outside the manager and verify the separate residual identity.
 
-**Decision:** retain the 128-page default. The size savings justify supported
+**Original decision:** retain the 128-page default. The size savings justify supported
 opt-in configuration. Sixteen pages is a useful fresh-state evaluation candidate
 with 32 GiB table capacity; eight pages trades that down to 16 GiB, and one page
-limits the entire manager to 2 GiB. None is selected for Toko by this work:
-actual live attribution, intended lifetime capacity, IC growth/access costs,
-and downstream protected-observation adoption remain outstanding. There is no
-live query, deployment, memory reduction, or inference of a leak in this evidence.
+limits the entire manager to 2 GiB. This original qualification selected no
+configuration for Toko. At that point, live attribution, intended lifetime
+capacity, IC growth/access costs and protected-observation adoption remained
+outstanding; subsequent Canic source adoption is recorded above. These fixture
+results establish no live memory reduction or inference of a leak.
 
-## Validation
+## Original 2026-09-10 validation
 
 - Full suite: 204 library tests, integration tests, all five trybuild cases,
   and doctests pass on Rust 1.98.1 (five existing doctests remain ignored).

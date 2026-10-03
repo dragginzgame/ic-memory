@@ -902,23 +902,13 @@ fn sealed_declaration_fingerprint(
         }
     })?;
 
-    let value = bytes
-        .into_iter()
-        .fold(FINGERPRINT_FNV_OFFSET, fingerprint_hash_byte);
     Ok(SealedDeclarationFingerprint {
         algorithm_version: SEALED_DECLARATION_FINGERPRINT_VERSION,
-        value,
+        value: crate::hash::fnv64(crate::hash::FNV_OFFSET, &bytes),
     })
 }
 
 const SEALED_DECLARATION_FINGERPRINT_VERSION: u8 = 1;
-const FINGERPRINT_FNV_OFFSET: u64 = 0xcbf2_9ce4_8422_2325;
-const FINGERPRINT_FNV_PRIME: u64 = 0x0000_0100_0000_01b3;
-
-const fn fingerprint_hash_byte(hash: u64, byte: u8) -> u64 {
-    (hash ^ byte as u64).wrapping_mul(FINGERPRINT_FNV_PRIME)
-}
-
 const fn range_mode_order(mode: MemoryManagerRangeMode) -> u8 {
     match mode {
         MemoryManagerRangeMode::Reserved => 0,

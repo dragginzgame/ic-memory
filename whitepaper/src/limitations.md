@@ -21,6 +21,14 @@ message-level atomic commit and rollback.
 
 The durable format is intentionally current-only. Any other envelope shape
 fails closed.
+Structural ceilings also bound byte decoding and retained history. They make
+exhaustion explicit, not impossible; cold upgrades and schema churn consume
+finite capacity, and no automatic compactor discards ownership records.
+
+Native backing memory must obey its read/grow/write contract and the runtime's
+sole-manager ownership assumption. Partial native writes and backing panics are
+outside IC message-level atomicity. Typed growth refusal and read-only reporting
+are narrower guarantees.
 
 The present native slot model follows `ic-stable-structures` `MemoryManager`
 IDs exactly. Moving beyond 255 virtual memories would require a different slot

@@ -177,7 +177,7 @@ impl<M: Memory> MemoryRuntime<M> {
         })
     }
 
-    /// Return the actual policy bound to this runtime's sole manager.
+    /// Return the immutable bucket configuration bound to this runtime's manager.
     #[must_use]
     pub const fn memory_manager_config(&self) -> MemoryManagerConfig {
         // Construction has already validated the nonzero persisted setting.
@@ -192,9 +192,9 @@ impl<M: Memory> MemoryRuntime<M> {
 
     /// Bootstrap this backing memory from one immutable declaration snapshot.
     ///
-    /// Recovery, metadata admission, policy evaluation, staging, persistence,
-    /// and capability publication are local to this runtime. A repeated call is idempotent
-    /// only when the sealed declaration snapshot and
+    /// Recovery, metadata admission, logical resolution, policy evaluation,
+    /// staging, persistence and capability publication are local to this runtime.
+    /// A repeated call is idempotent only when the sealed declaration snapshot and
     /// [`RuntimeBootstrapPolicy::runtime_bootstrap_identity`] match the
     /// successful bootstrap. A mismatch returns a typed error without
     /// advancing the durable generation or re-evaluating policy.

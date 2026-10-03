@@ -4,10 +4,11 @@
 
 Risk score: **3/10**.
 
-Post-0.7 note: this report is a dated audit artifact. Wording about
-compatibility ranges, ledger schema versions, or future schema-version fixtures
-should now be read in light of the 0.7 cleanup, which removed that scaffold and
-kept only the current-format envelope/CBOR ledger path.
+Historical audit of the 2026-05-20 source. Findings, API names, trust-state
+descriptions and validation results below describe that baseline. They are not
+an outstanding-work list or current integration guidance. See
+[README](../../../README.md), [ADVANCED](../../../ADVANCED.md) and
+[SAFETY](../../../SAFETY.md) for the released runtime and current-only format.
 
 The crate is in good hygiene shape for the current release. Formatting,
 tests, clippy, docs, feature checks, and whitespace checks all pass. The main

@@ -1,6 +1,9 @@
 # Protocol
 
-Each binary contributes a declaration snapshot `D`, containing pairs:
+Each binary contributes a sealed input containing fixed declarations, logical
+key requests and explicit host range grants. After recovery and consumer
+admission, the runtime resolves that input into a declaration snapshot `D`
+containing pairs:
 
 $$
 (k,s) \in K \times S
@@ -11,24 +14,48 @@ Here `k` is a stable key such as `app.users.v1`, and `s` is a physical
 
 The runtime then:
 
-1. recovers the committed allocation ledger,
-2. collects current declarations,
-3. validates them against history and policy,
-4. commits the next generation,
-5. publishes a capability that authorizes the owner's committed-slot open path.
+1. recovers the committed allocation ledger with bounded decoding,
+2. runs the host's consumer-admission hook against validated allocation metadata,
+3. resolves logical requests and admitted historical keys under current grants,
+4. validates the resolved declarations against history and policy,
+5. stages and durably persists the next generation,
+6. publishes a capability that authorizes the owner's committed-slot open path.
 
-The default runtime performs that sequence before publishing its open
-authority. The lower-level Rust APIs expose the pieces separately for framework
-owners, so manual integrations must preserve the same order.
+Both owned and default `MemoryRuntime` instances perform that sequence before
+publishing open authority. The lower-level Rust APIs expose the pieces
+separately for framework owners, so manual integrations must preserve the same
+order.
 
 The ordering is the central safety boundary:
 
 ```text
-recover -> validate -> commit -> open
+recover -> prepare -> resolve -> validate -> stage -> persist -> publish -> open
 ```
 
 Opening application stable-memory handles before this boundary defeats the
 protocol.
+
+## Logical Placement and Consumer Admission
+
+A known key retains its committed physical slot. A new key takes the lowest
+unclaimed ID in an explicit `Allowed` host grant, in canonical stable-key order.
+Fixed claims, governance, reservations, omitted allocations and tombstones
+remain occupied. Custom policy may reject placement; it cannot silently move
+known keys or create an undeclared eligible pool.
+
+The host's `RuntimeBootstrapPolicy::prepare_bootstrap` hook can inspect bounded
+recovered allocation metadata, reject a consumer identity transition, and select
+known historical keys before resolution. Selection requires current host grants
+and rejects unknown or retired keys. Metadata supplies no store handles or
+application payloads. Consumer journal-debt, accepted-schema and retirement
+checks remain outside allocation governance.
+
+Cold runtime reconstruction repeats admission and advances one generation after
+successful persistence. Matching warm bootstrap returns the existing capability
+without another commit. A library joining a warm host verifies its requirements
+with `verify_authority` and opens committed keys; it does not replay admission
+or replace the host's policy or bucket geometry. Omission retains ownership but
+removes a key from current open authority unless explicitly admitted again.
 
 ## State Model
 

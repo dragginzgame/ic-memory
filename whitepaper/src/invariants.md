@@ -44,7 +44,7 @@ $$
 \mathsf{MayOpen}(A,k,s) \Rightarrow \mathsf{ActiveAt}(L,k,s)
 $$
 
-For the Rust default runtime, this corresponds to publishing
+For Rust's owned and default runtimes, this corresponds to publishing
 `CommittedAllocations` only after the staged ledger generation has been
 persisted. Manual integrations carry this as an ordering obligation.
 

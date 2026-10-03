@@ -29,7 +29,7 @@ the former lifecycle cost gate at 5,131,230 instructions.
 The [released 0.15.0 follow-up on #7](https://github.com/dragginzgame/ic-memory/issues/7#issuecomment-5947699680)
 reports all three lifecycle-participant tests passing, with a worst phase of
 5,169,089 instructions against the unchanged 12,750,000 ceiling. The
-[latest 0.15.3 follow-up on #8](https://github.com/dragginzgame/ic-memory/issues/8#issuecomment-5948796045)
+[recorded 0.15.3 follow-up on #8](https://github.com/dragginzgame/ic-memory/issues/8#issuecomment-5948796045)
 reports four bootstrap tests and seven installed-canister tests passing. Its
 worst participant phase is 5,169,206 instructions; empty/populated stable extents
 remain 23,134,208 bytes. Maintainer Clippy and the public Rust 1.88 dependency

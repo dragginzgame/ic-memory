@@ -32,13 +32,16 @@ but it removes `ic_memory.*` governance keys from the committed allocations it
 publishes for application opens. Public default-runtime open helpers reject
 those reserved keys.
 
-A typical framework flow is:
+A framework supplies sealed fixed declarations, logical requests and host grants
+to one runtime. A cold bootstrap then:
 
-1. Recover the saved allocation ledger into `RecoveredLedger`.
-2. Declare the stores this binary expects.
-3. Validate those declarations against history and policy.
-4. Commit the new generation.
-5. Open stable-memory handles only after commit persistence succeeds.
+1. Recovers the saved allocation ledger into `RecoveredLedger`.
+2. Runs the host's `prepare_bootstrap` hook to admit consumer identity and select
+   authorized historical keys from bounded allocation metadata.
+3. Resolves logical requests while preserving existing assignments.
+4. Validates the completed declarations against history and current policy.
+5. Stages and persists one generation before publishing `CommittedAllocations`.
+6. Opens application stable-memory handles through that runtime.
 
 The important rule: validate layout before touching stable data.
 
@@ -134,17 +137,30 @@ declarations stay inside that range. If any user range is registered, all user
 `MemoryManager` declarations are checked against registered range ownership.
 This is the standalone multi-crate composition mode.
 
-If a framework such as Canic wants its own policy to decide application space,
-it should not register `ic_memory_range!` claims for that application space.
-It can still use `bootstrap_default_memory_manager_with_policy(...)` and reject
-keys or slots in its `AllocationPolicy`.
+A framework can omit all registered user ranges and enforce fixed application
+claims through `bootstrap_default_memory_manager_with_policy(...)` and its
+`AllocationPolicy`. Logical placement and historical selection always
+require explicit registered host grants; a custom policy alone cannot supply
+their eligible pool. `Allowed` ranges supply fresh automatic placements;
+`Reserved` ranges permit matching existing or fixed claims without supplying
+new automatic slots.
 
 Canic-specific namespace and framework range rules are Canic policy. They are
 not hard-coded `ic-memory` rules. Canic should adapt to `ic-memory` by either:
 
 - registering the framework and package ranges it wants `ic-memory` to enforce;
-- or leaving application ranges unclaimed and enforcing those rules in Canic's
-  policy adapter.
+- or leaving all user ranges unclaimed for fixed-only allocations and
+  enforcing those rules in Canic's policy adapter.
+
+Consumers contribute their preparation to the host's single
+`RuntimeBootstrapPolicy::prepare_bootstrap` hook. Warm consumers call
+`verify_authority(&requirements, authority)` or
+`verify_default_memory_manager_authority(...)`, then open committed keys. They
+do not bootstrap again with their own policy. Verification checks fixed IDs,
+logical keys, current authority and diagnostic metadata without replaying
+admission or changing the host's geometry. See the
+[composed-host example](examples/composed_host.rs) and
+[recovered-admission contract](docs/recovered-admission.md).
 
 ## Declaration-Only Hooks
 
@@ -164,7 +180,10 @@ ic_memory::eager_init!({
 ```
 
 Hooks registered with `eager_init!` run before the declaration snapshot is
-sealed. Stable structures opened with `ic_memory_key!` require committed
+sealed. Configured bootstrap checks its bucket geometry before sealing and
+releases the runtime borrow while hooks run. Hooks may observe readiness and
+physical totals on that unbootstrapped runtime.
+Stable structures opened with `ic_memory_key!` require committed
 allocations to be published first, and the macro returns the typed open result
 so the integration chooses how to handle failure. Macro range and key
 declarations require an explicit stable `authority` string; it is policy
@@ -196,6 +215,10 @@ Custom-policy default runtimes should use
 stable-cell status, protected commit recovery, recovered ledger export,
 registered declarations, registered and effective range authority, validation
 under the tested policy, and live memory sizes for recovered ledger records.
+Doctor validation covers the supplied declaration set and allocation policy;
+it does not run `prepare_bootstrap`, predict historical completion or certify
+consumer admission. Use the bounded allocation summary/report when metrics
+need physical accounting without decoding ledger history.
 
 The report identifies the tested policy and declaration-snapshot fingerprint,
 shows the binding established by successful bootstrap, and reports whether the
@@ -216,7 +239,8 @@ discarding sizes measured successfully for other slots.
 
 ## Explicit `MemoryRuntime<M>`
 
-The explicit runtime requires only `M: ic_stable_structures::Memory`:
+The explicit runtime requires only
+`M: ic_memory::ic_stable_structures::Memory`:
 
 ```rust,ignore
 let declarations = ic_memory::sealed_declaration_snapshot()?;
@@ -235,10 +259,10 @@ Runtime construction accepts empty backing memory or the current
 foreign magic or an unsupported manager version, leaving rejected bytes
 unchanged.
 
-`committed` borrows the capability stored under `runtime`. Opening memory never
-accepts a capability from another runtime; it consults the capability and
-`MemoryManager` owned by the same object. Capability publication happens only
-after the stable-cell record write succeeds.
+`runtime.committed_allocations()` borrows the capability stored under the
+runtime. Opening memory never accepts a capability from another runtime; it
+consults the capability and `MemoryManager` owned by the same object. Capability
+publication happens only after the stable-cell record write succeeds.
 
 ## Manual Bootstrap
 
@@ -254,6 +278,18 @@ validate declarations against ledger/history/policy
 commit the new generation
 only then open stable-memory handles
 ```
+
+This lower-level path accepts resolved fixed declarations. Logical requests and
+recovered-metadata admission belong to `MemoryRuntime::bootstrap`, which adds
+preparation and resolution before the same validation/persistence boundary.
+Use the runtime when composing those features; a diagnostic export cannot
+resolve requests or authorize historical opens.
+
+Maintained recovery paths enforce byte, collection, nesting and history limits
+before the relevant allocations and decoding. See the
+[current recovery limits](docs/key-only-recovery.md#recovery-and-admission-limits).
+Opaque generation payloads use bounded CBOR byte strings, introduced in 0.14.3;
+the current decoder rejects the superseded integer-array representation.
 
 Decoded ledger and declaration DTOs are not trusted just because serde accepted
 them. Recovery first validates every present physical commit slot and selects

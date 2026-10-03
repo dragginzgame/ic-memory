@@ -14,7 +14,9 @@ by the `ICMF` format marker, format version `1`, payload length, and CBOR
 ledger bytes.
 
 Opaque committed payloads use definite-length CBOR byte strings. This is a
-pre-1.0 persisted-format hard cut: recreate data written by earlier releases.
+pre-1.0 persisted-format hard cut introduced in 0.14.3: recreate data written
+before that release. Later releases retain this shape unless another hard cut
+is explicitly documented.
 The logical format version remains `1`; there is no old-shape reader.
 
 Fixture groups:

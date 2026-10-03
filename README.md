@@ -277,6 +277,10 @@ touches the `thread_local!`.
 Duplicate stable keys, duplicate MemoryManager IDs, overlapping ranges, and
 out-of-range declarations fail before stable structures open.
 
+Logical requests require explicit `Allowed` grants for fresh assignments, even
+when the host supplies a custom policy. A `Reserved` range supports fixed or
+matching historical claims but supplies no fresh logical placement pool.
+
 `ic-memory` follows the `ic-stable-structures::MemoryManager` ID domain exactly:
 IDs `0..=254` are usable, and ID `255` is always the unallocated sentinel. It is
 not an application slot and cannot be declared or reserved.
@@ -288,9 +292,10 @@ do not publish or open that internal allocation as application memory.
 
 Range claims are authoritative in the default runtime. If a crate registers
 `ic_memory_range!`, its declared memories must stay inside that range. Framework
-adapters that want their own range policy, such as Canic, should register only
-the ranges they want `ic-memory` to enforce and put the rest in their policy
-adapter.
+adapters register the ranges they want `ic-memory` to enforce. When no user
+ranges are registered, fixed claims can use the adapter's own application
+policy. Logical placement and historical selection always require explicit
+grants.
 
 The committed allocation state is an in-memory capability published into one
 runtime only after that runtime's stable-cell persistence succeeds. It is not a
@@ -386,10 +391,10 @@ an existing same-release memory's actual setting. For an explicit setting use
 nonzero `u16` page counts are supported. Existing memory must match exactly or
 construction fails before effects. Configuration is immutable for that runtime.
 
-For a default runtime, select configuration through
-`bootstrap_default_memory_manager_with_config(config, &policy)` before any
-operation that constructs the runtime. Repeated explicit configuration must
-match the established manager, independently of the allocation policy identity.
+For a default runtime, select configuration on the first bootstrap through
+`bootstrap_default_memory_manager_with_config(config, &policy)`. Repeated
+explicit configuration must match the established manager, independently of the
+allocation policy identity.
 No bucket setting shrinks existing memory or migrates the durable format.
 
 For configured bootstrap without a custom application policy, pass
@@ -463,6 +468,8 @@ slot is reported as a `DiagnosticMemorySizeOutcome::Failed` value without
 discarding successful measurements for other slots.
 Diagnostic failures carry stable `DiagnosticCode` values alongside their
 human-readable messages for operator automation.
+Doctor validation checks the supplied declarations and allocation policy; it
+does not run `prepare_bootstrap` or certify consumer admission.
 
 Use `default_memory_manager_commit_recovery_diagnostic()` when you only need
 commit-slot presence and validity, the selected authoritative generation, and
@@ -507,7 +514,13 @@ MSRV toolchain. Publishing also requires crates.io credentials configured for
 Cargo.
 
 Commit the implementation and a nonempty, numbered entry at the top of
-`CHANGELOG.md` for the next version before starting. Then use:
+`CHANGELOG.md` for the next version before starting.
+
+The maintainer owns commits, tags and pushes, including commands that perform
+them. Agents leave source and documentation unstaged for review; see
+[the repository instructions](AGENTS.md).
+
+The maintainer can then use:
 
 ```sh
 make release-patch   # Validate, bump patch, commit, annotate tag, push

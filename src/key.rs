@@ -127,9 +127,6 @@ fn validate(stable_key: &str) -> Result<(), StableKeyError> {
 }
 
 fn validate_segment(stable_key: &str, segment: &str) -> Result<(), StableKeyError> {
-    if segment.is_empty() {
-        return invalid(stable_key, "must not contain empty segments");
-    }
     let mut bytes = segment.bytes();
     let Some(first) = bytes.next() else {
         return invalid(stable_key, "must not contain empty segments");

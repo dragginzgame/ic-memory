@@ -215,24 +215,8 @@ fn serialize_record(record: &StableCellLedgerRecord) -> Vec<u8> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_cbor::hex_fixture;
     use ic_stable_structures::{Cell, VectorMemory};
-
-    fn hex_fixture(contents: &str) -> Vec<u8> {
-        let hex = contents
-            .chars()
-            .filter(|char| !char.is_whitespace())
-            .collect::<String>();
-        assert_eq!(hex.len() % 2, 0, "fixture hex must have byte pairs");
-        hex.as_bytes()
-            .as_chunks::<2>()
-            .0
-            .iter()
-            .map(|pair| {
-                let pair = std::str::from_utf8(pair).expect("fixture hex is utf8");
-                u8::from_str_radix(pair, 16).expect("fixture hex byte")
-            })
-            .collect()
-    }
 
     #[test]
     fn stable_cell_ledger_record_round_trips_through_cell() {

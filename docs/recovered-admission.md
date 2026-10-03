@@ -1,7 +1,9 @@
 # Recovered-metadata admission
 
-Issue #5 contract review, against the released 0.14.0 runtime and the referenced
-IcyDB bootstrap/convergence sources.
+Current admission contract, introduced in 0.14.1 for completed issue #5 and
+simplified in 0.14.2. The design review and measurements below retain their
+original 0.14.0/0.14.1 scope; current downstream acceptance is recorded in the
+[issue reconciliation](issue-reconciliation.md).
 
 ## Contract
 
@@ -47,17 +49,19 @@ After one successful commit, open those journals and let IcyDB inspect debt and
 pending-commit markers before deciding database lifecycle operations.
 
 This requires allocation keys to encode the consumer's identity/role sufficiently
-to enumerate candidate journals. The supplied IcyDB references establish the
-ordering gap but do not prove its future key grammar or lifecycle integration.
+to enumerate candidate journals. At the original review, the supplied IcyDB
+references established the ordering gap without proving its role grammar or
+lifecycle integration. Subsequent acceptance is recorded in the reconciliation.
 If incarnation or accepted-schema admission requires control-store contents,
 allocation metadata alone cannot establish that fact: retain the check after
 opening, or separately design durable identity metadata. This change does not
 add persistent identity, interpret journals, retire databases or clear data.
 
-Review conclusion: allocation-role discovery can close the declaration-ordering
-gap without pre-commit opens. Full IcyDB integration must still supply and test
-its exact role grammar and post-commit lifecycle checks. No second ledger or
-persistent mode is needed for the allocation-level contract.
+Original review conclusion: allocation-role discovery can close the
+declaration-ordering gap without pre-commit opens. A complete consumer
+integration supplies and tests its exact role grammar and post-commit lifecycle
+checks. No second ledger or persistent mode is needed for the allocation-level
+contract.
 
 ## Usage and errors
 
@@ -66,9 +70,11 @@ runnable example. Run `cargo run --example recovered_admission`. A host calls
 its generated consumers from its policy's `prepare_bootstrap` method. Existing
 `bootstrap_default_memory_manager_with_policy`, configured default bootstrap and
 `MemoryRuntime::bootstrap` all use that same hook. A library joining a warm host
-uses `committed_allocations().slot_for(...)` and key-based opens; it cannot append
-selections after the host has committed. Missing keys require coordination with
-the host's next cold bootstrap, not another commit or replacement profile.
+uses `verify_default_memory_manager_authority(...)` or owned
+`runtime.verify_authority(...)` to check its requirements, then resolves IDs and
+opens by key. It cannot append selections after the host has committed. Missing
+keys require coordination with the host's next cold bootstrap, not another
+commit or replacement profile.
 
 `BootstrapAdmissionError` distinguishes unknown, retired, duplicate, oversized,
 invalid-registration and current-grant failures. These are wrapped in
@@ -155,22 +161,23 @@ computation is trusted code, not metered by ic-memory. No new persisted fields,
 formats, mode flags or accounting machinery are added. For an identical completed
 declaration set the durable metadata-byte delta is zero.
 
-Matched Rust 1.97.1 raw, uncompressed Wasm builds use the committed `wasm-size`
-profile and target `wasm32-unknown-unknown`, comparing the unchanged three probes
-against release `33a28e1` (0.14.0):
+The original 0.14.1 matched Rust 1.97.1 raw, uncompressed Wasm builds use the
+committed `wasm-size` profile and target `wasm32-unknown-unknown`, comparing the
+unchanged three probes against release `33a28e1` (0.14.0):
 
-| Probe | Baseline bytes | Current bytes | Delta |
+| Probe | 0.14.0 bytes | 0.14.1 bytes | Delta |
 | --- | ---: | ---: | ---: |
 | Core | 255,114 | 255,762 | +648 |
 | Diagnostics | 307,589 | 307,931 | +342 |
 | Key-only | 254,762 | 255,341 | +579 |
-| Admission enabled | — | 258,960 | +3,619 versus current key-only |
+| Admission enabled | — | 258,960 | +3,619 versus 0.14.1 key-only |
 
 The admission probe retains the key-only export/workload shape and adds recovered
-journal discovery and selection, ensuring that code remains reachable. CI and
-`make wasm-size` cover all four probes; existing budgets are unchanged, with the
-admission probe also limited to 260,000 bytes. IC instructions/cycles for fresh
-bootstrap and repeated opens are **unmeasured**: no IC execution harness is
+journal discovery and selection, ensuring that code remains reachable. At that
+release, CI and `make wasm-size` covered four probes with a 260,000-byte
+admission budget. The current Make/CI gates cover five probes and allow 264,000
+admission bytes after the Rust 1.99 toolchain qualification. IC instructions/cycles
+for fresh bootstrap and repeated opens are **unmeasured**: no IC execution harness is
 configured here. No native timing is substituted. Opening itself is unchanged.
 
 The original 0.14.1 implementation added one preparation context and no stored
@@ -179,9 +186,12 @@ records the subsequent construction/snapshot simplification and matched sizes.
 
 ## Source boundary
 
-The issue's pinned [generated bootstrap](https://github.com/dragginzgame/icydb/blob/f3bd969be9dd7087a0c00e2655d703c397756616/crates/icydb-model/src/build/actor/db/store.rs#L766-L809)
+At the issue's original baseline, the pinned [generated bootstrap](https://github.com/dragginzgame/icydb/blob/f3bd969be9dd7087a0c00e2655d703c397756616/crates/icydb-model/src/build/actor/db/store.rs#L766-L809)
 executes before the [persisted registry reconciliation](https://github.com/dragginzgame/icydb/blob/f3bd969be9dd7087a0c00e2655d703c397756616/crates/icydb-core/src/db/database_format/convergence.rs#L43-L86).
-This implementation supplies the missing allocation-level preparation mechanism;
-it does not change that external repository. IcyDB must adopt the hook and verify
-its real role grammar, debt checks and pending markers through generated
-production bootstrap before claiming end-to-end integration complete.
+The allocation-level hook shipped in 0.14.1. IcyDB subsequently adopted shared
+role admission and qualified debt/pending-marker checks through generated
+production bootstrap; [the reconciliation](issue-reconciliation.md#downstream-acceptance)
+records that evidence and the later released-dependency acceptance. The pinned
+sources describe the original ordering gap, not a current integration blocker.
+Live application composition and consumer lifecycle checks remain downstream
+responsibilities.

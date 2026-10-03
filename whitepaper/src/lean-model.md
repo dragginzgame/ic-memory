@@ -12,7 +12,10 @@ captures the authority boundary that the Rust code must maintain:
 The model is intentionally protocol-level. It avoids Rust-specific
 implementation details such as CBOR decoding, physical dual-slot recovery,
 runtime registration, declaration-count limits, schema metadata history,
-mandatory generation parent links, and `u64` overflow. In particular, the Lean
+mandatory generation parent links, and `u64` overflow. The Lean
+model starts from resolved key/slot declarations; it does not verify logical
+placement, host grants, recovered-metadata admission, warm adoption, growth
+reservation or physical accounting. In particular, the Lean
 `OpenAuthority` type is a post-commit model object, not a field carried inside
 Rust's pre-commit `ValidatedAllocations` value. Its runtime counterpart is the
 post-persistence `CommittedAllocations` capability.

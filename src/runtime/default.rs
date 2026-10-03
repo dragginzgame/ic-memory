@@ -1,6 +1,7 @@
 use super::{
-    MemoryRuntime, RuntimeBootstrapError, RuntimeConstructionError, RuntimeDiagnosticError,
-    RuntimeMemory, RuntimeOpenError, RuntimeStateError, policy::GenericRangePolicy,
+    MemoryManagerConfig, MemoryRuntime, RuntimeBootstrapError, RuntimeConstructionError,
+    RuntimeDiagnosticError, RuntimeMemory, RuntimeOpenError, RuntimeStateError,
+    policy::GenericRangePolicy,
 };
 use crate::{
     CommittedAllocations, DiagnosticExport, MemoryRuntimeDoctorReport, RuntimeBootstrapPolicy,
@@ -16,6 +17,7 @@ thread_local! {
 }
 
 fn with_default_runtime_mut<T, E>(
+    config: Option<MemoryManagerConfig>,
     operation: impl FnOnce(&mut MemoryRuntime<DefaultMemoryImpl>) -> Result<T, E>,
 ) -> Result<T, E>
 where
@@ -26,9 +28,18 @@ where
             .try_borrow_mut()
             .map_err(|_| E::from(RuntimeStateError::ReentrantAccess))?;
         let runtime = runtime
-            .get_or_insert_with(|| MemoryRuntime::new(DefaultMemoryImpl::default()))
+            .get_or_insert_with(|| match config {
+                Some(config) => {
+                    MemoryRuntime::new_with_config(DefaultMemoryImpl::default(), config)
+                }
+                None => MemoryRuntime::new(DefaultMemoryImpl::default()),
+            })
             .as_mut()
             .map_err(|error| E::from(RuntimeStateError::Construction(*error)))?;
+        if let Some(config) = config {
+            super::check_bucket_size(runtime.bucket_size_pages, config)
+                .map_err(|error| E::from(RuntimeStateError::Construction(error)))?;
+        }
         operation(runtime)
     }) {
         Ok(result) => result,
@@ -124,7 +135,9 @@ pub fn bootstrap_default_memory_manager_with_policy<P: RuntimeBootstrapPolicy>(
     policy: &P,
 ) -> Result<CommittedAllocations, RuntimeBootstrapError<P::Error>> {
     let declarations = sealed_declaration_snapshot()?;
-    with_default_runtime_mut(|runtime| runtime.bootstrap(&declarations, policy).cloned())
+    with_default_runtime_mut(None, |runtime| {
+        runtime.bootstrap(&declarations, policy).cloned()
+    })
 }
 
 /// Open a committed memory from this thread's default runtime.
@@ -255,36 +268,56 @@ pub fn default_memory_manager_memory_allocation_summary()
 /// policy.
 ///
 /// The first construction uses this setting; repeated calls and reopened
-/// memory must match it exactly before bootstrap effects. Call this during
-/// bootstrap before any operation that would construct the default runtime.
+/// memory must match it exactly before bootstrap effects. Select this setting
+/// on the first bootstrap; observation and open helpers leave an absent runtime
+/// untouched.
+/// Registration hooks run without a TLS borrow and may observe the configured,
+/// unbootstrapped runtime.
 /// Use [`super::GenericRangePolicy`] to select the built-in policy, or pass the
 /// host's custom policy. This operation does not adopt a different bound policy.
 pub fn bootstrap_default_memory_manager_with_config<P: RuntimeBootstrapPolicy>(
-    config: super::MemoryManagerConfig,
+    config: MemoryManagerConfig,
     policy: &P,
 ) -> Result<CommittedAllocations, RuntimeBootstrapError<P::Error>> {
-    DEFAULT_RUNTIME
-        .try_with(|runtime| {
-            let mut runtime = runtime
-                .try_borrow_mut()
-                .map_err(|_| RuntimeStateError::ReentrantAccess)?;
-            let runtime = runtime
-                .get_or_insert_with(|| {
-                    MemoryRuntime::new_with_config(DefaultMemoryImpl::default(), config)
-                })
-                .as_mut()
-                .map_err(|error| RuntimeStateError::Construction(*error))?;
-            super::check_bucket_size(runtime.bucket_size_pages, config)
-                .map_err(RuntimeStateError::Construction)?;
-            let declarations = sealed_declaration_snapshot()?;
-            runtime.bootstrap(&declarations, policy).cloned()
-        })
-        .map_err(|_| RuntimeStateError::Unavailable)?
+    // Reject construction/configuration failures before sealing, but release
+    // the TLS borrow while registration hooks inspect the existing runtime.
+    with_default_runtime_mut(Some(config), |_| Ok::<_, RuntimeStateError>(()))?;
+    let declarations = sealed_declaration_snapshot()?;
+    with_default_runtime_mut(Some(config), |runtime| {
+        runtime.bootstrap(&declarations, policy).cloned()
+    })
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn configured_registration_hooks_can_observe_unbootstrapped_runtime() {
+        use crate::registry::{
+            TEST_REGISTRY_LOCK, defer_eager_init, reset_static_memory_declarations_for_tests,
+        };
+        let _guard = TEST_REGISTRY_LOCK.lock().unwrap();
+        reset_static_memory_declarations_for_tests();
+        defer_eager_init(|| {
+            assert_eq!(is_default_memory_manager_bootstrapped(), Ok(false));
+            assert_eq!(
+                committed_allocations(),
+                Err(RuntimeOpenError::NotBootstrapped)
+            );
+            let summary = default_memory_manager_memory_allocation_summary().unwrap();
+            assert_eq!(summary.bucket_size_pages, 16);
+            assert_eq!(summary.current_generation, None);
+        });
+        std::thread::spawn(|| {
+            let config = super::super::MemoryManagerConfig::new(16).unwrap();
+            bootstrap_default_memory_manager_with_config(config, &GenericRangePolicy).unwrap();
+            assert_eq!(is_default_memory_manager_bootstrapped(), Ok(true));
+        })
+        .join()
+        .unwrap();
+        reset_static_memory_declarations_for_tests();
+    }
 
     fn diagnostic_observations() -> [Result<(), RuntimeDiagnosticError>; 4] {
         [

@@ -96,18 +96,28 @@ Audit the current `ic-memory` crate for:
 
 ## Commands
 
-Run:
+Run with the repository's pinned development toolchain:
 
+```sh
 cargo fmt --all --check
-cargo test -p ic-memory
-cargo clippy -p ic-memory --all-targets -- -D warnings
-cargo doc -p ic-memory --no-deps
-cargo check -p ic-memory --all-features
-cargo check -p ic-memory --no-default-features
+cargo test --locked -p ic-memory -- --test-threads=1
+cargo clippy --locked -p ic-memory --all-targets -- -D warnings
+RUSTDOCFLAGS="-D warnings" cargo doc --locked -p ic-memory --no-deps
+cargo check --locked -p ic-memory --all-features
+cargo check --locked -p ic-memory --no-default-features
+cargo check --locked --target wasm32-unknown-unknown --tests
+cargo +1.88.0 check --locked --all-targets
 git diff --check
+```
+
+The maintainer pin is Rust 1.99.0 in `rust-toolchain.toml`; the declared MSRV is
+Rust 1.88.0 in `Cargo.toml`. Keep this checklist aligned with those files when
+either changes. Tests use serialized execution because declaration-registry
+qualification mutates shared test state.
 
 Also run targeted searches:
 
+```sh
 rg "unwrap|expect|panic!|todo!|unimplemented!" src tests
 rg "pub " src
 rg "Deserialize|Serialize|Default|Clone|Copy" src
@@ -115,6 +125,7 @@ rg "compatibility|unsafe|advanced|deprecated|TODO|FIXME|HACK" src README.md ADVA
 rg "pub\\(|pub(crate)|pub struct|pub enum|pub trait|pub fn" src
 rg "from_slice|from_bytes|decode|deserialize|Deserialize" src
 rg "Result<|thiserror|panic!" src
+```
 
 For the `pub` and serde searches, do not paste raw output into the report. Use
 the output to build a short inventory and then identify only actionable issues.
@@ -194,6 +205,12 @@ For every document and example, ask:
   instead of the README?
 - Do examples use `rust` fenced code blocks?
 - Do docs distinguish `ic-memory` generic mechanics from Canic policy?
+- Do examples include logical placement under explicit grants, cold admission,
+  warm authority adoption and native per-thread bootstrap ordering?
+- Do current docs describe nonconstructing default observations, typed growth,
+  bounded recovery and physical accounting without claiming payload occupancy?
+- Are archived designs and measurements labeled with their original release,
+  rather than presented as current APIs, budgets or outstanding work?
 
 ## Deliverable
 

@@ -129,6 +129,14 @@ where
     T: Deserialize<'de>,
 {
     struct Bounded<T, const LIMIT: usize>(std::marker::PhantomData<T>);
+    struct RejectExcess;
+    impl<'de> serde::de::DeserializeSeed<'de> for RejectExcess {
+        type Value = ();
+
+        fn deserialize<D: Deserializer<'de>>(self, _: D) -> Result<(), D::Error> {
+            Err(serde::de::Error::custom("ledger collection limit exceeded"))
+        }
+    }
     impl<'de, T: Deserialize<'de>, const LIMIT: usize> serde::de::Visitor<'de> for Bounded<T, LIMIT> {
         type Value = Vec<T>;
         fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -142,12 +150,15 @@ where
                 return Err(serde::de::Error::custom("ledger collection limit exceeded"));
             }
             let mut values = Vec::new();
-            while let Some(value) = seq.next_element()? {
-                if values.len() == LIMIT {
-                    return Err(serde::de::Error::custom("ledger collection limit exceeded"));
+            while values.len() < LIMIT {
+                match seq.next_element()? {
+                    Some(value) => values.push(value),
+                    None => return Ok(values),
                 }
-                values.push(value);
             }
+            // Without a size hint, reject any extra entry before decoding it.
+            // The seed runs only if the sequence has another element.
+            seq.next_element_seed(RejectExcess)?;
             Ok(values)
         }
     }
@@ -157,6 +168,34 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn unhinted_collection_rejects_before_decoding_excess_element() {
+        #[derive(Debug)]
+        struct Entry;
+        impl<'de> Deserialize<'de> for Entry {
+            fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+                let value = u8::deserialize(deserializer)?;
+                assert!(value <= 2, "excess entry must not be deserialized");
+                Ok(Self)
+            }
+        }
+
+        let mut input = serde_json::Deserializer::from_str("[1,2]");
+        assert_eq!(
+            deserialize_bounded_vec::<_, Entry, 2>(&mut input)
+                .unwrap()
+                .len(),
+            2
+        );
+        let mut input = serde_json::Deserializer::from_str("[1,2,3]");
+        let error = deserialize_bounded_vec::<_, Entry, 2>(&mut input).unwrap_err();
+        assert!(
+            error
+                .to_string()
+                .contains("ledger collection limit exceeded")
+        );
+    }
 
     #[test]
     fn oversized_byte_string_rejects_before_deserializer_runs() {

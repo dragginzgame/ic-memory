@@ -1,8 +1,7 @@
+use crate::hash::{FNV_OFFSET, fnv64};
 use serde::{Deserialize, Serialize};
 
 const COMMIT_MARKER: u64 = 0x4943_4D45_4D43_4F4D;
-const FNV_OFFSET: u64 = 0xcbf2_9ce4_8422_2325;
-const FNV_PRIME: u64 = 0x0000_0100_0000_01b3;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum CommitSlotIndex {
@@ -257,6 +256,7 @@ impl DualCommitStore {
         select_authoritative_slot(self.slot0(), self.slot1())
     }
 
+    #[cfg(test)]
     fn inactive_slot_index(&self) -> CommitSlotIndex {
         match self.authoritative_slot() {
             Ok(authoritative) => authoritative.index.opposite(),
@@ -285,18 +285,7 @@ impl DualCommitStore {
         &mut self,
         payload: Vec<u8>,
     ) -> Result<&CommittedGenerationBytes, CommitRecoveryError> {
-        let next_generation =
-            match self.authoritative() {
-                Ok(record) => record.generation.checked_add(1).ok_or(
-                    CommitRecoveryError::GenerationOverflow {
-                        generation: record.generation,
-                    },
-                )?,
-                Err(CommitRecoveryError::NoValidGeneration) if self.is_uninitialized() => 0,
-                Err(err) => return Err(err),
-            };
-
-        self.commit_payload_at_generation(next_generation, payload)
+        self.commit_payload_with_generation(None, payload)
     }
 
     /// Commit `payload` as an explicitly numbered physical generation.
@@ -314,33 +303,43 @@ impl DualCommitStore {
         generation: u64,
         payload: Vec<u8>,
     ) -> Result<&CommittedGenerationBytes, CommitRecoveryError> {
-        match self.authoritative() {
-            Ok(record) => {
-                let expected = record.generation.checked_add(1).ok_or(
+        self.commit_payload_with_generation(Some(generation), payload)
+    }
+
+    fn commit_payload_with_generation(
+        &mut self,
+        requested: Option<u64>,
+        payload: Vec<u8>,
+    ) -> Result<&CommittedGenerationBytes, CommitRecoveryError> {
+        // Validate every predecessor once before mutation, and reuse its slot.
+        let (index, generation) = match self.authoritative_slot() {
+            Ok(authoritative) => {
+                let expected = authoritative.record.generation.checked_add(1).ok_or(
                     CommitRecoveryError::GenerationOverflow {
-                        generation: record.generation,
+                        generation: authoritative.record.generation,
                     },
                 )?;
+                let generation = requested.unwrap_or(expected);
                 if generation != expected {
                     return Err(CommitRecoveryError::UnexpectedGeneration {
                         expected,
                         actual: generation,
                     });
                 }
+                (authoritative.index.opposite(), generation)
             }
-            Err(CommitRecoveryError::NoValidGeneration) if self.is_uninitialized() => {}
+            Err(CommitRecoveryError::NoValidGeneration) if self.is_uninitialized() => {
+                (CommitSlotIndex::Slot0, requested.unwrap_or(0))
+            }
             Err(err) => return Err(err),
-        }
-
-        let next = CommittedGenerationBytes::new(generation, payload);
-
-        if self.inactive_slot_index() == CommitSlotIndex::Slot0 {
-            self.slot0 = Some(next);
-        } else {
-            self.slot1 = Some(next);
-        }
-
-        self.authoritative()
+        };
+        let slot = match index {
+            CommitSlotIndex::Slot0 => &mut self.slot0,
+            CommitSlotIndex::Slot1 => &mut self.slot1,
+        };
+        // Construction computes the current marker/checksum. No second scan of
+        // the unchanged predecessor or newly constructed payload is needed.
+        Ok(slot.insert(CommittedGenerationBytes::new(generation, payload)))
     }
 
     /// Simulate corruption in the inactive slot.
@@ -473,34 +472,72 @@ pub enum CommitRecoveryError {
 }
 
 fn generation_checksum(generation: &CommittedGenerationBytes) -> u64 {
-    let mut hash = FNV_OFFSET;
-    hash = hash_u64(hash, generation.generation);
-    hash = hash_u64(hash, generation.commit_marker);
-    hash = hash_usize(hash, generation.payload.len());
-    for byte in &generation.payload {
-        hash = hash_byte(hash, *byte);
-    }
-    hash
-}
-
-fn hash_usize(hash: u64, value: usize) -> u64 {
-    hash_u64(hash, value as u64)
-}
-
-fn hash_u64(mut hash: u64, value: u64) -> u64 {
-    for byte in value.to_le_bytes() {
-        hash = hash_byte(hash, byte);
-    }
-    hash
-}
-
-const fn hash_byte(hash: u64, byte: u8) -> u64 {
-    (hash ^ byte as u64).wrapping_mul(FNV_PRIME)
+    let header = [
+        generation.generation.to_le_bytes(),
+        generation.commit_marker.to_le_bytes(),
+        (generation.payload.len() as u64).to_le_bytes(),
+    ];
+    let hash = fnv64(FNV_OFFSET, header.as_flattened());
+    fnv64(hash, &generation.payload)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn automatic_and_explicit_commits_preserve_rejected_predecessors() {
+        let mut store = DualCommitStore::default();
+        // An explicit first physical generation can represent an imported baseline.
+        assert_eq!(
+            store
+                .commit_payload_at_generation(7, payload(1))
+                .unwrap()
+                .generation(),
+            7
+        );
+        let before = store.clone();
+        assert_eq!(
+            store.commit_payload_at_generation(9, payload(2)),
+            Err(CommitRecoveryError::UnexpectedGeneration {
+                expected: 8,
+                actual: 9
+            })
+        );
+        assert_eq!(store, before);
+        assert_eq!(store.commit_payload(payload(2)).unwrap().generation(), 8);
+        assert_eq!(store.slot0().unwrap().generation(), 7);
+        assert_eq!(store.slot1().unwrap().generation(), 8);
+        assert_eq!(
+            store
+                .commit_payload_at_generation(9, payload(3))
+                .unwrap()
+                .generation(),
+            9
+        );
+        assert_eq!(store.slot0().unwrap().generation(), 9);
+        assert_eq!(store.slot1().unwrap().generation(), 8);
+
+        store.slot1.as_mut().unwrap().checksum ^= 1;
+        let corrupt = store.clone();
+        for result in [
+            store
+                .commit_payload(payload(4))
+                .map(CommittedGenerationBytes::generation),
+            store
+                .commit_payload_at_generation(10, payload(4))
+                .map(CommittedGenerationBytes::generation),
+        ] {
+            assert_eq!(
+                result,
+                Err(CommitRecoveryError::InvalidCommitSlots {
+                    slot0_invalid: false,
+                    slot1_invalid: true,
+                })
+            );
+        }
+        assert_eq!(store, corrupt);
+    }
 
     #[test]
     fn payload_uses_binary_bytes_and_human_readable_arrays() {

@@ -189,8 +189,12 @@ impl MemoryManagerAuthorityRecord {
 ///
 /// When used through the default runtime registry, registered ranges are
 /// authoritative generic policy and are checked before caller-supplied
-/// [`crate::AllocationPolicy`]. Frameworks that want their own policy to own
-/// application space should avoid registering ranges for that space.
+/// [`crate::AllocationPolicy`]. When no user ranges are registered, frameworks
+/// can enforce fixed application claims through their own policy. Logical
+/// placement and historical selection always require explicit grants; fresh
+/// placements use only `Allowed` ranges.
+///
+
 #[derive(Clone, Debug, Default, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct MemoryManagerRangeAuthority {

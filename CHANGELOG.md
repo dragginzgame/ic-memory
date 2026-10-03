@@ -1,5 +1,32 @@
 # Changelog
 
+## 0.15.5
+
+- Fix configured default bootstrap holding a mutable TLS borrow while sealing
+  declarations. Registration hooks can now observe the configured, unbootstrapped
+  runtime without `ReentrantAccess`; construction and geometry failures still
+  reject before sealing. Add a regression for hook readiness and summary reads.
+- Reject excess elements in bounded sequences without a size hint before
+  invoking their deserializer. Add a regression proving the rejected element is
+  never decoded; existing definite-length CBOR bounds remain unchanged.
+- Share automatic and explicitly numbered physical commits through one checked
+  mutation path, avoiding repeated predecessor checksum scans. Preserve slot
+  rotation, generation checks and rejection without mutation; add coverage for
+  both entrypoints against a corrupt predecessor.
+- Avoid unnecessary copies when filtering uniquely owned allocation authority
+  and validating recovered history in doctor diagnostics. Remove unused private
+  codec scaffolding, redundant capability markers and duplicate empty-key checks;
+  share FNV hashing and test fixture decoding. Current wire fixtures, checksum
+  bytes and declaration fingerprints remain unchanged.
+- Refresh current guides, rustdoc and whitepaper coverage for admission, logical
+  placement, configured bootstrap, typed growth, adoption and memory accounting.
+  Mark archived designs and measurements as historical, and record the
+  [code hygiene audit](docs/audits/recurring/code-hygiene-report-2026-10-03.md).
+- Validate 248 library tests, integration and compile-fail tests, doctests,
+  strict Clippy and Rustdoc, Rust 1.88 all-target compilation, Wasm test
+  compilation and all five unchanged raw Wasm budgets. Public API signatures
+  and persisted encoding are unchanged.
+
 ## 0.15.4
 
 - Add the runnable [composed-host example](examples/composed_host.rs) requested

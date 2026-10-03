@@ -12,7 +12,7 @@ use crate::{
     stable_cell::decode_stable_cell_ledger_record_from_memory,
 };
 use ic_stable_structures::Memory;
-use std::fmt::Display;
+use std::{borrow::Cow, fmt::Display};
 
 impl<M: Memory> MemoryRuntime<M> {
     /// Export this runtime's recovered ledger and live virtual-memory sizes.
@@ -291,16 +291,16 @@ fn diagnostic_bootstrap_binding(
     )
 }
 
-pub(super) fn diagnostic_validation_ledger(
+pub(super) fn diagnostic_validation_ledger<'recovery>(
     stable_cell_record: Option<&StableCellLedgerRecord>,
-    recovered: Option<&Result<crate::RecoveredLedger, LedgerCommitError>>,
-) -> Result<crate::RecoveredLedger, DiagnosticFailure> {
+    recovered: Option<&'recovery Result<crate::RecoveredLedger, LedgerCommitError>>,
+) -> Result<Cow<'recovery, crate::RecoveredLedger>, DiagnosticFailure> {
     if let Some(Ok(recovered)) = recovered {
-        return Ok(recovered.clone());
+        return Ok(Cow::Borrowed(recovered));
     }
     if let Some(Err(err)) = recovered {
         if stable_cell_record.is_some_and(|record| record.store().physical().is_uninitialized()) {
-            return diagnostic_genesis_recovered_ledger();
+            return diagnostic_genesis_recovered_ledger().map(Cow::Owned);
         }
         let code = if matches!(
             err,
@@ -318,7 +318,7 @@ pub(super) fn diagnostic_validation_ledger(
         ));
     }
     if stable_cell_record.is_some() {
-        return diagnostic_genesis_recovered_ledger();
+        return diagnostic_genesis_recovered_ledger().map(Cow::Owned);
     }
     Err(DiagnosticFailure::new(
         DiagnosticCode::StableCell,
