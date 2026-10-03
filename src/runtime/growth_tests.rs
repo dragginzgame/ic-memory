@@ -176,6 +176,7 @@ fn refused_application_growth_preserves_bytes_extents_and_retry() {
         assert_eq!(backing.grows.get(), grows);
         backing.refuse.set(false);
         assert_eq!(rows.grow(1), Ok(u64::from(bucket)));
+        assert_eq!(Memory::grow(&rows, 0), i64::from(bucket) + 1);
         let mut bytes = [0; 8];
         rows.read(0, &mut bytes);
         assert_eq!(&bytes, b"retained");

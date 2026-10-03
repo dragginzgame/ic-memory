@@ -532,6 +532,10 @@ fn finite_bucket_table_capacity_and_overflow_are_checked() {
         .unwrap();
         let pages = 32_768 * u64::from(bucket);
         assert_eq!(runtime.memory(120).grow(pages), Ok(0));
+        assert_eq!(
+            Memory::grow(&runtime.memory(120), 0),
+            i64::try_from(pages).unwrap()
+        );
         let full = runtime.memory_allocations().unwrap();
         conservation(&full);
         assert_eq!(full.remaining_buckets, 0);

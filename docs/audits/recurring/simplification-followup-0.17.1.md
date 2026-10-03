@@ -1,7 +1,9 @@
 # Simplification follow-up — 0.17.1 baseline
 
 Reviewed on 2026-10-03 against released commit `197477b`, starting with a clean
-tree. The changes below are uncommitted. The previous audit shipped in 0.17.1.
+tree. The changes below shipped in 0.18.0, release commit `8743499`. The previous
+audit shipped in 0.17.1. The next follow-up is recorded in the
+[0.18.0 baseline audit](simplification-followup-0.18.0.md).
 
 Staging still treated immutable validated declarations as raw DTOs, with count,
 schema and numeric-overflow errors that public callers could not reach. Record

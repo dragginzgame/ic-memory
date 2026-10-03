@@ -32,12 +32,12 @@ impl LedgerPayloadEnvelope {
     ///
     /// # Panics
     ///
-    /// Panics if the payload exceeds the current ledger byte ceiling or its
-    /// encoded length cannot be represented. Use `try_encode` for typed errors.
+    /// Panics if the payload exceeds the current ledger byte ceiling. Use
+    /// `try_encode` for typed errors.
     #[must_use]
     pub fn encode(&self) -> Vec<u8> {
         self.try_encode()
-            .expect("payload length does not fit in the ledger envelope")
+            .expect("payload exceeds the ledger byte ceiling")
     }
 
     /// Try to encode the logical payload envelope.
@@ -47,16 +47,9 @@ impl LedgerPayloadEnvelope {
                 len: self.payload.len() as u64,
             });
         }
-        let total_len = LEDGER_PAYLOAD_HEADER_LEN
-            .checked_add(self.payload.len())
-            .ok_or(LedgerPayloadEnvelopeError::PayloadLengthOverflow {
-                len: self.payload.len(),
-            })?;
-        let payload_len = u64::try_from(self.payload.len()).map_err(|_| {
-            LedgerPayloadEnvelopeError::PayloadLengthOverflow {
-                len: self.payload.len(),
-            }
-        })?;
+        // The byte ceiling bounds both the total usize length and the u64 header.
+        let total_len = LEDGER_PAYLOAD_HEADER_LEN + self.payload.len();
+        let payload_len = self.payload.len() as u64;
 
         let mut bytes = Vec::with_capacity(total_len);
         bytes.extend_from_slice(LEDGER_PAYLOAD_MAGIC);
@@ -135,9 +128,7 @@ impl LedgerPayloadEnvelope {
                 len: payload_len as u64,
             });
         }
-        let expected_len = LEDGER_PAYLOAD_HEADER_LEN
-            .checked_add(payload_len)
-            .ok_or(LedgerPayloadEnvelopeError::PayloadLengthOverflow { len: payload_len })?;
+        let expected_len = LEDGER_PAYLOAD_HEADER_LEN + payload_len;
         if bytes.len() != expected_len {
             return Err(LedgerPayloadEnvelopeError::LengthMismatch {
                 declared: payload_len,
@@ -159,6 +150,8 @@ impl LedgerPayloadEnvelope {
 /// LedgerPayloadEnvelopeError
 ///
 /// Logical payload envelope could not be classified before ledger decode.
+///
+
 #[non_exhaustive]
 #[derive(Clone, Debug, Eq, thiserror::Error, PartialEq)]
 pub enum LedgerPayloadEnvelopeError {
@@ -185,17 +178,12 @@ pub enum LedgerPayloadEnvelopeError {
         /// Format version when the current marker was present.
         version: Option<u32>,
     },
-    /// Declared payload length does not fit in this platform's address space.
+    /// Payload length exceeds the ledger byte ceiling or cannot fit in this
+    /// platform's address space.
     #[error("ledger payload envelope length {len} is too large")]
     PayloadTooLarge {
         /// Declared payload length.
         len: u64,
-    },
-    /// Declared payload length overflowed the total envelope length.
-    #[error("ledger payload envelope length {len} overflows total length")]
-    PayloadLengthOverflow {
-        /// Declared payload length.
-        len: usize,
     },
     /// Declared payload length does not match the bytes present.
     #[error("ledger payload envelope declared {declared} payload bytes but contained {actual}")]
@@ -210,6 +198,53 @@ pub enum LedgerPayloadEnvelopeError {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn oversized_payload_is_rejected_before_encoding() {
+        let len = crate::constants::MAX_LEDGER_BYTES + 1;
+        assert_eq!(
+            LedgerPayloadEnvelope::current(vec![0; len]).try_encode(),
+            Err(LedgerPayloadEnvelopeError::PayloadTooLarge { len: len as u64 })
+        );
+    }
+
+    #[test]
+    fn malformed_lengths_are_classified_before_payload_copy() {
+        let mut bytes = LedgerPayloadEnvelope::current(Vec::new()).encode();
+        for len in 0..LEDGER_PAYLOAD_HEADER_LEN {
+            assert_eq!(
+                LedgerPayloadEnvelope::decode(&bytes[..len]),
+                Err(LedgerPayloadEnvelopeError::Truncated {
+                    actual: len,
+                    minimum: LEDGER_PAYLOAD_HEADER_LEN,
+                })
+            );
+        }
+        for len in [crate::constants::MAX_LEDGER_BYTES as u64 + 1, u64::MAX] {
+            bytes[16..24].copy_from_slice(&len.to_le_bytes());
+            assert_eq!(
+                LedgerPayloadEnvelope::decode(&bytes),
+                Err(LedgerPayloadEnvelopeError::PayloadTooLarge { len })
+            );
+        }
+        bytes[16..24].copy_from_slice(&1_u64.to_le_bytes());
+        assert_eq!(
+            LedgerPayloadEnvelope::decode(&bytes),
+            Err(LedgerPayloadEnvelopeError::LengthMismatch {
+                declared: 1,
+                actual: 0,
+            })
+        );
+        bytes[16..24].copy_from_slice(&0_u64.to_le_bytes());
+        bytes.push(42);
+        assert_eq!(
+            LedgerPayloadEnvelope::decode(&bytes),
+            Err(LedgerPayloadEnvelopeError::LengthMismatch {
+                declared: 0,
+                actual: 1,
+            })
+        );
+    }
 
     #[test]
     fn borrowed_payload_decode_shares_storage_through_the_byte_ceiling() {

@@ -68,8 +68,11 @@ impl<M: Memory> RuntimeMemory<M> {
                 capacity: super::layout::BUCKET_CAPACITY,
             });
         }
-        let total_buckets =
-            u16::try_from(total).map_err(|_| RuntimeGrowError::ArithmeticOverflow)?;
+        #[expect(
+            clippy::cast_possible_truncation,
+            reason = "admission bounds total by the u16 bucket capacity"
+        )]
+        let total_buckets = total as u16;
         let required_pages = 1 + total * bucket_pages;
         let physical_pages = self.growth.backing.size();
         if required_pages > physical_pages
@@ -93,7 +96,7 @@ impl<M: Memory> Memory for RuntimeMemory<M> {
     fn grow(&self, pages: u64) -> i64 {
         // The upstream trait fixes the sentinel contract. Direct calls use the
         // inherent typed method; virtual extents fit in i64 by bucket capacity.
-        Self::grow(self, pages).map_or(-1, |previous| i64::try_from(previous).unwrap_or(-1))
+        Self::grow(self, pages).map_or(-1, u64::cast_signed)
     }
     fn read(&self, offset: u64, dst: &mut [u8]) {
         self.memory.read(offset, dst);

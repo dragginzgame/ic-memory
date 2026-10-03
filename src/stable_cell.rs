@@ -83,6 +83,8 @@ impl Storable for StableCellLedgerRecord {
 /// StableCellPayloadError
 ///
 /// Stable-cell payload decode failure.
+///
+
 #[non_exhaustive]
 #[derive(Clone, Debug, Eq, Error, PartialEq)]
 pub enum StableCellPayloadError {
@@ -105,12 +107,6 @@ pub enum StableCellPayloadError {
         value_len: u64,
         /// Available payload bytes in memory.
         available_bytes: u64,
-    },
-    /// Stable-cell length cannot be represented on the current host.
-    #[error("stable-cell payload length {value_len} cannot fit in usize")]
-    LengthOverflow {
-        /// Encoded value length.
-        value_len: u64,
     },
 }
 
@@ -164,8 +160,11 @@ pub fn decode_stable_cell_payload<M: Memory>(
     if value_len > crate::constants::MAX_LEDGER_RECORD_BYTES as u64 {
         return Err(StableCellPayloadError::TooLarge { value_len });
     }
-    let value_len = usize::try_from(value_len)
-        .map_err(|_| StableCellPayloadError::LengthOverflow { value_len })?;
+    #[expect(
+        clippy::cast_possible_truncation,
+        reason = "the admitted recovery ceiling is representable as usize"
+    )]
+    let value_len = value_len as usize;
 
     let mut bytes = vec![0; value_len];
     memory.read(STABLE_CELL_VALUE_OFFSET, &mut bytes);
@@ -433,10 +432,13 @@ mod tests {
     }
     #[test]
     fn oversized_cell_length_is_rejected_before_payload_read() {
-        struct HeaderOnly;
+        struct HeaderOnly {
+            value_len: u32,
+            pages: u64,
+        }
         impl Memory for HeaderOnly {
             fn size(&self) -> u64 {
-                2048
+                self.pages
             }
             fn grow(&self, _: u64) -> i64 {
                 panic!("must not grow")
@@ -448,19 +450,37 @@ mod tests {
                 assert_eq!(offset, 0);
                 assert_eq!(bytes.len(), STABLE_CELL_HEADER_SIZE);
                 bytes[..4].copy_from_slice(b"SCL\x01");
-                bytes[4..8].copy_from_slice(
-                    &u32::try_from(crate::constants::MAX_LEDGER_RECORD_BYTES + 1)
-                        .unwrap()
-                        .to_le_bytes(),
-                );
+                bytes[4..8].copy_from_slice(&self.value_len.to_le_bytes());
             }
         }
-        assert!(matches!(
-            decode_stable_cell_ledger_record_from_memory(&HeaderOnly),
-            Err(StableCellLedgerError::Payload(
-                StableCellPayloadError::TooLarge { .. }
-            ))
-        ));
+        for value_len in [
+            u32::try_from(crate::constants::MAX_LEDGER_RECORD_BYTES + 1).unwrap(),
+            u32::MAX,
+        ] {
+            // The advertised value fits the backing, but exceeds the recovery ceiling.
+            let memory = HeaderOnly {
+                value_len,
+                pages: 65_537,
+            };
+            assert!(matches!(
+                decode_stable_cell_ledger_record_from_memory(&memory),
+                Err(StableCellLedgerError::Payload(StableCellPayloadError::TooLarge {
+                    value_len: rejected,
+                })) if rejected == u64::from(value_len)
+            ));
+            // Physical-capacity rejection keeps precedence when both checks fail.
+            let memory = HeaderOnly {
+                value_len,
+                pages: 1,
+            };
+            assert_eq!(
+                decode_stable_cell_payload(&memory),
+                Err(StableCellPayloadError::InvalidLength {
+                    value_len: u64::from(value_len),
+                    available_bytes: WASM_PAGE_SIZE_BYTES - STABLE_CELL_VALUE_OFFSET,
+                })
+            );
+        }
     }
 
     #[test]

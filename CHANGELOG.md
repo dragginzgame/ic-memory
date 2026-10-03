@@ -1,5 +1,36 @@
 # Changelog
 
+## 0.19.0
+
+- Hard cut: remove `LedgerPayloadEnvelopeError::PayloadLengthOverflow` and
+  `StableCellPayloadError::LengthOverflow`. Remove obsolete match arms or
+  constructions. These failures were unreachable after the existing byte
+  ceilings passed; oversized input still returns the current typed size errors.
+- Simplify ledger-envelope length arithmetic and stable-cell length conversion
+  using the established byte bounds. Preserve the untrusted decoded `u64`
+  conversion, physical-capacity and format checks, exact-length rejection and
+  rejection before payload allocation or reads. Correct envelope panic and
+  byte-ceiling documentation.
+- Remove impossible growth conversion failures after bucket-capacity admission
+  and when returning a successful previous-page count through `Memory::grow`.
+  Preserve raw arithmetic overflow, bucket exhaustion, refusal/retry, reentry
+  protection, accounting after successful growth and the upstream `-1` sentinel
+  on actual errors.
+- Add envelope coverage for oversized encoding, every truncated header length,
+  `u64::MAX` declared lengths and mismatches in both directions. Extend the
+  header-only stable-cell regression to cover `u32::MAX` and physical-capacity
+  error precedence without payload reads, growth or writes. Extend growth tests
+  to verify successful upstream previous-page returns, including full bucket
+  capacity at each tested bucket size.
+- Record the [follow-up audit](docs/audits/recurring/simplification-followup-0.18.0.md)
+  and mark the previous findings as released in 0.18.0. Validate 265 library
+  tests, integration and compile-fail tests, doctests, strict Clippy and Rustdoc,
+  Rust 1.88 all-target checking and Wasm test compilation. Persisted formats,
+  current fixtures, checksums and declaration fingerprints remain unchanged.
+  Package verification and raw Wasm size gates were not repeated in this
+  follow-up. Release-flow tests were not run because they create commits and
+  tags reserved for the maintainer.
+
 ## 0.18.0
 
 - Hard cut: remove `AllocationStageError::TooManyDeclarations`,
