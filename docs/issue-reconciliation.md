@@ -57,9 +57,9 @@ tests, enabled in the ordinary suite. They check two cold reopens over the same
 backing, fixed/logical IDs and retained data, current authority, unchanged
 geometry, cold admission, effect-free warm adoption, typed consumer rejection
 without candidate commitment, and host-first native bootstrap on each worker.
-This additional example/test work is **uncommitted and unpublished**; no runtime
-API or persisted-format change is required, and closing #2–#8 relies on their
-already released implementations rather than this new work.
+This additional example/test work shipped in **0.15.4**. It requires no runtime
+API or persisted-format change. Closing #2–#8 relied on their previously released
+implementations, independently of this additional qualification.
 
 Canic still owns its PocketIC participant and store-restoration qualification;
 the reported Toko failures do not establish an ic-memory defect. No sibling
