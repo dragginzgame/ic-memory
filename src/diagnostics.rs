@@ -148,9 +148,6 @@ pub enum DiagnosticCode {
     /// Protected ledger recovery failed.
     #[serde(rename = "ledger_recovery")]
     LedgerRecovery,
-    /// An empty current-format genesis ledger could not be constructed.
-    #[serde(rename = "genesis_ledger")]
-    GenesisLedger,
     /// Current declarations failed allocation validation.
     #[serde(rename = "allocation_validation")]
     AllocationValidation,
@@ -604,7 +601,6 @@ mod tests {
             (DiagnosticCode::StableCell, "stable_cell"),
             (DiagnosticCode::UnsupportedFormat, "unsupported_format"),
             (DiagnosticCode::LedgerRecovery, "ledger_recovery"),
-            (DiagnosticCode::GenesisLedger, "genesis_ledger"),
             (
                 DiagnosticCode::AllocationValidation,
                 "allocation_validation",

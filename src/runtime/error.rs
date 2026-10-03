@@ -135,9 +135,6 @@ pub enum RuntimeBootstrapError<P> {
     /// Linked-program declaration snapshot sealing failed.
     #[error(transparent)]
     Registry(#[from] StaticMemoryDeclarationError),
-    /// Runtime ledger genesis construction failed.
-    #[error(transparent)]
-    LedgerIntegrity(#[from] crate::LedgerIntegrityError),
     /// Protected ledger recovery or commit failed.
     #[error(transparent)]
     LedgerCommit(#[from] crate::LedgerCommitError),
@@ -246,9 +243,6 @@ pub enum RuntimePolicyError<P> {
     /// Runtime range authority rejected the declaration.
     #[error(transparent)]
     Range(#[from] MemoryManagerRangeAuthorityError),
-    /// Runtime metadata is internally inconsistent.
-    #[error("runtime declaration metadata is missing for stable key '{0}'")]
-    MissingDeclarationMetadata(String),
     /// Caller-supplied policy rejected the declaration.
     #[error(transparent)]
     Custom(P),

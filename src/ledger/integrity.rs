@@ -1,5 +1,5 @@
 use super::{AllocationLedger, AllocationRecord, AllocationState, LedgerIntegrityError};
-use crate::{declaration::validate_runtime_fingerprint, key::StableKey, validation::Validate};
+use crate::{declaration::validate_runtime_fingerprint, validation::Validate};
 use std::collections::BTreeSet;
 
 impl AllocationLedger {
@@ -131,33 +131,14 @@ impl AllocationLedger {
         }
 
         // The checked chain contains exactly generations 1..=current_generation.
+        // Structural validation bounds every record reference by its first
+        // generation and current_generation, so only genesis exclusion remains.
         for record in self.allocation_history.records() {
-            validate_known_record_generation(
-                self.current_generation,
-                &record.stable_key,
-                record.first_generation,
-            )?;
-            validate_known_record_generation(
-                self.current_generation,
-                &record.stable_key,
-                record.last_seen_generation,
-            )?;
-            if let AllocationState::Retired {
-                generation: retired_generation,
-            } = record.state
-            {
-                validate_known_record_generation(
-                    self.current_generation,
-                    &record.stable_key,
-                    retired_generation,
-                )?;
-            }
-            for schema in &record.schema_history {
-                validate_known_record_generation(
-                    self.current_generation,
-                    &record.stable_key,
-                    schema.generation,
-                )?;
+            if record.first_generation == 0 {
+                return Err(LedgerIntegrityError::UnknownRecordGeneration {
+                    stable_key: record.stable_key.clone(),
+                    generation: 0,
+                });
             }
         }
 
@@ -223,20 +204,6 @@ fn validate_record_integrity(
     }
 
     validate_schema_history_integrity(current_generation, record)
-}
-
-fn validate_known_record_generation(
-    current_generation: u64,
-    stable_key: &StableKey,
-    generation: u64,
-) -> Result<(), LedgerIntegrityError> {
-    if (1..=current_generation).contains(&generation) {
-        return Ok(());
-    }
-    Err(LedgerIntegrityError::UnknownRecordGeneration {
-        stable_key: stable_key.clone(),
-        generation,
-    })
 }
 
 fn validate_schema_history_integrity(

@@ -1,5 +1,41 @@
 # Changelog
 
+## 0.20.0
+
+- Hard cut: remove `RuntimePolicyError::MissingDeclarationMetadata`,
+  `RuntimeBootstrapError::LedgerIntegrity` and `DiagnosticCode::GenesisLedger`.
+  Remove obsolete match arms or constructions, the automatic conversion from
+  `LedgerIntegrityError` into `RuntimeBootstrapError`, and use of the diagnostic
+  wire value `genesis_ledger`. These failure paths were unreachable through
+  maintained runtime operations. Real ledger integrity failures still return
+  `RuntimeBootstrapError::LedgerCommit(LedgerCommitError::Integrity(...))`.
+- Simplify committed-ledger generation membership validation after structural
+  bounds and the contiguous parent chain have passed. Check only that each
+  allocation's first generation is nonzero; remove repeated last-seen,
+  retirement and schema-generation membership checks. Preserve structural
+  validation, genesis rejection and error precedence.
+- Make private runtime declaration-authority lookup infallible when validating
+  the allocation snapshot from the same immutable resolved declaration snapshot.
+  Remove metadata-error plumbing while preserving range authorization, custom
+  policy rejection and internal governance handling.
+- Share one private, infallible empty-genesis constructor between cold bootstrap
+  and doctor validation. Remove the diagnostic-only wrapper and impossible
+  genesis failure branches. Preserve empty-store initialization, fail-closed
+  recovery, persistence ordering and read-only diagnostics.
+- Extend genesis-reference coverage with later schema observations and
+  retirement; verify history-gap errors still precede genesis rejection. Add
+  doctor coverage for combined fixed and logical declarations before and after
+  bootstrap, with unchanged backing bytes.
+- Record the [follow-up audit](docs/audits/recurring/simplification-followup-0.19.0.md).
+  Validate 266 library tests, integration and compile-fail tests, doctests,
+  strict Clippy, Rust 1.88 all-target checking and Wasm test compilation. All
+  five raw Wasm budgets pass; core is 248,351 bytes under its 260,000-byte ceiling.
+  Durable ledger formats, current fixtures, checksums and declaration
+  fingerprints remain unchanged; the diagnostic wire vocabulary loses only the
+  removed genesis code. Package verification was not repeated. Release-flow
+  tests were not run because they create commits and tags reserved for the
+  maintainer.
+
 ## 0.19.0
 
 - Hard cut: remove `LedgerPayloadEnvelopeError::PayloadLengthOverflow` and

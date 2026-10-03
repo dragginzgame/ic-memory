@@ -56,7 +56,7 @@ pub use policy::GenericRangePolicy;
 
 use self::policy::{RuntimeMemoryManagerPolicy, runtime_bootstrap_error_from_bootstrap};
 use crate::{
-    AllocationBootstrap, AllocationHistory, AllocationLedger, CommittedAllocations, PolicyIdentity,
+    AllocationBootstrap, AllocationLedger, CommittedAllocations, PolicyIdentity,
     RuntimeBootstrapPolicy, STABLE_CELL_VALUE_OFFSET, StableCellLedgerError,
     StableCellLedgerRecord, StableKey, registry::SealedDeclarationSnapshot,
     slot::MEMORY_MANAGER_LEDGER_ID, stable_cell::decode_stable_cell_ledger_record_from_memory,
@@ -250,7 +250,7 @@ impl<M: Memory> MemoryRuntime<M> {
             .as_ref()
             .map(|cell| cell.get().clone())
             .ok_or(RuntimeStateError::InconsistentLifecycle)?;
-        let genesis = AllocationLedger::new(0, AllocationHistory::default())?;
+        let genesis = AllocationLedger::empty_genesis();
         let recovered = record.store_mut().recover_or_initialize(&genesis)?;
         let mut admission = BootstrapAdmission::new(recovered.ledger(), declarations);
         let preparation = policy.prepare_bootstrap(&mut admission);

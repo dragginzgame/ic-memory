@@ -1809,14 +1809,18 @@ mod tests {
 
     #[test]
     fn committed_integrity_rejects_allocation_references_to_genesis() {
-        for generation in [0, 1] {
+        for generation in [0, 1, 2] {
             let mut ledger = committed_ledger(generation);
-            ledger
-                .allocation_history
-                .push_record(AllocationRecord::active(
-                    0,
-                    declaration("app.genesis.v1", 100, None),
-                ));
+            let mut record = AllocationRecord::active(0, declaration("app.genesis.v1", 100, None));
+            if generation == 2 {
+                record.last_seen_generation = 1;
+                record
+                    .schema_history
+                    .push(SchemaMetadataRecord::new(1, SchemaMetadata::default()).unwrap());
+                record.state = AllocationState::Retired { generation: 2 };
+            }
+            ledger.allocation_history.push_record(record);
+            ledger.validate_integrity().expect("structurally valid DTO");
             assert_eq!(
                 ledger.validate_committed_integrity(),
                 Err(LedgerIntegrityError::UnknownRecordGeneration {
@@ -1831,10 +1835,16 @@ mod tests {
     fn validate_committed_integrity_rejects_generation_history_gaps() {
         let mut ledger = committed_ledger(3);
         ledger.allocation_history.generations_mut().remove(1);
+        ledger
+            .allocation_history
+            .push_record(AllocationRecord::active(
+                0,
+                declaration("app.genesis.v1", 100, None),
+            ));
 
         let err = ledger
             .validate_committed_integrity()
-            .expect_err("generation history gap");
+            .expect_err("generation history gap takes precedence over genesis reference");
 
         assert!(matches!(
             err,

@@ -1,8 +1,9 @@
 use super::*;
 use crate::{
-    AllocationDeclaration, AllocationPolicy, AllocationRetirement, AllocationSlotDescriptor,
-    MemoryManagerAuthorityRecord, MemoryManagerIdRange, MemoryManagerRangeMode, MemoryRequest,
-    SchemaMetadata, StaticMemoryDeclaration, StaticMemoryRangeDeclaration,
+    AllocationDeclaration, AllocationHistory, AllocationPolicy, AllocationRetirement,
+    AllocationSlotDescriptor, MemoryManagerAuthorityRecord, MemoryManagerIdRange,
+    MemoryManagerRangeMode, MemoryRequest, SchemaMetadata, StaticMemoryDeclaration,
+    StaticMemoryRangeDeclaration,
 };
 use ic_stable_structures::VectorMemory;
 
@@ -48,6 +49,25 @@ fn id(runtime: &MemoryRuntime<VectorMemory>, key: &str) -> u8 {
         .unwrap()
         .memory_manager_id()
         .unwrap()
+}
+
+#[test]
+fn doctor_resolves_logical_requests_without_writes() {
+    let declarations = snapshot(&["app.a.v1"], "app", 100, 103, &[("app.fixed.v1", 100)]);
+    let backing = VectorMemory::default();
+    let mut runtime = MemoryRuntime::new(backing.clone()).unwrap();
+    for bootstrapped in [false, true] {
+        if bootstrapped {
+            runtime
+                .bootstrap(&declarations, &GenericRangePolicy)
+                .unwrap();
+        }
+        let before = backing.borrow().clone();
+        let report = runtime.doctor_report(&declarations, &GenericRangePolicy);
+        assert_eq!(report.validation, crate::DiagnosticCheck::Passed);
+        assert_eq!(report.bootstrapped, bootstrapped);
+        assert_eq!(*backing.borrow(), before);
+    }
 }
 
 #[test]

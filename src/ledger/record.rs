@@ -456,6 +456,16 @@ impl AllocationRecord {
 }
 
 impl AllocationLedger {
+    /// Build the known empty genesis used by runtime bootstrap and diagnostics.
+    pub(crate) fn empty_genesis() -> Self {
+        // An empty history at generation zero satisfies committed integrity
+        // without decoded input or declaration references to validate.
+        Self {
+            current_generation: 0,
+            allocation_history: AllocationHistory::default(),
+        }
+    }
+
     /// Build a ledger DTO and validate structural ledger invariants.
     ///
     /// This constructor validates duplicate records, lifecycle state, record

@@ -1,8 +1,8 @@
 use super::{MemoryRuntime, RuntimeDiagnosticError, RuntimeLifecycle};
 use crate::{
-    AllocationHistory, AllocationLedger, AllocationPolicy, AllocationSlotDescriptor,
-    DiagnosticCheck, DiagnosticCode, DiagnosticDeclaration, DiagnosticExport, DiagnosticFailure,
-    DiagnosticMemorySize, DiagnosticRangeAuthority, DiagnosticRuntimeBinding, DiagnosticStableCell,
+    AllocationLedger, AllocationPolicy, AllocationSlotDescriptor, DiagnosticCheck, DiagnosticCode,
+    DiagnosticDeclaration, DiagnosticExport, DiagnosticFailure, DiagnosticMemorySize,
+    DiagnosticRangeAuthority, DiagnosticRuntimeBinding, DiagnosticStableCell,
     DiagnosticStableCellStatus, LedgerCommitError, LedgerPayloadEnvelopeError,
     MemoryRuntimeDoctorReport, PolicyIdentity, RecoveredLedger, RuntimeBootstrapPolicy,
     StableCellLedgerRecord,
@@ -277,7 +277,9 @@ pub(super) fn diagnostic_validation_ledger(
             err,
             LedgerCommitError::Recovery(crate::CommitRecoveryError::NoValidGeneration)
         ) {
-            return diagnostic_genesis_recovered_ledger().map(Cow::Owned);
+            return Ok(Cow::Owned(RecoveredLedger::from_trusted_ledger(
+                AllocationLedger::empty_genesis(),
+            )));
         }
         let code = if matches!(
             err,
@@ -298,15 +300,4 @@ pub(super) fn diagnostic_validation_ledger(
         DiagnosticCode::StableCell,
         "stable-cell ledger record is not readable",
     ))
-}
-
-fn diagnostic_genesis_recovered_ledger() -> Result<crate::RecoveredLedger, DiagnosticFailure> {
-    AllocationLedger::new(0, AllocationHistory::default())
-        .map(crate::RecoveredLedger::from_trusted_ledger)
-        .map_err(|err| {
-            DiagnosticFailure::new(
-                DiagnosticCode::GenesisLedger,
-                format!("genesis ledger: {err}"),
-            )
-        })
 }

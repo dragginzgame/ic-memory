@@ -28,7 +28,7 @@ impl<P: AllocationPolicy> AllocationPolicy for RuntimeMemoryManagerPolicy<'_, P>
     type Error = RuntimePolicyError<P::Error>;
 
     fn validate_key(&self, key: &StableKey) -> Result<(), Self::Error> {
-        let authority = self.declaration_authority(key)?;
+        let authority = self.declaration_authority(key);
         if authority == IC_MEMORY_AUTHORITY_OWNER {
             return Ok(());
         }
@@ -42,7 +42,7 @@ impl<P: AllocationPolicy> AllocationPolicy for RuntimeMemoryManagerPolicy<'_, P>
         key: &StableKey,
         slot: &AllocationSlotDescriptor,
     ) -> Result<(), Self::Error> {
-        let authority = self.declaration_authority(key)?;
+        let authority = self.declaration_authority(key);
         self.validate_runtime_range(authority, slot)?;
         if authority == IC_MEMORY_AUTHORITY_OWNER {
             return Ok(());
@@ -57,7 +57,7 @@ impl<P: AllocationPolicy> AllocationPolicy for RuntimeMemoryManagerPolicy<'_, P>
         key: &StableKey,
         slot: &AllocationSlotDescriptor,
     ) -> Result<(), Self::Error> {
-        let authority = self.declaration_authority(key)?;
+        let authority = self.declaration_authority(key);
         self.validate_runtime_range(authority, slot)?;
         if authority == IC_MEMORY_AUTHORITY_OWNER {
             return Ok(());
@@ -69,14 +69,16 @@ impl<P: AllocationPolicy> AllocationPolicy for RuntimeMemoryManagerPolicy<'_, P>
 }
 
 impl<P: AllocationPolicy> RuntimeMemoryManagerPolicy<'_, P> {
-    fn declaration_authority(&self, key: &StableKey) -> Result<&str, RuntimePolicyError<P::Error>> {
+    fn declaration_authority(&self, key: &StableKey) -> &str {
         if key.as_str() == IC_MEMORY_LEDGER_STABLE_KEY {
-            return Ok(IC_MEMORY_AUTHORITY_OWNER);
+            return IC_MEMORY_AUTHORITY_OWNER;
         }
+        // Bootstrap and diagnostics validate the allocation snapshot from this
+        // same immutable resolved snapshot, so every external key is registered.
         self.declarations
             .registered_declaration(key)
-            .map(crate::StaticMemoryDeclaration::authority)
-            .ok_or_else(|| RuntimePolicyError::MissingDeclarationMetadata(key.as_str().to_string()))
+            .expect("validated declaration belongs to the resolved snapshot")
+            .authority()
     }
 
     fn validate_runtime_range(
