@@ -142,7 +142,7 @@ Declare the dependency:
 
 ```toml
 [dependencies]
-ic-memory = "0.15.6"
+ic-memory = "0.15.7"
 ```
 
 `ic-memory` re-exports its exact `ic-stable-structures` dependency through
