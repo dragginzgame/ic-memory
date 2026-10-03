@@ -140,6 +140,7 @@ impl AllocationRetirement {
 ///
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
 pub enum AllocationState {
     /// Slot is reserved for a future allocation identity.
     Reserved,

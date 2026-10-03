@@ -217,7 +217,7 @@ pub enum LedgerCommitError {
         logical_generation: u64,
     },
     /// Built-in ledger codec failed.
-    #[error("allocation ledger codec failed")]
+    #[error("allocation ledger codec failed: {0}")]
     Codec(String),
     /// Decoded ledger violates structural allocation-history invariants.
     #[error(transparent)]
@@ -249,8 +249,8 @@ pub enum AllocationStageError {
         /// Current ledger generation.
         generation: u64,
     },
-    /// Declaration count does not fit in durable generation diagnostics.
-    #[error("generation contains {count} declarations, exceeding the durable u32 diagnostic limit")]
+    /// Declaration count exceeds the usable allocation-slot domain.
+    #[error("generation contains {count} declarations, exceeding the 255-allocation limit")]
     TooManyDeclarations {
         /// Number of declarations in the staged generation.
         count: usize,
@@ -308,8 +308,8 @@ pub enum AllocationReservationError {
         /// Current ledger generation.
         generation: u64,
     },
-    /// Declaration count does not fit in durable generation diagnostics.
-    #[error("generation contains {count} reservations, exceeding the durable u32 diagnostic limit")]
+    /// Reservation count exceeds the usable allocation-slot domain.
+    #[error("generation contains {count} reservations, exceeding the 255-allocation limit")]
     TooManyReservations {
         /// Number of reservations in the staged generation.
         count: usize,

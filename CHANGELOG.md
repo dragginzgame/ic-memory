@@ -1,5 +1,39 @@
 # Changelog
 
+## 0.15.7
+
+- Return typed growth refusal from fresh runtime construction instead of allowing
+  manager initialization to panic. Reserve the metadata page before writing;
+  failed construction leaves zero pages and performs no reads or writes. Both
+  constructors support retry with the same caller-owned backing. Configured
+  default bootstrap propagates the construction error. Addresses Canic's feedback
+  in [#9](https://github.com/dragginzgame/ic-memory/issues/9).
+- Reject unknown fields inside durable retirement states. Enforce the serialized
+  payload ceiling in both low-level physical commit entrypoints with
+  `CommitRecoveryError::PayloadTooLarge` before slot mutation. Cover malformed
+  nested records, exact byte limits, unchanged rejected stores and valid retries.
+- Preserve decoder causes in ledger errors and doctor messages while retaining
+  diagnostic codes. Correct declaration and reservation errors to report the
+  actual 255-allocation limit.
+- Return successful logical commit evidence from the checked ledger and physical
+  commit, removing redundant checksum scans, decoding and integrity validation.
+  Existing persisted bytes still pass the full fail-closed recovery boundary.
+- Release declaration, request, range and hook inputs after registry sealing or
+  terminal failure. Preserve immutable shared snapshots, cached errors and hook
+  ordering through one sealing completion path.
+- Count encoded ledger-record bytes during capacity admission without allocating
+  a temporary serialization buffer. Share encoding with stable-cell persistence
+  and verify measured lengths against current fixtures and the history boundary.
+- Resolve Wasm artifacts through Cargo metadata so `CARGO_TARGET_DIR` and Cargo
+  configuration cannot make budget checks read stale files. Add six tooling
+  regressions for target discovery, oversized or missing artifacts and metadata
+  failure; run them in CI and `make validate` through `make test-wasm-size`.
+- Validate 259 library tests, integration and compile-fail tests, doctests, six
+  Wasm tooling tests, strict Clippy and Rustdoc, Rust 1.88 all-target checking,
+  Wasm test compilation and offline package verification. All five unchanged raw
+  Wasm budgets pass; core is 254,648 bytes under its 260,000-byte ceiling.
+  Current wire fixtures, checksums and declaration fingerprints are unchanged.
+
 ## 0.15.6
 
 - Reuse protected slot-selection evidence in commit diagnostics, validating each

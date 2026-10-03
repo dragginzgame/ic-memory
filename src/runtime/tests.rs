@@ -184,6 +184,33 @@ fn construction_rejects_foreign_nonempty_memory_without_writing() {
 }
 
 #[test]
+fn construction_rejects_caller_pregrown_blank_memory_without_writing() {
+    for configured in [false, true] {
+        let backing = VectorMemory::default();
+        assert_eq!(backing.grow(1), 0);
+        let original = read_one_page(&backing);
+        let result = if configured {
+            MemoryRuntime::new_with_config(
+                backing.clone(),
+                super::MemoryManagerConfig::new(16).unwrap(),
+            )
+        } else {
+            MemoryRuntime::new(backing.clone())
+        };
+        let Err(error) = result else {
+            panic!("caller-pregrown blank memory must remain foreign input");
+        };
+        assert_eq!(
+            error,
+            RuntimeConstructionError::ForeignMemory {
+                observed_magic: [0; 3]
+            }
+        );
+        assert_eq!(read_one_page(&backing), original);
+    }
+}
+
+#[test]
 fn construction_rejects_unsupported_manager_version_without_writing() {
     let (backing, original) = one_page_backing(*b"MGR\x02");
 
@@ -716,6 +743,37 @@ fn default_runtime_reentry_is_a_typed_state_error() {
         Ok(())
     })
     .expect("test borrow");
+}
+
+#[test]
+fn doctor_preserves_distinct_record_decode_causes_without_writes() {
+    let declarations = SealedDeclarationSnapshot::new(&[], &[], &[]).unwrap();
+    let mut messages = Vec::new();
+    for bytes in [vec![0xff], vec![0xa0]] {
+        let cause = crate::decode_stable_cell_ledger_record(&bytes)
+            .unwrap_err()
+            .to_string();
+        let backing = VectorMemory::default();
+        let runtime = MemoryRuntime::new(backing.clone()).unwrap();
+        let memory = runtime.memory(crate::MEMORY_MANAGER_LEDGER_ID);
+        memory.grow(1).unwrap();
+        memory.write(0, crate::STABLE_CELL_MAGIC);
+        memory.write(3, &[crate::STABLE_CELL_LAYOUT_VERSION]);
+        memory.write(4, &u32::try_from(bytes.len()).unwrap().to_le_bytes());
+        memory.write(crate::STABLE_CELL_VALUE_OFFSET, &bytes);
+        let before = backing.borrow().clone();
+
+        let report = runtime.doctor_report(&declarations, &GenericRangePolicy);
+        let crate::DiagnosticStableCellStatus::Corrupt { failure } = report.stable_cell.status
+        else {
+            panic!("malformed record must be reported as corrupt");
+        };
+        assert_eq!(failure.code, DiagnosticCode::StableCell);
+        assert!(failure.message.contains(&cause));
+        messages.push(failure.message);
+        assert_eq!(*backing.borrow(), before);
+    }
+    assert_ne!(messages[0], messages[1]);
 }
 
 #[test]

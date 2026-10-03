@@ -1,4 +1,6 @@
-use super::{MemoryManagerConfig, MemoryRuntime, RuntimeGrowError, RuntimeMemory};
+use super::{
+    MemoryManagerConfig, MemoryRuntime, RuntimeConstructionError, RuntimeGrowError, RuntimeMemory,
+};
 use ic_stable_structures::{Memory, VectorMemory};
 use std::{
     cell::{Cell, RefCell},
@@ -11,6 +13,7 @@ struct RefusableMemory {
     refuse: Rc<Cell<bool>>,
     reads: Rc<Cell<usize>>,
     grows: Rc<Cell<usize>>,
+    writes: Rc<Cell<usize>>,
 }
 
 impl Memory for RefusableMemory {
@@ -30,7 +33,52 @@ impl Memory for RefusableMemory {
         self.bytes.read(offset, dst);
     }
     fn write(&self, offset: u64, src: &[u8]) {
+        self.writes.set(self.writes.get() + 1);
         self.bytes.write(offset, src);
+    }
+}
+
+#[test]
+fn refused_fresh_metadata_growth_is_typed_and_allows_unchanged_backing_retry() {
+    for config in [None, Some(MemoryManagerConfig::new(16).unwrap())] {
+        let backing = RefusableMemory::default();
+        backing.refuse.set(true);
+        let construct = |backing| match config {
+            None => MemoryRuntime::new(backing),
+            Some(config) => MemoryRuntime::new_with_config(backing, config),
+        };
+        let Err(error) = construct(backing.clone()) else {
+            panic!("metadata growth refusal must reject construction");
+        };
+        assert_eq!(
+            error,
+            RuntimeConstructionError::Growth(RuntimeGrowError::BackingRefused {
+                additional_pages: 1
+            })
+        );
+        assert_eq!(backing.size(), 0);
+        assert_eq!(backing.grows.get(), 1);
+        assert_eq!(backing.reads.get(), 0);
+        assert_eq!(backing.writes.get(), 0);
+
+        backing.refuse.set(false);
+        let runtime = construct(backing.clone()).unwrap();
+        assert_eq!(backing.size(), 1);
+        assert_eq!(
+            runtime.memory_manager_config().bucket_size_pages(),
+            config.unwrap_or_default().bucket_size_pages()
+        );
+        assert!(!runtime.is_bootstrapped());
+        let writes = backing.writes.get();
+        let grows = backing.grows.get();
+        drop(runtime);
+        let reopened = construct(backing.clone()).unwrap();
+        assert_eq!(
+            reopened.memory_manager_config().bucket_size_pages(),
+            config.unwrap_or_default().bucket_size_pages()
+        );
+        assert_eq!(backing.writes.get(), writes);
+        assert_eq!(backing.grows.get(), grows);
     }
 }
 
@@ -90,6 +138,7 @@ fn refused_application_growth_preserves_bytes_extents_and_retry() {
         .unwrap();
         let rows = runtime.memory(120);
         let before = backing.bytes.borrow().clone();
+        let reads_before = backing.reads.get();
         backing.refuse.set(true);
         assert_eq!(
             rows.grow(1),
@@ -102,7 +151,7 @@ fn refused_application_growth_preserves_bytes_extents_and_retry() {
         assert_eq!(rows.size(), 0);
         assert_eq!(*backing.bytes.borrow(), before);
         assert_eq!(runtime.memory_allocations().unwrap().allocated_buckets, 0);
-        assert_eq!(backing.reads.get(), 2);
+        assert_eq!(backing.reads.get() - reads_before, 2);
         if bucket == u16::MAX {
             continue;
         }

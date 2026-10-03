@@ -557,12 +557,19 @@ Dirty trees, stale prepared state, unrelated staged changes, and conflicting
 release tags are rejected. The lockfile remains untracked.
 
 `make validate` runs the release-flow regression tests, formatting, Clippy,
-serialized Rust tests and doctests, Wasm checks and size budgets, the declared
-MSRV check, and package verification. Development, CI, and the default
+serialized Rust tests and doctests, Wasm budget regression tests, Wasm checks
+and size budgets, the declared MSRV check, and package verification.
+Development, CI, and the default
 `VALIDATION_TOOLCHAIN` read the Rust 1.99.0 pin from `rust-toolchain.toml`.
 The crate's declared MSRV remains Rust 1.88.0. `make test-release-flow` exercises
 the release commands in disposable repositories with a fake Cargo executable;
 it never publishes packages or contacts a hosted Git remote.
+
+`make test-wasm-size` checks artifact discovery and budget failures using a fake
+Cargo executable without Git operations. `make wasm-size` resolves the actual
+artifact directory through Cargo metadata, including `CARGO_TARGET_DIR` and
+Cargo configuration, so stale files in a different target directory cannot
+satisfy the budgets.
 
 ## More Detail
 

@@ -15,6 +15,7 @@ jobs:
         with:
           python-version: '3.12'
       - run: make test-release-flow
+      - run: make test-wasm-size
       - name: Read pinned Rust toolchain
         run: |
           python3 - <<'PYTHON' >> "$GITHUB_ENV"

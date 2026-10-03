@@ -473,6 +473,25 @@ struct StaticMemoryDeclarationRegistry {
     lifecycle: StaticRegistryLifecycle,
 }
 
+impl StaticMemoryDeclarationRegistry {
+    fn finish_sealing(
+        &mut self,
+        result: Result<SealedDeclarationSnapshot, StaticMemoryDeclarationError>,
+    ) -> Result<SealedDeclarationSnapshot, StaticMemoryDeclarationError> {
+        // Only the immutable snapshot or terminal error remains useful.
+        self.declarations = Vec::new();
+        self.requests = Vec::new();
+        self.ranges = Vec::new();
+        self.registration_hooks = Vec::new();
+        self.eager_init_hooks = Vec::new();
+        self.lifecycle = match &result {
+            Ok(snapshot) => StaticRegistryLifecycle::Sealed(snapshot.clone()),
+            Err(error) => StaticRegistryLifecycle::Failed(error.clone()),
+        };
+        result
+    }
+}
+
 #[derive(Debug)]
 enum StaticRegistryLifecycle {
     Open,
@@ -720,23 +739,16 @@ pub fn sealed_declaration_snapshot()
             return Err(StaticMemoryDeclarationError::InconsistentLifecycle);
         }
     };
-    if let Some(err) = deferred_error {
-        registry.lifecycle = StaticRegistryLifecycle::Failed(err.clone());
-        return Err(err);
-    }
-    let snapshot =
-        match build_snapshot(&registry.declarations, &registry.ranges, &registry.requests) {
-            Ok(snapshot) => snapshot,
-            Err(err) => {
-                registry.lifecycle = StaticRegistryLifecycle::Failed(err.clone());
-                return Err(err);
-            }
-        };
-    registry.lifecycle = StaticRegistryLifecycle::Sealed(snapshot.clone());
-    Ok(snapshot)
+    let result = match deferred_error {
+        Some(error) => Err(error),
+        None => build_snapshot(&registry.declarations, &registry.ranges, &registry.requests),
+    };
+    registry.finish_sealing(result)
 }
 
-fn fail_sealing<T>(err: StaticMemoryDeclarationError) -> Result<T, StaticMemoryDeclarationError> {
+fn fail_sealing(
+    err: StaticMemoryDeclarationError,
+) -> Result<SealedDeclarationSnapshot, StaticMemoryDeclarationError> {
     let mut registry = lock_registry()?;
     let failure = match &registry.lifecycle {
         StaticRegistryLifecycle::Sealing {
@@ -751,8 +763,7 @@ fn fail_sealing<T>(err: StaticMemoryDeclarationError) -> Result<T, StaticMemoryD
         | StaticRegistryLifecycle::Sealed(_) => err,
         StaticRegistryLifecycle::Failed(failure) => failure.clone(),
     };
-    registry.lifecycle = StaticRegistryLifecycle::Failed(failure.clone());
-    Err(failure)
+    registry.finish_sealing(Err(failure))
 }
 
 fn build_snapshot(

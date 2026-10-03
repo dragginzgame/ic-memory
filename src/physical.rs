@@ -291,7 +291,8 @@ impl DualCommitStore {
     /// Commit a new payload to the inactive slot.
     ///
     /// The returned record is the new authoritative in-memory slot. The owner
-    /// remains responsible for persisting the enclosing store.
+    /// remains responsible for persisting the enclosing store. Payloads exceeding
+    /// the current serialized byte ceiling are rejected without changing slots.
     pub fn commit_payload(
         &mut self,
         payload: Vec<u8>,
@@ -308,7 +309,7 @@ impl DualCommitStore {
     /// before they can become authoritative.
     ///
     /// The commit-slot generation is checked against the recovered
-    /// predecessor. This method does not inspect `payload`.
+    /// predecessor. This method bounds the payload length without decoding it.
     pub fn commit_payload_at_generation(
         &mut self,
         generation: u64,
@@ -322,6 +323,12 @@ impl DualCommitStore {
         requested: Option<u64>,
         payload: Vec<u8>,
     ) -> Result<&CommittedGenerationBytes, CommitRecoveryError> {
+        if payload.len() > crate::constants::MAX_COMMITTED_PAYLOAD_BYTES {
+            return Err(CommitRecoveryError::PayloadTooLarge {
+                len: payload.len(),
+                limit: crate::constants::MAX_COMMITTED_PAYLOAD_BYTES,
+            });
+        }
         // Validate every predecessor once before mutation, and reuse its slot.
         let (index, generation) = match self.authoritative_slot() {
             Ok(authoritative) => {
@@ -462,6 +469,14 @@ impl CommitSlotDiagnostic {
 #[non_exhaustive]
 #[derive(Clone, Copy, Debug, Deserialize, Eq, thiserror::Error, PartialEq, Serialize)]
 pub enum CommitRecoveryError {
+    /// A candidate payload exceeds the serialized commit-slot byte ceiling.
+    #[error("committed payload length {len} exceeds byte limit {limit}")]
+    PayloadTooLarge {
+        /// Candidate payload length in bytes.
+        len: usize,
+        /// Maximum serialized payload length in bytes.
+        limit: usize,
+    },
     /// No committed slot is present.
     #[error("no committed ledger generation is present")]
     NoValidGeneration,
@@ -510,6 +525,43 @@ fn generation_checksum(generation: &CommittedGenerationBytes) -> u64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn oversized_commits_preserve_empty_and_populated_stores_and_permit_retry() {
+        let limit = crate::constants::MAX_COMMITTED_PAYLOAD_BYTES;
+        for populated in [false, true] {
+            let mut store = DualCommitStore::default();
+            if populated {
+                store.commit_payload(payload(1)).unwrap();
+                store.commit_payload(payload(2)).unwrap();
+            }
+            let before = store.clone();
+            let generation = if populated { 2 } else { 0 };
+            for explicit in [false, true] {
+                let oversized = vec![0; limit + 1];
+                let result = if explicit {
+                    store.commit_payload_at_generation(generation, oversized)
+                } else {
+                    store.commit_payload(oversized)
+                };
+                assert_eq!(
+                    result,
+                    Err(CommitRecoveryError::PayloadTooLarge {
+                        len: limit + 1,
+                        limit,
+                    })
+                );
+                assert_eq!(store, before);
+            }
+            assert_eq!(
+                store.commit_payload(payload(3)).unwrap().generation(),
+                generation
+            );
+            let bytes = crate::test_cbor::to_vec(&store).unwrap();
+            let decoded: DualCommitStore = crate::cbor::from_slice_exact(&bytes).unwrap();
+            assert_eq!(decoded, store);
+        }
+    }
 
     #[test]
     fn automatic_and_explicit_commits_preserve_rejected_predecessors() {
@@ -596,14 +648,13 @@ mod tests {
 
     #[test]
     fn maximum_payload_writer_reader_agree() {
-        let record = CommittedGenerationBytes::new(
-            0,
-            vec![0; crate::constants::MAX_COMMITTED_PAYLOAD_BYTES],
-        );
-        let store = DualCommitStore {
-            slot0: Some(record.clone()),
-            slot1: Some(record),
-        };
+        let mut store = DualCommitStore::default();
+        store
+            .commit_payload_at_generation(0, vec![0; crate::constants::MAX_COMMITTED_PAYLOAD_BYTES])
+            .unwrap();
+        store
+            .commit_payload(vec![0; crate::constants::MAX_COMMITTED_PAYLOAD_BYTES])
+            .unwrap();
         let bytes = crate::test_cbor::to_vec(&store).unwrap();
         assert!(bytes.len() <= crate::constants::MAX_LEDGER_RECORD_BYTES);
         let decoded: DualCommitStore = crate::cbor::from_slice_exact(&bytes).unwrap();

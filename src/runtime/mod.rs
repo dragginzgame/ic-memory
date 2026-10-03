@@ -62,7 +62,7 @@ use crate::{
     slot::MEMORY_MANAGER_LEDGER_ID, stable_cell::decode_stable_cell_ledger_record_from_memory,
 };
 use ic_stable_structures::{
-    Cell, Memory, Storable,
+    Cell, Memory,
     memory_manager::{MemoryId, MemoryManager},
 };
 
@@ -126,7 +126,9 @@ impl<M: Memory> MemoryRuntime<M> {
     /// without `MemoryManager` magic, or
     /// [`RuntimeConstructionError::UnsupportedMemoryManagerVersion`] when the
     /// magic is recognized but the layout version is not current. Invalid
-    /// metadata returns [`RuntimeConstructionError::Layout`]. Reopening honors
+    /// metadata returns [`RuntimeConstructionError::Layout`]. Refused fresh
+    /// metadata growth returns [`RuntimeConstructionError::Growth`] without
+    /// writes, allowing the same backing memory to be retried. Reopening honors
     /// the actual persisted bucket size; only fresh memory uses 128 pages.
     pub fn new(memory: M) -> Result<Self, RuntimeConstructionError> {
         Self::construct(memory, None)
@@ -134,6 +136,12 @@ impl<M: Memory> MemoryRuntime<M> {
 
     /// Construct with an explicit immutable bucket policy. Existing memory must
     /// match exactly; mismatches fail before manager initialization or writes.
+    ///
+    /// # Errors
+    ///
+    /// Returns the construction errors described by [`Self::new`], or
+    /// [`RuntimeConstructionError::BucketSizeMismatch`] when existing geometry
+    /// differs from `config`.
     pub fn new_with_config(
         memory: M,
         config: MemoryManagerConfig,
@@ -149,6 +157,15 @@ impl<M: Memory> MemoryRuntime<M> {
             return Err(MemoryManagerLayoutError::UnsupportedByteOrder.into());
         }
         let (bucket_size_pages, allocated_buckets) = if memory.size() == 0 {
+            // Reserve the metadata page before the dependency writes its header.
+            // This fresh allocation is owned here; caller-supplied nonempty
+            // memory still passes the layout checks below before any writes.
+            if memory.grow(1) == -1 {
+                return Err(RuntimeGrowError::BackingRefused {
+                    additional_pages: 1,
+                }
+                .into());
+            }
             (requested.unwrap_or_default().bucket_size_pages(), 0)
         } else {
             let measured = layout::read(&memory)?;
@@ -385,7 +402,7 @@ fn ensure_ledger_cell_capacity<M: Memory, P>(
     memory: &RuntimeMemory<M>,
     record: &StableCellLedgerRecord,
 ) -> Result<(), RuntimeBootstrapError<P>> {
-    let value_size = record.to_bytes().len();
+    let value_size = record.encoded_size();
     if value_size > crate::constants::MAX_LEDGER_RECORD_BYTES {
         return Err(RuntimeBootstrapError::StableCellLedgerWriteTooLarge { value_size });
     }

@@ -52,6 +52,13 @@ impl StableCellLedgerRecord {
     pub fn into_store(self) -> LedgerCommitStore {
         self.store
     }
+
+    /// Measure the current encoded record without allocating a payload buffer.
+    pub(crate) fn encoded_size(&self) -> usize {
+        let mut writer = CountingWriter(0);
+        encode_record(self, &mut writer);
+        writer.0
+    }
 }
 
 impl Storable for StableCellLedgerRecord {
@@ -118,7 +125,7 @@ pub enum StableCellLedgerError {
     #[error(transparent)]
     Payload(#[from] StableCellPayloadError),
     /// Stable-cell value bytes are not a valid ledger record.
-    #[error("stable-cell ledger record decode failed")]
+    #[error("stable-cell ledger record decode failed: {0}")]
     Record(#[source] ciborium::de::Error<std::io::Error>),
 }
 
@@ -206,10 +213,30 @@ pub fn validate_stable_cell_ledger_memory<M: Memory>(
 
 fn serialize_record(record: &StableCellLedgerRecord) -> Vec<u8> {
     let mut bytes = Vec::new();
-    ciborium::into_writer(record, &mut bytes).unwrap_or_else(|err| {
+    encode_record(record, &mut bytes);
+    bytes
+}
+
+fn encode_record(record: &StableCellLedgerRecord, writer: impl std::io::Write) {
+    ciborium::into_writer(record, writer).unwrap_or_else(|err| {
         panic!("StableCellLedgerRecord serialize failed: {err}");
     });
-    bytes
+}
+
+struct CountingWriter(usize);
+
+impl std::io::Write for CountingWriter {
+    fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+        self.0 = self
+            .0
+            .checked_add(bytes.len())
+            .ok_or_else(|| std::io::Error::other("encoded record length overflow"))?;
+        Ok(bytes.len())
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        Ok(())
+    }
 }
 
 #[cfg(test)]
@@ -237,6 +264,7 @@ mod tests {
         ));
         let record = decode_stable_cell_ledger_record(&bytes).expect("stable-cell fixture");
 
+        assert_eq!(record.encoded_size(), bytes.len());
         assert_eq!(
             bytes,
             crate::test_cbor::to_vec(&record).expect("re-encoded stable-cell fixture")

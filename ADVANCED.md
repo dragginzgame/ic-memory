@@ -267,6 +267,12 @@ Runtime construction accepts empty backing memory or the current
 foreign magic or an unsupported manager version, leaving rejected bytes
 unchanged.
 
+Fresh construction reserves the manager's metadata page before writing its
+header. Ordinary backing growth refusal returns
+`RuntimeConstructionError::Growth(RuntimeGrowError::BackingRefused { .. })`
+without writes; the same unchanged backing can be retried. Configured default
+bootstrap propagates this through `RuntimeStateError::Construction`.
+
 `runtime.committed_allocations()` borrows the capability stored under the
 runtime. Opening memory never accepts a capability from another runtime; it
 consults the capability and `MemoryManager` owned by the same object. Capability
@@ -298,6 +304,18 @@ before the relevant allocations and decoding. See the
 [current recovery limits](docs/key-only-recovery.md#recovery-and-admission-limits).
 Opaque generation payloads use bounded CBOR byte strings, introduced in 0.14.3;
 the current decoder rejects the superseded integer-array representation.
+
+Low-level `DualCommitStore` commits enforce the same opaque-payload byte ceiling
+before changing either slot and return `CommitRecoveryError::PayloadTooLarge`
+on refusal. Logical ledger decoding and integrity validation remain the
+responsibility of `LedgerCommitStore`. Current durable retirement records also
+reject unknown fields instead of discarding them.
+
+Successful logical commits return recovery evidence from the checked ledger and
+the completed physical commit. Reading existing persisted bytes still performs
+the full checksum, format and integrity recovery path. Runtime capacity admission
+counts encoded record bytes without allocating a temporary serialization buffer;
+the stable cell then serializes the record for persistence.
 
 Decoded ledger and declaration DTOs are not trusted just because serde accepted
 them. Recovery first validates every present physical commit slot and selects

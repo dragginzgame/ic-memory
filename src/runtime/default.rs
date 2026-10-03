@@ -403,6 +403,20 @@ mod tests {
     }
 
     #[test]
+    fn configured_bootstrap_propagates_metadata_growth_refusal() {
+        std::thread::spawn(|| {
+            let error = RuntimeConstructionError::Growth(super::super::RuntimeGrowError::BackingRefused { additional_pages: 1 });
+            DEFAULT_RUNTIME.with(|runtime| *runtime.borrow_mut() = Some(Err(error)));
+            assert!(matches!(
+                bootstrap_default_memory_manager_with_config(MemoryManagerConfig::new(16).unwrap(), &GenericRangePolicy),
+                Err(RuntimeBootstrapError::State(RuntimeStateError::Construction(cause))) if cause == error
+            ));
+            assert_eq!(is_default_memory_manager_bootstrapped(), Err(RuntimeStateError::Construction(error)));
+            DEFAULT_RUNTIME.with(|runtime| assert!(matches!(runtime.borrow().as_ref(), Some(Err(cause)) if *cause == error)));
+        }).join().unwrap();
+    }
+
+    #[test]
     fn observations_preserve_cached_construction_failure() {
         std::thread::spawn(|| {
             let error = RuntimeConstructionError::ForeignMemory {

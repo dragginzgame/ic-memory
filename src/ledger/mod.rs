@@ -167,7 +167,13 @@ impl LedgerCommitStore {
         self.physical
             .commit_payload_at_generation(ledger.current_generation, payload)
             .map_err(LedgerCommitError::Recovery)?;
-        self.recover()
+        // The current writer encoded this integrity-checked ledger, and the
+        // physical commit checked its predecessor and established this generation.
+        // Existing persisted bytes still cross the full recovery boundary.
+        Ok(RecoveredLedger::from_trusted_parts(
+            ledger.clone(),
+            ledger.current_generation,
+        ))
     }
 
     /// Simulate corruption of a logical ledger payload in the inactive slot.
@@ -311,6 +317,47 @@ mod tests {
 
     fn active_ledger_value() -> crate::test_cbor::Value {
         crate::test_cbor::to_value(active_committed_ledger()).expect("ledger value")
+    }
+
+    #[test]
+    fn recovery_rejects_unknown_fields_inside_retirement_state() {
+        use crate::{AllocationRetirement, StableCellLedgerRecord};
+
+        let active = active_committed_ledger();
+        let retirement = AllocationRetirement::new(
+            "app.users.v1",
+            AllocationSlotDescriptor::memory_manager(100).unwrap(),
+        )
+        .unwrap();
+        let retired = active
+            .stage_retirement_generation(&retirement, None)
+            .unwrap();
+        let mut store = LedgerCommitStore::default();
+        let committed = store.commit(&retired).unwrap();
+        assert_eq!(committed, store.recover().unwrap());
+
+        let mut value = crate::test_cbor::to_value(&retired).unwrap();
+        let history = map_field_mut(value_map_mut(&mut value), "allocation_history");
+        let records = value_array_mut(map_field_mut(value_map_mut(history), "records"));
+        let state = map_field_mut(value_map_mut(&mut records[0]), "state");
+        let retired_state = map_field_mut(value_map_mut(state), "Retired");
+        crate::test_cbor::map_insert(
+            value_map_mut(retired_state),
+            "unexpected".into(),
+            true.into(),
+        );
+        let bytes = crate::test_cbor::to_vec(&value).unwrap();
+        let payload = LedgerPayloadEnvelope::current(bytes).try_encode().unwrap();
+        let mut physical = DualCommitStore::default();
+        physical.commit_payload_at_generation(2, payload).unwrap();
+        let record = StableCellLedgerRecord::new(LedgerCommitStore { physical });
+        let encoded = crate::test_cbor::to_vec(&record).unwrap();
+        let decoded = crate::decode_stable_cell_ledger_record(&encoded).unwrap();
+        let before = decoded.clone();
+        let error = decoded.store().recover().unwrap_err();
+        assert!(matches!(error, LedgerCommitError::Codec(_)));
+        assert!(error.to_string().contains("unexpected"));
+        assert_eq!(decoded, before);
     }
 
     fn value_map_mut(
@@ -1948,6 +1995,7 @@ mod tests {
             .expect("current-format genesis ledger");
         assert_eq!(recovered.current_generation(), 0);
         assert_eq!(recovered.ledger().allocation_history().generations(), []);
+        assert_eq!(recovered, store.recover().unwrap());
 
         let first = recovered
             .ledger()
@@ -1958,6 +2006,7 @@ mod tests {
             .expect("first real generation");
         let recovered = store.commit(&first).expect("first commit");
 
+        assert_eq!(recovered, store.recover().unwrap());
         assert_eq!(recovered.current_generation(), 1);
         assert_eq!(
             recovered.ledger().allocation_history().generations()[0].generation,
@@ -2127,6 +2176,7 @@ mod tests {
         let recovered = store.commit(&ledger).expect("boundary is admissible");
         let record = crate::StableCellLedgerRecord::new(store.clone());
         let bytes = crate::test_cbor::to_vec(&record).unwrap();
+        assert_eq!(record.encoded_size(), bytes.len());
         let recovered_record = crate::decode_stable_cell_ledger_record(&bytes).unwrap();
         assert_eq!(
             recovered_record.store().recover().unwrap().ledger(),

@@ -45,6 +45,9 @@ pub enum RuntimeGrowError {
 #[non_exhaustive]
 #[derive(Clone, Copy, Debug, Eq, thiserror::Error, PartialEq)]
 pub enum RuntimeConstructionError {
+    /// Fresh manager metadata could not reserve physical capacity.
+    #[error(transparent)]
+    Growth(#[from] RuntimeGrowError),
     /// Zero pages cannot form a bucket.
     #[error("bucket size must be nonzero")]
     InvalidBucketSize,

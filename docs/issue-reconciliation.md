@@ -71,3 +71,36 @@ strict all-target Clippy, Wasm test compilation and Rust 1.88 all-target check.
 All five existing raw Wasm budgets pass: core 258,931 bytes, diagnostics 312,802,
 key-only 258,544, admission 261,772 and integration 267,035. These are current
 probe sizes, not matched consumer or IC execution deltas.
+
+## Fresh constructor growth refusal — issue #9
+
+[#9](https://github.com/dragginzgame/ic-memory/issues/9) reports that the stable
+structures manager panics when its first metadata growth is refused. Both public
+constructors reproduced that panic on empty backing memory, with one failed
+growth and no writes. Canic traced its configured default bootstrap to the same
+construction path; that source trace does not establish an IC execution failure.
+
+The local, unreleased fix reserves the metadata page before initializing the
+dependency and returns
+`RuntimeConstructionError::Growth(RuntimeGrowError::BackingRefused { additional_pages: 1 })`
+on refusal. The failed attempt makes no reads or writes and leaves zero pages.
+Both constructors can retry the same backing successfully after refusal is
+removed. Reopening preserves geometry without growth or writes. Caller-supplied
+nonempty blank memory still fails layout validation without changing bytes.
+
+Configured default bootstrap propagates the construction error through
+`RuntimeStateError::Construction`. Its failed singleton initialization remains
+cached; the retry result above concerns caller-owned `MemoryRuntime` backing.
+No API compatibility path or durable-format change is introduced.
+
+Validation passes 256 library tests and the ordinary integration, compile-fail
+and doc suites, strict all-target Clippy and rustdoc, Rust 1.88 all-target checking,
+and Wasm test compilation. An external public-API probe confirms both constructors
+return the typed error without panicking, with one failed growth, zero writes and
+zero pages, then succeed on retry. All five raw Wasm budgets pass: core 257,247
+bytes, diagnostics 310,950, key-only 256,860, admission 259,995 and integration
+266,487. These are current local probes, not downstream or IC cost measurements.
+
+Keep #9 open until this fix is published with an identifiable release version.
+Canic explicitly requests that version before adoption; downstream qualification
+remains consumer-owned. This section records the ic-memory changes only.
