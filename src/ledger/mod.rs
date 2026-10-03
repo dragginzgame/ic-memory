@@ -115,10 +115,7 @@ impl LedgerCommitStore {
         ledger
             .validate_committed_integrity()
             .map_err(LedgerCommitError::Integrity)?;
-        Ok(RecoveredLedger::from_trusted_parts(
-            ledger,
-            committed.generation(),
-        ))
+        Ok(RecoveredLedger::from_trusted_ledger(ledger))
     }
 
     /// Recover the authoritative ledger, or explicitly initialize an empty store.
@@ -135,9 +132,8 @@ impl LedgerCommitStore {
     ) -> Result<RecoveredLedger, LedgerCommitError> {
         match self.recover() {
             Ok(ledger) => Ok(ledger),
-            Err(LedgerCommitError::Recovery(CommitRecoveryError::NoValidGeneration))
-                if self.physical.is_uninitialized() =>
-            {
+            // Physical selection returns this error only when both slots are absent.
+            Err(LedgerCommitError::Recovery(CommitRecoveryError::NoValidGeneration)) => {
                 self.commit(genesis)
             }
             Err(err) => Err(err),
@@ -170,10 +166,7 @@ impl LedgerCommitStore {
         // The current writer encoded this integrity-checked ledger, and the
         // physical commit checked its predecessor and established this generation.
         // Existing persisted bytes still cross the full recovery boundary.
-        Ok(RecoveredLedger::from_trusted_parts(
-            ledger.clone(),
-            ledger.current_generation,
-        ))
+        Ok(RecoveredLedger::from_trusted_ledger(ledger.clone()))
     }
 
     /// Simulate corruption of a logical ledger payload in the inactive slot.
@@ -1877,6 +1870,7 @@ mod tests {
         let recovered = store.recover().expect("recovered ledger");
 
         assert_eq!(recovered.current_generation(), 2);
+        assert_eq!(recovered.physical_generation(), 2);
     }
 
     #[test]
@@ -1937,7 +1931,7 @@ mod tests {
     }
 
     #[test]
-    fn combined_recovery_preserves_physical_diagnostics_and_logical_failures() {
+    fn recovery_and_initialization_preserve_physical_diagnostics_and_logical_failures() {
         let genesis = enveloped_payload(&committed_ledger(0));
         let committed = CommittedGenerationBytes::new(0, genesis.clone());
         let mut corrupt = committed.clone();
@@ -1983,9 +1977,18 @@ mod tests {
                 Some(CommittedGenerationBytes::new(1, genesis)),
                 None,
             ),
+            (
+                "invalid committed integrity",
+                Some(CommittedGenerationBytes::new(
+                    3,
+                    enveloped_payload(&ledger()),
+                )),
+                None,
+            ),
         ];
 
         for (label, slot0, slot1) in cases {
+            let empty = slot0.is_none() && slot1.is_none();
             let store = LedgerCommitStore {
                 physical: DualCommitStore { slot0, slot1 },
             };
@@ -1994,6 +1997,19 @@ mod tests {
             assert_eq!(recovered, store.recover(), "{label}");
             assert_eq!(diagnostic, store.physical().diagnostic(), "{label}");
             assert_eq!(store, before, "{label}");
+
+            let mut initializing = store.clone();
+            let initialized = initializing.recover_or_initialize(&committed_ledger(0));
+            if empty {
+                let initialized = initialized.expect("empty store accepts genesis");
+                assert_eq!(initialized.current_generation(), 0);
+                assert_eq!(initialized.physical_generation(), 0);
+                assert_eq!(initializing.recover().unwrap(), initialized);
+            } else {
+                assert_eq!(initialized, recovered, "{label}");
+                assert_eq!(initializing, before, "{label}");
+            }
+
             if let Err(LedgerCommitError::Recovery(error)) = recovered {
                 assert_eq!(diagnostic.recovery, Err(error), "{label}");
             } else {
@@ -2011,6 +2027,7 @@ mod tests {
             .recover_or_initialize(&genesis)
             .expect("current-format genesis ledger");
         assert_eq!(recovered.current_generation(), 0);
+        assert_eq!(recovered.physical_generation(), 0);
         assert_eq!(recovered.ledger().allocation_history().generations(), []);
         assert_eq!(recovered, store.recover().unwrap());
 
@@ -2025,6 +2042,7 @@ mod tests {
 
         assert_eq!(recovered, store.recover().unwrap());
         assert_eq!(recovered.current_generation(), 1);
+        assert_eq!(recovered.physical_generation(), 1);
         assert_eq!(
             recovered.ledger().allocation_history().generations()[0].generation,
             1
@@ -2164,6 +2182,7 @@ mod tests {
             .expect("initialized ledger");
 
         assert_eq!(recovered.current_generation(), 3);
+        assert_eq!(recovered.physical_generation(), 3);
         assert!(!store.physical().is_uninitialized());
     }
 

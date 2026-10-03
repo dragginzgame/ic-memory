@@ -54,13 +54,17 @@ impl<M: Memory> MemoryRuntime<M> {
         requirements: &SealedDeclarationSnapshot,
         authority: &str,
     ) -> Result<(), RuntimeAdoptionError> {
-        self.committed_allocations()?;
+        let RuntimeLifecycle::Bootstrapped { binding, .. } = &self.lifecycle else {
+            return Err(RuntimeOpenError::NotBootstrapped.into());
+        };
+        let committed = &binding.declarations;
         let mut found = false;
         for registration in requirements.registered_declarations() {
             if registration.authority() == authority {
                 found = true;
                 let expected = registration.declaration();
-                self.verify_requirement(
+                verify_requirement(
+                    committed,
                     authority,
                     expected.stable_key(),
                     expected.schema(),
@@ -71,7 +75,13 @@ impl<M: Memory> MemoryRuntime<M> {
         for request in requirements.requests() {
             if request.authority() == authority {
                 found = true;
-                self.verify_requirement(authority, request.stable_key(), request.schema(), None)?;
+                verify_requirement(
+                    committed,
+                    authority,
+                    request.stable_key(),
+                    request.schema(),
+                    None,
+                )?;
             }
         }
         if !found {
@@ -81,52 +91,48 @@ impl<M: Memory> MemoryRuntime<M> {
         }
         Ok(())
     }
+}
 
-    fn verify_requirement(
-        &self,
-        authority: &str,
-        key: &StableKey,
-        schema: &SchemaMetadata,
-        fixed: Option<&AllocationDeclaration>,
-    ) -> Result<(), RuntimeAdoptionError> {
-        let RuntimeLifecycle::Bootstrapped { binding, .. } = &self.lifecycle else {
-            return Err(RuntimeOpenError::NotBootstrapped.into());
-        };
-        let registration = binding
-            .declarations
-            .registered_declaration(key)
-            .ok_or_else(|| RuntimeOpenError::StableKeyNotCommitted(key.to_string()))?;
-        if registration.authority() != authority {
-            return Err(RuntimeAdoptionError::AuthorityMismatch {
-                stable_key: key.to_string(),
-                committed_authority: registration.authority().to_string(),
-                requested_authority: authority.to_string(),
-            });
-        }
-        let committed = registration.declaration();
-        if let Some(expected) = fixed
-            && expected.slot() != committed.slot()
-        {
-            return Err(RuntimeOpenError::MemoryIdMismatch {
-                stable_key: key.to_string(),
-                committed_id: committed
-                    .slot()
-                    .memory_manager_id()
-                    .expect("sealed host declaration slot"),
-                requested_id: expected
-                    .slot()
-                    .memory_manager_id()
-                    .expect("sealed requirement slot"),
-            }
-            .into());
-        }
-        if schema != committed.schema()
-            || fixed.is_some_and(|expected| expected.label() != committed.label())
-        {
-            return Err(RuntimeAdoptionError::DeclarationMetadataMismatch {
-                stable_key: key.to_string(),
-            });
-        }
-        Ok(())
+fn verify_requirement(
+    committed: &SealedDeclarationSnapshot,
+    authority: &str,
+    key: &StableKey,
+    schema: &SchemaMetadata,
+    fixed: Option<&AllocationDeclaration>,
+) -> Result<(), RuntimeAdoptionError> {
+    let registration = committed
+        .registered_declaration(key)
+        .ok_or_else(|| RuntimeOpenError::StableKeyNotCommitted(key.to_string()))?;
+    if registration.authority() != authority {
+        return Err(RuntimeAdoptionError::AuthorityMismatch {
+            stable_key: key.to_string(),
+            committed_authority: registration.authority().to_string(),
+            requested_authority: authority.to_string(),
+        });
     }
+    let committed = registration.declaration();
+    if let Some(expected) = fixed
+        && expected.slot() != committed.slot()
+    {
+        return Err(RuntimeOpenError::MemoryIdMismatch {
+            stable_key: key.to_string(),
+            committed_id: committed
+                .slot()
+                .memory_manager_id()
+                .expect("sealed host declaration slot"),
+            requested_id: expected
+                .slot()
+                .memory_manager_id()
+                .expect("sealed requirement slot"),
+        }
+        .into());
+    }
+    if schema != committed.schema()
+        || fixed.is_some_and(|expected| expected.label() != committed.label())
+    {
+        return Err(RuntimeAdoptionError::DeclarationMetadataMismatch {
+            stable_key: key.to_string(),
+        });
+    }
+    Ok(())
 }

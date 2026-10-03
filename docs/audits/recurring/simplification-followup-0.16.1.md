@@ -1,7 +1,9 @@
 # Simplification follow-up — 0.16.1 baseline
 
-Reviewed on 2026-10-03 against released commit `96e4146`. The changes described
-here are working-tree edits, not a published release.
+Reviewed on 2026-10-03 against released commit `96e4146`. All three changes
+described here shipped in **0.17.0**, released at `a72a4a4`. The validation below
+records the pre-release audit; subsequent work is recorded in the
+[0.17.0 follow-up](simplification-followup-0.17.0.md).
 
 The remaining avoidable complexity was concentrated in diagnostics and opening:
 validated snapshot/capability facts were treated as fallible again, and doctor
@@ -27,8 +29,7 @@ must remove the obsolete match arms or constructions. No deprecated aliases are
 added. The corresponding `From<MemoryManagerSlotError>` conversions into the
 runtime diagnostic/open error enums are removed as well. Slot validation and its
 typed errors remain at raw declaration and
-durable recovery boundaries. Prepare this cut as the next minor release,
-**0.17.0**; the package version has not been changed by the audit.
+durable recovery boundaries. This cut shipped in the minor release **0.17.0**.
 
 Canic and IcyDB local source searches found no references to the removed
 variants. The additional open-variant search also covered local Rust sources
@@ -49,7 +50,7 @@ store framing, replay receipts and auth repair remain with their consumers.
 3. Remove the corresponding unreachable open-error variant and conversions;
    keep the raw-input rejection, committed-open and sealed-adoption coverage.
 
-Record the API cut and focused validation before preparing the next release.
+The API cut and focused validation are recorded in the 0.17.0 changelog.
 Versioning, commits, tags and pushes remain maintainer-owned.
 
 ## Complexity retained

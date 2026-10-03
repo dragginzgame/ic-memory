@@ -201,7 +201,6 @@ impl MemoryManagerAuthorityRecord {
 ///
 
 #[derive(Clone, Debug, Default, Eq, PartialEq, Serialize)]
-#[serde(deny_unknown_fields)]
 pub struct MemoryManagerRangeAuthority {
     authorities: Vec<MemoryManagerAuthorityRecord>,
 }

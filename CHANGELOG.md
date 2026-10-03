@@ -1,5 +1,36 @@
 # Changelog
 
+## 0.17.1
+
+- Remove duplicate physical-generation state from `RecoveredLedger`. Recovery
+  establishes physical/logical equality before constructing the proof; both
+  public generation accessors now derive that value from the ledger. Preserve
+  mismatch rejection, const accessors and constructor privacy. Derived `Debug`
+  output no longer includes the redundant private field.
+- Remove repeated empty-store checks after physical slot selection in explicit
+  ledger initialization and physical commits. Only two absent slots permit
+  genesis; corrupt or ambiguous slots still fail closed. Extend the recovery
+  matrix to check initialization, exact rejection and unchanged stores for
+  corrupt, unsupported, undecodable, mismatched and invalid-history records.
+- Check runtime readiness once during authority adoption and verify requirements
+  against the established host snapshot. Preserve fixed/logical distinctions,
+  authority and metadata checks, error ordering and effect-free adoption without
+  replaying host preparation.
+- Remove inactive deserialization-only Serde attributes from the serialize-only
+  derives on `PolicyIdentity` and `MemoryManagerRangeAuthority`. Their custom
+  readers retain strict unknown-field, explicit optional-field and domain checks
+  on the decoding DTOs.
+- Record the [follow-up audit](docs/audits/recurring/simplification-followup-0.17.0.md)
+  and mark the previous findings as released in 0.17.0. Qualify recovery/adoption
+  changes with 262 library tests, integration and compile-fail tests, doctests,
+  strict Clippy and Rustdoc, Rust 1.88 all-target checking, Wasm test compilation
+  and offline package verification. All five raw Wasm budgets pass; core is
+  249,892 bytes under its 260,000-byte ceiling. Recheck 34 focused tests and
+  strict Clippy after the final Serde-attribute cleanup. Public API signatures,
+  persisted formats, diagnostic DTO shapes, checksums and declaration
+  fingerprints are unchanged. Release-flow tests were not rerun because they
+  create commits and tags reserved for the maintainer.
+
 ## 0.17.0
 
 - Hard cut: remove `RuntimeDiagnosticError::AllocationBound`,

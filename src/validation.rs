@@ -222,7 +222,7 @@ mod tests {
     }
 
     fn recovered(records: Vec<AllocationRecord>) -> RecoveredLedger {
-        RecoveredLedger::from_trusted_parts(ledger(records), 7)
+        RecoveredLedger::from_trusted_ledger(ledger(records))
     }
 
     #[test]

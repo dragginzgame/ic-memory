@@ -346,7 +346,8 @@ impl DualCommitStore {
                 }
                 (authoritative.index.opposite(), generation)
             }
-            Err(CommitRecoveryError::NoValidGeneration) if self.is_uninitialized() => {
+            // Slot selection reports this only for two absent slots.
+            Err(CommitRecoveryError::NoValidGeneration) => {
                 (CommitSlotIndex::Slot0, requested.unwrap_or(0))
             }
             Err(err) => return Err(err),

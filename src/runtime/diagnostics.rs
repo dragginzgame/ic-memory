@@ -302,7 +302,7 @@ pub(super) fn diagnostic_validation_ledger(
 
 fn diagnostic_genesis_recovered_ledger() -> Result<crate::RecoveredLedger, DiagnosticFailure> {
     AllocationLedger::new(0, AllocationHistory::default())
-        .map(|ledger| crate::RecoveredLedger::from_trusted_parts(ledger, 0))
+        .map(crate::RecoveredLedger::from_trusted_ledger)
         .map_err(|err| {
             DiagnosticFailure::new(
                 DiagnosticCode::GenesisLedger,

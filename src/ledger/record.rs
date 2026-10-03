@@ -200,24 +200,22 @@ pub struct GenerationRecord {
 /// logical payload-envelope routing, current-format checks, and committed
 /// integrity validation.
 ///
+/// Recovery checks that physical and logical generations agree before
+/// constructing this proof; both generation accessors report that one value.
+///
 /// This type is not serializable and has no public constructor. It is the
 /// provenance boundary required before declarations can mint pre-commit
 /// [`crate::ValidatedAllocations`].
+///
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct RecoveredLedger {
     ledger: AllocationLedger,
-    physical_generation: u64,
 }
 
 impl RecoveredLedger {
-    pub(crate) const fn from_trusted_parts(
-        ledger: AllocationLedger,
-        physical_generation: u64,
-    ) -> Self {
-        Self {
-            ledger,
-            physical_generation,
-        }
+    pub(crate) const fn from_trusted_ledger(ledger: AllocationLedger) -> Self {
+        Self { ledger }
     }
 
     /// Borrow the recovered canonical allocation ledger.
@@ -231,9 +229,10 @@ impl RecoveredLedger {
     }
 
     /// Return the selected physical committed generation.
+    /// Recovery has established that it equals the current logical generation.
     #[must_use]
     pub const fn physical_generation(&self) -> u64 {
-        self.physical_generation
+        self.ledger.current_generation
     }
 
     /// Return the recovered ledger's current logical generation.

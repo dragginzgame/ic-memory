@@ -21,11 +21,9 @@ use serde::{Deserialize, Deserializer, Serialize, de::Error as _};
 ///
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
-#[serde(deny_unknown_fields)]
 pub struct PolicyIdentity {
     name: Box<str>,
     version: u32,
-    #[serde(deserialize_with = "crate::cbor::deserialize_present_option")]
     configuration_digest: Option<[u8; 32]>,
 }
 
