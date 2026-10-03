@@ -16,6 +16,11 @@ publish = true
 exclude = ["images/dont-overwrite.png"]
 
 [[example]]
+name = "composed_host"
+path = "examples/composed_host.rs"
+test = true
+
+[[example]]
 name = "wasm-core-size-probe"
 path = "examples/wasm_core_size_probe.rs"
 crate-type = ["cdylib"]

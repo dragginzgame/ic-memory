@@ -110,8 +110,16 @@ and verification subsequently passed with `--allow-dirty`. Five existing doc
 examples remain ignored by the maintained test configuration.
 
 A local dependency override is candidate evidence, not released-dependency
-acceptance. Issue #7 remains open until release and IcyDB adoption are qualified
-under the unchanged ceiling. No release, commit or GitHub status change was made.
+acceptance. The initial qualification above did not perform release or GitHub
+status changes. The codec subsequently shipped in 0.14.3 and IcyDB adopted the
+published package under the unchanged ceiling. Its
+[released 0.15.0 follow-up](https://github.com/dragginzgame/ic-memory/issues/7#issuecomment-5947699680)
+reports a worst phase of 5,169,089 instructions, and the
+[0.15.3 follow-up](https://github.com/dragginzgame/ic-memory/issues/8#issuecomment-5948796045)
+reports 5,169,206, both below 12,750,000. These are downstream acceptance results,
+not matched performance deltas against the original compiler/dependency graph.
+See the [current issue reconciliation](issue-reconciliation.md) for disposition
+and qualification boundaries.
 
 The final change touches 17 files, including four production owners, three test
 owners, four replaced wire fixtures, one test dependency declaration and five

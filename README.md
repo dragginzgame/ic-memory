@@ -83,9 +83,17 @@ journals before the single commit. The context grants no memory access; unknown,
 retired or unauthorized selections reject. Warm adoption does not rerun admission.
 
 See the runnable [standalone and composed example](examples/key_only.rs),
+[composed-host cold-reopen and native-thread example](examples/composed_host.rs),
 [recovered-journal example](examples/recovered_admission.rs),
 [admission contract](docs/recovered-admission.md), and
 [recovery limits and omitted-store inspection](docs/key-only-recovery.md).
+
+In native tests the default runtime and backing are thread-local. Each worker
+must bootstrap the host with its selected policy and bucket size before library
+adoption or initialization of thread-local stable stores. A database's readiness
+does not bootstrap other host stores. Sharing a package identity is necessary
+for composition, but also qualify admission, grants and retained data across
+repeated cold reopens of the same release and backing.
 
 ## Why Use It?
 

@@ -1,5 +1,27 @@
 # Changelog
 
+## 0.15.4
+
+- Add the runnable [composed-host example](examples/composed_host.rs) requested
+  by Canic. Two cold reopens over the same backing retain fixed/logical IDs,
+  authority and stored data with unchanged declarations and 16-page buckets.
+  Cold attempts run host and consumer admission; warm adoption preserves the
+  commitment without replaying admission. Typed consumer rejection leaves the
+  existing backing unchanged and publishes no capability.
+- Enable two public-API regressions in the ordinary test suite, covering cold
+  reopens and configured host bootstrap on every native worker before consumer
+  adoption or thread-local store initialization. Document that initialization
+  order in the README and admission contract.
+- Close implemented GitHub requests #2–#8 with released implementation and
+  downstream adoption evidence. Update the [issue reconciliation](docs/issue-reconciliation.md)
+  and codec qualification to record IcyDB's published 0.15.3 acceptance under
+  its unchanged lifecycle instruction ceiling.
+- Validate the full test suite, strict all-target Clippy, Wasm test compilation,
+  all five existing raw Wasm size budgets and Rust 1.88 all-target checks.
+  Runtime APIs and persisted encoding are unchanged. IC instruction/cycle and
+  matched consumer Wasm deltas for the new regressions are unmeasured; Canic's
+  participant/store-restoration qualification remains consumer-owned.
+
 ## 0.15.3
 
 - Make default export, commit-recovery and both doctor diagnostic helpers

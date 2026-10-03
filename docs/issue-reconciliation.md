@@ -1,35 +1,73 @@
-# Issue reconciliation — 2026-09-17
+# Issue reconciliation — 2026-10-03
 
-Reviewed open issues #2–#7 against released ic-memory 0.14.0–0.14.2, current
-source/tests and the sibling IcyDB worktree's 0.258 qualification notes. This is
-an evidence review; it does not change GitHub issue states or claim that the
-consumer's unreleased worktree is a published release.
+Reconciled requests #2–#8 against released ic-memory 0.14.0–0.15.3, current
+source/tests, IcyDB's logical-memory qualification and its released-dependency
+issue follow-ups. The maintainer authorized updating GitHub issue dispositions.
+All seven original implementation requests are closed as completed; each issue's original
+body is retained beneath a dated resolution with release evidence and limits.
 
-| Issue | Upstream evidence | Disposition |
+| Issue | Released implementation and qualification | Disposition |
 | --- | --- | --- |
-| [#2](https://github.com/dragginzgame/ic-memory/issues/2) Key-only allocation | 0.14.0; `docs/key-only-recovery.md`, `examples/key_only.rs`, runtime request tests: canonical placement, retained IDs, reservations, revoked grants, exhaustion, persistence refusal/retry, host adoption | Implemented; ready for closure with the documented measurement limits and consumer evidence attached |
-| [#3](https://github.com/dragginzgame/ic-memory/issues/3) Recovery bounds | 0.14.0; recovery-limit table, ledger/stable-cell boundary and hostile-input tests, no-op generation headroom and typed exhaustion | Implemented; ready for closure; #7 separately qualifies the replacement encoding and tighter outer bound |
-| [#4](https://github.com/dragginzgame/ic-memory/issues/4) Omitted allocation access | 0.14.0 documents explicit redeclaration; 0.14.1 adds precommit historical selection; runtime tests preserve journal markers and reject unauthorized opens | Upstream contract complete; downstream logical-memory qualification now provides the formerly missing generated reconciliation evidence |
-| [#5](https://github.com/dragginzgame/ic-memory/issues/5) Recovered admission | 0.14.1; `docs/recovered-admission.md`, `examples/recovered_admission.rs`, admission/default-runtime/compile-fail tests | Implemented; consumer now uses the shared preparation function and journal-only selection; ready for closure review |
-| [#6](https://github.com/dragginzgame/ic-memory/issues/6) Bootstrap cleanup | 0.14.2; `docs/logical-bootstrap-cleanup.md`, permutation/duplicate/fingerprint tests and matched Wasm table; consumer notes explicitly record 0.14.2 adoption | Ready for closure; deferred range sharing is explicitly justified, IC execution costs were unmeasured upstream |
-| [#7](https://github.com/dragginzgame/ic-memory/issues/7) Opaque payload codec | Current candidate and `docs/opaque-ledger-payloads.md` | Candidate lifecycle cost gate passes at 5,133,140 instructions; keep open through released implementation and adoption |
+| [#2](https://github.com/dragginzgame/ic-memory/issues/2) Key-only allocation | 0.14.0; [contract](key-only-recovery.md), standalone/composed example and runtime request tests. 0.15.0 adds committed authority verification without replaying host admission. | Closed; documented measurement limits retained |
+| [#3](https://github.com/dragginzgame/ic-memory/issues/3) Recovery bounds | 0.14.0; numerical limits, hostile-input and history-boundary tests, writer/reader agreement and upgrade headroom. 0.14.3 tightens the outer codec bound. | Closed |
+| [#4](https://github.com/dragginzgame/ic-memory/issues/4) Omitted allocation access | 0.14.0 explicit redeclaration, 0.14.1 precommit historical selection; production-runtime marker preservation and authorization rejection. IcyDB generated reconciliation covers debt and pending markers. | Closed; database retirement remains consumer-owned |
+| [#5](https://github.com/dragginzgame/ic-memory/issues/5) Recovered admission | 0.14.1; [contract](recovered-admission.md), recovered-journal example, admission/default-runtime and compile-fail tests. IcyDB uses the shared role preparation hook. | Closed |
+| [#6](https://github.com/dragginzgame/ic-memory/issues/6) Bootstrap cleanup | 0.14.2; [cleanup report](logical-bootstrap-cleanup.md), canonical-permutation/duplicate/fingerprint tests and matched Wasm results; IcyDB adoption recorded. | Closed; wider range-table sharing explicitly deferred |
+| [#7](https://github.com/dragginzgame/ic-memory/issues/7) Opaque payload codec | 0.14.3; [codec qualification](opaque-ledger-payloads.md), pre-allocation bounds and maximum-size writer/reader tests; released IcyDB lifecycle acceptance under its unchanged ceiling. | Closed; candidate-only adoption wording is superseded |
+| [#8](https://github.com/dragginzgame/ic-memory/issues/8) Typed diagnostic tests and lint expectations | 0.15.2; exact diagnostic-code assertion and justified expectations; IcyDB explicitly confirms released implementation/adoption. | Closed |
 
-The IcyDB worktree's `docs/changelog/0.258.md` reports three executed generated
-PocketIC upgrade cases in `testing/integration/tests/logical_memory.rs`: empty
-omitted-store retirement preserves surviving rows/IDs; journal debt blocks
-removal; a valid pending marker blocks registry changes. Rejected transitions
-recover with the original actor. These distinguish generic allocation ownership
-from database retirement and fill the integration gap recorded in older upstream
-release notes. They are existing downstream evidence, not tests rerun by this
-reconciliation itself.
+## Downstream acceptance
 
-The same consumer notes report matched integration costs and explicitly retain
-the failing lifecycle ceiling tracked by #7. Closing implementation issues must
-not imply that this separate release gate has passed. Historical release notes
-remain historical; current codec limits are in `docs/key-only-recovery.md`.
+IcyDB's maintained 0.258 qualification records three generated PocketIC upgrades:
+empty omitted-store retirement preserves surviving rows/IDs, journal debt blocks
+removal, and a valid pending marker blocks registry changes. Rejected transitions
+recover with the original actor. These establish consumer integration while
+preserving the distinction between allocation ownership and database retirement.
+The 0.258 status tracker also records published 0.14.3 adoption and resolution of
+the former lifecycle cost gate at 5,131,230 instructions.
 
-The #7 candidate additionally passes the maintained consumer lifecycle test binary
-(three tests), 12 memory-admission tests and the default-manager test in a
-disposable checkout. This rerun does not include the separate logical-memory
-upgrade binary cited above. See [candidate qualification](opaque-ledger-payloads.md)
-for exact instruction counts, validation and release limitations.
+The [released 0.15.0 follow-up on #7](https://github.com/dragginzgame/ic-memory/issues/7#issuecomment-5947699680)
+reports all three lifecycle-participant tests passing, with a worst phase of
+5,169,089 instructions against the unchanged 12,750,000 ceiling. The
+[latest 0.15.3 follow-up on #8](https://github.com/dragginzgame/ic-memory/issues/8#issuecomment-5948796045)
+reports four bootstrap tests and seven installed-canister tests passing. Its
+worst participant phase is 5,169,206 instructions; empty/populated stable extents
+remain 23,134,208 bytes. Maintainer Clippy and the public Rust 1.88 dependency
+path pass, with the same five existing consumer MSRV warnings. A stale IcyDB
+fixture was corrected to create a conflicting layout through explicit bootstrap,
+preserving typed mismatch, rejection conservation and retry coverage.
+
+These are reported downstream results, not tests rerun by this reconciliation,
+not complete upstream CI and not matched performance comparisons against the
+original compiler/dependency graph. Raw consumer Wasm and cycle deltas remain
+unmeasured. Historical changelogs retain their original release status.
+
+## New Canic qualification request
+
+Canic's 2026-10-02 recheck confirms 0.15.3 fixes diagnostic-triggered default
+runtime construction: export, commit-recovery and both doctor helpers return
+typed `NotBootstrapped`, then allow configured 16-page bootstrap. Its current
+review status also records managed-component lifecycle qualification. This
+feedback is resolved by the released runtime, independently of #8's maintenance
+request.
+
+The 2026-10-03 request for a composed-host example and repeated cold reopens is
+covered by [the new public-API example](../examples/composed_host.rs) and its two
+tests, enabled in the ordinary suite. They check two cold reopens over the same
+backing, fixed/logical IDs and retained data, current authority, unchanged
+geometry, cold admission, effect-free warm adoption, typed consumer rejection
+without candidate commitment, and host-first native bootstrap on each worker.
+This additional example/test work is **uncommitted and unpublished**; no runtime
+API or persisted-format change is required, and closing #2–#8 relies on their
+already released implementations rather than this new work.
+
+Canic still owns its PocketIC participant and store-restoration qualification;
+the reported Toko failures do not establish an ic-memory defect. No sibling
+repository source, release, commit, tag or push is part of this reconciliation.
+
+Local validation passes the serialized unit/integration/compile-fail/doc suite
+(243 library tests plus the two new example regressions), runnable example,
+strict all-target Clippy, Wasm test compilation and Rust 1.88 all-target check.
+All five existing raw Wasm budgets pass: core 258,931 bytes, diagnostics 312,802,
+key-only 258,544, admission 261,772 and integration 267,035. These are current
+probe sizes, not matched consumer or IC execution deltas.

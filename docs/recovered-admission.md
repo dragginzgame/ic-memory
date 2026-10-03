@@ -93,6 +93,44 @@ responsibility, including admission configuration.
 
 ## Qualification and bounded work
 
+### Composed-host cold reopens and native threads
+
+Run `cargo run --example composed_host`. Its two public-API regressions are also
+enabled in the ordinary `cargo test -- --test-threads=1` suite; they can be run
+alone with `cargo test --example composed_host -- --test-threads=1`.
+
+The host grants itself IDs 10–99 and the consumer IDs 100–110, registers one
+fixed host store and two logical consumer stores, and delegates consumer
+identity admission through one host policy. After writing all three stores, it
+reconstructs `MemoryRuntime` over the same backing twice with unchanged
+declarations and 16-page buckets. Each cold bootstrap runs both preparations
+and commits one generation; consumer `verify_authority` and matching warm
+bootstrap do not rerun preparation or write stable memory. Fixed ID 10, logical
+IDs 100/101, current authority, virtual sizes and stored bytes remain intact.
+
+Before each accepted reopen, a replacement consumer control declaration
+returns `RuntimeBootstrapError::AdmissionPolicy` with the exact consumer error.
+No capability or store handle is published, and the complete existing backing
+remains byte-for-byte unchanged. A new runtime then admits the original
+declarations over that same evidence. The identity rule is illustrative;
+ic-memory does not infer application intent or database readiness.
+
+The native regression starts two workers. Each observes typed
+`NotBootstrapped` before adoption, bootstraps the configured host on its own
+thread, and only then adopts consumer authority and touches stores. The static
+declaration registry is shared across the program; native default runtimes and
+their backing are thread-local. Applications must follow this ordering before
+touching any thread-local store initializer, including host stores that are
+independent of database readiness.
+
+These are substrate/public-API regressions using `VectorMemory`, not executed
+Canic/IcyDB lifecycle participants. Canic still owns its PocketIC participant
+and store-restoration qualification. Reported Toko failures have not established
+an ic-memory defect. IC instructions/cycles and matched consumer Wasm deltas
+for this additional regression are unmeasured; native timing is not a metric.
+
+### Recovery and historical selection
+
 Production `MemoryRuntime` tests preserve an omitted journal's debt/commit marker
 and commit exactly one new generation. They reject unknown, duplicate, foreign,
 revoked and retired selections, consumer key-set/owner replacement, excessive
