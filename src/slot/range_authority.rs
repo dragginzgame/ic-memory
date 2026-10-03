@@ -229,120 +229,29 @@ impl MemoryManagerRangeAuthority {
 
     /// Build a range authority from diagnostic records.
     ///
-    /// Records are validated with the same rules as the builder methods and
-    /// stored in ascending range order.
+    /// Each record is validated before insertion, overlaps are rejected, and
+    /// accepted records are stored in ascending range order. Decoded records
+    /// pass the same checks as records built with their checked constructor.
     pub fn from_records(
         records: Vec<MemoryManagerAuthorityRecord>,
     ) -> Result<Self, MemoryManagerRangeAuthorityError> {
-        let mut authority = Self::new();
+        let mut authorities: Vec<MemoryManagerAuthorityRecord> = Vec::new();
         for record in records {
-            authority = authority.insert_record(record)?;
+            validate_authority_record(&record)?;
+            for existing in &authorities {
+                if ranges_overlap(existing.range, record.range) {
+                    return Err(MemoryManagerRangeAuthorityError::OverlappingRanges {
+                        existing_start: existing.range.start(),
+                        existing_end: existing.range.end(),
+                        candidate_start: record.range.start(),
+                        candidate_end: record.range.end(),
+                    });
+                }
+            }
+            authorities.push(record);
+            authorities.sort_by_key(|record| record.range.start());
         }
-        Ok(authority)
-    }
-
-    /// Add a reserved authority range.
-    ///
-    /// Reserved is a policy authority mode. It does not allocate every ID in
-    /// the range and does not write to the allocation ledger.
-    pub fn reserve(
-        self,
-        range: MemoryManagerIdRange,
-        authority: impl Into<String>,
-    ) -> Result<Self, MemoryManagerRangeAuthorityError> {
-        self.reserve_with_purpose(range, authority, None)
-    }
-
-    /// Add a reserved authority range from inclusive ID bounds.
-    ///
-    /// Reserved is a policy authority mode. It does not allocate every ID in
-    /// the range and does not write to the allocation ledger.
-    pub fn reserve_ids(
-        self,
-        start: u8,
-        end: u8,
-        authority: impl Into<String>,
-    ) -> Result<Self, MemoryManagerRangeAuthorityError> {
-        self.reserve(MemoryManagerIdRange::new(start, end)?, authority)
-    }
-
-    /// Add a reserved authority range with a diagnostic purpose.
-    ///
-    /// Reserved is a policy authority mode. It does not allocate every ID in
-    /// the range and does not write to the allocation ledger.
-    pub fn reserve_with_purpose(
-        self,
-        range: MemoryManagerIdRange,
-        authority: impl Into<String>,
-        purpose: Option<String>,
-    ) -> Result<Self, MemoryManagerRangeAuthorityError> {
-        self.insert(range, authority, MemoryManagerRangeMode::Reserved, purpose)
-    }
-
-    /// Add a reserved authority range from inclusive ID bounds with a diagnostic purpose.
-    ///
-    /// Reserved is a policy authority mode. It does not allocate every ID in
-    /// the range and does not write to the allocation ledger.
-    pub fn reserve_ids_with_purpose(
-        self,
-        start: u8,
-        end: u8,
-        authority: impl Into<String>,
-        purpose: Option<String>,
-    ) -> Result<Self, MemoryManagerRangeAuthorityError> {
-        self.reserve_with_purpose(MemoryManagerIdRange::new(start, end)?, authority, purpose)
-    }
-
-    /// Add an allowed authority range.
-    ///
-    /// Allowed is a policy authority mode. It does not allocate any ID in the
-    /// range and does not write to the allocation ledger.
-    pub fn allow(
-        self,
-        range: MemoryManagerIdRange,
-        authority: impl Into<String>,
-    ) -> Result<Self, MemoryManagerRangeAuthorityError> {
-        self.allow_with_purpose(range, authority, None)
-    }
-
-    /// Add an allowed authority range from inclusive ID bounds.
-    ///
-    /// Allowed is a policy authority mode. It does not allocate any ID in the
-    /// range and does not write to the allocation ledger.
-    pub fn allow_ids(
-        self,
-        start: u8,
-        end: u8,
-        authority: impl Into<String>,
-    ) -> Result<Self, MemoryManagerRangeAuthorityError> {
-        self.allow(MemoryManagerIdRange::new(start, end)?, authority)
-    }
-
-    /// Add an allowed authority range with a diagnostic purpose.
-    ///
-    /// Allowed is a policy authority mode. It does not allocate any ID in the
-    /// range and does not write to the allocation ledger.
-    pub fn allow_with_purpose(
-        self,
-        range: MemoryManagerIdRange,
-        authority: impl Into<String>,
-        purpose: Option<String>,
-    ) -> Result<Self, MemoryManagerRangeAuthorityError> {
-        self.insert(range, authority, MemoryManagerRangeMode::Allowed, purpose)
-    }
-
-    /// Add an allowed authority range from inclusive ID bounds with a diagnostic purpose.
-    ///
-    /// Allowed is a policy authority mode. It does not allocate any ID in the
-    /// range and does not write to the allocation ledger.
-    pub fn allow_ids_with_purpose(
-        self,
-        start: u8,
-        end: u8,
-        authority: impl Into<String>,
-        purpose: Option<String>,
-    ) -> Result<Self, MemoryManagerRangeAuthorityError> {
-        self.allow_with_purpose(MemoryManagerIdRange::new(start, end)?, authority, purpose)
+        Ok(Self { authorities })
     }
 
     /// Validate that `slot` belongs to `expected_authority`.
@@ -498,44 +407,6 @@ impl MemoryManagerRangeAuthority {
         }
 
         Ok(())
-    }
-
-    fn insert(
-        self,
-        range: MemoryManagerIdRange,
-        authority: impl Into<String>,
-        mode: MemoryManagerRangeMode,
-        purpose: Option<String>,
-    ) -> Result<Self, MemoryManagerRangeAuthorityError> {
-        let record = MemoryManagerAuthorityRecord {
-            range,
-            authority: authority.into(),
-            mode,
-            purpose,
-        };
-        self.insert_record(record)
-    }
-
-    fn insert_record(
-        mut self,
-        record: MemoryManagerAuthorityRecord,
-    ) -> Result<Self, MemoryManagerRangeAuthorityError> {
-        validate_authority_record(&record)?;
-
-        for existing in &self.authorities {
-            if ranges_overlap(existing.range, record.range) {
-                return Err(MemoryManagerRangeAuthorityError::OverlappingRanges {
-                    existing_start: existing.range.start(),
-                    existing_end: existing.range.end(),
-                    candidate_start: record.range.start(),
-                    candidate_end: record.range.end(),
-                });
-            }
-        }
-
-        self.authorities.push(record);
-        self.authorities.sort_by_key(|record| record.range.start());
-        Ok(self)
     }
 
     fn covering_record(

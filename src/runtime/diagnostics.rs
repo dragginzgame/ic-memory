@@ -23,15 +23,7 @@ impl<M: Memory> MemoryRuntime<M> {
         let record = self.ledger_record_from_memory()?;
         let (recovered, commit_recovery) = record.store().recover_with_diagnostic();
         let recovered = recovered?;
-        let ledger = recovered.ledger();
-        Ok(
-            DiagnosticExport::from_ledger_with_commit_recovery_and_memory_sizes(
-                ledger,
-                ledger_anchor_descriptor(),
-                Some(commit_recovery),
-                self.memory_sizes(&recovered),
-            ),
-        )
+        Ok(self.recovered_diagnostic_export(&recovered, Some(commit_recovery)))
     }
 
     /// Diagnose protected commit recovery from this runtime's ledger memory.
@@ -69,14 +61,8 @@ impl<M: Memory> MemoryRuntime<M> {
                 (Some(recovered), Some(diagnostic))
             });
         let recovered_for_export = recovered.as_ref().and_then(|result| result.as_ref().ok());
-        let ledger = recovered_for_export.map(|recovered| {
-            DiagnosticExport::from_ledger_with_commit_recovery_and_memory_sizes(
-                recovered.ledger(),
-                ledger_anchor_descriptor(),
-                commit_recovery,
-                self.memory_sizes(recovered),
-            )
-        });
+        let ledger = recovered_for_export
+            .map(|recovered| self.recovered_diagnostic_export(recovered, commit_recovery));
         let diagnostic_declarations = declarations
             .registered_declarations()
             .iter()
@@ -127,25 +113,25 @@ impl<M: Memory> MemoryRuntime<M> {
         }
     }
 
-    fn memory_sizes<'a>(
-        &'a self,
-        recovered: &'a RecoveredLedger,
-    ) -> impl Iterator<Item = (AllocationSlotDescriptor, DiagnosticMemorySize)> + 'a {
-        recovered
-            .ledger()
-            .allocation_history()
-            .records()
-            .iter()
-            .map(move |record| {
-                let id = record
-                    .slot()
-                    .memory_manager_id()
-                    .expect("recovered ledger slot");
-                (
-                    record.slot().clone(),
-                    DiagnosticMemorySize::from_wasm_pages(self.memory(id).size()),
-                )
-            })
+    fn recovered_diagnostic_export(
+        &self,
+        recovered: &RecoveredLedger,
+        commit_recovery: Option<CommitStoreDiagnostic>,
+    ) -> DiagnosticExport {
+        let mut export =
+            DiagnosticExport::from_ledger(recovered.ledger(), ledger_anchor_descriptor());
+        export.commit_recovery = commit_recovery;
+        for record in &mut export.records {
+            let id = record
+                .allocation
+                .slot()
+                .memory_manager_id()
+                .expect("recovered ledger slot");
+            record.memory_size = Some(DiagnosticMemorySize::from_wasm_pages(
+                self.memory(id).size(),
+            ));
+        }
+        export
     }
 
     fn established_bootstrap_binding(&self) -> Option<DiagnosticRuntimeBinding> {

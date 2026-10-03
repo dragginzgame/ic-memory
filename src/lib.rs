@@ -163,9 +163,8 @@ pub use constants::{
 pub use declaration::{AllocationDeclaration, DeclarationSnapshot, DeclarationSnapshotError};
 pub use diagnostics::{
     DiagnosticCheck, DiagnosticCode, DiagnosticDeclaration, DiagnosticExport, DiagnosticFailure,
-    DiagnosticGeneration, DiagnosticMemorySize, DiagnosticRangeAuthority, DiagnosticRecord,
-    DiagnosticRuntimeBinding, DiagnosticStableCell, DiagnosticStableCellStatus,
-    MemoryRuntimeDoctorReport,
+    DiagnosticMemorySize, DiagnosticRangeAuthority, DiagnosticRecord, DiagnosticRuntimeBinding,
+    DiagnosticStableCell, DiagnosticStableCellStatus, MemoryRuntimeDoctorReport,
 };
 pub use key::{StableKey, StableKeyError};
 pub use ledger::{

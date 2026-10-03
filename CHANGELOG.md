@@ -1,5 +1,47 @@
 # Changelog
 
+## 0.23.0
+
+- Hard cut: retain `DiagnosticExport::from_ledger` as the sole ledger-export
+  constructor. Remove `from_ledger_with_commit_recovery`,
+  `from_ledger_with_memory_sizes` and
+  `from_ledger_with_commit_recovery_and_memory_sizes`. Exporters fill the public
+  observation fields directly. Runtime export and doctor share one recovered
+  export path, measuring records without a temporary slot map or join. Protected
+  recovery still precedes measurement; diagnostics remain read-only.
+- Hard cut: remove `DiagnosticGeneration`. `DiagnosticExport::generations`
+  contains `GenerationRecord` values directly. Diagnostic JSON/CBOR generation
+  entries expose the record's fields directly instead of a nested `generation`
+  object. Update readers and regenerate reports using the current shape; no
+  alias or old decoder remains.
+- Hard cut: remove `MemoryManagerRangeAuthority`'s `reserve`, `allow`,
+  `reserve_ids`, `allow_ids` and their four `with_purpose` variants. Construct
+  records with `MemoryManagerAuthorityRecord::new` using explicit modes, then
+  compose them with `MemoryManagerRangeAuthority::from_records`. Remove private
+  insertion forwarding and update maintained examples and behavior tests.
+  Decoded-record validation, overlap rejection, ascending range order, purposes,
+  complete coverage and error precedence remain. Remove builder-only coverage
+  and consolidate duplicated constructor assertions.
+- Remove the duplicate ledger-envelope prefix-length check. The checked prefix
+  read preserves the same truncation error, minimum length and format-error
+  precedence.
+- Durable ledger encoding, checksums and declaration fingerprints are unchanged.
+  No compatibility aliases, fallback readers or replacement framework are added.
+- **Canic adoption is required after 0.23.0 publication:** update its ic-memory
+  dependency and apply the prepared generation-reader patch together. Its public
+  Candid response shape is unchanged. Requalify the published dependency graph
+  and refresh/verify the embedded allocation peer before calling adoption
+  complete. Canic remains on published 0.22 until this release is live.
+- Validation: 261 library tests, eight public integration tests, the three
+  maintained range examples, strict all-target Clippy, Rust 1.88 all-target
+  checking, warning-denied Rustdoc and Wasm test compilation pass. All five raw
+  Wasm probes pass their budgets for the main cleanup; the prefix-only follow-up
+  passes all three focused envelope tests and strict all-target Clippy.
+  Fourteen Canic memory tests and strict Core all-target/all-feature Clippy pass
+  against the prepared reader in an isolated copy using the local candidate.
+  Published-0.23 consumer adoption, installed-canister qualification and
+  release-flow tests have not been run.
+
 ## 0.22.0
 
 - Hard cut: remove the public `Validate` trait. `StableKey::validate` and

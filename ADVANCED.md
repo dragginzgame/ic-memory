@@ -421,15 +421,27 @@ Packages should publish only the ranges they own:
 
 ```rust
 use ic_memory::{
-    IC_MEMORY_AUTHORITY_OWNER, MemoryManagerRangeAuthority, MemoryManagerRangeMode,
-    memory_manager_governance_range,
+    IC_MEMORY_AUTHORITY_OWNER, MemoryManagerAuthorityRecord, MemoryManagerIdRange,
+    MemoryManagerRangeAuthority, MemoryManagerRangeMode, memory_manager_governance_range,
 };
 
-let authority = MemoryManagerRangeAuthority::new()
-    .reserve(memory_manager_governance_range(), IC_MEMORY_AUTHORITY_OWNER)
-    .expect("ic-memory governance range")
-    .reserve_ids(10, 99, "framework.example")
-    .expect("framework range");
+let authority = MemoryManagerRangeAuthority::from_records(vec![
+    MemoryManagerAuthorityRecord::new(
+        memory_manager_governance_range(),
+        IC_MEMORY_AUTHORITY_OWNER,
+        MemoryManagerRangeMode::Reserved,
+        None,
+    )
+    .expect("ic-memory governance record"),
+    MemoryManagerAuthorityRecord::new(
+        MemoryManagerIdRange::new(10, 99).expect("framework range"),
+        "framework.example",
+        MemoryManagerRangeMode::Reserved,
+        None,
+    )
+    .expect("framework record"),
+])
+.expect("non-overlapping ranges");
 
 authority
     .validate_id_authority_mode(42, "framework.example", MemoryManagerRangeMode::Reserved)
@@ -439,19 +451,30 @@ authority
 An open stack composes records from multiple packages and rejects overlaps:
 
 ```rust
-use ic_memory::MemoryManagerRangeAuthority;
+use ic_memory::{
+    MemoryManagerAuthorityRecord, MemoryManagerIdRange, MemoryManagerRangeAuthority,
+    MemoryManagerRangeMode,
+};
 
-let framework_records = MemoryManagerRangeAuthority::new()
-    .reserve_ids(10, 99, "framework.example")
-    .expect("framework range")
-    .authorities()
-    .to_vec();
+let framework_records = vec![
+    MemoryManagerAuthorityRecord::new(
+        MemoryManagerIdRange::new(10, 99).expect("framework range"),
+        "framework.example",
+        MemoryManagerRangeMode::Reserved,
+        None,
+    )
+    .expect("framework record"),
+];
 
-let database_records = MemoryManagerRangeAuthority::new()
-    .reserve_ids(120, 149, "database.framework")
-    .expect("database range")
-    .authorities()
-    .to_vec();
+let database_records = vec![
+    MemoryManagerAuthorityRecord::new(
+        MemoryManagerIdRange::new(120, 149).expect("database range"),
+        "database.framework",
+        MemoryManagerRangeMode::Reserved,
+        None,
+    )
+    .expect("database record"),
+];
 
 let authority = MemoryManagerRangeAuthority::from_records(
     framework_records
@@ -469,17 +492,35 @@ coverage:
 
 ```rust
 use ic_memory::{
-    IC_MEMORY_AUTHORITY_OWNER, MEMORY_MANAGER_MAX_ID, MemoryManagerIdRange,
-    MemoryManagerRangeAuthority, memory_manager_governance_range,
+    IC_MEMORY_AUTHORITY_OWNER, MEMORY_MANAGER_MAX_ID, MemoryManagerAuthorityRecord,
+    MemoryManagerIdRange, MemoryManagerRangeAuthority, MemoryManagerRangeMode,
+    memory_manager_governance_range,
 };
 
-let authority = MemoryManagerRangeAuthority::new()
-    .reserve(memory_manager_governance_range(), IC_MEMORY_AUTHORITY_OWNER)
-    .expect("ic-memory governance range")
-    .reserve_ids(10, 99, "framework.example")
-    .expect("framework range")
-    .allow_ids(100, MEMORY_MANAGER_MAX_ID, "applications")
-    .expect("application range");
+let authority = MemoryManagerRangeAuthority::from_records(vec![
+    MemoryManagerAuthorityRecord::new(
+        memory_manager_governance_range(),
+        IC_MEMORY_AUTHORITY_OWNER,
+        MemoryManagerRangeMode::Reserved,
+        None,
+    )
+    .expect("ic-memory governance record"),
+    MemoryManagerAuthorityRecord::new(
+        MemoryManagerIdRange::new(10, 99).expect("framework range"),
+        "framework.example",
+        MemoryManagerRangeMode::Reserved,
+        None,
+    )
+    .expect("framework record"),
+    MemoryManagerAuthorityRecord::new(
+        MemoryManagerIdRange::new(100, MEMORY_MANAGER_MAX_ID).expect("application range"),
+        "applications",
+        MemoryManagerRangeMode::Allowed,
+        None,
+    )
+    .expect("application record"),
+])
+.expect("non-overlapping ranges");
 
 authority
     .validate_complete_coverage(MemoryManagerIdRange::all_usable())

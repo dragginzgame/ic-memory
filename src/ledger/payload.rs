@@ -70,13 +70,6 @@ impl LedgerPayloadEnvelope {
     // Recovery already owns the committed bytes. Validate the same envelope
     // without copying its bounded payload before logical ledger decoding.
     pub(super) fn decode_payload(bytes: &[u8]) -> Result<&[u8], LedgerPayloadEnvelopeError> {
-        if bytes.len() < LEDGER_PAYLOAD_MAGIC.len() {
-            return Err(LedgerPayloadEnvelopeError::Truncated {
-                actual: bytes.len(),
-                minimum: LEDGER_PAYLOAD_HEADER_LEN,
-            });
-        }
-
         let Some(magic) = bytes.get(0..8).and_then(|bytes| bytes.try_into().ok()) else {
             return Err(LedgerPayloadEnvelopeError::Truncated {
                 actual: bytes.len(),

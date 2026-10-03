@@ -118,13 +118,30 @@ mod tests {
 
     #[test]
     fn memory_manager_range_authority_accepts_non_overlapping_construction() {
-        let authority = MemoryManagerRangeAuthority::new()
-            .reserve(memory_manager_governance_range(), IC_MEMORY_AUTHORITY_OWNER)
-            .expect("ic-memory range")
-            .reserve_ids(10, 99, "framework")
-            .expect("framework range")
-            .allow_ids(100, MEMORY_MANAGER_MAX_ID, "applications")
-            .expect("app range");
+        let authority = MemoryManagerRangeAuthority::from_records(vec![
+            MemoryManagerAuthorityRecord::new(
+                memory_manager_governance_range(),
+                IC_MEMORY_AUTHORITY_OWNER,
+                MemoryManagerRangeMode::Reserved,
+                None,
+            )
+            .expect("authority record"),
+            MemoryManagerAuthorityRecord::new(
+                MemoryManagerIdRange::new(10, 99).expect("usable range"),
+                "framework",
+                MemoryManagerRangeMode::Reserved,
+                None,
+            )
+            .expect("authority record"),
+            MemoryManagerAuthorityRecord::new(
+                MemoryManagerIdRange::new(100, MEMORY_MANAGER_MAX_ID).expect("usable range"),
+                "applications",
+                MemoryManagerRangeMode::Allowed,
+                None,
+            )
+            .expect("authority record"),
+        ])
+        .expect("app range");
 
         assert_eq!(authority.authorities().len(), 3);
         assert_eq!(
@@ -137,22 +154,6 @@ mod tests {
         );
         assert_eq!(authority.authorities()[1].range.start(), 10);
         assert_eq!(authority.authorities()[2].range.start(), 100);
-    }
-
-    #[test]
-    fn memory_manager_range_authority_id_bound_builders_reject_invalid_ranges() {
-        let err = MemoryManagerRangeAuthority::new()
-            .allow_ids(100, MEMORY_MANAGER_INVALID_ID, "applications")
-            .expect_err("sentinel must fail");
-
-        assert_eq!(
-            err,
-            MemoryManagerRangeAuthorityError::Range(
-                MemoryManagerRangeError::InvalidMemoryManagerId {
-                    id: MEMORY_MANAGER_INVALID_ID
-                }
-            )
-        );
     }
 
     #[test]
@@ -202,17 +203,23 @@ mod tests {
 
     #[test]
     fn memory_manager_range_authority_rejects_overlap() {
-        let err = MemoryManagerRangeAuthority::new()
-            .reserve(
+        let err = MemoryManagerRangeAuthority::from_records(vec![
+            MemoryManagerAuthorityRecord::new(
                 MemoryManagerIdRange::new(10, 99).expect("framework range"),
                 "framework",
+                MemoryManagerRangeMode::Reserved,
+                None,
             )
-            .expect("framework range")
-            .allow(
+            .expect("authority record"),
+            MemoryManagerAuthorityRecord::new(
                 MemoryManagerIdRange::new(99, 120).expect("overlapping app range"),
                 "applications",
+                MemoryManagerRangeMode::Allowed,
+                None,
             )
-            .expect_err("overlap must fail");
+            .expect("authority record"),
+        ])
+        .expect_err("overlap must fail");
 
         assert_eq!(
             err,
@@ -221,38 +228,6 @@ mod tests {
                 existing_end: 99,
                 candidate_start: 99,
                 candidate_end: 120,
-            }
-        );
-    }
-
-    #[test]
-    fn memory_manager_range_authority_rejects_invalid_diagnostic_strings() {
-        let err = MemoryManagerRangeAuthority::new()
-            .reserve(
-                MemoryManagerIdRange::new(10, 99).expect("framework range"),
-                "",
-            )
-            .expect_err("empty authority must fail");
-        assert_eq!(
-            err,
-            MemoryManagerRangeAuthorityError::InvalidDiagnosticString {
-                field: "authority",
-                reason: "must not be empty",
-            }
-        );
-
-        let err = MemoryManagerRangeAuthority::new()
-            .allow_with_purpose(
-                MemoryManagerIdRange::new(100, MEMORY_MANAGER_MAX_ID).expect("app range"),
-                "applications",
-                Some("bad\npurpose".to_string()),
-            )
-            .expect_err("control character purpose must fail");
-        assert_eq!(
-            err,
-            MemoryManagerRangeAuthorityError::InvalidDiagnosticString {
-                field: "purpose",
-                reason: "must not contain ASCII control characters",
             }
         );
     }
@@ -275,14 +250,23 @@ mod tests {
 
     #[test]
     fn memory_manager_range_authority_finds_authority_for_id() {
-        let authority = MemoryManagerRangeAuthority::new()
-            .allow(
+        let authority = MemoryManagerRangeAuthority::from_records(vec![
+            MemoryManagerAuthorityRecord::new(
                 MemoryManagerIdRange::new(100, MEMORY_MANAGER_MAX_ID).expect("app range"),
                 "applications",
+                MemoryManagerRangeMode::Allowed,
+                None,
             )
-            .expect("app range")
-            .reserve(memory_manager_governance_range(), IC_MEMORY_AUTHORITY_OWNER)
-            .expect("ic-memory range");
+            .expect("authority record"),
+            MemoryManagerAuthorityRecord::new(
+                memory_manager_governance_range(),
+                IC_MEMORY_AUTHORITY_OWNER,
+                MemoryManagerRangeMode::Reserved,
+                None,
+            )
+            .expect("authority record"),
+        ])
+        .expect("ic-memory range");
 
         let record = authority
             .authority_for_id(100)
@@ -301,17 +285,23 @@ mod tests {
 
     #[test]
     fn memory_manager_range_authority_validates_slot_authority() {
-        let authority = MemoryManagerRangeAuthority::new()
-            .reserve(
+        let authority = MemoryManagerRangeAuthority::from_records(vec![
+            MemoryManagerAuthorityRecord::new(
                 MemoryManagerIdRange::new(10, 99).expect("framework range"),
                 "framework",
+                MemoryManagerRangeMode::Reserved,
+                None,
             )
-            .expect("framework range")
-            .allow(
+            .expect("authority record"),
+            MemoryManagerAuthorityRecord::new(
                 MemoryManagerIdRange::new(100, MEMORY_MANAGER_MAX_ID).expect("app range"),
                 "applications",
+                MemoryManagerRangeMode::Allowed,
+                None,
             )
-            .expect("app range");
+            .expect("authority record"),
+        ])
+        .expect("app range");
 
         let record = authority
             .validate_slot_authority(
@@ -339,17 +329,23 @@ mod tests {
 
     #[test]
     fn memory_manager_range_authority_validates_slot_authority_mode() {
-        let authority = MemoryManagerRangeAuthority::new()
-            .reserve(
+        let authority = MemoryManagerRangeAuthority::from_records(vec![
+            MemoryManagerAuthorityRecord::new(
                 MemoryManagerIdRange::new(10, 99).expect("framework range"),
                 "framework",
+                MemoryManagerRangeMode::Reserved,
+                None,
             )
-            .expect("framework range")
-            .allow(
+            .expect("authority record"),
+            MemoryManagerAuthorityRecord::new(
                 MemoryManagerIdRange::new(100, MEMORY_MANAGER_MAX_ID).expect("app range"),
                 "applications",
+                MemoryManagerRangeMode::Allowed,
+                None,
             )
-            .expect("app range");
+            .expect("authority record"),
+        ])
+        .expect("app range");
 
         let record = authority
             .validate_slot_authority_mode(
@@ -380,17 +376,23 @@ mod tests {
 
     #[test]
     fn memory_manager_range_authority_validates_id_authority() {
-        let authority = MemoryManagerRangeAuthority::new()
-            .reserve(
+        let authority = MemoryManagerRangeAuthority::from_records(vec![
+            MemoryManagerAuthorityRecord::new(
                 MemoryManagerIdRange::new(10, 99).expect("framework range"),
                 "framework",
+                MemoryManagerRangeMode::Reserved,
+                None,
             )
-            .expect("framework range")
-            .allow(
+            .expect("authority record"),
+            MemoryManagerAuthorityRecord::new(
                 MemoryManagerIdRange::new(100, MEMORY_MANAGER_MAX_ID).expect("app range"),
                 "applications",
+                MemoryManagerRangeMode::Allowed,
+                None,
             )
-            .expect("app range");
+            .expect("authority record"),
+        ])
+        .expect("app range");
 
         assert_eq!(
             authority
@@ -423,12 +425,16 @@ mod tests {
 
     #[test]
     fn memory_manager_range_authority_reports_authority_mismatch_before_mode_mismatch() {
-        let authority = MemoryManagerRangeAuthority::new()
-            .allow(
+        let authority = MemoryManagerRangeAuthority::from_records(vec![
+            MemoryManagerAuthorityRecord::new(
                 MemoryManagerIdRange::new(100, MEMORY_MANAGER_MAX_ID).expect("app range"),
                 "applications",
+                MemoryManagerRangeMode::Allowed,
+                None,
             )
-            .expect("app range");
+            .expect("authority record"),
+        ])
+        .expect("app range");
 
         let err = authority
             .validate_id_authority_mode(100, "framework", MemoryManagerRangeMode::Reserved)
@@ -444,18 +450,24 @@ mod tests {
     }
 
     #[test]
-    fn memory_manager_range_authority_preserves_reserve_and_allow_modes() {
-        let authority = MemoryManagerRangeAuthority::new()
-            .reserve(
+    fn memory_manager_range_authority_preserves_reserved_and_allowed_modes() {
+        let authority = MemoryManagerRangeAuthority::from_records(vec![
+            MemoryManagerAuthorityRecord::new(
                 MemoryManagerIdRange::new(10, 99).expect("framework range"),
                 "framework",
+                MemoryManagerRangeMode::Reserved,
+                None,
             )
-            .expect("framework range")
-            .allow(
+            .expect("authority record"),
+            MemoryManagerAuthorityRecord::new(
                 MemoryManagerIdRange::new(100, MEMORY_MANAGER_MAX_ID).expect("app range"),
                 "applications",
+                MemoryManagerRangeMode::Allowed,
+                None,
             )
-            .expect("app range");
+            .expect("authority record"),
+        ])
+        .expect("app range");
 
         assert_eq!(
             authority.authorities()[0].mode,
@@ -469,19 +481,30 @@ mod tests {
 
     #[test]
     fn memory_manager_range_authority_validates_complete_coverage() {
-        let authority = MemoryManagerRangeAuthority::new()
-            .reserve(memory_manager_governance_range(), IC_MEMORY_AUTHORITY_OWNER)
-            .expect("ic-memory range")
-            .reserve(
+        let authority = MemoryManagerRangeAuthority::from_records(vec![
+            MemoryManagerAuthorityRecord::new(
+                memory_manager_governance_range(),
+                IC_MEMORY_AUTHORITY_OWNER,
+                MemoryManagerRangeMode::Reserved,
+                None,
+            )
+            .expect("authority record"),
+            MemoryManagerAuthorityRecord::new(
                 MemoryManagerIdRange::new(10, 99).expect("framework range"),
                 "framework",
+                MemoryManagerRangeMode::Reserved,
+                None,
             )
-            .expect("framework range")
-            .allow(
+            .expect("authority record"),
+            MemoryManagerAuthorityRecord::new(
                 MemoryManagerIdRange::new(100, MEMORY_MANAGER_MAX_ID).expect("app range"),
                 "applications",
+                MemoryManagerRangeMode::Allowed,
+                None,
             )
-            .expect("app range");
+            .expect("authority record"),
+        ])
+        .expect("app range");
 
         authority
             .validate_complete_coverage(
@@ -493,14 +516,23 @@ mod tests {
 
     #[test]
     fn memory_manager_range_authority_rejects_complete_coverage_gaps() {
-        let authority = MemoryManagerRangeAuthority::new()
-            .reserve(memory_manager_governance_range(), IC_MEMORY_AUTHORITY_OWNER)
-            .expect("ic-memory range")
-            .allow(
+        let authority = MemoryManagerRangeAuthority::from_records(vec![
+            MemoryManagerAuthorityRecord::new(
+                memory_manager_governance_range(),
+                IC_MEMORY_AUTHORITY_OWNER,
+                MemoryManagerRangeMode::Reserved,
+                None,
+            )
+            .expect("authority record"),
+            MemoryManagerAuthorityRecord::new(
                 MemoryManagerIdRange::new(100, MEMORY_MANAGER_MAX_ID).expect("app range"),
                 "applications",
+                MemoryManagerRangeMode::Allowed,
+                None,
             )
-            .expect("app range");
+            .expect("authority record"),
+        ])
+        .expect("app range");
 
         let err = authority
             .validate_complete_coverage(
@@ -530,14 +562,23 @@ mod tests {
 
     #[test]
     fn memory_manager_range_authority_rejects_complete_coverage_outside_target() {
-        let authority = MemoryManagerRangeAuthority::new()
-            .reserve(memory_manager_governance_range(), IC_MEMORY_AUTHORITY_OWNER)
-            .expect("ic-memory range")
-            .reserve(
+        let authority = MemoryManagerRangeAuthority::from_records(vec![
+            MemoryManagerAuthorityRecord::new(
+                memory_manager_governance_range(),
+                IC_MEMORY_AUTHORITY_OWNER,
+                MemoryManagerRangeMode::Reserved,
+                None,
+            )
+            .expect("authority record"),
+            MemoryManagerAuthorityRecord::new(
                 MemoryManagerIdRange::new(10, 99).expect("framework range"),
                 "framework",
+                MemoryManagerRangeMode::Reserved,
+                None,
             )
-            .expect("framework range");
+            .expect("authority record"),
+        ])
+        .expect("framework range");
 
         let err = authority
             .validate_complete_coverage(MemoryManagerIdRange::new(10, 99).expect("target range"))
@@ -621,33 +662,61 @@ mod tests {
                 reason: "must not be empty",
             }
         );
+
+        let err = MemoryManagerAuthorityRecord::new(
+            MemoryManagerIdRange::new(100, MEMORY_MANAGER_MAX_ID).expect("app range"),
+            "applications",
+            MemoryManagerRangeMode::Allowed,
+            Some("bad\npurpose".to_string()),
+        )
+        .expect_err("control character purpose must fail");
+        assert_eq!(
+            err,
+            MemoryManagerRangeAuthorityError::InvalidDiagnosticString {
+                field: "purpose",
+                reason: "must not contain ASCII control characters",
+            }
+        );
     }
 
     #[test]
-    fn memory_manager_range_authority_from_records_rejects_overlap() {
+    fn memory_manager_range_authority_from_records_rejects_first_overlap_in_range_order() {
         let err = MemoryManagerRangeAuthority::from_records(vec![
             MemoryManagerAuthorityRecord {
-                range: MemoryManagerIdRange::new(10, 99).expect("framework range"),
-                authority: "framework".to_string(),
+                range: MemoryManagerIdRange::new(80, 99).expect("higher range"),
+                authority: "higher".to_string(),
                 mode: MemoryManagerRangeMode::Reserved,
                 purpose: None,
             },
             MemoryManagerAuthorityRecord {
-                range: MemoryManagerIdRange::new(90, 120).expect("overlap range"),
+                range: MemoryManagerIdRange::new(10, 19).expect("lower range"),
+                authority: "lower".to_string(),
+                mode: MemoryManagerRangeMode::Reserved,
+                purpose: None,
+            },
+            MemoryManagerAuthorityRecord {
+                range: MemoryManagerIdRange::new(15, 85).expect("overlaps both ranges"),
                 authority: "applications".to_string(),
                 mode: MemoryManagerRangeMode::Allowed,
                 purpose: None,
             },
+            // The earlier overlap must be reported before this invalid metadata.
+            MemoryManagerAuthorityRecord {
+                range: MemoryManagerIdRange::new(100, 120).expect("later range"),
+                authority: String::new(),
+                mode: MemoryManagerRangeMode::Allowed,
+                purpose: None,
+            },
         ])
-        .expect_err("overlap must fail");
+        .expect_err("first overlap must fail");
 
         assert_eq!(
             err,
             MemoryManagerRangeAuthorityError::OverlappingRanges {
                 existing_start: 10,
-                existing_end: 99,
-                candidate_start: 90,
-                candidate_end: 120,
+                existing_end: 19,
+                candidate_start: 15,
+                candidate_end: 85,
             }
         );
     }
@@ -685,19 +754,23 @@ mod tests {
 
     #[test]
     fn memory_manager_range_authority_diagnostic_export_is_stable() {
-        let authority = MemoryManagerRangeAuthority::new()
-            .allow_with_purpose(
+        let authority = MemoryManagerRangeAuthority::from_records(vec![
+            MemoryManagerAuthorityRecord::new(
                 MemoryManagerIdRange::new(100, MEMORY_MANAGER_MAX_ID).expect("app range"),
                 "applications",
+                MemoryManagerRangeMode::Allowed,
                 Some("application stable stores".to_string()),
             )
-            .expect("app range")
-            .reserve_with_purpose(
+            .expect("authority record"),
+            MemoryManagerAuthorityRecord::new(
                 memory_manager_governance_range(),
                 IC_MEMORY_AUTHORITY_OWNER,
+                MemoryManagerRangeMode::Reserved,
                 Some(IC_MEMORY_AUTHORITY_PURPOSE.to_string()),
             )
-            .expect("ic-memory range");
+            .expect("authority record"),
+        ])
+        .expect("ic-memory range");
 
         assert_eq!(
             authority.authorities(),

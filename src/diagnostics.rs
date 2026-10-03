@@ -8,7 +8,6 @@ use crate::{
     slot::{AllocationSlotDescriptor, MemoryManagerAuthorityRecord, MemoryManagerRangeAuthority},
 };
 use serde::{Deserialize, Serialize};
-use std::collections::BTreeMap;
 
 ///
 /// DiagnosticExport
@@ -24,7 +23,7 @@ pub struct DiagnosticExport {
     /// Allocation records.
     pub records: Vec<DiagnosticRecord>,
     /// Generation records.
-    pub generations: Vec<DiagnosticGeneration>,
+    pub generations: Vec<GenerationRecord>,
     /// Optional protected commit recovery diagnostic.
     #[serde(deserialize_with = "crate::cbor::deserialize_present_option")]
     pub commit_recovery: Option<CommitStoreDiagnostic>,
@@ -319,50 +318,12 @@ impl DiagnosticCheck {
 
 impl DiagnosticExport {
     /// Build a read-only diagnostic export from an allocation ledger.
+    ///
+    /// Records start unmeasured and without commit recovery observations. The
+    /// exporter can fill those public fields from its own backing and recovery
+    /// evidence; this DTO constructor neither recovers nor measures memory.
     #[must_use]
     pub fn from_ledger(ledger: &AllocationLedger, ledger_anchor: AllocationSlotDescriptor) -> Self {
-        Self::from_ledger_with_commit_recovery(ledger, ledger_anchor, None)
-    }
-
-    /// Build a read-only diagnostic export with protected commit recovery state.
-    #[must_use]
-    pub fn from_ledger_with_commit_recovery(
-        ledger: &AllocationLedger,
-        ledger_anchor: AllocationSlotDescriptor,
-        commit_recovery: Option<CommitStoreDiagnostic>,
-    ) -> Self {
-        Self::from_ledger_with_commit_recovery_and_memory_sizes(
-            ledger,
-            ledger_anchor,
-            commit_recovery,
-            std::iter::empty(),
-        )
-    }
-
-    /// Build a read-only diagnostic export with live memory sizes.
-    #[must_use]
-    pub fn from_ledger_with_memory_sizes(
-        ledger: &AllocationLedger,
-        ledger_anchor: AllocationSlotDescriptor,
-        memory_sizes: impl IntoIterator<Item = (AllocationSlotDescriptor, DiagnosticMemorySize)>,
-    ) -> Self {
-        Self::from_ledger_with_commit_recovery_and_memory_sizes(
-            ledger,
-            ledger_anchor,
-            None,
-            memory_sizes,
-        )
-    }
-
-    /// Build a read-only diagnostic export with protected recovery state and live memory sizes.
-    #[must_use]
-    pub fn from_ledger_with_commit_recovery_and_memory_sizes(
-        ledger: &AllocationLedger,
-        ledger_anchor: AllocationSlotDescriptor,
-        commit_recovery: Option<CommitStoreDiagnostic>,
-        memory_sizes: impl IntoIterator<Item = (AllocationSlotDescriptor, DiagnosticMemorySize)>,
-    ) -> Self {
-        let memory_sizes: BTreeMap<_, _> = memory_sizes.into_iter().collect();
         Self {
             current_generation: ledger.current_generation,
             ledger_anchor,
@@ -371,22 +332,13 @@ impl DiagnosticExport {
                 .records()
                 .iter()
                 .cloned()
-                .map(|allocation| {
-                    let memory_size = memory_sizes.get(allocation.slot()).copied();
-                    DiagnosticRecord {
-                        allocation,
-                        memory_size,
-                    }
+                .map(|allocation| DiagnosticRecord {
+                    allocation,
+                    memory_size: None,
                 })
                 .collect(),
-            generations: ledger
-                .allocation_history()
-                .generations()
-                .iter()
-                .cloned()
-                .map(|generation| DiagnosticGeneration { generation })
-                .collect(),
-            commit_recovery,
+            generations: ledger.allocation_history().generations().to_vec(),
+            commit_recovery: None,
         }
     }
 }
@@ -432,17 +384,6 @@ impl DiagnosticMemorySize {
             bytes: wasm_pages.saturating_mul(WASM_PAGE_SIZE_BYTES),
         }
     }
-}
-
-///
-/// DiagnosticGeneration
-///
-/// Read-only diagnostic generation record.
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-#[serde(deny_unknown_fields)]
-pub struct DiagnosticGeneration {
-    /// Generation record.
-    pub generation: GenerationRecord,
 }
 
 #[cfg(test)]
@@ -492,6 +433,23 @@ mod tests {
             AllocationSlotDescriptor::memory_manager(0).expect("usable slot")
         );
         assert_eq!(export.commit_recovery, None);
+        assert_eq!(
+            export.generations,
+            ledger.allocation_history().generations()
+        );
+        let wire = serde_json::to_value(&export).expect("diagnostic JSON");
+        assert_eq!(
+            wire["generations"][0],
+            serde_json::json!({
+                "generation": 3,
+                "parent_generation": 2,
+                "runtime_fingerprint": "wasm:abc123",
+                "declaration_count": 1,
+                "committed_at": null,
+            })
+        );
+        let decoded: DiagnosticExport = serde_json::from_value(wire).expect("current JSON shape");
+        assert_eq!(decoded, export);
     }
 
     #[test]
@@ -592,11 +550,11 @@ mod tests {
             recovery: Ok(3),
         };
 
-        let export = DiagnosticExport::from_ledger_with_commit_recovery(
+        let mut export = DiagnosticExport::from_ledger(
             &ledger,
             AllocationSlotDescriptor::memory_manager(0).expect("usable slot"),
-            Some(commit_recovery),
         );
+        export.commit_recovery = Some(commit_recovery);
 
         assert_eq!(export.commit_recovery, Some(commit_recovery));
     }
@@ -618,14 +576,11 @@ mod tests {
             ),
         };
 
-        let export = DiagnosticExport::from_ledger_with_memory_sizes(
+        let mut export = DiagnosticExport::from_ledger(
             &ledger,
             AllocationSlotDescriptor::memory_manager(0).expect("usable slot"),
-            [(
-                AllocationSlotDescriptor::memory_manager(100).expect("usable slot"),
-                DiagnosticMemorySize::from_wasm_pages(2),
-            )],
         );
+        export.records[0].memory_size = Some(DiagnosticMemorySize::from_wasm_pages(2));
 
         assert_eq!(
             export.records[0].memory_size,
@@ -653,11 +608,11 @@ mod tests {
             recovery: Err(CommitRecoveryError::NoValidGeneration),
         };
 
-        let export = DiagnosticExport::from_ledger_with_commit_recovery(
+        let mut export = DiagnosticExport::from_ledger(
             &ledger,
             AllocationSlotDescriptor::memory_manager(0).expect("usable slot"),
-            Some(commit_recovery),
         );
+        export.commit_recovery = Some(commit_recovery);
 
         assert_eq!(
             export.commit_recovery.expect("commit recovery").recovery,

@@ -642,14 +642,7 @@ fn doctor_and_diagnostics_report_the_same_runtime_lifecycle() {
     let doctor = runtime.doctor_report(&declarations, &GenericRangePolicy);
     let export = runtime.diagnostic_export().expect("diagnostic export");
     assert!(doctor.bootstrapped);
-    assert_eq!(
-        doctor
-            .ledger
-            .as_ref()
-            .expect("doctor ledger")
-            .current_generation,
-        export.current_generation
-    );
+    assert_eq!(doctor.ledger.as_ref().expect("doctor ledger"), &export);
     assert_eq!(
         export
             .records
