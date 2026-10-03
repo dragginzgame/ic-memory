@@ -343,6 +343,48 @@ fn repeated_bootstrap_is_idempotent_and_existing_memory_recovers() {
 }
 
 #[test]
+fn repeated_bootstrap_accepts_independently_sealed_equivalent_declarations() {
+    let _guard = TEST_REGISTRY_LOCK.lock().expect("test lock");
+    let declarations = declarations();
+    let equivalent = SealedDeclarationSnapshot::new(
+        declarations.registered_declarations(),
+        declarations.registered_ranges(),
+        declarations.requests(),
+    )
+    .expect("equivalent declarations");
+    assert_eq!(equivalent, declarations);
+    assert!(!declarations.shares_storage_with(&equivalent));
+
+    let policy = CountingPolicy(std::cell::Cell::new(0));
+    let mut runtime = empty_runtime();
+    let generation = runtime
+        .bootstrap(&declarations, &policy)
+        .expect("bootstrap")
+        .generation();
+    assert!(matches!(
+        runtime
+            .doctor_report(&equivalent, &policy)
+            .bootstrap_binding,
+        DiagnosticCheck::Passed
+    ));
+    let policy_calls = policy.0.get();
+    let ledger_before = runtime.ledger_record_from_memory().expect("ledger before");
+
+    assert_eq!(
+        runtime
+            .bootstrap(&equivalent, &policy)
+            .expect("equivalent bootstrap")
+            .generation(),
+        generation
+    );
+    assert_eq!(policy.0.get(), policy_calls);
+    assert_eq!(
+        runtime.ledger_record_from_memory().expect("ledger after"),
+        ledger_before
+    );
+}
+
+#[test]
 fn repeated_bootstrap_is_bound_to_declarations_and_policy_identity() {
     let _guard = TEST_REGISTRY_LOCK.lock().expect("test lock");
     let declarations = declarations();

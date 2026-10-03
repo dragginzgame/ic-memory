@@ -46,6 +46,11 @@ retired allocations remain unavailable. `Reserved` ranges do not supply new
 automatic slots. A matching historical reservation activates through normal
 claim validation and current policy.
 
+`ic_memory_range!` defaults to `Reserved` when `mode` is omitted. Always pass
+`mode = Allowed` for a pool that must serve new key-only requests. Without a free
+ID in a matching `Allowed` range, resolution returns
+`MemoryResolutionError::Exhausted`, even if a reserved range has free IDs.
+
 A composed host grants each library only its intended ranges and bootstraps
 once. Libraries resolve IDs with `default_memory_manager_memory_id(...)` and open
 by key without changing the host's policy or bucket profile. Hosts must declare or
@@ -167,6 +172,9 @@ const MEMORY_AUTHORITY: &str = "icydb.test_db";
 
 ic_memory::ic_memory_range!(authority = MEMORY_AUTHORITY, start = 120, end = 129);
 ```
+
+This fixed-ID example uses the default `Reserved` mode. For new key-only
+requests, declare the host's pool with `mode = Allowed`, as shown above.
 
 The authority string is explicit stable policy metadata. It is not persisted
 allocation identity; the stable key and memory ID fill that role. Use the same
@@ -332,7 +340,8 @@ Multiple runtimes share only the immutable linked declaration snapshot. A
 failed bootstrap publishes no capability, and repeated bootstrap on the same
 runtime object is idempotent only when the snapshot and
 `RuntimeBootstrapPolicy::runtime_bootstrap_identity()` match the successful
-bootstrap. A changed snapshot or policy identity returns a typed error without
+bootstrap. Independently sealed snapshots with equal canonical contents also
+match. A changed snapshot or policy identity returns a typed error without
 touching the ledger. Policy implementations should change their identity
 whenever policy configuration or semantics change. This binding is
 intentionally in-memory lifecycle and diagnostic state; it is not upgrade audit

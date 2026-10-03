@@ -5,12 +5,14 @@ mod payload;
 mod record;
 mod stage;
 
-use crate::physical::{CommitRecoveryError, DualCommitStore};
+use crate::physical::{
+    CommitRecoveryError, CommitStoreDiagnostic, CommittedGenerationBytes, DualCommitStore,
+};
 use serde::{Deserialize, Serialize};
 
 pub use claim::{
-    ClaimConflict, ClaimOutcome, claim_conflict_record, validate_declaration_claim,
-    validate_reservation_claim,
+    ClaimConflict, ClaimOutcome, ReservationClaimConflict, claim_conflict_record,
+    validate_declaration_claim, validate_reservation_claim,
 };
 pub use error::{
     AllocationReservationError, AllocationRetirementError, AllocationStageError, LedgerCommitError,
@@ -82,10 +84,28 @@ impl LedgerCommitStore {
             .physical
             .authoritative()
             .map_err(LedgerCommitError::Recovery)?;
-        let envelope = LedgerPayloadEnvelope::decode(committed.payload())
+        Self::recover_committed(committed)
+    }
+
+    pub(crate) fn recover_with_diagnostic(
+        &self,
+    ) -> (
+        Result<RecoveredLedger, LedgerCommitError>,
+        CommitStoreDiagnostic,
+    ) {
+        let (committed, diagnostic) = self.physical.authoritative_with_diagnostic();
+        let recovered = committed
+            .map_err(LedgerCommitError::Recovery)
+            .and_then(Self::recover_committed);
+        (recovered, diagnostic)
+    }
+
+    fn recover_committed(
+        committed: &CommittedGenerationBytes,
+    ) -> Result<RecoveredLedger, LedgerCommitError> {
+        let payload = LedgerPayloadEnvelope::decode_payload(committed.payload())
             .map_err(LedgerCommitError::PayloadEnvelope)?;
-        let ledger =
-            CborLedgerCodec::decode(envelope.payload()).map_err(LedgerCommitError::Codec)?;
+        let ledger = CborLedgerCodec::decode(payload).map_err(LedgerCommitError::Codec)?;
         if committed.generation() != ledger.current_generation {
             return Err(LedgerCommitError::PhysicalLogicalGenerationMismatch {
                 physical_generation: committed.generation(),
@@ -1513,6 +1533,36 @@ mod tests {
     }
 
     #[test]
+    fn new_committed_preserves_structural_rejection_before_history_checks() {
+        let history = AllocationHistory::from_parts(
+            vec![
+                active_record("app.users.v1", 100),
+                active_record("app.users.v1", 100),
+            ],
+            Vec::new(),
+        );
+
+        // Duplicate keys take precedence over duplicate slots and the missing
+        // current-generation record, even with only one integrity pass.
+        assert_eq!(
+            AllocationLedger::new_committed(3, history).expect_err("duplicate records"),
+            LedgerIntegrityError::DuplicateStableKey {
+                stable_key: StableKey::parse("app.users.v1").unwrap(),
+            }
+        );
+
+        let valid = active_committed_ledger();
+        assert_eq!(
+            AllocationLedger::new_committed(
+                valid.current_generation(),
+                valid.allocation_history().clone(),
+            )
+            .expect("valid committed history"),
+            valid
+        );
+    }
+
+    #[test]
     fn validate_integrity_rejects_duplicate_stable_keys() {
         let mut ledger = ledger();
         *ledger.allocation_history.records_mut() = vec![
@@ -1522,10 +1572,12 @@ mod tests {
 
         let err = ledger.validate_integrity().expect_err("duplicate key");
 
-        assert!(matches!(
+        assert_eq!(
             err,
-            LedgerIntegrityError::DuplicateStableKey { .. }
-        ));
+            LedgerIntegrityError::DuplicateStableKey {
+                stable_key: StableKey::parse("app.users.v1").unwrap(),
+            }
+        );
     }
 
     #[test]
@@ -1538,7 +1590,12 @@ mod tests {
 
         let err = ledger.validate_integrity().expect_err("duplicate slot");
 
-        assert!(matches!(err, LedgerIntegrityError::DuplicateSlot { .. }));
+        assert_eq!(
+            err,
+            LedgerIntegrityError::DuplicateSlot {
+                slot: Box::new(AllocationSlotDescriptor::memory_manager(100).unwrap()),
+            }
+        );
     }
 
     #[test]
@@ -1813,6 +1870,72 @@ mod tests {
                 version: Some(LEDGER_PAYLOAD_FORMAT_VERSION + 1),
             })
         );
+    }
+
+    #[test]
+    fn combined_recovery_preserves_physical_diagnostics_and_logical_failures() {
+        let genesis = enveloped_payload(&committed_ledger(0));
+        let committed = CommittedGenerationBytes::new(0, genesis.clone());
+        let mut corrupt = committed.clone();
+        corrupt.checksum ^= 1;
+        let mut unsupported = genesis.clone();
+        unsupported[12..16].copy_from_slice(&(LEDGER_PAYLOAD_FORMAT_VERSION + 1).to_le_bytes());
+        let cases = [
+            ("empty", None, None),
+            ("one slot", Some(committed.clone()), None),
+            (
+                "identical slots",
+                Some(committed.clone()),
+                Some(committed.clone()),
+            ),
+            (
+                "corrupt inactive",
+                Some(committed.clone()),
+                Some(corrupt.clone()),
+            ),
+            ("corrupt active", Some(corrupt), Some(committed.clone())),
+            (
+                "ambiguous",
+                Some(committed),
+                Some(CommittedGenerationBytes::new(0, vec![1])),
+            ),
+            (
+                "unsupported format",
+                Some(CommittedGenerationBytes::new(0, unsupported)),
+                None,
+            ),
+            (
+                "invalid CBOR",
+                Some(CommittedGenerationBytes::new(
+                    0,
+                    LedgerPayloadEnvelope::current(vec![255])
+                        .try_encode()
+                        .unwrap(),
+                )),
+                None,
+            ),
+            (
+                "generation mismatch",
+                Some(CommittedGenerationBytes::new(1, genesis)),
+                None,
+            ),
+        ];
+
+        for (label, slot0, slot1) in cases {
+            let store = LedgerCommitStore {
+                physical: DualCommitStore { slot0, slot1 },
+            };
+            let before = store.clone();
+            let (recovered, diagnostic) = store.recover_with_diagnostic();
+            assert_eq!(recovered, store.recover(), "{label}");
+            assert_eq!(diagnostic, store.physical().diagnostic(), "{label}");
+            assert_eq!(store, before, "{label}");
+            if let Err(LedgerCommitError::Recovery(error)) = recovered {
+                assert_eq!(diagnostic.recovery, Err(error), "{label}");
+            } else {
+                assert!(diagnostic.recovery.is_ok(), "{label}");
+            }
+        }
     }
 
     #[test]

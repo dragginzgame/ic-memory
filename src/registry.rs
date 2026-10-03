@@ -455,6 +455,7 @@ impl SealedDeclarationSnapshot {
         !self.inner.registered_ranges.is_empty()
     }
 
+    #[cfg(test)]
     pub(crate) fn shares_storage_with(&self, other: &Self) -> bool {
         Arc::ptr_eq(&self.inner, &other.inner)
     }

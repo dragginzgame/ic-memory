@@ -50,12 +50,12 @@ impl AllocationLedger {
         let mut slots = BTreeSet::new();
 
         for record in self.allocation_history.records() {
-            if !stable_keys.insert(record.stable_key.clone()) {
+            if !stable_keys.insert(&record.stable_key) {
                 return Err(LedgerIntegrityError::DuplicateStableKey {
                     stable_key: record.stable_key.clone(),
                 });
             }
-            if !slots.insert(record.slot.clone()) {
+            if !slots.insert(&record.slot) {
                 return Err(LedgerIntegrityError::DuplicateSlot {
                     slot: Box::new(record.slot.clone()),
                 });

@@ -139,21 +139,6 @@ impl DiagnosticDeclaration {
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub enum DiagnosticCode {
-    /// Deferred static initialization could not run.
-    #[serde(rename = "eager_init")]
-    EagerInit,
-    /// Static allocation declarations could not be read.
-    #[serde(rename = "declaration_registry")]
-    DeclarationRegistry,
-    /// Static range declarations could not be read.
-    #[serde(rename = "range_registry")]
-    RangeRegistry,
-    /// Effective range authority could not be constructed or applied.
-    #[serde(rename = "range_authority")]
-    RangeAuthority,
-    /// Registered declarations could not form a valid snapshot.
-    #[serde(rename = "declaration_snapshot")]
-    DeclarationSnapshot,
     /// Stable-cell storage could not be decoded.
     #[serde(rename = "stable_cell")]
     StableCell,
@@ -217,8 +202,8 @@ impl DiagnosticFailure {
 pub struct DiagnosticRangeAuthority {
     /// Range records registered directly by linked crates.
     pub registered_records: Vec<MemoryManagerAuthorityRecord>,
-    /// Effective range authority table or its validation error.
-    pub effective_authority: Result<MemoryManagerRangeAuthority, DiagnosticFailure>,
+    /// Validated effective range authority from the sealed declarations.
+    pub effective_authority: MemoryManagerRangeAuthority,
 }
 
 impl DiagnosticRangeAuthority {
@@ -226,7 +211,7 @@ impl DiagnosticRangeAuthority {
     #[must_use]
     pub const fn new(
         registered_records: Vec<MemoryManagerAuthorityRecord>,
-        effective_authority: Result<MemoryManagerRangeAuthority, DiagnosticFailure>,
+        effective_authority: MemoryManagerRangeAuthority,
     ) -> Self {
         Self {
             registered_records,
@@ -584,13 +569,8 @@ mod tests {
             },
             DiagnosticMemorySize::from_wasm_pages(1),
         );
-        let range_authority = DiagnosticRangeAuthority::new(
-            Vec::new(),
-            Err(DiagnosticFailure::new(
-                DiagnosticCode::RangeAuthority,
-                "overlapping authority ranges",
-            )),
-        );
+        let range_authority =
+            DiagnosticRangeAuthority::new(Vec::new(), MemoryManagerRangeAuthority::default());
         let check = DiagnosticCheck::failed(
             DiagnosticCode::AllocationValidation,
             "duplicate declaration",
@@ -617,11 +597,6 @@ mod tests {
     #[test]
     fn diagnostic_codes_have_stable_wire_names() {
         let cases = [
-            (DiagnosticCode::EagerInit, "eager_init"),
-            (DiagnosticCode::DeclarationRegistry, "declaration_registry"),
-            (DiagnosticCode::RangeRegistry, "range_registry"),
-            (DiagnosticCode::RangeAuthority, "range_authority"),
-            (DiagnosticCode::DeclarationSnapshot, "declaration_snapshot"),
             (DiagnosticCode::StableCell, "stable_cell"),
             (DiagnosticCode::UnsupportedFormat, "unsupported_format"),
             (DiagnosticCode::LedgerRecovery, "ledger_recovery"),

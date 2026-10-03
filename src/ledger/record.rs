@@ -437,19 +437,10 @@ impl AllocationRecord {
         generation: u64,
         declaration: &AllocationDeclaration,
     ) -> Result<(), SchemaMetadataError> {
-        self.last_seen_generation = generation;
         if self.state == AllocationState::Reserved {
             self.state = AllocationState::Active;
         }
-
-        let latest_schema = self.schema_history.last().map(|record| &record.schema);
-        if latest_schema != Some(&declaration.schema) {
-            self.schema_history.push(SchemaMetadataRecord::new(
-                generation,
-                declaration.schema.clone(),
-            )?);
-        }
-        Ok(())
+        self.observe_schema(generation, &declaration.schema)
     }
 
     pub(crate) fn observe_reservation(
@@ -457,14 +448,20 @@ impl AllocationRecord {
         generation: u64,
         reservation: &AllocationDeclaration,
     ) -> Result<(), SchemaMetadataError> {
+        self.observe_schema(generation, &reservation.schema)
+    }
+
+    fn observe_schema(
+        &mut self,
+        generation: u64,
+        schema: &SchemaMetadata,
+    ) -> Result<(), SchemaMetadataError> {
         self.last_seen_generation = generation;
 
         let latest_schema = self.schema_history.last().map(|record| &record.schema);
-        if latest_schema != Some(&reservation.schema) {
-            self.schema_history.push(SchemaMetadataRecord::new(
-                generation,
-                reservation.schema.clone(),
-            )?);
+        if latest_schema != Some(schema) {
+            self.schema_history
+                .push(SchemaMetadataRecord::new(generation, schema.clone())?);
         }
         Ok(())
     }
@@ -499,7 +496,10 @@ impl AllocationLedger {
         current_generation: u64,
         allocation_history: AllocationHistory,
     ) -> Result<Self, LedgerIntegrityError> {
-        let ledger = Self::new(current_generation, allocation_history)?;
+        let ledger = Self {
+            current_generation,
+            allocation_history,
+        };
         ledger.validate_committed_integrity()?;
         Ok(ledger)
     }

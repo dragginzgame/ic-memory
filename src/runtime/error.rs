@@ -256,14 +256,6 @@ pub enum RuntimePolicyError<P> {
     /// Runtime metadata is internally inconsistent.
     #[error("runtime declaration metadata is missing for stable key '{0}'")]
     MissingDeclarationMetadata(String),
-    /// `ic_memory.*` stable keys are reserved to the `ic-memory` authority.
-    #[error("stable key '{stable_key}' is reserved to authority '{expected_authority}'")]
-    ReservedStableKeyAuthority {
-        /// Stable key being declared.
-        stable_key: String,
-        /// Required declaring authority.
-        expected_authority: &'static str,
-    },
     /// Caller-supplied policy rejected the declaration.
     #[error(transparent)]
     Custom(P),

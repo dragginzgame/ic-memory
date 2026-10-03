@@ -14,7 +14,6 @@ pub enum ClaimConflict {
     StableKeyMoved { record_index: usize },
     SlotReused { record_index: usize },
     Tombstoned { record_index: usize },
-    ActiveAllocation { record_index: usize },
 }
 
 impl ClaimConflict {
@@ -22,10 +21,15 @@ impl ClaimConflict {
         match self {
             Self::StableKeyMoved { record_index }
             | Self::SlotReused { record_index }
-            | Self::Tombstoned { record_index }
-            | Self::ActiveAllocation { record_index } => record_index,
+            | Self::Tombstoned { record_index } => record_index,
         }
     }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ReservationClaimConflict {
+    Claim(ClaimConflict),
+    ActiveAllocation { record_index: usize },
 }
 
 pub fn claim_conflict_record(
@@ -60,22 +64,32 @@ pub fn validate_declaration_claim(
 pub fn validate_reservation_claim(
     ledger: &AllocationLedger,
     reservation: &AllocationDeclaration,
-) -> Result<ClaimOutcome, ClaimConflict> {
+) -> Result<ClaimOutcome, ReservationClaimConflict> {
     if let Some(record_index) = find_by_key_index(ledger, &reservation.stable_key) {
         let record = &ledger.allocation_history.records()[record_index];
         if record.slot != reservation.slot {
-            return Err(ClaimConflict::StableKeyMoved { record_index });
+            return Err(ReservationClaimConflict::Claim(
+                ClaimConflict::StableKeyMoved { record_index },
+            ));
         }
 
         return match record.state {
             AllocationState::Reserved => Ok(ClaimOutcome::Existing { record_index }),
-            AllocationState::Active => Err(ClaimConflict::ActiveAllocation { record_index }),
-            AllocationState::Retired { .. } => Err(ClaimConflict::Tombstoned { record_index }),
+            AllocationState::Active => {
+                Err(ReservationClaimConflict::ActiveAllocation { record_index })
+            }
+            AllocationState::Retired { .. } => {
+                Err(ReservationClaimConflict::Claim(ClaimConflict::Tombstoned {
+                    record_index,
+                }))
+            }
         };
     }
 
     if let Some(record_index) = find_by_slot_index(ledger, &reservation.slot) {
-        return Err(ClaimConflict::SlotReused { record_index });
+        return Err(ReservationClaimConflict::Claim(ClaimConflict::SlotReused {
+            record_index,
+        }));
     }
 
     Ok(ClaimOutcome::New)

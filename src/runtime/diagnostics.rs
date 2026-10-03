@@ -21,13 +21,14 @@ impl<M: Memory> MemoryRuntime<M> {
             return Err(RuntimeDiagnosticError::NotBootstrapped);
         }
         let record = self.ledger_record_from_memory()?;
-        let recovered = record.store().recover()?;
+        let (recovered, commit_recovery) = record.store().recover_with_diagnostic();
+        let recovered = recovered?;
         let ledger = recovered.ledger();
         Ok(
             DiagnosticExport::from_ledger_with_commit_recovery_and_memory_sizes(
                 ledger,
                 ledger_anchor_descriptor(),
-                Some(record.store().physical().diagnostic()),
+                Some(commit_recovery),
                 self.memory_sizes(ledger)?,
             ),
         )
@@ -60,14 +61,13 @@ impl<M: Memory> MemoryRuntime<M> {
         P::Error: Display,
     {
         let stable_cell = self.stable_cell_diagnostic();
-        let commit_recovery = stable_cell
+        let (recovered, commit_recovery) = stable_cell
             .record
             .as_ref()
-            .map(|record| record.store().physical().diagnostic());
-        let recovered = stable_cell
-            .record
-            .as_ref()
-            .map(|record| record.store().recover());
+            .map(|record| record.store().recover_with_diagnostic())
+            .map_or((None, None), |(recovered, diagnostic)| {
+                (Some(recovered), Some(diagnostic))
+            });
         let recovered_for_export = recovered.as_ref().and_then(|result| result.as_ref().ok());
         let ledger = recovered_for_export.map(|recovered| {
             DiagnosticExport::from_ledger_with_commit_recovery_and_memory_size_outcomes(
@@ -94,7 +94,7 @@ impl<M: Memory> MemoryRuntime<M> {
             .collect();
         let range_authority = DiagnosticRangeAuthority::new(
             registered_records,
-            Ok(declarations.range_authority().clone()),
+            declarations.range_authority().clone(),
         );
         let tested_policy_identity = policy
             .runtime_bootstrap_identity()

@@ -271,6 +271,17 @@ impl DualCommitStore {
             .map(|authoritative| authoritative.record)
     }
 
+    pub(crate) fn authoritative_with_diagnostic(
+        &self,
+    ) -> (
+        Result<&CommittedGenerationBytes, CommitRecoveryError>,
+        CommitStoreDiagnostic,
+    ) {
+        let recovery = self.authoritative_slot();
+        let diagnostic = CommitStoreDiagnostic::from_recovery(self, &recovery);
+        (recovery.map(|slot| slot.record), diagnostic)
+    }
+
     /// Build a read-only recovery diagnostic for the protected commit slots.
     #[must_use]
     pub fn diagnostic(&self) -> CommitStoreDiagnostic {
@@ -381,9 +392,16 @@ impl CommitStoreDiagnostic {
     #[must_use]
     pub fn from_store(store: &DualCommitStore) -> Self {
         let recovery = store.authoritative_slot();
+        Self::from_recovery(store, &recovery)
+    }
+
+    fn from_recovery(
+        store: &DualCommitStore,
+        recovery: &Result<AuthoritativeSlot<'_>, CommitRecoveryError>,
+    ) -> Self {
         // Selection validates every present slot before considering generations.
         // Reuse that evidence rather than scanning their payloads again.
-        let (slot0_invalid, slot1_invalid) = match &recovery {
+        let (slot0_invalid, slot1_invalid) = match recovery {
             Err(CommitRecoveryError::InvalidCommitSlots {
                 slot0_invalid,
                 slot1_invalid,

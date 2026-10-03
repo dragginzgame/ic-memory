@@ -1,7 +1,7 @@
 use super::{
     AllocationLedger, AllocationRecord, AllocationReservationError, AllocationRetirement,
     AllocationRetirementError, AllocationStageError, AllocationState, ClaimConflict, ClaimOutcome,
-    GenerationRecord, claim_conflict_record, validate_declaration_claim,
+    GenerationRecord, ReservationClaimConflict, claim_conflict_record, validate_declaration_claim,
     validate_reservation_claim,
 };
 use crate::{
@@ -272,20 +272,27 @@ fn map_declaration_stage_conflict(
             stable_key: declaration.stable_key.clone(),
             slot: Box::new(record.slot.clone()),
         },
-        ClaimConflict::ActiveAllocation { .. } => {
-            AllocationStageError::UnexpectedActiveAllocationConflict {
-                stable_key: record.stable_key.clone(),
-                slot: Box::new(record.slot.clone()),
-            }
-        }
     }
 }
 
 fn map_reservation_stage_conflict(
     ledger: &AllocationLedger,
     reservation: &AllocationDeclaration,
-    conflict: ClaimConflict,
+    conflict: ReservationClaimConflict,
 ) -> AllocationReservationError {
+    let conflict = match conflict {
+        ReservationClaimConflict::ActiveAllocation { record_index } => {
+            return AllocationReservationError::ActiveAllocation {
+                stable_key: reservation.stable_key.clone(),
+                slot: Box::new(
+                    ledger.allocation_history.records()[record_index]
+                        .slot
+                        .clone(),
+                ),
+            };
+        }
+        ReservationClaimConflict::Claim(conflict) => conflict,
+    };
     let record = claim_conflict_record(ledger, conflict);
     match conflict {
         ClaimConflict::StableKeyMoved { .. } => AllocationReservationError::StableKeySlotConflict {
@@ -299,10 +306,6 @@ fn map_reservation_stage_conflict(
             reserved_key: reservation.stable_key.clone(),
         },
         ClaimConflict::Tombstoned { .. } => AllocationReservationError::RetiredAllocation {
-            stable_key: reservation.stable_key.clone(),
-            slot: Box::new(record.slot.clone()),
-        },
-        ClaimConflict::ActiveAllocation { .. } => AllocationReservationError::ActiveAllocation {
             stable_key: reservation.stable_key.clone(),
             slot: Box::new(record.slot.clone()),
         },

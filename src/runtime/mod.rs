@@ -198,6 +198,7 @@ impl<M: Memory> MemoryRuntime<M> {
     /// [`RuntimeBootstrapPolicy::runtime_bootstrap_identity`] match the
     /// successful bootstrap. A mismatch returns a typed error without
     /// advancing the durable generation or re-evaluating policy.
+    /// Independently sealed snapshots match when their canonical contents are equal.
     pub fn bootstrap<P: RuntimeBootstrapPolicy>(
         &mut self,
         declarations: &SealedDeclarationSnapshot,
@@ -367,7 +368,7 @@ impl RuntimeBootstrapBinding {
         declarations: &SealedDeclarationSnapshot,
         policy_identity: &PolicyIdentity,
     ) -> Result<(), RuntimeBootstrapError<P>> {
-        if !self.source.shares_storage_with(declarations) {
+        if &self.source != declarations {
             return Err(RuntimeBootstrapError::DeclarationSnapshotMismatch);
         }
         if &self.policy_identity != policy_identity {

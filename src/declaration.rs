@@ -446,12 +446,12 @@ fn reject_duplicates(
     let mut slots = BTreeSet::new();
 
     for declaration in declarations {
-        if !slots.insert(declaration.slot.clone()) {
+        if !slots.insert(&declaration.slot) {
             return Err(DeclarationSnapshotError::DuplicateSlot(
                 declaration.slot.clone(),
             ));
         }
-        if !keys.insert(declaration.stable_key.clone()) {
+        if !keys.insert(&declaration.stable_key) {
             return Err(DeclarationSnapshotError::DuplicateStableKey(
                 declaration.stable_key.clone(),
             ));
@@ -583,10 +583,10 @@ mod tests {
         ])
         .expect_err("duplicate key");
 
-        assert!(matches!(
+        assert_eq!(
             err,
-            DeclarationSnapshotError::DuplicateStableKey(_)
-        ));
+            DeclarationSnapshotError::DuplicateStableKey(StableKey::parse("app.users.v1").unwrap())
+        );
     }
 
     #[test]
@@ -597,6 +597,11 @@ mod tests {
         ])
         .expect_err("duplicate slot");
 
-        assert!(matches!(err, DeclarationSnapshotError::DuplicateSlot(_)));
+        assert_eq!(
+            err,
+            DeclarationSnapshotError::DuplicateSlot(
+                AllocationSlotDescriptor::memory_manager(100).unwrap()
+            )
+        );
     }
 }

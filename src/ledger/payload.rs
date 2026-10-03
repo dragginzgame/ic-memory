@@ -69,6 +69,14 @@ impl LedgerPayloadEnvelope {
 
     /// Manually decode the logical payload envelope.
     pub fn decode(bytes: &[u8]) -> Result<Self, LedgerPayloadEnvelopeError> {
+        Ok(Self {
+            payload: Self::decode_payload(bytes)?.to_vec(),
+        })
+    }
+
+    // Recovery already owns the committed bytes. Validate the same envelope
+    // without copying its bounded payload before logical ledger decoding.
+    pub(super) fn decode_payload(bytes: &[u8]) -> Result<&[u8], LedgerPayloadEnvelopeError> {
         if bytes.len() < LEDGER_PAYLOAD_MAGIC.len() {
             return Err(LedgerPayloadEnvelopeError::Truncated {
                 actual: bytes.len(),
@@ -137,9 +145,7 @@ impl LedgerPayloadEnvelope {
             });
         }
 
-        Ok(Self {
-            payload: bytes[LEDGER_PAYLOAD_HEADER_LEN..].to_vec(),
-        })
+        Ok(&bytes[LEDGER_PAYLOAD_HEADER_LEN..])
     }
 
     /// Borrow the logical ledger payload bytes.
@@ -199,4 +205,26 @@ pub enum LedgerPayloadEnvelopeError {
         /// Actual payload length.
         actual: usize,
     },
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn borrowed_payload_decode_shares_storage_through_the_byte_ceiling() {
+        for len in [0, 3, crate::constants::MAX_LEDGER_BYTES] {
+            let bytes = LedgerPayloadEnvelope::current(vec![42; len])
+                .try_encode()
+                .expect("bounded envelope");
+            let payload = LedgerPayloadEnvelope::decode_payload(&bytes).expect("valid envelope");
+
+            assert_eq!(payload.len(), len);
+            assert_eq!(
+                payload.as_ptr(),
+                bytes[LEDGER_PAYLOAD_HEADER_LEN..].as_ptr()
+            );
+            assert!(payload.iter().all(|byte| *byte == 42));
+        }
+    }
 }

@@ -94,9 +94,14 @@ pub enum MemoryManagerRangeError {
 ///
 /// MemoryManagerRangeMode
 ///
-/// Diagnostic policy mode for a `MemoryManager` authority range.
+/// Allocation policy mode for a `MemoryManager` authority range.
 ///
 /// These modes describe policy authority, not durable allocation state.
+/// Only `Allowed` ranges supply fresh logical placements; neither mode allocates
+/// memory by itself. [`crate::ic_memory_range!`] defaults to `Reserved` when its
+/// `mode` argument is omitted.
+///
+
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub enum MemoryManagerRangeMode {
     /// Range is reserved for authority-owned framework or infrastructure use.

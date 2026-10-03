@@ -302,6 +302,25 @@ macro_rules! ic_memory_declaration {
 ///
 /// The explicit authority must match every declaration that uses this range.
 /// A shared compile-time string constant can keep those declarations aligned.
+///
+/// Omitting `mode` selects [`MemoryManagerRangeMode::Reserved`]. A reserved
+/// range permits matching fixed or historical claims but supplies no fresh
+/// logical placements. Use `mode = Allowed` to grant a pool for new key-only
+/// requests; neither mode allocates any memory by itself.
+///
+/// A new logical request with no free ID in a matching `Allowed` range returns
+/// [`MemoryResolutionError::Exhausted`], even when a `Reserved` range has free IDs.
+///
+/// # Examples
+///
+/// ```no_run
+/// // Fixed claims use the default Reserved mode.
+/// ic_memory::ic_memory_range!(authority = "framework", start = 10, end = 19);
+///
+/// // New key-only requests require an explicit Allowed pool.
+/// ic_memory::ic_memory_range!(authority = "app", start = 20, end = 29, mode = Allowed);
+/// ic_memory::ic_memory_declaration!(authority = "app", key = "app.users.v1");
+/// ```
 #[macro_export]
 macro_rules! ic_memory_range {
     (authority = $authority:expr, start = $start:expr, end = $end:expr $(,)?) => {

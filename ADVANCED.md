@@ -91,7 +91,8 @@ Bootstrap is once per runtime object, not once per process. A second call on the
 same successfully bootstrapped runtime is idempotent and does not advance the
 ledger generation only when the sealed snapshot and
 `RuntimeBootstrapPolicy::runtime_bootstrap_identity()` match the established
-bootstrap binding. A changed snapshot or policy identity returns a typed error
+bootstrap binding. Independently sealed snapshots with equal canonical contents
+also match. A changed snapshot or policy identity returns a typed error
 without evaluating policy or touching the ledger. A different runtime always
 inspects its own ledger memory. No public reset API is provided; constructing a
 new runtime is the correct way to own a new backing memory.
@@ -144,6 +145,11 @@ require explicit registered host grants; a custom policy alone cannot supply
 their eligible pool. `Allowed` ranges supply fresh automatic placements;
 `Reserved` ranges permit matching existing or fixed claims without supplying
 new automatic slots.
+
+Omitting `mode` from `ic_memory_range!` selects `Reserved`. Hosts admitting new
+logical requests must pass `mode = Allowed`. If no free ID exists in a matching
+`Allowed` range, resolution returns `MemoryResolutionError::Exhausted`; free IDs
+in reserved ranges do not satisfy that request.
 
 Canic-specific namespace and framework range rules are Canic policy. They are
 not hard-coded `ic-memory` rules. Canic should adapt to `ic-memory` by either:
@@ -215,6 +221,8 @@ Custom-policy default runtimes should use
 stable-cell status, protected commit recovery, recovered ledger export,
 registered declarations, registered and effective range authority, validation
 under the tested policy, and live memory sizes for recovered ledger records.
+Effective range authority is a validated table from the sealed snapshot.
+Registration and sealing failures return typed errors before a report is built.
 Doctor validation covers the supplied declaration set and allocation policy;
 it does not run `prepare_bootstrap`, predict historical completion or certify
 consumer admission. Use the bounded allocation summary/report when metrics

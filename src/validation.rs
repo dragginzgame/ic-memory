@@ -67,15 +67,6 @@ pub enum AllocationValidationError<P> {
         /// Retired allocation slot.
         slot: Box<AllocationSlotDescriptor>,
     },
-    /// Internal claim validation reported an active-allocation conflict where
-    /// declaration validation expected only move, reuse, or tombstone conflicts.
-    #[error("stable key '{stable_key}' produced an unexpected active-allocation conflict")]
-    UnexpectedActiveAllocationConflict {
-        /// Active stable key.
-        stable_key: StableKey,
-        /// Active allocation slot.
-        slot: Box<AllocationSlotDescriptor>,
-    },
 }
 
 /// Validate a committed ledger and current declarations before opening.
@@ -146,12 +137,6 @@ fn map_validation_claim_conflict<P>(
             stable_key: declaration.stable_key.clone(),
             slot: Box::new(record.slot.clone()),
         },
-        ClaimConflict::ActiveAllocation { .. } => {
-            AllocationValidationError::UnexpectedActiveAllocationConflict {
-                stable_key: record.stable_key.clone(),
-                slot: Box::new(record.slot.clone()),
-            }
-        }
     }
 }
 
