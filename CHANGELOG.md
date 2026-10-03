@@ -1,5 +1,52 @@
 # Changelog
 
+## 0.22.0
+
+- Hard cut: remove the public `Validate` trait. `StableKey::validate` and
+  `AllocationSlotDescriptor::validate` are now inherent methods; remove trait
+  imports and use the concrete methods directly. Decoded DTO validation remains.
+- Reuse checked request fields during logical placement instead of replaying
+  public declaration constructors. Remove `MemoryResolutionError::Declaration`
+  and update IcyDB's affected error match. Final snapshot validation, range
+  authorization, deterministic placement, recovery and publication ordering remain.
+- Populate detailed allocation-report bindings and range claims directly into
+  ordered rows, removing per-ID metadata searches. Preserve the separate numeric
+  summary, ledger attribution, all 255 rows and bounded read-only accounting.
+- Share one borrowed declaration/history/policy check between bootstrap and
+  doctor. Doctor no longer clones its resolved declaration snapshot or constructs
+  a discarded pre-commit capability. Preserve validation ordering and read-only
+  diagnostics; admission callbacks and application schema validation remain
+  outside doctor's scope.
+- Hard cut: remove `DiagnosticMemorySizeOutcome` and `DiagnosticCode::MemorySize`.
+  `DiagnosticRecord::memory_size` now contains an optional `DiagnosticMemorySize`
+  directly, without the `Measured` wrapper. Update diagnostic producers/readers
+  and regenerate reports using the current shape; no old reader is retained.
+  Invalid persisted slots still fail recovery before measurement. Qualify Canic's
+  adapter and measured/unmeasured fixtures in an isolated copy and prepare an
+  adoption patch; its public response shape is unchanged. Concurrent Canic work
+  retains its published 0.21 reader until upstream adoption.
+- Hard cut: remove `DeclarationCollector` and its mutable/consuming builder
+  methods. Construct declarations with `AllocationDeclaration`, collect them in
+  a `Vec` and pass it to `DeclarationSnapshot::new`. Remove builder-only tests
+  and update the manual example; constructor and snapshot invariants remain.
+- Durable formats and declaration fingerprints remain unchanged. No
+  compatibility aliases or replacement framework are added.
+- All 263 library tests, eight public integration tests, two composed host tests,
+  seven compile-fail cases and five active doctests pass. Strict all-target
+  Clippy, Rust 1.88 all-target checking, warning-denied Rustdoc and Wasm test
+  compilation pass. Twenty focused IcyDB native tests and 13 Canic memory tests
+  pass in isolated source copies against this candidate. No consumer dependency
+  or lockfile changes are made by this cleanup. Canic's prepared reader requires
+  adoption of the new ic-memory contract when it is published. Focused IcyDB
+  library Clippy and Canic Core all-target/all-feature Clippy pass on those copies.
+- Matched raw Wasm probes with Rust 1.99 and the unchanged lockfile all remain
+  within budget: core 247,279 bytes (−674), diagnostics 292,604 (−2,353), key-only
+  246,756 (−817), admission 250,034 (−894), runtime integration 256,530 (−834).
+  Deltas compare this combined cleanup against the 0.21.0 release with the same
+  probe sources and build profile; IC instruction/cycle changes are unmeasured.
+  Installed-canister qualification, package verification and release-flow tests
+  were not run; release-flow tests create user-owned commits and tags.
+
 ## 0.21.0
 
 - Hard cut: remove `RuntimeStateError::InconsistentLifecycle`,

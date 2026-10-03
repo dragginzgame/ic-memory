@@ -1,4 +1,4 @@
-use crate::validation::Validate;
+use super::memory_manager::MemoryManagerSlotError;
 use serde::{Deserialize, Serialize};
 
 ///
@@ -21,6 +21,8 @@ pub enum AllocationSlot {
 /// Encoded allocation slot persisted in the ledger.
 ///
 /// Use [`AllocationSlotDescriptor::memory_manager`] so ID 255 is rejected.
+///
+
 #[derive(Clone, Debug, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct AllocationSlotDescriptor {
@@ -34,12 +36,9 @@ impl AllocationSlotDescriptor {
     pub const fn slot(&self) -> &AllocationSlot {
         &self.slot
     }
-}
 
-impl Validate for AllocationSlotDescriptor {
-    type Error = super::memory_manager::MemoryManagerSlotError;
-
-    fn validate(&self) -> Result<(), Self::Error> {
+    /// Validate constructor invariants after decode.
+    pub fn validate(&self) -> Result<(), MemoryManagerSlotError> {
         self.memory_manager_id().map(|_| ())
     }
 }

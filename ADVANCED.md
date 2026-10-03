@@ -241,9 +241,12 @@ the human-readable message, so automation does not need to parse prose.
 
 The first snapshot request runs deferred generated registration and
 `eager_init!` hooks exactly once before sealing, so doctor and bootstrap always
-use the same immutable declaration set. Each recovered allocation carries its
-own `DiagnosticMemorySizeOutcome`: a bad slot records a typed failure without
-discarding sizes measured successfully for other slots.
+use the same immutable declaration set. Each measured allocation carries its
+live `DiagnosticMemorySize` directly. A report built without size measurements
+omits that field. Invalid persisted slots fail ledger recovery before measurement;
+doctor reports the recovery failure and does not export the invalid ledger.
+Doctor borrows the resolved declarations for validation without constructing an
+allocation capability.
 
 ## Explicit `MemoryRuntime<M>`
 
@@ -328,9 +331,9 @@ declaration validation to produce pre-commit `ValidatedAllocations`.
 Manual sketch:
 
 ```rust,ignore
-let declarations = DeclarationCollector::new()
-    .with_memory_manager("app.orders.v1", 100, "orders")?
-    .seal()?;
+let declarations = DeclarationSnapshot::new(vec![
+    AllocationDeclaration::memory_manager("app.orders.v1", 100, "orders")?,
+])?;
 
 let commit = AllocationBootstrap::new(record.store_mut()).initialize_validate_and_commit(
     &genesis_ledger,

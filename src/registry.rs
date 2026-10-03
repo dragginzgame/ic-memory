@@ -369,22 +369,24 @@ impl SealedDeclarationSnapshot {
                         authority: request.authority.clone(),
                     })?
             };
+            let slot = crate::AllocationSlotDescriptor::memory_manager(id).expect("usable id");
             // Logical requests always need an explicit current grant, including recovered keys.
             self.range_authority()
-                .validate_slot_authority(
-                    &crate::AllocationSlotDescriptor::memory_manager(id).expect("usable id"),
-                    &request.authority,
-                )
+                .validate_slot_authority(&slot, &request.authority)
                 .map_err(crate::MemoryResolutionError::Range)?;
             occupied[usize::from(id)] = true;
-            declarations.push(StaticMemoryDeclaration::new(
-                request.authority.clone(),
-                AllocationDeclaration::memory_manager_unlabeled_with_schema(
-                    request.stable_key.as_str(),
-                    id,
-                    request.schema.clone(),
-                )?,
-            )?);
+            // Request construction checked authority/key/schema, and recovery
+            // checked historical schemas. Reuse those fields and the checked
+            // slot; the final snapshot still validates all declarations together.
+            declarations.push(StaticMemoryDeclaration {
+                authority: request.authority.clone(),
+                declaration: AllocationDeclaration {
+                    stable_key: request.stable_key.clone(),
+                    slot,
+                    label: None,
+                    schema: request.schema.clone(),
+                },
+            });
         }
         Ok(build_snapshot(
             &declarations,

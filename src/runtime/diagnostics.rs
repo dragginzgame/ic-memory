@@ -226,8 +226,9 @@ where
         declarations: &resolved,
         custom_policy,
     };
-    match crate::validate_allocations(&recovered, resolved.allocation_snapshot().clone(), &policy) {
-        Ok(_) => DiagnosticCheck::passed(),
+    match crate::validation::check_allocations(&recovered, resolved.allocation_snapshot(), &policy)
+    {
+        Ok(()) => DiagnosticCheck::passed(),
         Err(err) => DiagnosticCheck::failed(DiagnosticCode::AllocationValidation, err.to_string()),
     }
 }

@@ -1,4 +1,3 @@
-use crate::validation::Validate;
 use serde::{Deserialize, Serialize};
 use std::{fmt, str::FromStr};
 
@@ -10,6 +9,8 @@ use std::{fmt, str::FromStr};
 /// A stable key names the logical store, not the current storage backend or
 /// `MemoryManager` ID. Once committed, the key is permanently bound to its
 /// physical allocation slot; changing the key declares a new logical store.
+///
+
 #[derive(Clone, Debug, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
 pub struct StableKey(String);
 
@@ -34,12 +35,9 @@ impl StableKey {
     pub fn into_string(self) -> String {
         self.0
     }
-}
 
-impl Validate for StableKey {
-    type Error = StableKeyError;
-
-    fn validate(&self) -> Result<(), Self::Error> {
+    /// Validate constructor invariants after decode.
+    pub fn validate(&self) -> Result<(), StableKeyError> {
         validate(&self.0)
     }
 }

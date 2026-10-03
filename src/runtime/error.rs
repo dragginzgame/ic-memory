@@ -263,6 +263,4 @@ pub enum MemoryResolutionError {
     Range(#[from] crate::MemoryManagerRangeAuthorityError),
     #[error(transparent)]
     Registry(#[from] StaticMemoryDeclarationError),
-    #[error(transparent)]
-    Declaration(#[from] crate::DeclarationSnapshotError),
 }

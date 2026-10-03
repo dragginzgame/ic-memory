@@ -3,7 +3,6 @@ use crate::{
     schema::{SchemaMetadata, SchemaMetadataError},
     slot::{AllocationSlotDescriptor, MemoryManagerSlotError},
     text::{DiagnosticTextError, validate_diagnostic_text},
-    validation::Validate,
 };
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeSet;
@@ -132,142 +131,6 @@ impl AllocationDeclaration {
         self.schema
             .validate()
             .map_err(DeclarationSnapshotError::SchemaMetadata)
-    }
-}
-
-///
-/// DeclarationCollector
-///
-/// Mutable builder for this binary's allocation declarations.
-///
-/// The collector is transient runtime state. Sealing rejects duplicate stable
-/// keys and duplicate slots within one binary snapshot; historical allocation
-/// is checked later by [`crate::validate_allocations`].
-#[derive(Clone, Debug, Default)]
-pub struct DeclarationCollector {
-    declarations: Vec<AllocationDeclaration>,
-}
-
-impl DeclarationCollector {
-    /// Create an empty declaration collector.
-    #[must_use]
-    pub const fn new() -> Self {
-        Self {
-            declarations: Vec::new(),
-        }
-    }
-
-    /// Add one allocation declaration.
-    pub fn push(&mut self, declaration: AllocationDeclaration) {
-        self.declarations.push(declaration);
-    }
-
-    /// Add one allocation declaration and return the collector for chaining.
-    pub fn declare(&mut self, declaration: AllocationDeclaration) -> &mut Self {
-        self.push(declaration);
-        self
-    }
-
-    /// Add one allocation declaration by value for builder-style chaining.
-    #[must_use]
-    pub fn with_declaration(mut self, declaration: AllocationDeclaration) -> Self {
-        self.push(declaration);
-        self
-    }
-
-    /// Add a `MemoryManager` declaration with a diagnostic label.
-    pub fn declare_memory_manager(
-        &mut self,
-        stable_key: impl AsRef<str>,
-        id: u8,
-        label: impl Into<String>,
-    ) -> Result<&mut Self, DeclarationSnapshotError> {
-        self.declare_memory_manager_with_schema(stable_key, id, label, SchemaMetadata::default())
-    }
-
-    /// Add an unlabeled `MemoryManager` declaration.
-    pub fn declare_memory_manager_unlabeled(
-        &mut self,
-        stable_key: impl AsRef<str>,
-        id: u8,
-    ) -> Result<&mut Self, DeclarationSnapshotError> {
-        self.declare_memory_manager_unlabeled_with_schema(stable_key, id, SchemaMetadata::default())
-    }
-
-    /// Add a `MemoryManager` declaration with a diagnostic label and schema metadata.
-    pub fn declare_memory_manager_with_schema(
-        &mut self,
-        stable_key: impl AsRef<str>,
-        id: u8,
-        label: impl Into<String>,
-        schema: SchemaMetadata,
-    ) -> Result<&mut Self, DeclarationSnapshotError> {
-        self.push(AllocationDeclaration::memory_manager_with_schema(
-            stable_key, id, label, schema,
-        )?);
-        Ok(self)
-    }
-
-    /// Add an unlabeled `MemoryManager` declaration with schema metadata.
-    pub fn declare_memory_manager_unlabeled_with_schema(
-        &mut self,
-        stable_key: impl AsRef<str>,
-        id: u8,
-        schema: SchemaMetadata,
-    ) -> Result<&mut Self, DeclarationSnapshotError> {
-        self.push(AllocationDeclaration::memory_manager_unlabeled_with_schema(
-            stable_key, id, schema,
-        )?);
-        Ok(self)
-    }
-
-    /// Add a `MemoryManager` declaration by value for builder-style chaining.
-    pub fn with_memory_manager(
-        mut self,
-        stable_key: impl AsRef<str>,
-        id: u8,
-        label: impl Into<String>,
-    ) -> Result<Self, DeclarationSnapshotError> {
-        self.declare_memory_manager(stable_key, id, label)?;
-        Ok(self)
-    }
-
-    /// Add an unlabeled `MemoryManager` declaration by value for builder-style chaining.
-    pub fn with_memory_manager_unlabeled(
-        mut self,
-        stable_key: impl AsRef<str>,
-        id: u8,
-    ) -> Result<Self, DeclarationSnapshotError> {
-        self.declare_memory_manager_unlabeled(stable_key, id)?;
-        Ok(self)
-    }
-
-    /// Add a `MemoryManager` declaration with schema metadata by value for builder-style chaining.
-    pub fn with_memory_manager_schema(
-        mut self,
-        stable_key: impl AsRef<str>,
-        id: u8,
-        label: impl Into<String>,
-        schema: SchemaMetadata,
-    ) -> Result<Self, DeclarationSnapshotError> {
-        self.declare_memory_manager_with_schema(stable_key, id, label, schema)?;
-        Ok(self)
-    }
-
-    /// Add an unlabeled `MemoryManager` declaration with schema metadata by value.
-    pub fn with_memory_manager_unlabeled_schema(
-        mut self,
-        stable_key: impl AsRef<str>,
-        id: u8,
-        schema: SchemaMetadata,
-    ) -> Result<Self, DeclarationSnapshotError> {
-        self.declare_memory_manager_unlabeled_with_schema(stable_key, id, schema)?;
-        Ok(self)
-    }
-
-    /// Seal collected declarations into a duplicate-free snapshot.
-    pub fn seal(self) -> Result<DeclarationSnapshot, DeclarationSnapshotError> {
-        DeclarationSnapshot::new(self.declarations)
     }
 }
 
@@ -528,39 +391,6 @@ mod tests {
                 MemoryManagerSlotError::InvalidMemoryManagerId { id }
             ) if id == crate::MEMORY_MANAGER_INVALID_ID
         ));
-    }
-
-    #[test]
-    fn declaration_collector_declares_memory_manager_allocations() {
-        let mut declarations = DeclarationCollector::new();
-        declarations
-            .declare_memory_manager("app.orders.v1", 100, "orders")
-            .expect("orders declaration")
-            .declare_memory_manager_unlabeled("app.users.v1", 101)
-            .expect("users declaration");
-
-        let snapshot = declarations.seal().expect("snapshot");
-
-        assert_eq!(snapshot.len(), 2);
-        assert_eq!(
-            snapshot.declarations()[0].slot,
-            AllocationSlotDescriptor::memory_manager(100).expect("usable slot")
-        );
-        assert_eq!(snapshot.declarations()[0].label.as_deref(), Some("orders"));
-        assert_eq!(snapshot.declarations()[1].label, None);
-    }
-
-    #[test]
-    fn declaration_collector_builder_declares_memory_manager_allocations() {
-        let snapshot = DeclarationCollector::new()
-            .with_memory_manager("app.orders.v1", 100, "orders")
-            .expect("orders declaration")
-            .with_memory_manager_unlabeled("app.users.v1", 101)
-            .expect("users declaration")
-            .seal()
-            .expect("snapshot");
-
-        assert_eq!(snapshot.len(), 2);
     }
 
     #[test]

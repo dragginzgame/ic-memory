@@ -4,7 +4,6 @@ use crate::{
     key::StableKey,
     schema::{SchemaMetadata, SchemaMetadataError},
     slot::AllocationSlotDescriptor,
-    validation::Validate,
 };
 use serde::{Deserialize, Serialize};
 

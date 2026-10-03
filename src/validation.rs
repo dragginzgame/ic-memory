@@ -11,19 +11,6 @@ use crate::{
 };
 
 ///
-/// Validate
-///
-/// Re-check constructor invariants on decoded DTOs before they become
-/// authoritative.
-pub trait Validate {
-    /// Validation error for this DTO.
-    type Error;
-
-    /// Validate this value's domain invariants.
-    fn validate(&self) -> Result<(), Self::Error>;
-}
-
-///
 /// AllocationValidationError
 ///
 /// Failure to validate declarations against policy and historical ledger facts.
@@ -81,6 +68,23 @@ pub fn validate_allocations<P: AllocationPolicy>(
     snapshot: DeclarationSnapshot,
     policy: &P,
 ) -> Result<ValidatedAllocations, AllocationValidationError<P::Error>> {
+    check_allocations(recovered, &snapshot, policy)?;
+    let (declarations, runtime_fingerprint) = snapshot.into_parts();
+
+    Ok(ValidatedAllocations::new(
+        recovered.current_generation(),
+        declarations,
+        runtime_fingerprint,
+    ))
+}
+
+// Doctor needs the same checks as bootstrap, but does not consume declarations
+// or mint a capability. Keep check ordering and error ownership in one place.
+pub fn check_allocations<P: AllocationPolicy>(
+    recovered: &RecoveredLedger,
+    snapshot: &DeclarationSnapshot,
+    policy: &P,
+) -> Result<(), AllocationValidationError<P::Error>> {
     let ledger = recovered.ledger();
 
     snapshot
@@ -98,13 +102,7 @@ pub fn validate_allocations<P: AllocationPolicy>(
         validate_declaration_history(ledger, declaration)?;
     }
 
-    let (declarations, runtime_fingerprint) = snapshot.into_parts();
-
-    Ok(ValidatedAllocations::new(
-        ledger.current_generation,
-        declarations,
-        runtime_fingerprint,
-    ))
+    Ok(())
 }
 
 fn validate_declaration_history<P>(

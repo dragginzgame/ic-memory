@@ -174,19 +174,22 @@ impl<M: Memory> MemoryRuntime<M> {
     /// Reads at most 34,848 backing bytes. Never initializes stores, decodes the ledger, writes,
     /// grows memory, or advances a generation. Available before bootstrap;
     /// current declaration/range bindings are then unavailable.
+    ///
+    /// # Panics
+    ///
+    /// Panics if an internal sealed declaration violates the usable-slot
+    /// invariant established during bootstrap.
     pub fn memory_allocations(&self) -> Result<MemoryAllocations, RuntimeDiagnosticError> {
         let (measured, summary) = self.measure_allocations()?;
-        let declarations = self.allocation_declarations();
         let mut memories = Vec::with_capacity(layout::IDS);
         for id in 0..255_u8 {
             let index = usize::from(id);
-            let (binding, range_claim) = current_binding(id, declarations);
             let virtual_extent = DiagnosticMemorySize::from_wasm_pages(measured.pages[index]);
             let allocated_bytes = u64::from(measured.buckets[index]) * summary.bucket_size_bytes;
             memories.push(MemoryAllocation {
                 memory_manager_id: id,
-                binding,
-                range_claim,
+                binding: AllocationBinding::Unknown,
+                range_claim: None,
                 virtual_extent,
                 allocated_buckets: measured.buckets[index],
                 allocated_bytes,
@@ -194,6 +197,33 @@ impl<M: Memory> MemoryRuntime<M> {
                 payload_bytes: None,
             });
         }
+        // Sealing guarantees usable unique IDs and disjoint bounded ranges.
+        // Populate the ordered rows directly instead of searching for each ID.
+        if let Some(snapshot) = self.allocation_declarations() {
+            for registration in snapshot.registered_declarations() {
+                let declaration = registration.declaration();
+                let id = declaration
+                    .slot()
+                    .memory_manager_id()
+                    .expect("sealed declaration slot");
+                memories[usize::from(id)].binding = AllocationBinding::Current {
+                    stable_key: declaration.stable_key().as_str().to_string(),
+                    owner: registration.authority().to_string(),
+                };
+            }
+            for claim in snapshot.range_authority().authorities() {
+                for id in claim.range().start()..=claim.range().end() {
+                    memories[usize::from(id)].range_claim = Some(AllocationRangeClaim {
+                        authority: claim.authority().to_string(),
+                        mode: claim.mode(),
+                    });
+                }
+            }
+        }
+        memories[usize::from(MEMORY_MANAGER_LEDGER_ID)].binding = AllocationBinding::Ledger {
+            stable_key: IC_MEMORY_LEDGER_STABLE_KEY.to_string(),
+            owner: IC_MEMORY_AUTHORITY_OWNER.to_string(),
+        };
         Ok(MemoryAllocations {
             current_generation: summary.current_generation,
             manager_layout_version: summary.manager_layout_version,
@@ -324,42 +354,4 @@ impl<M: Memory> MemoryRuntime<M> {
         };
         Ok((measured, summary))
     }
-}
-
-fn current_binding(
-    id: u8,
-    declarations: Option<&crate::SealedDeclarationSnapshot>,
-) -> (AllocationBinding, Option<AllocationRangeClaim>) {
-    let mut binding = AllocationBinding::Unknown;
-    let mut range_claim = None;
-    if let Some(snapshot) = declarations {
-        if let Some(registration) = snapshot
-            .registered_declarations()
-            .iter()
-            .find(|registration| registration.declaration().slot().memory_manager_id() == Ok(id))
-        {
-            binding = AllocationBinding::Current {
-                stable_key: registration.declaration().stable_key().as_str().to_string(),
-                owner: registration.authority().to_string(),
-            };
-        }
-        if let Some(claim) = snapshot
-            .range_authority()
-            .authorities()
-            .iter()
-            .find(|claim| claim.range().contains(id))
-        {
-            range_claim = Some(AllocationRangeClaim {
-                authority: claim.authority().to_string(),
-                mode: claim.mode(),
-            });
-        }
-    }
-    if id == MEMORY_MANAGER_LEDGER_ID {
-        binding = AllocationBinding::Ledger {
-            stable_key: IC_MEMORY_LEDGER_STABLE_KEY.to_string(),
-            owner: IC_MEMORY_AUTHORITY_OWNER.to_string(),
-        };
-    }
-    (binding, range_claim)
 }

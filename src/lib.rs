@@ -160,14 +160,12 @@ pub use constants::{
     MAX_LEDGER_BYTES, MAX_LEDGER_GENERATIONS, MAX_LEDGER_NESTING, MAX_LEDGER_RECORD_BYTES,
     WASM_PAGE_SIZE_BYTES,
 };
-pub use declaration::{
-    AllocationDeclaration, DeclarationCollector, DeclarationSnapshot, DeclarationSnapshotError,
-};
+pub use declaration::{AllocationDeclaration, DeclarationSnapshot, DeclarationSnapshotError};
 pub use diagnostics::{
     DiagnosticCheck, DiagnosticCode, DiagnosticDeclaration, DiagnosticExport, DiagnosticFailure,
-    DiagnosticGeneration, DiagnosticMemorySize, DiagnosticMemorySizeOutcome,
-    DiagnosticRangeAuthority, DiagnosticRecord, DiagnosticRuntimeBinding, DiagnosticStableCell,
-    DiagnosticStableCellStatus, MemoryRuntimeDoctorReport,
+    DiagnosticGeneration, DiagnosticMemorySize, DiagnosticRangeAuthority, DiagnosticRecord,
+    DiagnosticRuntimeBinding, DiagnosticStableCell, DiagnosticStableCellStatus,
+    MemoryRuntimeDoctorReport,
 };
 pub use key::{StableKey, StableKeyError};
 pub use ledger::{
@@ -223,7 +221,7 @@ pub use stable_cell::{
     StableCellPayloadError, decode_stable_cell_ledger_record, decode_stable_cell_payload,
     validate_stable_cell_ledger_memory,
 };
-pub use validation::{AllocationValidationError, Validate, validate_allocations};
+pub use validation::{AllocationValidationError, validate_allocations};
 
 #[doc(hidden)]
 pub use registry::{defer_eager_init, defer_static_memory_registration};

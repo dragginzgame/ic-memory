@@ -1,5 +1,5 @@
 use super::{AllocationLedger, AllocationRecord, AllocationState, LedgerIntegrityError};
-use crate::{declaration::validate_runtime_fingerprint, validation::Validate};
+use crate::declaration::validate_runtime_fingerprint;
 use std::collections::BTreeSet;
 
 impl AllocationLedger {

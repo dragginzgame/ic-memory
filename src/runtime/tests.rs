@@ -7,9 +7,8 @@ use super::{
 };
 use crate::{
     AllocationPolicy, AllocationSlotDescriptor, DiagnosticCheck, DiagnosticCode,
-    DiagnosticMemorySize, DiagnosticMemorySizeOutcome, LedgerCommitError,
-    LedgerPayloadEnvelopeError, PolicyIdentity, PolicyIdentityError, RuntimeBootstrapPolicy,
-    StableKey,
+    DiagnosticMemorySize, LedgerCommitError, LedgerPayloadEnvelopeError, PolicyIdentity,
+    PolicyIdentityError, RuntimeBootstrapPolicy, StableKey,
     registry::{
         SealedDeclarationSnapshot, TEST_REGISTRY_LOCK, register_static_memory_manager_declaration,
         register_static_memory_manager_range, reset_static_memory_declarations_for_tests,
@@ -658,9 +657,7 @@ fn doctor_and_diagnostics_report_the_same_runtime_lifecycle() {
             .find(|record| { record.allocation.stable_key().as_str() == "runtime_tests.rows.v1" })
             .expect("runtime record")
             .memory_size,
-        Some(DiagnosticMemorySizeOutcome::Measured(
-            DiagnosticMemorySize::from_wasm_pages(2)
-        ))
+        Some(DiagnosticMemorySize::from_wasm_pages(2))
     );
     assert!(matches!(&doctor.bootstrap_binding, DiagnosticCheck::Passed));
     assert_eq!(

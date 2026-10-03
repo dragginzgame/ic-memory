@@ -194,7 +194,6 @@ mod tests {
     use super::*;
     use crate::test_cbor::hex_fixture;
     use crate::{
-        Validate,
         declaration::{AllocationDeclaration, DeclarationSnapshot, DeclarationSnapshotError},
         key::StableKey,
         physical::CommittedGenerationBytes,

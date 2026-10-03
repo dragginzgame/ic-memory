@@ -44,6 +44,14 @@ that the original fingerprint is unchanged and differs from the resolved one.
 Existing poisoning, failed-persistence/retry, policy/profile binding, reservation,
 retirement, exhaustion and bounded-recovery tests remain in place.
 
+The subsequent resolver cleanup reuses each checked request's authority, stable
+key and schema together with its checked resolved slot. It no longer reparses the
+key or repeats public declaration constructors for that trusted input. The final
+snapshot builder retains complete declaration, collision and range validation.
+The source-only `MemoryResolutionError::Declaration` arm is removed; final
+snapshot failures still use `MemoryResolutionError::Registry`. The historical
+measurements below apply only to the original 0.14.2 cleanup.
+
 ## Work by bootstrap path
 
 The counts below describe snapshot builds inside runtime bootstrap, excluding
