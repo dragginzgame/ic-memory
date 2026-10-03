@@ -107,7 +107,6 @@ impl AllocationLedger {
         }
 
         let mut previous = None;
-        let mut known_generations = BTreeSet::new();
         for generation in self.allocation_history.generations() {
             validate_runtime_fingerprint(generation.runtime_fingerprint.as_deref())
                 .map_err(LedgerIntegrityError::DiagnosticMetadata)?;
@@ -128,18 +127,18 @@ impl AllocationLedger {
                 });
             }
 
-            known_generations.insert(generation.generation);
             previous = Some(generation.generation);
         }
 
+        // The checked chain contains exactly generations 1..=current_generation.
         for record in self.allocation_history.records() {
             validate_known_record_generation(
-                &known_generations,
+                self.current_generation,
                 &record.stable_key,
                 record.first_generation,
             )?;
             validate_known_record_generation(
-                &known_generations,
+                self.current_generation,
                 &record.stable_key,
                 record.last_seen_generation,
             )?;
@@ -148,14 +147,14 @@ impl AllocationLedger {
             } = record.state
             {
                 validate_known_record_generation(
-                    &known_generations,
+                    self.current_generation,
                     &record.stable_key,
                     retired_generation,
                 )?;
             }
             for schema in &record.schema_history {
                 validate_known_record_generation(
-                    &known_generations,
+                    self.current_generation,
                     &record.stable_key,
                     schema.generation,
                 )?;
@@ -227,11 +226,11 @@ fn validate_record_integrity(
 }
 
 fn validate_known_record_generation(
-    known_generations: &BTreeSet<u64>,
+    current_generation: u64,
     stable_key: &StableKey,
     generation: u64,
 ) -> Result<(), LedgerIntegrityError> {
-    if known_generations.contains(&generation) {
+    if (1..=current_generation).contains(&generation) {
         return Ok(());
     }
     Err(LedgerIntegrityError::UnknownRecordGeneration {

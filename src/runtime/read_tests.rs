@@ -80,7 +80,7 @@ fn safe_and_uninitialized_reads_reach_specialized_backing_without_effects() {
     let memory = handle(&runtime, 1);
     assert_eq!(memory.grow(1), Ok(0));
     memory.write(7, &[11, 22, 33, 44]);
-    let backing = &runtime.backing;
+    let backing = &runtime.growth.backing;
     backing.unsafe_reads.borrow_mut().clear();
     let safe_reads_before = backing.safe_reads.get();
     let effects_before = (backing.writes.get(), backing.grows.get(), backing.size());
@@ -104,8 +104,8 @@ fn forwarding_does_not_zero_the_destination_before_a_backing_failure() {
     let runtime = runtime(1);
     let memory = handle(&runtime, 1);
     memory.grow(1).unwrap();
-    runtime.backing.unsafe_reads.borrow_mut().clear();
-    runtime.backing.fail_on_read.set(Some(1));
+    runtime.growth.backing.unsafe_reads.borrow_mut().clear();
+    runtime.growth.backing.fail_on_read.set(Some(1));
     let mut dst = [0xA5; 4];
     let result = catch_unwind(AssertUnwindSafe(|| {
         // SAFETY: dst is a separate, initialized writable allocation.
@@ -133,25 +133,25 @@ fn uninitialized_reads_translate_discontiguous_buckets_and_partial_failures() {
     expected[..4].copy_from_slice(&[1, 2, 3, 4]);
     expected[COUNT - 4..].copy_from_slice(&[5, 6, 7, 8]);
     memory.write(PAGE - 4, &expected);
-    runtime.backing.unsafe_reads.borrow_mut().clear();
+    runtime.growth.backing.unsafe_reads.borrow_mut().clear();
     assert_eq!(
         read_uninitialized::<COUNT>(&memory, PAGE - 4).as_slice(),
         expected.as_slice(),
     );
     assert_eq!(
-        *runtime.backing.unsafe_reads.borrow(),
+        *runtime.growth.backing.unsafe_reads.borrow(),
         [(2 * PAGE - 4, 4), (3 * PAGE, 65_536), (5 * PAGE, 4)],
     );
 
-    runtime.backing.unsafe_reads.borrow_mut().clear();
-    runtime.backing.fail_on_read.set(Some(2));
+    runtime.growth.backing.unsafe_reads.borrow_mut().clear();
+    runtime.growth.backing.fail_on_read.set(Some(2));
     // A panic after the first segment must never reach assume_init or inspect
     // the unread portion. MaybeUninit requires no initialized bytes on drop.
     let result = catch_unwind(AssertUnwindSafe(|| {
         read_uninitialized::<COUNT>(&memory, PAGE - 4)
     }));
     assert!(result.is_err());
-    assert_eq!(runtime.backing.unsafe_reads.borrow().len(), 2);
+    assert_eq!(runtime.growth.backing.unsafe_reads.borrow().len(), 2);
 }
 
 #[test]

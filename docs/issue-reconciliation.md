@@ -80,7 +80,7 @@ constructors reproduced that panic on empty backing memory, with one failed
 growth and no writes. Canic traced its configured default bootstrap to the same
 construction path; that source trace does not establish an IC execution failure.
 
-The local, unreleased fix reserves the metadata page before initializing the
+The fix released in **0.15.7** reserves the metadata page before initializing the
 dependency and returns
 `RuntimeConstructionError::Growth(RuntimeGrowError::BackingRefused { additional_pages: 1 })`
 on refusal. The failed attempt makes no reads or writes and leaves zero pages.
@@ -93,14 +93,18 @@ Configured default bootstrap propagates the construction error through
 cached; the retry result above concerns caller-owned `MemoryRuntime` backing.
 No API compatibility path or durable-format change is introduced.
 
-Validation passes 256 library tests and the ordinary integration, compile-fail
-and doc suites, strict all-target Clippy and rustdoc, Rust 1.88 all-target checking,
+Before release, the constructor fix passed 256 library tests and the ordinary
+integration, compile-fail and doc suites, strict all-target Clippy and rustdoc,
+Rust 1.88 all-target checking,
 and Wasm test compilation. An external public-API probe confirms both constructors
 return the typed error without panicking, with one failed growth, zero writes and
 zero pages, then succeed on retry. All five raw Wasm budgets pass: core 257,247
 bytes, diagnostics 310,950, key-only 256,860, admission 259,995 and integration
-266,487. These are current local probes, not downstream or IC cost measurements.
+266,487. These are historical local probes before the final 0.15.7 changes, not
+downstream or IC cost measurements. The release changelog records final release
+validation.
 
-Keep #9 open until this fix is published with an identifiable release version.
-Canic explicitly requests that version before adoption; downstream qualification
-remains consumer-owned. This section records the ic-memory changes only.
+#9 is closed as completed, with **0.15.7** recorded as the released fix version
+requested by Canic. Downstream adoption and qualification remain consumer-owned;
+closure does not certify those activities. This section records the ic-memory
+changes only.

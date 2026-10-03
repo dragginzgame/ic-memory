@@ -472,9 +472,8 @@ policy should call
 
 Doctor output includes the tested policy identity and sealed-declaration
 fingerprint, the binding established by successful bootstrap, and a typed
-binding comparison. Live size measurement is also per allocation: one invalid
-slot is reported as a `DiagnosticMemorySizeOutcome::Failed` value without
-discarding successful measurements for other slots.
+binding comparison. Runtime size measurement uses validated recovered allocations;
+an invalid persisted slot rejects ledger recovery before any sizes are measured.
 Diagnostic failures carry stable `DiagnosticCode` values alongside their
 human-readable messages for operator automation.
 Doctor validation checks the supplied declarations and allocation policy; it
@@ -559,6 +558,8 @@ release tags are rejected. The lockfile remains untracked.
 `make validate` runs the release-flow regression tests, formatting, Clippy,
 serialized Rust tests and doctests, Wasm budget regression tests, Wasm checks
 and size budgets, the declared MSRV check, and package verification.
+CI shares its installed-toolchain checks with `make validate-toolchain` and reads
+the MSRV from `Cargo.toml` in a separate job.
 Development, CI, and the default
 `VALIDATION_TOOLCHAIN` read the Rust 1.99.0 pin from `rust-toolchain.toml`.
 The crate's declared MSRV remains Rust 1.88.0. `make test-release-flow` exercises

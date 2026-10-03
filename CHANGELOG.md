@@ -1,5 +1,37 @@
 # Changelog
 
+## 0.16.0
+
+- Hard cut: `MemoryRuntime::memory_manager_config()` is no longer a `const fn`.
+  Update enclosing const functions that call it to ordinary functions. Runtime
+  configuration lookup reads the sole shared bucket geometry; returned values
+  and persisted formats are unchanged.
+- Keep backing memory, immutable bucket geometry and live bucket accounting in
+  one shared growth state. Remove duplicate runtime fields while preserving
+  cloned and detached handles, configuration checks and physical attribution.
+- Confirm runtime persistence through `PendingBootstrapCommit::confirm_persisted`
+  after the stable-cell write succeeds. Remove the private unpacking helper and
+  duplicate generation selection before publishing allocation-open authority.
+- Replace the derived generation-membership set with the range established by
+  strict contiguous-history validation. Preserve structural checks and error
+  ordering; add coverage rejecting allocation references to genesis generation.
+- Share one runtime size-measurement flow over `RecoveredLedger`. Remove the
+  unreachable per-slot failure branch and replace its fabricated-input test with
+  persisted-corruption coverage for export, doctor and cold bootstrap. Public
+  diagnostic DTO failure values remain supported; invalid persisted slots reject
+  recovery before measurement and leave backing bytes unchanged.
+- Share installed-toolchain validation between CI and Make through
+  `make validate-toolchain`; read CI's MSRV from `Cargo.toml`. Correct runtime
+  diagnostic guidance and record #9 as released in 0.15.7 and completed, with
+  downstream adoption and qualification remaining consumer-owned.
+- Validate 260 library tests, integration and compile-fail tests, doctests, six
+  Wasm tooling tests, strict Clippy and Rustdoc, Rust 1.88 all-target checking,
+  Wasm test compilation and offline package verification. All five existing raw
+  Wasm budgets pass; core is 254,304 bytes under its 260,000-byte ceiling.
+  Release-flow tests were not rerun because they create commits and tags reserved
+  for the maintainer. Current wire fixtures, checksums and declaration
+  fingerprints are unchanged.
+
 ## 0.15.7
 
 - Return typed growth refusal from fresh runtime construction instead of allowing

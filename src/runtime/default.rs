@@ -37,7 +37,7 @@ where
             .as_mut()
             .map_err(|error| E::from(RuntimeStateError::Construction(*error)))?;
         if let Some(config) = config {
-            super::check_bucket_size(runtime.bucket_size_pages, config)
+            super::check_bucket_size(runtime.growth.bucket_size_pages, config)
                 .map_err(|error| E::from(RuntimeStateError::Construction(error)))?;
         }
         operation(runtime)

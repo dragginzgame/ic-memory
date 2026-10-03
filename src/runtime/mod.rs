@@ -100,11 +100,8 @@ struct RuntimeBootstrapBinding {
 
 pub struct MemoryRuntime<M: Memory> {
     memory_manager: MemoryManager<Rc<M>>,
-    // Share the owned backing using upstream's Memory implementation for Rc.
+    // Shared backing, immutable geometry and live accounting belong to growth.
     // Handles reserve physical capacity; the manager owns bucket metadata.
-    // Attribution borrows the backing read-only.
-    backing: Rc<M>,
-    bucket_size_pages: u16,
     growth: Rc<backing::GrowthState<M>>,
     ledger_cell: Option<LedgerCell<M>>,
     lifecycle: RuntimeLifecycle,
@@ -186,8 +183,6 @@ impl<M: Memory> MemoryRuntime<M> {
                 Rc::clone(&backing),
                 bucket_size_pages,
             ),
-            backing,
-            bucket_size_pages,
             growth,
             ledger_cell: None,
             lifecycle: RuntimeLifecycle::Unbootstrapped,
@@ -196,9 +191,9 @@ impl<M: Memory> MemoryRuntime<M> {
 
     /// Return the immutable bucket configuration bound to this runtime's manager.
     #[must_use]
-    pub const fn memory_manager_config(&self) -> MemoryManagerConfig {
+    pub fn memory_manager_config(&self) -> MemoryManagerConfig {
         // Construction has already validated the nonzero persisted setting.
-        MemoryManagerConfig::from_validated(self.bucket_size_pages)
+        MemoryManagerConfig::from_validated(self.growth.bucket_size_pages)
     }
 
     /// Return whether this runtime has published committed allocation authority.
@@ -274,11 +269,8 @@ impl<M: Memory> MemoryRuntime<M> {
                 None,
             )
             .map_err(runtime_bootstrap_error_from_bootstrap)?;
-        let (ledger, validated) = commit.into_parts();
-
         self.persist_ledger_record(record)?;
-        let committed =
-            external_runtime_allocations(validated.confirm_persisted(ledger.current_generation()));
+        let committed = external_runtime_allocations(commit.confirm_persisted());
         self.lifecycle = RuntimeLifecycle::Bootstrapped {
             committed_allocations: committed,
             binding: RuntimeBootstrapBinding {

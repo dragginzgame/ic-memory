@@ -2,9 +2,9 @@ use super::{MemoryRuntime, RuntimeDiagnosticError, RuntimeLifecycle};
 use crate::{
     AllocationHistory, AllocationLedger, AllocationPolicy, AllocationSlotDescriptor,
     DiagnosticCheck, DiagnosticCode, DiagnosticDeclaration, DiagnosticExport, DiagnosticFailure,
-    DiagnosticMemorySize, DiagnosticMemorySizeOutcome, DiagnosticRangeAuthority,
-    DiagnosticRuntimeBinding, DiagnosticStableCell, DiagnosticStableCellStatus, LedgerCommitError,
-    LedgerPayloadEnvelopeError, MemoryRuntimeDoctorReport, PolicyIdentity, RuntimeBootstrapPolicy,
+    DiagnosticMemorySize, DiagnosticRangeAuthority, DiagnosticRuntimeBinding, DiagnosticStableCell,
+    DiagnosticStableCellStatus, LedgerCommitError, LedgerPayloadEnvelopeError,
+    MemoryRuntimeDoctorReport, PolicyIdentity, RecoveredLedger, RuntimeBootstrapPolicy,
     StableCellLedgerRecord,
     physical::CommitStoreDiagnostic,
     registry::{SealedDeclarationFingerprint, SealedDeclarationSnapshot},
@@ -29,7 +29,7 @@ impl<M: Memory> MemoryRuntime<M> {
                 ledger,
                 ledger_anchor_descriptor(),
                 Some(commit_recovery),
-                self.memory_sizes(ledger)?,
+                self.memory_sizes(&recovered),
             ),
         )
     }
@@ -70,11 +70,11 @@ impl<M: Memory> MemoryRuntime<M> {
             });
         let recovered_for_export = recovered.as_ref().and_then(|result| result.as_ref().ok());
         let ledger = recovered_for_export.map(|recovered| {
-            DiagnosticExport::from_ledger_with_commit_recovery_and_memory_size_outcomes(
+            DiagnosticExport::from_ledger_with_commit_recovery_and_memory_sizes(
                 recovered.ledger(),
                 ledger_anchor_descriptor(),
                 commit_recovery,
-                self.memory_size_outcomes(recovered.ledger()),
+                self.memory_sizes(recovered),
             )
         });
         let diagnostic_declarations = declarations
@@ -134,41 +134,22 @@ impl<M: Memory> MemoryRuntime<M> {
 
     fn memory_sizes(
         &self,
-        ledger: &AllocationLedger,
-    ) -> Result<Vec<(AllocationSlotDescriptor, DiagnosticMemorySize)>, RuntimeDiagnosticError> {
-        ledger
+        recovered: &RecoveredLedger,
+    ) -> Vec<(AllocationSlotDescriptor, DiagnosticMemorySize)> {
+        recovered
+            .ledger()
             .allocation_history()
             .records()
             .iter()
             .map(|record| {
-                let id = record.slot().memory_manager_id()?;
-                Ok((
+                let id = record
+                    .slot()
+                    .memory_manager_id()
+                    .expect("recovered ledger slot");
+                (
                     record.slot().clone(),
                     DiagnosticMemorySize::from_wasm_pages(self.memory(id).size()),
-                ))
-            })
-            .collect()
-    }
-
-    pub(super) fn memory_size_outcomes(
-        &self,
-        ledger: &AllocationLedger,
-    ) -> Vec<(AllocationSlotDescriptor, DiagnosticMemorySizeOutcome)> {
-        ledger
-            .allocation_history()
-            .records()
-            .iter()
-            .map(|record| {
-                let outcome = match record.slot().memory_manager_id() {
-                    Ok(id) => DiagnosticMemorySizeOutcome::Measured(
-                        DiagnosticMemorySize::from_wasm_pages(self.memory(id).size()),
-                    ),
-                    Err(err) => DiagnosticMemorySizeOutcome::Failed(DiagnosticFailure::new(
-                        DiagnosticCode::MemorySize,
-                        err.to_string(),
-                    )),
-                };
-                (record.slot().clone(), outcome)
+                )
             })
             .collect()
     }

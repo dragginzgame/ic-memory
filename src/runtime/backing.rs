@@ -1,8 +1,9 @@
 use ic_stable_structures::{Memory, memory_manager::VirtualMemory};
 use std::{cell::RefCell, rc::Rc};
 
-// One live bucket count for the sole manager, shared by all handles, including
-// the ledger. Seeded from validated metadata on reopen; updated only after grow.
+// Backing, immutable geometry and one live bucket count for the sole manager,
+// shared by the runtime and all handles, including the ledger. The count is
+// seeded from validated metadata on reopen and updated only after grow.
 pub(super) struct GrowthState<M: Memory> {
     pub backing: Rc<M>,
     pub bucket_size_pages: u16,

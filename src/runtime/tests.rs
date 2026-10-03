@@ -6,10 +6,10 @@ use super::{
     policy::GenericRangePolicy,
 };
 use crate::{
-    AllocationHistory, AllocationLedger, AllocationPolicy, AllocationRecord,
-    AllocationSlotDescriptor, DiagnosticCheck, DiagnosticCode, DiagnosticMemorySize,
-    DiagnosticMemorySizeOutcome, LedgerCommitError, LedgerPayloadEnvelopeError, PolicyIdentity,
-    PolicyIdentityError, RuntimeBootstrapPolicy, StableKey,
+    AllocationPolicy, AllocationSlotDescriptor, DiagnosticCheck, DiagnosticCode,
+    DiagnosticMemorySize, DiagnosticMemorySizeOutcome, LedgerCommitError,
+    LedgerPayloadEnvelopeError, PolicyIdentity, PolicyIdentityError, RuntimeBootstrapPolicy,
+    StableKey,
     registry::{
         SealedDeclarationSnapshot, TEST_REGISTRY_LOCK, register_static_memory_manager_declaration,
         register_static_memory_manager_range, reset_static_memory_declarations_for_tests,
@@ -696,37 +696,57 @@ fn doctor_and_diagnostics_report_the_same_runtime_lifecycle() {
 }
 
 #[test]
-fn memory_size_diagnostics_preserve_success_when_another_slot_fails() {
-    let users = crate::AllocationDeclaration::memory_manager("size.users.v1", 100, "users")
-        .expect("users declaration");
-    let orders = crate::AllocationDeclaration::memory_manager("size.orders.v1", 101, "orders")
-        .expect("orders declaration");
-    let mut ledger = AllocationLedger {
-        current_generation: 1,
-        allocation_history: AllocationHistory::from_parts(
-            vec![
-                AllocationRecord::active(1, users).expect("users record"),
-                AllocationRecord::active(1, orders).expect("orders record"),
-            ],
-            Vec::new(),
-        ),
-    };
-    ledger.allocation_history.records_mut()[1].slot =
+fn diagnostics_reject_invalid_persisted_slots_before_measuring_sizes() {
+    let declarations = SealedDeclarationSnapshot::new(&[], &[], &[]).unwrap();
+    let backing = VectorMemory::default();
+    let mut runtime = MemoryRuntime::new(backing.clone()).unwrap();
+    runtime
+        .bootstrap(&declarations, &GenericRangePolicy)
+        .unwrap();
+    let record = runtime.ledger_record_from_memory().unwrap();
+    let mut ledger = record.store().recover().unwrap().into_ledger();
+    ledger.allocation_history.records_mut()[0].slot =
         AllocationSlotDescriptor::memory_manager_unchecked(crate::MEMORY_MANAGER_INVALID_ID);
-
-    let outcomes = empty_runtime().memory_size_outcomes(&ledger);
+    let payload = crate::LedgerPayloadEnvelope::current(crate::test_cbor::to_vec(&ledger).unwrap())
+        .try_encode()
+        .unwrap();
+    // Keep physical framing/checksums valid so recovery reaches slot validation.
+    let store = serde_json::from_value(serde_json::json!({
+        "physical": {
+            "slot0": crate::CommittedGenerationBytes::new(ledger.current_generation(), payload),
+            "slot1": null,
+        },
+    }))
+    .unwrap();
+    runtime
+        .persist_ledger_record::<Infallible>(crate::StableCellLedgerRecord::new(store))
+        .unwrap();
+    let before = backing.borrow().clone();
 
     assert!(matches!(
-        &outcomes[0].1,
-        DiagnosticMemorySizeOutcome::Measured(_)
+        runtime.diagnostic_export(),
+        Err(RuntimeDiagnosticError::LedgerCommit(
+            LedgerCommitError::Integrity(crate::LedgerIntegrityError::InvalidSlotDescriptor(_))
+        ))
     ));
+    let doctor = runtime.doctor_report(&declarations, &GenericRangePolicy);
+    assert!(doctor.ledger.is_none());
     assert!(matches!(
-        &outcomes[1].1,
-        DiagnosticMemorySizeOutcome::Failed(crate::DiagnosticFailure {
-            code: DiagnosticCode::MemorySize,
+        doctor.validation,
+        DiagnosticCheck::NotRun {
+            code: DiagnosticCode::LedgerRecovery,
             ..
-        })
+        }
     ));
+    let mut reopened = MemoryRuntime::new(backing.clone()).unwrap();
+    assert!(matches!(
+        reopened.bootstrap(&declarations, &GenericRangePolicy),
+        Err(super::RuntimeBootstrapError::LedgerCommit(
+            LedgerCommitError::Integrity(crate::LedgerIntegrityError::InvalidSlotDescriptor(_))
+        ))
+    ));
+    assert!(!reopened.is_bootstrapped());
+    assert_eq!(*backing.borrow(), before);
 }
 
 #[test]

@@ -76,8 +76,8 @@ protected commit recovery state, recovered ledger export, registered
 declarations, range authority, validation under the tested policy, and live
 memory sizes for that runtime when recovery succeeds. It also compares the
 tested policy identity and declaration fingerprint with the binding established
-by successful bootstrap. Size failures are reported per allocation without
-discarding successful measurements. The default-runtime wrapper returns a typed
+by successful bootstrap. Invalid persisted slots reject ledger recovery before
+runtime size measurement. The default-runtime wrapper returns a typed
 TLS access error if it is re-entered. Failure states include stable diagnostic
 codes for automation as well as human-readable messages.
 All default observations leave a missing runtime untouched; diagnostics return

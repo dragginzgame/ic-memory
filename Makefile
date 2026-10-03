@@ -1,5 +1,5 @@
 .PHONY: test maintainer-tools maintainer-toolcheck maintainer-check maintainer-build \
-        version ensure-clean validate wasm-size test-wasm-size test-release-flow patch minor \
+        version ensure-clean validate validate-toolchain wasm-size test-wasm-size test-release-flow patch minor \
         release-patch release-minor release-stage release-commit release-push \
         package publish publish-dry-run
 
@@ -75,13 +75,17 @@ ensure-clean:
 
 validate:
 	$(MAKE) --no-print-directory test-release-flow
+	$(MAKE) --no-print-directory validate-toolchain
+	cargo +$$($(RELEASE) msrv) check --locked --all-targets
+
+# Shared by CI and maintainer validation; the MSRV is checked separately.
+validate-toolchain:
 	$(MAKE) --no-print-directory test-wasm-size
 	cargo +$(VALIDATION_TOOLCHAIN) fmt --check
 	cargo +$(VALIDATION_TOOLCHAIN) clippy --all-targets -- -D warnings
 	cargo +$(VALIDATION_TOOLCHAIN) test --locked -- --test-threads=1
 	cargo +$(VALIDATION_TOOLCHAIN) check --locked --target wasm32-unknown-unknown --tests
 	$(MAKE) --no-print-directory wasm-size
-	cargo +$$($(RELEASE) msrv) check --locked --all-targets
 	cargo +$(VALIDATION_TOOLCHAIN) package --locked
 
 wasm-size:

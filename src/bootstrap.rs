@@ -258,10 +258,6 @@ impl PendingBootstrapCommit {
         self.validated
             .confirm_persisted(self.ledger.current_generation())
     }
-
-    pub(crate) fn into_parts(self) -> (AllocationLedger, ValidatedAllocations) {
-        (self.ledger, self.validated)
-    }
 }
 
 ///

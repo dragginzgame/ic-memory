@@ -1817,6 +1817,23 @@ mod tests {
     }
 
     #[test]
+    fn committed_integrity_rejects_allocation_references_to_genesis() {
+        for generation in [0, 1] {
+            let mut ledger = committed_ledger(generation);
+            ledger.allocation_history.push_record(
+                AllocationRecord::active(0, declaration("app.genesis.v1", 100, None)).unwrap(),
+            );
+            assert_eq!(
+                ledger.validate_committed_integrity(),
+                Err(LedgerIntegrityError::UnknownRecordGeneration {
+                    stable_key: StableKey::parse("app.genesis.v1").unwrap(),
+                    generation: 0,
+                })
+            );
+        }
+    }
+
+    #[test]
     fn validate_committed_integrity_rejects_generation_history_gaps() {
         let mut ledger = committed_ledger(3);
         ledger.allocation_history.generations_mut().remove(1);

@@ -435,6 +435,10 @@ pub struct DiagnosticRecord {
 ///
 /// Per-allocation result of measuring live backing-memory size.
 ///
+/// Diagnostic DTO producers can report measurement failures. Runtime reports
+/// measure only allocations whose slots passed ledger recovery; invalid slots
+/// are recovery failures rather than per-allocation measurement outcomes.
+///
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub enum DiagnosticMemorySizeOutcome {
