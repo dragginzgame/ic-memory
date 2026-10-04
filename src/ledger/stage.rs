@@ -109,15 +109,15 @@ impl AllocationLedger {
         self.validate_staging_bounds()?;
         let next_generation = checked_next_generation(self.current_generation)
             .map_err(|generation| AllocationRetirementError::GenerationOverflow { generation })?;
-        let mut next = self.clone();
-        let record = next
+        let record_index = self
             .allocation_history
-            .records_mut()
-            .iter_mut()
-            .find(|record| record.stable_key == retirement.stable_key)
+            .records()
+            .iter()
+            .position(|record| record.stable_key == retirement.stable_key)
             .ok_or_else(|| {
                 AllocationRetirementError::UnknownStableKey(retirement.stable_key.clone())
             })?;
+        let record = &self.allocation_history.records()[record_index];
 
         if record.slot != retirement.slot {
             return Err(AllocationRetirementError::SlotMismatch {
@@ -133,7 +133,8 @@ impl AllocationLedger {
             });
         }
 
-        record.state = AllocationState::Retired {
+        let mut next = self.clone();
+        next.allocation_history.records_mut()[record_index].state = AllocationState::Retired {
             generation: next_generation,
         };
         next.current_generation = next_generation;

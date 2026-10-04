@@ -1,5 +1,26 @@
 # Changelog
 
+## 0.24.3
+
+- Encode ledger CBOR directly into the final payload-envelope buffer. Remove
+  the intermediate raw payload buffer and private codec unit type; share header
+  construction with the public envelope writer. Durable bytes, checksums,
+  recovery validation and ledger-byte limit errors remain unchanged.
+- Reject unknown keys, mismatched slots and already-retired allocations before
+  cloning ledger history during retirement staging. Retain input validation,
+  staging bounds, generation checks and existing error precedence.
+- Public APIs, durable and diagnostic formats, and declaration fingerprints are
+  unchanged. No Canic source patch is required for these local changes.
+- Validation: 270 library tests, eight public integration tests, seven
+  compile-fail cases, two composed-host regressions and five doctests pass;
+  five existing sketches remain ignored. Current byte fixtures, exact envelope
+  comparison, oversized-commit conservation and retirement rejection checks
+  pass. Strict all-target Clippy, Rust 1.88 all-target checking, warning-denied
+  Rustdoc, Wasm test compilation and all five raw Wasm size gates pass.
+  IcyDB's lockfile now selects released 0.24.2; consumer builds and live
+  deployments were not requalified for this candidate. Runtime performance
+  improvements were not measured.
+
 ## 0.24.2
 
 - Track duplicate allocation slots with fixed occupancy arrays instead of

@@ -49,14 +49,28 @@ impl LedgerPayloadEnvelope {
         }
         // The byte ceiling bounds both the total usize length and the u64 header.
         let total_len = LEDGER_PAYLOAD_HEADER_LEN + self.payload.len();
-        let payload_len = self.payload.len() as u64;
-
         let mut bytes = Vec::with_capacity(total_len);
-        bytes.extend_from_slice(LEDGER_PAYLOAD_MAGIC);
-        bytes.extend_from_slice(LEDGER_PAYLOAD_FORMAT_MARKER);
-        bytes.extend_from_slice(&LEDGER_PAYLOAD_FORMAT_VERSION.to_le_bytes());
-        bytes.extend_from_slice(&payload_len.to_le_bytes());
+        bytes.extend_from_slice(&encoded_header(self.payload.len()));
         bytes.extend_from_slice(&self.payload);
+        Ok(bytes)
+    }
+
+    // Serialize directly into the final envelope buffer. The commit boundary
+    // retains its ledger-byte integrity error before any physical mutation.
+    pub(super) fn encode_ledger(
+        ledger: &super::AllocationLedger,
+    ) -> Result<Vec<u8>, super::LedgerIntegrityError> {
+        let mut bytes = vec![0; LEDGER_PAYLOAD_HEADER_LEN];
+        // Concrete derived serializers and a Vec writer have no recoverable failures.
+        ciborium::into_writer(ledger, &mut bytes).expect("allocation ledger encodes into Vec");
+        let payload_len = bytes.len() - LEDGER_PAYLOAD_HEADER_LEN;
+        if payload_len > crate::constants::MAX_LEDGER_BYTES {
+            return Err(super::LedgerIntegrityError::LimitExceeded {
+                resource: "ledger bytes",
+                limit: crate::constants::MAX_LEDGER_BYTES,
+            });
+        }
+        bytes[..LEDGER_PAYLOAD_HEADER_LEN].copy_from_slice(&encoded_header(payload_len));
         Ok(bytes)
     }
 
@@ -137,6 +151,16 @@ impl LedgerPayloadEnvelope {
     pub fn payload(&self) -> &[u8] {
         &self.payload
     }
+}
+
+// Both writers establish the payload bound before constructing this header.
+fn encoded_header(payload_len: usize) -> [u8; LEDGER_PAYLOAD_HEADER_LEN] {
+    let mut header = [0; LEDGER_PAYLOAD_HEADER_LEN];
+    header[..8].copy_from_slice(LEDGER_PAYLOAD_MAGIC);
+    header[8..12].copy_from_slice(LEDGER_PAYLOAD_FORMAT_MARKER);
+    header[12..16].copy_from_slice(&LEDGER_PAYLOAD_FORMAT_VERSION.to_le_bytes());
+    header[16..24].copy_from_slice(&(payload_len as u64).to_le_bytes());
+    header
 }
 
 ///
