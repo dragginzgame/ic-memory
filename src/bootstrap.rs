@@ -5,11 +5,13 @@ use crate::{
     ledger::{
         AllocationLedger, AllocationReservationError, AllocationRetirement,
         AllocationRetirementError, AllocationStageError, LedgerCommitError, LedgerCommitStore,
-        checked_reservation_count, validate_reservation_declaration,
+        checked_reservation_count, stage_reservation_generation, stage_retirement_generation,
+        stage_validated_generation, validate_reservation_declaration,
     },
     policy::AllocationPolicy,
     validation::{AllocationValidationError, validate_allocations},
 };
+use std::borrow::Cow;
 
 ///
 /// AllocationBootstrap
@@ -144,10 +146,9 @@ impl<'store> AllocationBootstrap<'store> {
             .store
             .recover()
             .map_err(BootstrapRetirementError::Ledger)?;
-        let staged = prior
-            .ledger()
-            .stage_retirement_generation(retirement, committed_at)
-            .map_err(BootstrapRetirementError::Retirement)?;
+        let staged =
+            stage_retirement_generation(Cow::Owned(prior.into_ledger()), retirement, committed_at)
+                .map_err(BootstrapRetirementError::Retirement)?;
         self.store
             .commit_generation(&staged)
             .map_err(BootstrapRetirementError::Ledger)?;
@@ -177,8 +178,7 @@ impl<'store> AllocationBootstrap<'store> {
                 .map_err(BootstrapReservationError::Policy)?;
         }
 
-        let staged = prior
-            .stage_reservation_generation(reservations, committed_at)
+        let staged = stage_reservation_generation(Cow::Owned(prior), reservations, committed_at)
             .map_err(BootstrapReservationError::Reservation)?;
         self.store
             .commit_generation(&staged)
@@ -198,10 +198,9 @@ impl<'store> AllocationBootstrap<'store> {
     {
         let validated =
             validate_allocations(&prior, snapshot, policy).map_err(BootstrapError::Validation)?;
-        let prior_ledger = prior.into_ledger();
-        let staged = prior_ledger
-            .stage_validated_generation(&validated, committed_at)
-            .map_err(BootstrapError::Staging)?;
+        let staged =
+            stage_validated_generation(Cow::Owned(prior.into_ledger()), &validated, committed_at)
+                .map_err(BootstrapError::Staging)?;
         self.store
             .commit_generation(&staged)
             .map_err(BootstrapError::Ledger)?;
@@ -509,6 +508,28 @@ mod tests {
             AllocationState::Reserved
         );
         assert_eq!(store.recover().unwrap().ledger(), &committed);
+
+        // The first reservation changes local staging state before the second
+        // tries to move an existing key. Neither borrowed staging nor bootstrap
+        // may expose that partial batch or advance the protected store.
+        let reservations = [
+            AllocationDeclaration::memory_manager_unlabeled("app.future.v1", 101).unwrap(),
+            AllocationDeclaration::memory_manager_unlabeled("app.users.v1", 102).unwrap(),
+        ];
+        let before = store.clone();
+        let expected = committed
+            .stage_reservation_generation(&reservations, None)
+            .unwrap_err();
+        assert!(matches!(
+            expected,
+            AllocationReservationError::StableKeySlotConflict { .. }
+        ));
+        assert_eq!(committed, *store.recover().unwrap().ledger());
+        let error = AllocationBootstrap::new(&mut store)
+            .reserve_and_commit(&reservations, &TestPolicy, None)
+            .unwrap_err();
+        assert_eq!(error, BootstrapReservationError::Reservation(expected));
+        assert_eq!(store, before);
     }
 
     #[test]

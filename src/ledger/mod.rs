@@ -27,6 +27,9 @@ pub use record::{
 };
 pub use stage::checked_reservation_count;
 pub use stage::validate_reservation_declaration;
+pub use stage::{
+    stage_reservation_generation, stage_retirement_generation, stage_validated_generation,
+};
 
 fn decode_ledger(bytes: &[u8]) -> Result<AllocationLedger, String> {
     crate::cbor::from_slice_exact(bytes).map_err(|err| err.to_string())

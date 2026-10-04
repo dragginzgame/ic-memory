@@ -8,6 +8,7 @@ use crate::{
     capability::ValidatedAllocations,
     declaration::{AllocationDeclaration, DeclarationSnapshotError},
 };
+use std::borrow::Cow;
 
 impl AllocationLedger {
     /// Return a copy of the ledger with `validated` recorded as the next generation.
@@ -27,36 +28,7 @@ impl AllocationLedger {
         validated: &ValidatedAllocations,
         committed_at: Option<u64>,
     ) -> Result<Self, AllocationStageError> {
-        if validated.base_generation() != self.current_generation {
-            return Err(AllocationStageError::StaleValidatedAllocations {
-                validated_generation: validated.base_generation(),
-                ledger_generation: self.current_generation,
-            });
-        }
-        self.validate_staging_bounds()?;
-        // The matching proof's base generation passed bounded committed-history
-        // validation; adding one cannot overflow even for a different receiver.
-        let next_generation = self.current_generation + 1;
-        let staged_declarations = validated.declarations();
-        let declaration_count =
-            u32::try_from(staged_declarations.len()).expect("validated declaration count");
-        let mut next = self.clone();
-        next.current_generation = next_generation;
-
-        for declaration in staged_declarations {
-            record_declaration(&mut next, next_generation, declaration)?;
-        }
-
-        next.allocation_history.push_generation(GenerationRecord {
-            generation: next_generation,
-            parent_generation: self.current_generation,
-            runtime_fingerprint: validated.runtime_fingerprint().map(str::to_string),
-            declaration_count,
-            committed_at,
-        });
-
-        next.validate_bounds()?;
-        Ok(next)
+        stage_validated_generation(Cow::Borrowed(self), validated, committed_at)
     }
 
     /// Return a copy of the ledger with `reservations` recorded as the next generation.
@@ -72,28 +44,7 @@ impl AllocationLedger {
         reservations: &[AllocationDeclaration],
         committed_at: Option<u64>,
     ) -> Result<Self, AllocationReservationError> {
-        self.validate_staging_bounds()?;
-        let next_generation = checked_next_generation(self.current_generation)
-            .map_err(|generation| AllocationReservationError::GenerationOverflow { generation })?;
-        let declaration_count = checked_reservation_count(reservations.len())?;
-        let mut next = self.clone();
-        next.current_generation = next_generation;
-
-        for reservation in reservations {
-            validate_reservation_declaration(reservation)?;
-            record_reservation(&mut next, next_generation, reservation)?;
-        }
-
-        next.allocation_history.push_generation(GenerationRecord {
-            generation: next_generation,
-            parent_generation: self.current_generation,
-            runtime_fingerprint: None,
-            declaration_count,
-            committed_at,
-        });
-
-        next.validate_bounds()?;
-        Ok(next)
+        stage_reservation_generation(Cow::Borrowed(self), reservations, committed_at)
     }
 
     /// Return a copy of the ledger with one explicit retirement committed.
@@ -105,51 +56,131 @@ impl AllocationLedger {
         retirement: &AllocationRetirement,
         committed_at: Option<u64>,
     ) -> Result<Self, AllocationRetirementError> {
-        retirement.validate()?;
-        self.validate_staging_bounds()?;
-        let next_generation = checked_next_generation(self.current_generation)
-            .map_err(|generation| AllocationRetirementError::GenerationOverflow { generation })?;
-        let record_index = self
-            .allocation_history
-            .records()
-            .iter()
-            .position(|record| record.stable_key == retirement.stable_key)
-            .ok_or_else(|| {
-                AllocationRetirementError::UnknownStableKey(retirement.stable_key.clone())
-            })?;
-        let record = &self.allocation_history.records()[record_index];
-
-        if record.slot != retirement.slot {
-            return Err(AllocationRetirementError::SlotMismatch {
-                stable_key: retirement.stable_key.clone(),
-                historical_slot: record.slot.clone(),
-                retired_slot: retirement.slot.clone(),
-            });
-        }
-        if matches!(record.state, AllocationState::Retired { .. }) {
-            return Err(AllocationRetirementError::AlreadyRetired {
-                stable_key: retirement.stable_key.clone(),
-                slot: record.slot.clone(),
-            });
-        }
-
-        let mut next = self.clone();
-        next.allocation_history.records_mut()[record_index].state = AllocationState::Retired {
-            generation: next_generation,
-        };
-        next.current_generation = next_generation;
-        next.allocation_history.push_generation(GenerationRecord {
-            generation: next_generation,
-            parent_generation: self.current_generation,
-            runtime_fingerprint: None,
-            declaration_count: 0,
-            committed_at,
-        });
-
-        // Staging checked every bound and reserved one generation entry.
-        // Retirement changes neither allocation count nor schema history.
-        Ok(next)
+        stage_retirement_generation(Cow::Borrowed(self), retirement, committed_at)
     }
+}
+
+// One staging implementation per operation. Public borrowed calls copy only
+// after their preflight checks; bootstrap transfers its already-owned ledger
+// without copying history. Mutation remains local until protected commit.
+pub fn stage_validated_generation(
+    ledger: Cow<'_, AllocationLedger>,
+    validated: &ValidatedAllocations,
+    committed_at: Option<u64>,
+) -> Result<AllocationLedger, AllocationStageError> {
+    if validated.base_generation() != ledger.current_generation {
+        return Err(AllocationStageError::StaleValidatedAllocations {
+            validated_generation: validated.base_generation(),
+            ledger_generation: ledger.current_generation,
+        });
+    }
+    ledger.validate_staging_bounds()?;
+    let parent_generation = ledger.current_generation;
+    // The matching proof's base generation passed bounded committed-history
+    // validation; adding one cannot overflow even for a different receiver.
+    let next_generation = parent_generation + 1;
+    let staged_declarations = validated.declarations();
+    let declaration_count =
+        u32::try_from(staged_declarations.len()).expect("validated declaration count");
+    let mut next = ledger.into_owned();
+    next.current_generation = next_generation;
+
+    for declaration in staged_declarations {
+        record_declaration(&mut next, next_generation, declaration)?;
+    }
+
+    next.allocation_history.push_generation(GenerationRecord {
+        generation: next_generation,
+        parent_generation,
+        runtime_fingerprint: validated.runtime_fingerprint().map(str::to_string),
+        declaration_count,
+        committed_at,
+    });
+
+    next.validate_bounds()?;
+    Ok(next)
+}
+
+pub fn stage_reservation_generation(
+    ledger: Cow<'_, AllocationLedger>,
+    reservations: &[AllocationDeclaration],
+    committed_at: Option<u64>,
+) -> Result<AllocationLedger, AllocationReservationError> {
+    ledger.validate_staging_bounds()?;
+    let parent_generation = ledger.current_generation;
+    let next_generation = checked_next_generation(parent_generation)
+        .map_err(|generation| AllocationReservationError::GenerationOverflow { generation })?;
+    let declaration_count = checked_reservation_count(reservations.len())?;
+    let mut next = ledger.into_owned();
+    next.current_generation = next_generation;
+
+    for reservation in reservations {
+        validate_reservation_declaration(reservation)?;
+        record_reservation(&mut next, next_generation, reservation)?;
+    }
+
+    next.allocation_history.push_generation(GenerationRecord {
+        generation: next_generation,
+        parent_generation,
+        runtime_fingerprint: None,
+        declaration_count,
+        committed_at,
+    });
+
+    next.validate_bounds()?;
+    Ok(next)
+}
+
+pub fn stage_retirement_generation(
+    ledger: Cow<'_, AllocationLedger>,
+    retirement: &AllocationRetirement,
+    committed_at: Option<u64>,
+) -> Result<AllocationLedger, AllocationRetirementError> {
+    retirement.validate()?;
+    ledger.validate_staging_bounds()?;
+    let parent_generation = ledger.current_generation;
+    let next_generation = checked_next_generation(parent_generation)
+        .map_err(|generation| AllocationRetirementError::GenerationOverflow { generation })?;
+    let record_index = ledger
+        .allocation_history
+        .records()
+        .iter()
+        .position(|record| record.stable_key == retirement.stable_key)
+        .ok_or_else(|| {
+            AllocationRetirementError::UnknownStableKey(retirement.stable_key.clone())
+        })?;
+    let record = &ledger.allocation_history.records()[record_index];
+
+    if record.slot != retirement.slot {
+        return Err(AllocationRetirementError::SlotMismatch {
+            stable_key: retirement.stable_key.clone(),
+            historical_slot: record.slot.clone(),
+            retired_slot: retirement.slot.clone(),
+        });
+    }
+    if matches!(record.state, AllocationState::Retired { .. }) {
+        return Err(AllocationRetirementError::AlreadyRetired {
+            stable_key: retirement.stable_key.clone(),
+            slot: record.slot.clone(),
+        });
+    }
+
+    let mut next = ledger.into_owned();
+    next.allocation_history.records_mut()[record_index].state = AllocationState::Retired {
+        generation: next_generation,
+    };
+    next.current_generation = next_generation;
+    next.allocation_history.push_generation(GenerationRecord {
+        generation: next_generation,
+        parent_generation,
+        runtime_fingerprint: None,
+        declaration_count: 0,
+        committed_at,
+    });
+
+    // Staging checked every bound and reserved one generation entry.
+    // Retirement changes neither allocation count nor schema history.
+    Ok(next)
 }
 
 fn record_declaration(

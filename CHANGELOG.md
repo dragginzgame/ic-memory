@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.24.8
+
+- Reuse the recovered ledger during declaration, reservation and retirement
+  bootstrap staging instead of cloning its complete history. Share each staging
+  implementation with the public borrowed API, which retains copy semantics.
+- Move registry declarations, requests and ranges into snapshot sealing instead
+  of cloning inputs that are immediately discarded. Logical resolution also
+  transfers its completed declaration vector into the same builder. Retain
+  borrowed public inputs, canonical ordering, error precedence and fingerprints.
+- Extend reservation failure coverage to a conflict after an earlier item has
+  been staged. Both borrowed staging and bootstrap leave the source ledger and
+  protected store unchanged on failure.
+- Public APIs, durable and diagnostic formats, and declaration fingerprints are
+  unchanged. No Canic source patch is required for these local changes.
+- Validation: 272 library tests, six selected public runtime/configuration/macro
+  integration tests and two composed-host regressions pass. Strict all-target
+  Clippy, formatting, whitespace checks and all five raw Wasm size gates pass.
+  Consumer builds, complete package verification and live deployments were not
+  rerun for this candidate. Runtime performance improvements were not measured.
+
 ## 0.24.7
 
 - Remove the second grant lookup during fresh logical allocation. Placement

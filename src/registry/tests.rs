@@ -301,6 +301,13 @@ fn snapshot_order_is_independent_of_registration_order() {
     let second = sealed_declaration_snapshot().expect("second snapshot");
 
     assert_eq!(first, second);
+    let explicit = SealedDeclarationSnapshot::new(
+        first.registered_declarations(),
+        first.registered_ranges(),
+        first.requests(),
+    )
+    .expect("borrowed snapshot inputs");
+    assert_eq!(explicit, first);
     assert_eq!(
         crate::test_cbor::to_vec(first.allocation_snapshot()).expect("first bytes"),
         crate::test_cbor::to_vec(second.allocation_snapshot()).expect("second bytes")

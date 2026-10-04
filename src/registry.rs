@@ -11,6 +11,7 @@ use crate::{
 };
 use serde::{Deserialize, Serialize};
 use std::{
+    borrow::Cow,
     panic::{AssertUnwindSafe, catch_unwind},
     sync::{Arc, Mutex, MutexGuard},
     thread::ThreadId,
@@ -302,7 +303,11 @@ impl SealedDeclarationSnapshot {
         ranges: &[StaticMemoryRangeDeclaration],
         requests: &[MemoryRequest],
     ) -> Result<Self, StaticMemoryDeclarationError> {
-        build_snapshot(declarations, ranges, requests)
+        build_snapshot(
+            Cow::Borrowed(declarations),
+            Cow::Borrowed(ranges),
+            Cow::Borrowed(requests),
+        )
     }
 
     /// Borrow canonical unresolved key-only requests.
@@ -396,9 +401,9 @@ impl SealedDeclarationSnapshot {
             });
         }
         Ok(build_snapshot(
-            &declarations,
-            self.registered_ranges(),
-            &[],
+            Cow::Owned(declarations),
+            Cow::Borrowed(self.registered_ranges()),
+            Cow::Owned(Vec::new()),
         )?)
     }
 
@@ -740,7 +745,11 @@ pub fn sealed_declaration_snapshot()
     };
     let result = match deferred_error {
         Some(error) => Err(error),
-        None => build_snapshot(&registry.declarations, &registry.ranges, &registry.requests),
+        None => build_snapshot(
+            Cow::Owned(std::mem::take(&mut registry.declarations)),
+            Cow::Owned(std::mem::take(&mut registry.ranges)),
+            Cow::Owned(std::mem::take(&mut registry.requests)),
+        ),
     };
     registry.finish_sealing(result)
 }
@@ -766,17 +775,19 @@ fn fail_sealing(
 }
 
 fn build_snapshot(
-    declarations: &[StaticMemoryDeclaration],
-    ranges: &[StaticMemoryRangeDeclaration],
-    requests: &[MemoryRequest],
+    declarations: Cow<'_, [StaticMemoryDeclaration]>,
+    ranges: Cow<'_, [StaticMemoryRangeDeclaration]>,
+    requests: Cow<'_, [MemoryRequest]>,
 ) -> Result<SealedDeclarationSnapshot, StaticMemoryDeclarationError> {
     if declarations.len().saturating_add(requests.len()) > 254 || ranges.len() > 254 {
         return Err(StaticMemoryDeclarationError::TooManyDeclarations);
     }
-    let mut requests = requests.to_vec();
+    // Borrowed public inputs stay untouched. Registry sealing and resolution
+    // transfer vectors they would otherwise discard after this build.
+    let mut requests = requests.into_owned();
     // Accepted keys are unique; equal keys reject below, so stability adds no meaning.
     requests.sort_unstable_by(|a, b| a.stable_key.cmp(&b.stable_key));
-    let mut registered_declarations = declarations.to_vec();
+    let mut registered_declarations = declarations.into_owned();
     registered_declarations.sort_by(|left, right| {
         left.declaration()
             .stable_key()
@@ -800,7 +811,7 @@ fn build_snapshot(
         }
     }
 
-    let mut registered_ranges = ranges.to_vec();
+    let mut registered_ranges = ranges.into_owned();
     // Equal bounds reject as overlaps, so metadata cannot distinguish accepted
     // ranges. Keep bound ordering for deterministic overlap diagnostics.
     registered_ranges.sort_by(|left, right| {
