@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="https://raw.githubusercontent.com/dragginzgame/ic-memory/main/images/ic-memory-readme-header.svg" alt="IC Memory — Internet Computer helper library" width="100%">
+</p>
+
 # CANIC-162: bounded physical allocation attribution
 
 Original qualification: 2026-09-10, prepared against 0.12.3.

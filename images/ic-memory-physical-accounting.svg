@@ -1,0 +1,41 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1440" height="810" viewBox="0 0 1440 810" role="img" aria-labelledby="title desc">
+<title id="title">IC Memory physical memory accounting</title>
+<desc id="desc">Physical memory comprises manager metadata, assigned buckets and unmanaged bytes. Assigned buckets comprise virtual memory and bucket slack. A separate view groups the same assigned buckets into known bindings and unknown bindings. Areas are schematic and do not indicate measured sizes; the two views must not be added together.</desc>
+<rect width="1440" height="810" fill="#F7FAFD"/>
+<g font-family="Inter, Arial, sans-serif" fill="#102B50">
+  <text x="56" y="57" font-size="14" font-weight="700" letter-spacing="2" fill="#53718F">IC MEMORY · PHYSICAL ACCOUNTING</text>
+  <text x="56" y="107" font-size="34" font-weight="700">What occupies physical memory?</text>
+  <text x="56" y="143" font-size="19" fill="#53718F">Two ways to group assigned buckets: by contents and by binding.</text>
+
+  <rect x="56" y="182" width="756" height="520" rx="22" fill="white" stroke="#D7E3EF" stroke-width="1.5"/>
+  <text x="88" y="224" font-size="25" font-weight="700">Physical memory</text>
+  <text x="88" y="254" font-size="17" fill="#53718F">Accounting by contents</text>
+
+  <rect x="88" y="280" width="692" height="70" rx="12" fill="#EDF3F9" stroke="#A9BED3" stroke-width="1.5"/>
+  <text x="114" y="323" font-size="22" font-weight="600">Manager metadata</text>
+
+  <rect x="88" y="370" width="692" height="208" rx="16" fill="#F0FBFD" stroke="#009DBD" stroke-width="2"/>
+  <text x="114" y="410" font-size="23" font-weight="700" fill="#087C94">Assigned buckets</text>
+  <rect x="114" y="434" width="384" height="116" rx="12" fill="#DDF6FA" stroke="#009DBD" stroke-width="1.5"/>
+  <text x="306" y="501" text-anchor="middle" font-size="23" font-weight="600">Virtual memory</text>
+  <rect x="518" y="434" width="236" height="116" rx="12" fill="#EEE8FB" stroke="#7354C6" stroke-width="1.5"/>
+  <text x="636" y="501" text-anchor="middle" font-size="23" font-weight="600">Bucket slack</text>
+
+  <rect x="88" y="598" width="692" height="70" rx="12" fill="#F4F7FA" stroke="#A9BED3" stroke-width="1.5"/>
+  <text x="114" y="641" font-size="22" font-weight="600">Unmanaged bytes</text>
+
+  <rect x="868" y="182" width="516" height="520" rx="22" fill="white" stroke="#D7E3EF" stroke-width="1.5"/>
+  <text x="900" y="224" font-size="25" font-weight="700">The same assigned buckets</text>
+  <text x="900" y="254" font-size="17" fill="#53718F">Accounting by binding</text>
+
+  <rect x="900" y="280" width="452" height="334" rx="16" fill="#F0FBFD" stroke="#009DBD" stroke-width="2"/>
+  <text x="926" y="320" font-size="23" font-weight="700" fill="#087C94">Assigned buckets</text>
+  <rect x="926" y="344" width="400" height="108" rx="12" fill="#EAF7F1" stroke="#9BD3BD" stroke-width="1.5"/>
+  <text x="1126" y="407" text-anchor="middle" font-size="24" font-weight="600" fill="#20765E">Known bindings</text>
+  <rect x="926" y="472" width="400" height="108" rx="12" fill="#FFF6E8" stroke="#E4C493" stroke-width="1.5"/>
+  <text x="1126" y="535" text-anchor="middle" font-size="24" font-weight="600" fill="#95601C">Unknown bindings</text>
+  <text x="1126" y="655" text-anchor="middle" font-size="18" fill="#53718F">An alternative grouping, not extra memory.</text>
+
+  <text x="720" y="758" text-anchor="middle" font-size="17" fill="#53718F">Schematic only: areas do not represent measured memory sizes.</text>
+</g>
+</svg>

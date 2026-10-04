@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="https://raw.githubusercontent.com/dragginzgame/ic-memory/main/images/ic-memory-readme-header.svg" alt="IC Memory — Internet Computer helper library" width="100%">
+</p>
+
 # Simplification follow-up — 0.19.0 baseline
 
 Reviewed on 2026-10-03 against release commit `3725f20`, starting with a clean

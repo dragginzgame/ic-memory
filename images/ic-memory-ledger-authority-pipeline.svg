@@ -1,0 +1,51 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="470" viewBox="0 0 1600 470" role="img" aria-labelledby="title desc">
+<title id="title">IC Memory internal ledger authority pipeline</title>
+<desc id="desc">The technical sequence is stable cell, commit store, payload envelope, recovered ledger, validated allocations, pending commit, then committed allocations.</desc>
+<defs><marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0 0L10 5L0 10Z" fill="#71859A"/></marker></defs>
+<rect width="1600" height="470" fill="#F7FAFD"/>
+<g font-family="Inter, Arial, sans-serif" fill="#102B50">
+  <text x="56" y="57" font-size="14" font-weight="700" letter-spacing="2" fill="#53718F">IC MEMORY · ADVANCED INTEGRATION</text>
+  <text x="56" y="107" font-size="34" font-weight="700">Internal ledger authority pipeline</text>
+  <text x="56" y="143" font-size="19" fill="#53718F">From the stable cell to committed allocations.</text>
+  <rect x="56" y="182" width="1488" height="226" rx="22" fill="white" stroke="#D7E3EF" stroke-width="1.5"/>
+  <circle cx="170" cy="227" r="16" fill="#EDF3F9"/>
+  <text x="170" y="233" text-anchor="middle" font-size="16" font-weight="700" fill="#102B50">1</text>
+  <rect x="80" y="260" width="180" height="104" rx="14" fill="#EDF3F9" stroke="#A9BED3" stroke-width="1.5"/>
+  <text x="170" y="321" text-anchor="middle" font-size="23" font-weight="700" fill="#102B50">Stable cell</text>
+  <path d="M267 312H281" fill="none" stroke="#71859A" stroke-width="2.5" marker-end="url(#arrow)"/>
+  <circle cx="380" cy="227" r="16" fill="#EDF3F9"/>
+  <text x="380" y="233" text-anchor="middle" font-size="16" font-weight="700" fill="#102B50">2</text>
+  <rect x="290" y="260" width="180" height="104" rx="14" fill="#EDF3F9" stroke="#A9BED3" stroke-width="1.5"/>
+  <text x="380" y="321" text-anchor="middle" font-size="23" font-weight="700" fill="#102B50">Commit store</text>
+  <path d="M477 312H491" fill="none" stroke="#71859A" stroke-width="2.5" marker-end="url(#arrow)"/>
+  <circle cx="590" cy="227" r="16" fill="#EDF3F9"/>
+  <text x="590" y="233" text-anchor="middle" font-size="16" font-weight="700" fill="#102B50">3</text>
+  <rect x="500" y="260" width="180" height="104" rx="14" fill="#EDF3F9" stroke="#A9BED3" stroke-width="1.5"/>
+  <text x="590" y="306" text-anchor="middle" font-size="23" font-weight="700" fill="#102B50">Payload</text>
+  <text x="590" y="337" text-anchor="middle" font-size="23" font-weight="700" fill="#102B50">envelope</text>
+  <path d="M687 312H701" fill="none" stroke="#71859A" stroke-width="2.5" marker-end="url(#arrow)"/>
+  <circle cx="800" cy="227" r="16" fill="#EDF3F9"/>
+  <text x="800" y="233" text-anchor="middle" font-size="16" font-weight="700" fill="#102B50">4</text>
+  <rect x="710" y="260" width="180" height="104" rx="14" fill="#EDF3F9" stroke="#A9BED3" stroke-width="1.5"/>
+  <text x="800" y="306" text-anchor="middle" font-size="23" font-weight="700" fill="#102B50">Recovered</text>
+  <text x="800" y="337" text-anchor="middle" font-size="23" font-weight="700" fill="#102B50">ledger</text>
+  <path d="M897 312H911" fill="none" stroke="#71859A" stroke-width="2.5" marker-end="url(#arrow)"/>
+  <circle cx="1010" cy="227" r="16" fill="#DDF6FA"/>
+  <text x="1010" y="233" text-anchor="middle" font-size="16" font-weight="700" fill="#087C94">5</text>
+  <rect x="920" y="260" width="180" height="104" rx="14" fill="#DDF6FA" stroke="#009DBD" stroke-width="2"/>
+  <text x="1010" y="306" text-anchor="middle" font-size="23" font-weight="700" fill="#087C94">Validated</text>
+  <text x="1010" y="337" text-anchor="middle" font-size="23" font-weight="700" fill="#087C94">allocations</text>
+  <path d="M1107 312H1121" fill="none" stroke="#71859A" stroke-width="2.5" marker-end="url(#arrow)"/>
+  <circle cx="1220" cy="227" r="16" fill="#EEE8FB"/>
+  <text x="1220" y="233" text-anchor="middle" font-size="16" font-weight="700" fill="#7354C6">6</text>
+  <rect x="1130" y="260" width="180" height="104" rx="14" fill="#EEE8FB" stroke="#7354C6" stroke-width="2"/>
+  <text x="1220" y="306" text-anchor="middle" font-size="23" font-weight="700" fill="#7354C6">Pending</text>
+  <text x="1220" y="337" text-anchor="middle" font-size="23" font-weight="700" fill="#7354C6">commit</text>
+  <path d="M1317 312H1331" fill="none" stroke="#71859A" stroke-width="2.5" marker-end="url(#arrow)"/>
+  <circle cx="1430" cy="227" r="16" fill="#EAF7F1"/>
+  <text x="1430" y="233" text-anchor="middle" font-size="16" font-weight="700" fill="#20765E">7</text>
+  <rect x="1340" y="260" width="180" height="104" rx="14" fill="#EAF7F1" stroke="#9BD3BD" stroke-width="2"/>
+  <text x="1430" y="306" text-anchor="middle" font-size="23" font-weight="700" fill="#20765E">Committed</text>
+  <text x="1430" y="337" text-anchor="middle" font-size="23" font-weight="700" fill="#20765E">allocations</text>
+</g>
+</svg>

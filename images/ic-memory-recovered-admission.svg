@@ -1,0 +1,45 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="1190" viewBox="0 0 1280 1190" role="img" aria-labelledby="title desc">
+<title id="title">IC Memory recovered-admission boundary</title>
+<desc id="desc">Recovered metadata flows into an admission hook that selects authorised historical keys. The hook receives metadata only: no memory handles and no permission to open stores. Its selections form the completed request set, which proceeds through normal validation and persistence to committed authority.</desc>
+<defs>
+  <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10Z" fill="#71859A"/></marker>
+</defs>
+<rect width="1280" height="1190" fill="#F7FAFD"/>
+<g font-family="Inter, Arial, sans-serif" fill="#102B50">
+  <text x="56" y="57" font-size="14" font-weight="700" letter-spacing="2" fill="#53718F">IC MEMORY · RECOVERED ADMISSION</text>
+  <text x="56" y="107" font-size="34" font-weight="700">Select historical keys. Keep opening authority separate.</text>
+  <text x="56" y="143" font-size="19" fill="#53718F">The admission hook works with recovered metadata.</text>
+
+  <rect x="280" y="182" width="720" height="88" rx="16" fill="white" stroke="#D7E3EF" stroke-width="1.5"/>
+  <text x="640" y="236" text-anchor="middle" font-size="26" font-weight="700">Recovered metadata</text>
+  <path d="M640 273V316" fill="none" stroke="#71859A" stroke-width="2.5" marker-end="url(#arrow)"/>
+
+  <rect x="140" y="334" width="1000" height="264" rx="22" fill="#F0FBFD" stroke="#009DBD" stroke-width="2"/>
+  <rect x="470" y="351" width="340" height="32" rx="16" fill="#DDF6FA"/>
+  <text x="640" y="374" text-anchor="middle" font-size="14" font-weight="700" letter-spacing="1.3" fill="#087C94">METADATA-ONLY BOUNDARY</text>
+  <text x="640" y="427" text-anchor="middle" font-size="27" font-weight="700">Admission hook</text>
+  <text x="640" y="463" text-anchor="middle" font-size="23">Selects authorised historical keys</text>
+
+  <path d="M172 483H1108" stroke="#A2DCE5" stroke-width="1.5"/>
+  <text x="184" y="522" font-size="19" font-weight="700" fill="#087C94">Receives metadata</text>
+  <text x="184" y="555" font-size="18" fill="#53718F">Historical keys and allocation information</text>
+  <path d="M626 502V568" stroke="#A2DCE5" stroke-width="1.5"/>
+  <text x="654" y="522" font-size="19" font-weight="700" fill="#A23B2F">No memory handles</text>
+  <text x="654" y="555" font-size="19" font-weight="700" fill="#A23B2F">No permission to open stores</text>
+
+  <path d="M640 601V658" fill="none" stroke="#71859A" stroke-width="2.5" marker-end="url(#arrow)"/>
+  <text x="665" y="634" font-size="16" fill="#53718F">Key selections</text>
+  <rect x="280" y="676" width="720" height="88" rx="16" fill="white" stroke="#D7E3EF" stroke-width="1.5"/>
+  <text x="640" y="730" text-anchor="middle" font-size="26" font-weight="700">Completed request set</text>
+
+  <path d="M640 767V810" fill="none" stroke="#71859A" stroke-width="2.5" marker-end="url(#arrow)"/>
+  <rect x="280" y="828" width="720" height="96" rx="16" fill="#F5F1FD" stroke="#7354C6" stroke-width="2"/>
+  <text x="640" y="886" text-anchor="middle" font-size="25" font-weight="700">Normal validation and persistence</text>
+
+  <path d="M640 927V970" fill="none" stroke="#71859A" stroke-width="2.5" marker-end="url(#arrow)"/>
+  <rect x="280" y="988" width="720" height="96" rx="16" fill="#EAF7F1" stroke="#9BD3BD" stroke-width="1.5"/>
+  <text x="640" y="1046" text-anchor="middle" font-size="27" font-weight="700" fill="#20765E">Committed authority</text>
+
+  <text x="640" y="1143" text-anchor="middle" font-size="18" fill="#53718F">Selection proceeds through normal validation and persistence before authority is committed.</text>
+</g>
+</svg>

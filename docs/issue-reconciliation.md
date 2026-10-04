@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="https://raw.githubusercontent.com/dragginzgame/ic-memory/main/images/ic-memory-readme-header.svg" alt="IC Memory — Internet Computer helper library" width="100%">
+</p>
+
 # Issue reconciliation — 2026-10-03
 
 Reconciled requests #2–#8 against released ic-memory 0.14.0–0.15.3, current
