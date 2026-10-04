@@ -2,6 +2,8 @@
   <img src="https://raw.githubusercontent.com/dragginzgame/ic-memory/main/images/ic-memory-readme-header.svg" alt="IC Memory — Internet Computer helper library" width="100%">
 </p>
 
+*Documentation reviewed against ic-memory 0.24.12.*
+
 `ic-memory` is a safety system for an Internet Computer application's persistent
 data.
 
@@ -18,9 +20,18 @@ opening the wrong data.
 > `ic-memory` protects the connection between a store and its storage location.
 > It is not a backup system, a database schema migrator, or a data validator.
 
+**Jump to:** [Why it matters](#why-this-matters) ·
+[Is it useful?](#is-it-useful-for-my-application) ·
+[How it works](#how-it-works) ·
+[Choose an integration style](#choose-an-integration-style) ·
+[Quick start](#quick-start-for-developers) ·
+[Troubleshooting](docs/troubleshooting.md) ·
+[Advanced integration](#operations-and-advanced-integration)
+
 <p align="center">
   <img src="https://raw.githubusercontent.com/dragginzgame/ic-memory/main/images/ic-memory-upgrade-blocked.svg" alt="Before an upgrade, Users uses storage 100 and Orders uses storage 101. A mistaken upgrade swaps those assignments, so ic-memory blocks the upgrade before either store opens." width="900">
 </p>
+<p align="center"><em>A changed store-to-location mapping is rejected before application data opens.</em></p>
 
 ## Why this matters
 
@@ -52,6 +63,7 @@ number in source code.
 <p align="center">
   <img src="https://raw.githubusercontent.com/dragginzgame/ic-memory/main/images/ic-memory-decision-guide.svg" alt="Decision guide: ic-memory is most useful for applications with several persistent stores, libraries or plugins that contribute stores, or storage layouts that change across upgrades. It is not a backup or schema-migration tool." width="800">
 </p>
+<p align="center"><em>Use ic-memory for evolving multi-store layouts, not as a backup or migration system.</em></p>
 
 | Situation | Recommendation |
 | --- | --- |
@@ -77,17 +89,32 @@ At a high level, the application:
 <p align="center">
   <img src="https://raw.githubusercontent.com/dragginzgame/ic-memory/main/images/ic-memory-lifecycle.svg" alt="The ic-memory lifecycle: name each store, remember its storage location, then compare the expected and remembered layouts before opening data. Matching layouts open safely; conflicts stop with an error." width="760">
 </p>
+<p align="center"><em>Name stores, retain their locations, and check the complete layout before opening data.</em></p>
 
 The important guarantee is **validation before open**. A diagnostic report or
 an uncommitted validation result cannot grant access to a store. The runtime
 publishes permission to open application memory only after the allocation
 ledger has been recovered, checked, and durably updated.
 
+## What happens when a check fails?
+
+Bootstrap returns an error before application stores are opened. `ic-memory`
+does not silently repair, move, discard, or reinterpret a conflicting
+allocation. A failed attempt publishes no permission to open stores.
+
+Treat the error as an upgrade-safety signal: keep the existing stable memory,
+inspect the declared keys, IDs, ranges, policy, and diagnostics, then correct
+the new application version. Do not erase the allocation ledger or replace it
+with an empty one to make the error disappear. See the
+[symptom-based troubleshooting guide](docs/troubleshooting.md) for safe next
+steps.
+
 ## What it protects
 
 <p align="center">
   <img src="https://raw.githubusercontent.com/dragginzgame/ic-memory/main/images/ic-memory-scope-boundary.svg" alt="ic-memory protects store-to-location mappings, prevents slot reuse, validates upgrade layouts and component ownership, and checks layouts before opening. Applications still own backups, schema migrations, stored-data semantics, authorization, and disaster recovery." width="800">
 </p>
+<p align="center"><em>Allocation safety complements backups, schema migration, authorization, and disaster recovery.</em></p>
 
 | `ic-memory` protects | The application or framework still owns |
 | --- | --- |
@@ -115,6 +142,21 @@ intentional: reusing the location could make a rollback open unrelated data.
   application opens its stores.
 - The **allocation ledger** is `ic-memory`'s durable record of which stable key
   owns which slot.
+
+## Choose an integration style
+
+Most integrations use one of these paths:
+
+| Style | Who chooses the memory ID? | Best fit |
+| --- | --- | --- |
+| **Fixed allocation** | The component declares a specific ID | Applications with an intentionally managed layout |
+| **Automatic allocation** | The host assigns an ID from an `Allowed` range | Reusable libraries, plugins, and generated components |
+| **Host adoption** | An already bootstrapped host has committed the ID | A library joining a composed application without replacing host policy |
+
+Fixed and automatic declarations may coexist in one host. The application that
+owns the concrete runtime still bootstraps the combined layout exactly once.
+Libraries adopting that runtime verify their own requirements and then open
+their committed keys; they do not bootstrap independently.
 
 ## Quick start for developers
 
@@ -175,6 +217,28 @@ fn initialize_stable_storage() -> Result<(), Box<dyn std::error::Error>> {
 Call the bootstrap function from both the canister's initialization and
 post-upgrade lifecycle before code touches any stable collection.
 
+```rust,ignore
+fn bootstrap_memory() {
+    ic_memory::bootstrap_default_memory_manager()
+        .expect("stable-memory allocation layout must be valid");
+}
+
+#[ic_cdk::init]
+fn init() {
+    bootstrap_memory();
+}
+
+#[ic_cdk::post_upgrade]
+fn post_upgrade() {
+    bootstrap_memory();
+}
+```
+
+These lifecycle functions must run before any thread-local or deferred
+initialization opens a stable collection. Applications using a custom policy or
+bucket configuration call the corresponding bootstrap helper in the same
+locations.
+
 The default range mode is `Reserved`: it permits declared fixed IDs but does
 not provide new automatic allocations.
 
@@ -224,6 +288,7 @@ combined layout once.
 <p align="center">
   <img src="https://raw.githubusercontent.com/dragginzgame/ic-memory/main/images/ic-memory-library-ownership.svg" alt="Library A owns storage locations 100 through 109 and Library B owns locations 110 through 119 inside one application. Both contribute declarations to one combined layout check." width="800">
 </p>
+<p align="center"><em>Libraries contribute requirements; the application owns one combined bootstrap.</em></p>
 
 Libraries adopting an already bootstrapped host can verify that all of their
 requirements were included without rerunning bootstrap or replacing the host's
@@ -271,10 +336,50 @@ Changing a key creates a new allocation identity. If the durable store is still
 the same store, keep its key and change its optional diagnostic schema metadata
 instead.
 
+## Frequently asked questions
+
+### Does ic-memory move or migrate application data?
+
+No. It validates allocation identity. Schema and data migrations remain the
+application's responsibility.
+
+### Does it back up stable memory or recover corrupted application data?
+
+No. Keep a separate backup and disaster-recovery plan. `ic-memory` fails closed
+when its allocation metadata cannot be recovered safely.
+
+### What happens when validation fails?
+
+Bootstrap returns an error and publishes no open capability. Fix the proposed
+layout or policy; do not erase the ledger to bypass the conflict.
+
+### Can a retired memory location be reused?
+
+No. Retirement is a permanent tombstone so a future version or rollback cannot
+mistake unrelated data for the retired store.
+
+### Does every library bootstrap separately?
+
+No. One owner bootstraps each concrete runtime. Libraries verify their
+requirements against the host's committed layout and open only their keys.
+
+### When should I use fixed versus automatic allocation?
+
+Use fixed IDs when the application deliberately manages its layout. Use
+automatic allocation when a host should place reusable components within
+explicitly granted ranges. Both preserve the assigned ID after commitment.
+
+### Can an upgrade add a new store safely?
+
+Yes, provided its key is new, its fixed ID or automatic range is eligible, and
+the complete layout passes current policy and historical validation.
+
 ## Operations and advanced integration
 
 - [Operations and diagnostics](https://github.com/dragginzgame/ic-memory/blob/main/docs/operations.md)
   explains memory attribution, bucket configuration, and runtime reports.
+- [Troubleshooting](https://github.com/dragginzgame/ic-memory/blob/main/docs/troubleshooting.md)
+  maps common symptoms to safe recovery steps.
 - [Advanced ic-memory](https://github.com/dragginzgame/ic-memory/blob/main/ADVANCED.md)
   covers explicit runtimes, custom policies, recovery, and manual bootstrap.
 - [Safety invariants](https://github.com/dragginzgame/ic-memory/blob/main/SAFETY.md)

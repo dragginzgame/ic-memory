@@ -7,6 +7,8 @@ distinguish current integration guidance from historical engineering evidence.
 
 - [Project overview and quick start](../README.md) explains in plain language
   what `ic-memory` protects, when it is useful, and how to integrate it.
+- [Frequently asked questions](../README.md#frequently-asked-questions) answers
+  common scope, lifecycle, retirement, and allocation-style questions.
 - [Advanced integration](../ADVANCED.md) covers runtime ownership, custom
   policies, range authority, recovery, and manual bootstrap.
 - [Safety invariants](../SAFETY.md) defines the properties that implementation
@@ -16,6 +18,8 @@ distinguish current integration guidance from historical engineering evidence.
 
 - [Operations and diagnostics](operations.md) explains allocation reports,
   bucket configuration, doctor reports, and growth failures.
+- [Troubleshooting](troubleshooting.md) maps common symptoms and typed errors
+  to safe next actions without resetting durable state.
 - [Key-only allocation and bounded recovery](key-only-recovery.md) defines
   automatic placement, host adoption, omitted-store inspection, and recovery
   limits.
@@ -56,3 +60,18 @@ link to them.
 
 - [Release guide](../RELEASING.md)
 - [Current wire fixtures](../fixtures/current/README.md)
+
+### Documentation release checklist
+
+Before publishing a release that changes the API, durable format, terminology,
+or workflow:
+
+- update the crate version and README dependency example together;
+- update “reviewed against” markers in every current guide that was checked;
+- update examples, diagrams, captions, and alt text when terminology changes;
+- run doctests with warnings denied;
+- verify every local Markdown link and heading anchor;
+- confirm current guidance does not retain a superseded pre-1.0 API or wire
+  shape; and
+- keep historical measurements and qualification claims labeled with their
+  original version and scope.
