@@ -238,7 +238,12 @@ impl MemoryManagerRangeAuthority {
         let mut authorities: Vec<MemoryManagerAuthorityRecord> = Vec::new();
         for record in records {
             validate_authority_record(&record)?;
-            for existing in &authorities {
+            let insertion = authorities
+                .partition_point(|existing| existing.range.start() < record.range.start());
+            // Accepted ranges are ordered and disjoint. Only the predecessor
+            // and successor can be the first overlap; check them in range order.
+            let neighbours = insertion.saturating_sub(1)..(insertion + 1).min(authorities.len());
+            for existing in &authorities[neighbours] {
                 if ranges_overlap(existing.range, record.range) {
                     return Err(MemoryManagerRangeAuthorityError::OverlappingRanges {
                         existing_start: existing.range.start(),
@@ -248,8 +253,7 @@ impl MemoryManagerRangeAuthority {
                     });
                 }
             }
-            authorities.push(record);
-            authorities.sort_by_key(|record| record.range.start());
+            authorities.insert(insertion, record);
         }
         Ok(Self { authorities })
     }

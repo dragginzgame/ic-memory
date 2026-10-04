@@ -57,7 +57,7 @@ impl AllocationLedger {
             }
             if !slots.insert(&record.slot) {
                 return Err(LedgerIntegrityError::DuplicateSlot {
-                    slot: Box::new(record.slot.clone()),
+                    slot: record.slot.clone(),
                 });
             }
             validate_record_integrity(self.current_generation, record)?;

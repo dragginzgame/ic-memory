@@ -29,7 +29,9 @@ pub static TEST_REGISTRY_LOCK: Mutex<()> = Mutex::new(());
 /// Canic or IcyDB. Each `MemoryRuntime` uses it to match declarations against
 /// registered range claims before it calls the caller's
 /// [`crate::AllocationPolicy`].
-#[derive(Clone, Debug, Eq, PartialEq)]
+///
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 pub struct StaticMemoryDeclaration {
     authority: String,
     declaration: AllocationDeclaration,
@@ -838,16 +840,10 @@ fn build_snapshot(
 }
 
 #[derive(Serialize)]
-struct FingerprintDeclaration<'a> {
-    authority: &'a str,
-    declaration: &'a AllocationDeclaration,
-}
-
-#[derive(Serialize)]
 struct SealedDeclarationFingerprintMaterial<'a> {
     format: &'static str,
     allocation_snapshot: &'a DeclarationSnapshot,
-    registered_declarations: Vec<FingerprintDeclaration<'a>>,
+    registered_declarations: &'a [StaticMemoryDeclaration],
     effective_ranges: &'a [MemoryManagerAuthorityRecord],
     requests: &'a [MemoryRequest],
 }
@@ -861,13 +857,7 @@ fn sealed_declaration_fingerprint(
     let material = SealedDeclarationFingerprintMaterial {
         format: "ic-memory.sealed-declaration-fingerprint.v1",
         allocation_snapshot,
-        registered_declarations: registered_declarations
-            .iter()
-            .map(|registration| FingerprintDeclaration {
-                authority: registration.authority(),
-                declaration: registration.declaration(),
-            })
-            .collect(),
+        registered_declarations,
         effective_ranges,
         requests,
     };

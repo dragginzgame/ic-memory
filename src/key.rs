@@ -20,8 +20,9 @@ impl StableKey {
     /// Keys are bounded lowercase ASCII dot-separated names ending in a
     /// nonzero `.vN` suffix.
     pub fn parse(value: impl AsRef<str>) -> Result<Self, StableKeyError> {
-        validate(value.as_ref())?;
-        Ok(Self(value.as_ref().to_string()))
+        let value = value.as_ref();
+        validate(value)?;
+        Ok(Self(value.to_string()))
     }
 
     /// Borrow the canonical stable-key string.
@@ -151,6 +152,25 @@ fn invalid<T>(stable_key: &str, reason: &'static str) -> Result<T, StableKeyErro
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn parse_stores_the_string_it_validates() {
+        struct ChangingKey(std::cell::Cell<bool>);
+
+        impl AsRef<str> for ChangingKey {
+            fn as_ref(&self) -> &str {
+                if self.0.replace(true) {
+                    "INVALID"
+                } else {
+                    "app.rows.v1"
+                }
+            }
+        }
+
+        let key = StableKey::parse(ChangingKey(std::cell::Cell::new(false))).unwrap();
+        assert_eq!(key.as_str(), "app.rows.v1");
+        key.validate().unwrap();
+    }
 
     #[test]
     fn accepts_canonical_keys() {

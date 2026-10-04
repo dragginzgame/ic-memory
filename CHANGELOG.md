@@ -1,5 +1,40 @@
 # Changelog
 
+## 0.24.0
+
+- Fix `StableKey::parse` to validate and store the same borrowed string. A
+  stateful `AsRef<str>` implementation can no longer substitute a different
+  value between validation and construction.
+- Serialize static declaration registrations directly when computing sealed
+  fingerprints. Remove the duplicate projection type and temporary projection
+  vector; preserve the fingerprint material, bytes and algorithm version.
+- Hard cut: remove `RuntimeGrowError::ManagerRefused`. Successful capacity
+  admission and backing reservation establish the pinned manager's growth
+  contract; an unexpected result is an internal invariant panic. Backing
+  refusal, bucket exhaustion, arithmetic overflow and reentry remain typed
+  errors, including retry and refusal conservation guarantees.
+- Reject reservation batches exceeding 255 items before declaration validation
+  or policy callbacks. Bootstrap and raw staging share one count rule; recovery,
+  explicit genesis initialization and existing-store conservation remain.
+- Hard cut: allocation validation, ledger integrity, staging, reservation and
+  retirement errors carry `AllocationSlotDescriptor` directly. Remove all 17
+  boxed slot fields and their allocations; update callers constructing or
+  inspecting those fields to the current Rust API. Error variants and messages
+  are unchanged.
+- Construct range authority through ordered insertion and neighbouring overlap
+  checks. Remove repeated full-table scans and sorts while preserving input
+  validation order, first-overlap errors, canonical output and fingerprints.
+- Durable ledger and diagnostic formats are unchanged.
+- Downstream qualification remains outstanding. Canic was left untouched;
+  consumer builds and live deployments were not requalified for this release.
+- Validation: 266 library tests, eight public integration tests, seven
+  compile-fail cases, two composed-host regressions and five doctests pass;
+  five existing sketches remain ignored. Strict all-target Clippy, Rust 1.88
+  all-target checking, warning-denied Rustdoc and Wasm test compilation pass.
+  All five raw Wasm probes pass their existing budgets. The key and
+  oversized-reservation regressions fail against their original implementations
+  and pass after the fixes.
+
 ## 0.23.0
 
 - Hard cut: retain `DiagnosticExport::from_ledger` as the sole ledger-export

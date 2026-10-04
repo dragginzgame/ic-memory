@@ -46,6 +46,11 @@ impl<M: Memory> RuntimeMemory<M> {
     /// preserves virtual extents and manager metadata and permits retry. The
     /// upstream [`Memory::grow`] adapter translates errors into its required
     /// `-1` sentinel; direct runtime callers receive [`super::RuntimeGrowError`].
+    ///
+    /// # Panics
+    ///
+    /// Panics if a private growth-accounting invariant is broken or backing
+    /// memory panics.
     pub fn grow(&self, pages: u64) -> Result<u64, super::RuntimeGrowError> {
         use super::RuntimeGrowError;
         let mut allocated = self
@@ -82,10 +87,16 @@ impl<M: Memory> RuntimeMemory<M> {
                 additional_pages: required_pages - physical_pages,
             });
         }
-        let previous =
-            u64::try_from(self.memory.grow(pages)).map_err(|_| RuntimeGrowError::ManagerRefused)?;
+        // The pinned manager's only refusal is bucket exhaustion, already
+        // checked above while all handles share this exclusive reservation.
+        // Physical capacity is reserved before it assigns any buckets.
+        assert_eq!(
+            self.memory.grow(pages),
+            old_pages.cast_signed(),
+            "preflighted manager growth returns the previous virtual extent"
+        );
         *allocated = total_buckets;
-        Ok(previous)
+        Ok(old_pages)
     }
 }
 

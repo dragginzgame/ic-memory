@@ -163,8 +163,10 @@ history. The snapshot fingerprint is non-cryptographic.
 `RuntimeMemory::grow` must reserve physical backing capacity before the manager
 assigns buckets. Typed refusal preserves virtual extents and manager metadata
 and permits retry; only the required substrate `Memory::grow` adapter translates
-failure to `-1`. Native backing panics or partial writes are outside this refusal
-guarantee. All handles share the runtime's assigned-bucket count.
+failure to `-1`. A manager refusal or unexpected previous extent after successful
+preflight violates the private growth-accounting invariant and must panic. Native
+backing panics or partial writes are outside this refusal guarantee. All handles
+share the runtime's assigned-bucket count.
 
 Physical reports and numeric summaries must remain read-only and bounded to
 34,848 bytes of validated manager metadata, without decoding ledger history.

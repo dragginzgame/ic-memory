@@ -441,9 +441,11 @@ return distinct typed errors without changing virtual extents or manager
 metadata. All handles, including
 clones and the ledger, share one live bucket count recovered from validated
 metadata at construction. Growth performs no metadata reads or table scans.
-The count is transient; the current durable format is unchanged. Native backing
-panics and partial writes remain outside this refusal guarantee. This is a hard
-cut for direct callers: replace integer checks with `?`, `match`, or an explicit
+The count is transient; the current durable format is unchanged. A manager
+refusal or unexpected previous extent after successful preflight is an internal
+invariant panic. Native backing panics and partial writes remain outside this
+refusal guarantee. This is a hard cut for direct callers: replace integer checks
+with `?`, `match`, or an explicit
 error handler. The `ic_stable_structures::Memory` trait requires an `i64` result;
 only that adapter converts typed growth errors to `-1`. Collections retain their
 own behavior at that trait boundary. Ledger bootstrap propagates growth errors

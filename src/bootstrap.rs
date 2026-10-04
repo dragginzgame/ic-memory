@@ -5,7 +5,7 @@ use crate::{
     ledger::{
         AllocationLedger, AllocationReservationError, AllocationRetirement,
         AllocationRetirementError, AllocationStageError, LedgerCommitError, LedgerCommitStore,
-        validate_reservation_declaration,
+        checked_reservation_count, validate_reservation_declaration,
     },
     policy::AllocationPolicy,
     validation::{AllocationValidationError, validate_allocations},
@@ -91,6 +91,9 @@ impl<'store> AllocationBootstrap<'store> {
     }
 
     /// Recover, policy-check, reserve, and commit one reservation generation.
+    ///
+    /// After recovery, batches exceeding 255 items reject before declaration
+    /// validation or policy callbacks.
     pub fn reserve_and_commit<P>(
         &mut self,
         reservations: &[AllocationDeclaration],
@@ -112,6 +115,8 @@ impl<'store> AllocationBootstrap<'store> {
     /// This is the privileged genesis/import path for reservation staging. A
     /// non-empty `genesis` should only be supplied by the owner of migration or
     /// import for this ledger store.
+    /// Recovery or initialization precedes batch validation. Batches exceeding
+    /// 255 items reject before declaration validation or policy callbacks.
     pub fn initialize_reserve_and_commit<P>(
         &mut self,
         genesis: &AllocationLedger,
@@ -152,6 +157,8 @@ impl<'store> AllocationBootstrap<'store> {
     where
         P: AllocationPolicy,
     {
+        checked_reservation_count(reservations.len())
+            .map_err(BootstrapReservationError::Reservation)?;
         for reservation in reservations {
             validate_reservation_declaration(reservation)
                 .map_err(BootstrapReservationError::Reservation)?;
@@ -558,6 +565,90 @@ mod tests {
                 _
             ))
         ));
+    }
+
+    #[test]
+    fn reservation_pipeline_accepts_empty_and_full_slot_domain_batches() {
+        for count in [0_u8, 255] {
+            let reservations = (0..count)
+                .map(|id| {
+                    AllocationDeclaration::memory_manager_unlabeled(
+                        format!("app.future{id}.v1"),
+                        id,
+                    )
+                    .expect("reservation")
+                })
+                .collect::<Vec<_>>();
+            let mut store = LedgerCommitStore::default();
+            store.commit(&ledger()).expect("initial ledger");
+
+            let committed = AllocationBootstrap::new(&mut store)
+                .reserve_and_commit(&reservations, &TestPolicy, Some(42))
+                .expect("bounded batch commits");
+
+            assert_eq!(committed.current_generation(), 1);
+            assert_eq!(
+                committed.allocation_history().records().len(),
+                usize::from(count)
+            );
+            assert_eq!(
+                committed.allocation_history().generations()[0].declaration_count(),
+                u32::from(count)
+            );
+            assert_eq!(store.recover().unwrap().ledger(), &committed);
+        }
+    }
+
+    #[test]
+    fn oversized_reservations_reject_before_policy_and_preserve_existing_store() {
+        let reservations = vec![declaration(); 256];
+        for initialize in [false, true] {
+            let mut store = LedgerCommitStore::default();
+            store.commit(&ledger()).expect("initial ledger");
+            let before = store.clone();
+            let mut bootstrap = AllocationBootstrap::new(&mut store);
+            let error = if initialize {
+                bootstrap.initialize_reserve_and_commit(
+                    &ledger(),
+                    &reservations,
+                    &PolicyMustNotRun,
+                    None,
+                )
+            } else {
+                bootstrap.reserve_and_commit(&reservations, &PolicyMustNotRun, None)
+            }
+            .expect_err("oversized batch must fail before policy");
+
+            assert_eq!(
+                error,
+                BootstrapReservationError::Reservation(
+                    AllocationReservationError::TooManyReservations { count: 256 }
+                )
+            );
+            assert_eq!(store, before);
+        }
+    }
+
+    #[test]
+    fn oversized_initial_reservations_preserve_genesis_and_precede_invalid_declarations() {
+        let mut reservations = vec![declaration(); 256];
+        reservations[0].slot =
+            AllocationSlotDescriptor::memory_manager_unchecked(crate::MEMORY_MANAGER_INVALID_ID);
+        let mut store = LedgerCommitStore::default();
+        let mut expected = LedgerCommitStore::default();
+        expected.commit(&ledger()).expect("expected genesis");
+
+        let error = AllocationBootstrap::new(&mut store)
+            .initialize_reserve_and_commit(&ledger(), &reservations, &PolicyMustNotRun, None)
+            .expect_err("size rejection precedes declaration and policy checks");
+
+        assert_eq!(
+            error,
+            BootstrapReservationError::Reservation(
+                AllocationReservationError::TooManyReservations { count: 256 }
+            )
+        );
+        assert_eq!(store, expected);
     }
 
     #[test]

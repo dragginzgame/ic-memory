@@ -722,6 +722,43 @@ mod tests {
     }
 
     #[test]
+    fn memory_manager_range_authority_preserves_inclusive_overlap_boundaries() {
+        for (start, end, existing_start, existing_end) in [
+            (19, 20, 10, 19),
+            (20, 40, 40, 49),
+            (10, 12, 10, 19),
+            (0, 60, 10, 19),
+            (49, 60, 40, 49),
+        ] {
+            let record = |start, end| {
+                MemoryManagerAuthorityRecord::new(
+                    MemoryManagerIdRange::new(start, end).expect("range"),
+                    "applications",
+                    MemoryManagerRangeMode::Allowed,
+                    None,
+                )
+                .expect("record")
+            };
+            let error = MemoryManagerRangeAuthority::from_records(vec![
+                record(40, 49),
+                record(10, 19),
+                record(start, end),
+            ])
+            .expect_err("inclusive ranges overlap");
+
+            assert_eq!(
+                error,
+                MemoryManagerRangeAuthorityError::OverlappingRanges {
+                    existing_start,
+                    existing_end,
+                    candidate_start: start,
+                    candidate_end: end,
+                }
+            );
+        }
+    }
+
+    #[test]
     fn memory_manager_range_authority_deserialization_rejects_overlap() {
         let first = MemoryManagerAuthorityRecord::new(
             MemoryManagerIdRange::new(10, 99).expect("first range"),

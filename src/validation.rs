@@ -32,15 +32,15 @@ pub enum AllocationValidationError<P> {
         /// Stable key that was redeclared.
         stable_key: StableKey,
         /// Historical slot for the stable key.
-        historical_slot: Box<AllocationSlotDescriptor>,
+        historical_slot: AllocationSlotDescriptor,
         /// Slot claimed by the current declaration.
-        declared_slot: Box<AllocationSlotDescriptor>,
+        declared_slot: AllocationSlotDescriptor,
     },
     /// Slot was historically bound to a different stable key.
     #[error("allocation slot '{slot:?}' was historically bound to stable key '{historical_key}'")]
     SlotStableKeyConflict {
         /// Slot claimed by the current declaration.
-        slot: Box<AllocationSlotDescriptor>,
+        slot: AllocationSlotDescriptor,
         /// Historical stable key for the slot.
         historical_key: StableKey,
         /// Stable key claimed by the current declaration.
@@ -52,7 +52,7 @@ pub enum AllocationValidationError<P> {
         /// Retired stable key.
         stable_key: StableKey,
         /// Retired allocation slot.
-        slot: Box<AllocationSlotDescriptor>,
+        slot: AllocationSlotDescriptor,
     },
 }
 
@@ -123,17 +123,17 @@ fn map_validation_claim_conflict<P>(
     match conflict {
         ClaimConflict::StableKeyMoved { .. } => AllocationValidationError::StableKeySlotConflict {
             stable_key: declaration.stable_key.clone(),
-            historical_slot: Box::new(record.slot.clone()),
-            declared_slot: Box::new(declaration.slot.clone()),
+            historical_slot: record.slot.clone(),
+            declared_slot: declaration.slot.clone(),
         },
         ClaimConflict::SlotReused { .. } => AllocationValidationError::SlotStableKeyConflict {
-            slot: Box::new(declaration.slot.clone()),
+            slot: declaration.slot.clone(),
             historical_key: record.stable_key.clone(),
             declared_key: declaration.stable_key.clone(),
         },
         ClaimConflict::Tombstoned { .. } => AllocationValidationError::RetiredAllocation {
             stable_key: declaration.stable_key.clone(),
-            slot: Box::new(record.slot.clone()),
+            slot: record.slot.clone(),
         },
     }
 }

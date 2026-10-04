@@ -29,9 +29,6 @@ pub enum RuntimeGrowError {
     /// Growth re-entered while another handle held a capacity reservation.
     #[error("runtime memory growth is already in progress")]
     ReentrantAccess,
-    /// The manager refused growth despite the runtime's successful preflight.
-    #[error("memory manager refused preflighted growth")]
-    ManagerRefused,
 }
 
 ///

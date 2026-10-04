@@ -25,6 +25,7 @@ pub use record::{
     AllocationHistory, AllocationLedger, AllocationRecord, AllocationRetirement, AllocationState,
     GenerationRecord, RecoveredLedger, SchemaMetadataRecord,
 };
+pub use stage::checked_reservation_count;
 pub use stage::validate_reservation_declaration;
 
 ///
@@ -1632,7 +1633,7 @@ mod tests {
         assert_eq!(
             err,
             LedgerIntegrityError::DuplicateSlot {
-                slot: Box::new(AllocationSlotDescriptor::memory_manager(100).unwrap()),
+                slot: AllocationSlotDescriptor::memory_manager(100).unwrap(),
             }
         );
     }

@@ -75,11 +75,7 @@ impl AllocationLedger {
         self.validate_staging_bounds()?;
         let next_generation = checked_next_generation(self.current_generation)
             .map_err(|generation| AllocationReservationError::GenerationOverflow { generation })?;
-        let Some(declaration_count) = checked_declaration_count(reservations.len()) else {
-            return Err(AllocationReservationError::TooManyReservations {
-                count: reservations.len(),
-            });
-        };
+        let declaration_count = checked_reservation_count(reservations.len())?;
         let mut next = self.clone();
         next.current_generation = next_generation;
 
@@ -126,14 +122,14 @@ impl AllocationLedger {
         if record.slot != retirement.slot {
             return Err(AllocationRetirementError::SlotMismatch {
                 stable_key: retirement.stable_key.clone(),
-                historical_slot: Box::new(record.slot.clone()),
-                retired_slot: Box::new(retirement.slot.clone()),
+                historical_slot: record.slot.clone(),
+                retired_slot: retirement.slot.clone(),
             });
         }
         if matches!(record.state, AllocationState::Retired { .. }) {
             return Err(AllocationRetirementError::AlreadyRetired {
                 stable_key: retirement.stable_key.clone(),
-                slot: Box::new(record.slot.clone()),
+                slot: record.slot.clone(),
             });
         }
 
@@ -223,8 +219,11 @@ const fn checked_next_generation(current_generation: u64) -> Result<u64, u64> {
     }
 }
 
-fn checked_declaration_count(count: usize) -> Option<u32> {
-    (count <= 255).then(|| u32::try_from(count).expect("bounded declaration count"))
+pub fn checked_reservation_count(count: usize) -> Result<u32, AllocationReservationError> {
+    if count > 255 {
+        return Err(AllocationReservationError::TooManyReservations { count });
+    }
+    Ok(u32::try_from(count).expect("bounded reservation count"))
 }
 
 fn map_declaration_stage_conflict(
@@ -236,17 +235,17 @@ fn map_declaration_stage_conflict(
     match conflict {
         ClaimConflict::StableKeyMoved { .. } => AllocationStageError::StableKeySlotConflict {
             stable_key: declaration.stable_key.clone(),
-            historical_slot: Box::new(record.slot.clone()),
-            declared_slot: Box::new(declaration.slot.clone()),
+            historical_slot: record.slot.clone(),
+            declared_slot: declaration.slot.clone(),
         },
         ClaimConflict::SlotReused { .. } => AllocationStageError::SlotStableKeyConflict {
-            slot: Box::new(declaration.slot.clone()),
+            slot: declaration.slot.clone(),
             historical_key: record.stable_key.clone(),
             declared_key: declaration.stable_key.clone(),
         },
         ClaimConflict::Tombstoned { .. } => AllocationStageError::RetiredAllocation {
             stable_key: declaration.stable_key.clone(),
-            slot: Box::new(record.slot.clone()),
+            slot: record.slot.clone(),
         },
     }
 }
@@ -260,11 +259,9 @@ fn map_reservation_stage_conflict(
         ReservationClaimConflict::ActiveAllocation { record_index } => {
             return AllocationReservationError::ActiveAllocation {
                 stable_key: reservation.stable_key.clone(),
-                slot: Box::new(
-                    ledger.allocation_history.records()[record_index]
-                        .slot
-                        .clone(),
-                ),
+                slot: ledger.allocation_history.records()[record_index]
+                    .slot
+                    .clone(),
             };
         }
         ReservationClaimConflict::Claim(conflict) => conflict,
@@ -273,17 +270,17 @@ fn map_reservation_stage_conflict(
     match conflict {
         ClaimConflict::StableKeyMoved { .. } => AllocationReservationError::StableKeySlotConflict {
             stable_key: reservation.stable_key.clone(),
-            historical_slot: Box::new(record.slot.clone()),
-            reserved_slot: Box::new(reservation.slot.clone()),
+            historical_slot: record.slot.clone(),
+            reserved_slot: reservation.slot.clone(),
         },
         ClaimConflict::SlotReused { .. } => AllocationReservationError::SlotStableKeyConflict {
-            slot: Box::new(reservation.slot.clone()),
+            slot: reservation.slot.clone(),
             historical_key: record.stable_key.clone(),
             reserved_key: reservation.stable_key.clone(),
         },
         ClaimConflict::Tombstoned { .. } => AllocationReservationError::RetiredAllocation {
             stable_key: reservation.stable_key.clone(),
-            slot: Box::new(record.slot.clone()),
+            slot: record.slot.clone(),
         },
     }
 }
@@ -293,9 +290,14 @@ mod tests {
     use super::*;
 
     #[test]
-    fn declaration_count_fails_closed_on_overflow() {
-        assert_eq!(checked_declaration_count(255), Some(255));
-        assert_eq!(checked_declaration_count(256), None);
-        assert_eq!(checked_declaration_count(usize::MAX), None);
+    fn reservation_count_fails_closed_on_overflow() {
+        assert_eq!(checked_reservation_count(0), Ok(0));
+        assert_eq!(checked_reservation_count(255), Ok(255));
+        for count in [256, usize::MAX] {
+            assert_eq!(
+                checked_reservation_count(count),
+                Err(AllocationReservationError::TooManyReservations { count })
+            );
+        }
     }
 }
