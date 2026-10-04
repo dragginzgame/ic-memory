@@ -1,0 +1,52 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1440" height="790" viewBox="0 0 1440 790" role="img" aria-labelledby="title desc">
+  <title id="title">ic-memory allocation styles</title>
+  <desc id="desc">Fixed allocation: the component declares a specific memory ID; best for applications with an intentionally managed layout. Automatic allocation: the host assigns a memory ID from an Allowed range; best for reusable libraries, plugins and generated components. Host adoption: an already bootstrapped host has committed the memory ID; best for a library joining a composed application without replacing host policy.</desc>
+  <rect width="1440" height="790" fill="#F7FAFD"/>
+  <g font-family="Inter, Arial, sans-serif" fill="#102B50">
+    <text x="56" y="57" font-size="14" font-weight="700" letter-spacing="2" fill="#53718F">IC MEMORY · ALLOCATION STYLES</text>
+    <text x="56" y="107" font-size="34" font-weight="700">Who chooses the memory ID?</text>
+    <text x="56" y="143" font-size="19" fill="#53718F">Three styles for integrating components into a storage layout.</text>
+
+    <rect x="56" y="182" width="1328" height="540" rx="18" fill="white" stroke="#D7E3EF" stroke-width="1.5"/>
+    <path d="M74 182H1366Q1384 182 1384 200V252H56V200Q56 182 74 182Z" fill="#102B50"/>
+    <text x="82" y="226" font-size="19" font-weight="700" fill="white">Style</text>
+    <text x="392" y="226" font-size="19" font-weight="700" fill="white">Who chooses the memory ID?</text>
+    <text x="864" y="226" font-size="19" font-weight="700" fill="white">Best fit</text>
+
+    <path d="M56 408H1384M56 564H1384" stroke="#E3EBF3" stroke-width="1.5"/>
+    <path d="M366 252V722M838 252V722" stroke="#E3EBF3" stroke-width="1.5"/>
+
+    <rect x="82" y="280" width="52" height="52" rx="12" fill="#DDF6FA"/>
+    <g fill="none" stroke="#087C94" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+      <rect x="96" y="294" width="24" height="24" rx="4"/>
+      <path d="M103 306H113M108 301V311"/>
+    </g>
+    <text x="82" y="368" font-size="23" font-weight="700">Fixed allocation</text>
+    <text x="392" y="322" font-size="22" font-weight="700">The component</text>
+    <text x="392" y="355" font-size="20" fill="#53718F">declares a specific ID</text>
+    <text x="864" y="320" font-size="20">Applications with an</text>
+    <text x="864" y="351" font-size="20">intentionally managed layout</text>
+
+    <rect x="82" y="436" width="52" height="52" rx="12" fill="#EEE8FB"/>
+    <g fill="none" stroke="#7354C6" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M97 449H119M97 460H109M97 471H105M112 472L121 463M114 463H121V470"/>
+    </g>
+    <text x="82" y="524" font-size="23" font-weight="700">Automatic allocation</text>
+    <text x="392" y="478" font-size="22" font-weight="700">The host</text>
+    <text x="392" y="511" font-size="20" fill="#53718F">assigns an ID from an <tspan font-family="Consolas, monospace" fill="#7354C6">Allowed</tspan> range</text>
+    <text x="864" y="476" font-size="20">Reusable libraries, plugins</text>
+    <text x="864" y="507" font-size="20">and generated components</text>
+
+    <rect x="82" y="592" width="52" height="52" rx="12" fill="#E1F3EC"/>
+    <g fill="none" stroke="#20765E" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+      <rect x="96" y="606" width="24" height="24" rx="4"/>
+      <path d="M101 618L106 623L115 612"/>
+    </g>
+    <text x="82" y="680" font-size="23" font-weight="700">Host adoption</text>
+    <text x="392" y="634" font-size="22" font-weight="700">An already bootstrapped host</text>
+    <text x="392" y="667" font-size="20" fill="#53718F">has committed the ID</text>
+    <text x="864" y="616" font-size="20">A library joining a composed</text>
+    <text x="864" y="647" font-size="20">application without replacing</text>
+    <text x="864" y="678" font-size="20">host policy</text>
+  </g>
+</svg>

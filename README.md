@@ -71,36 +71,35 @@ number in source code.
 </p>
 <p align="center"><em>Use ic-memory for evolving multi-store layouts, not as a backup or migration system.</em></p>
 
-| Situation | Recommendation |
-| --- | --- |
-| One small, hand-written store whose location never changes | Probably unnecessary |
-| Several persistent stores | Useful |
-| Libraries, plugins, or generated code contribute stores | Especially useful |
-| The storage layout evolves across upgrades | Especially useful |
-| You need backups or database-schema migrations | Use a separate mechanism |
-
 `ic-memory` is most useful for frameworks, generated canisters, multi-store
 applications, plugin systems, and canister families that evolve over time.
 
 ## How it works
 
-At a high level, the application:
+The lifecycle has three parts:
 
-1. Gives every persistent store a permanent name.
-2. Declares which storage locations its components may use.
-3. Bootstraps `ic-memory` before opening stable data.
-4. Lets `ic-memory` compare the proposed layout with durable allocation history.
-5. Opens stores only after that comparison succeeds.
+1. **Name each store.** The application gives every persistent store a permanent
+   identity, such as `app.users.v1`.
+2. **Remember its location.** On the first successful installation,
+   `ic-memory` records which storage location belongs to each name.
+3. **Check before opening.** On every installation or upgrade, the new
+   application version declares the layout it expects. `ic-memory` compares that
+   layout with the remembered one before any application store opens.
 
 <p align="center">
   <img src="https://raw.githubusercontent.com/dragginzgame/ic-memory/main/images/ic-memory-lifecycle.svg" alt="The ic-memory lifecycle: name each store, remember its storage location, then compare the expected and remembered layouts before opening data. Matching layouts open safely; conflicts stop with an error." width="760">
 </p>
 <p align="center"><em>Name stores, retain their locations, and check the complete layout before opening data.</em></p>
 
-The important guarantee is **validation before open**. A diagnostic report or
-an uncommitted validation result cannot grant access to a store. The runtime
-publishes permission to open application memory only after the allocation
-ledger has been recovered, checked, and durably updated.
+If the layouts agree, the application receives permission to open its stores.
+If a known name moved, a location changed owner, or another allocation rule is
+broken, the check returns an error and `ic-memory` grants no permission to open
+application stores.
+
+This check-and-record operation is called **bootstrap**. Its important guarantee
+is **validation before open**: a diagnostic report or an uncommitted validation
+result cannot grant access to a store. The runtime publishes permission only
+after the allocation ledger has been recovered, checked, and durably updated.
 
 ## What happens when a check fails?
 
@@ -121,14 +120,6 @@ steps.
   <img src="https://raw.githubusercontent.com/dragginzgame/ic-memory/main/images/ic-memory-scope-boundary.svg" alt="ic-memory protects store-to-location mappings, prevents slot reuse, validates upgrade layouts and component ownership, and checks layouts before opening. Applications still own backups, schema migrations, stored-data semantics, authorization, and disaster recovery." width="800">
 </p>
 <p align="center"><em>Allocation safety complements backups, schema migration, authorization, and disaster recovery.</em></p>
-
-| `ic-memory` protects | The application or framework still owns |
-| --- | --- |
-| A named store staying at the same location | Backups and disaster recovery |
-| A location not being reused for another store | Database-schema migrations |
-| Layout validation before stores open | The meaning and validity of stored data |
-| Storage ranges assigned to different components | Controller and endpoint authorization |
-| Durable retirement of old allocations | Application lifecycle decisions |
 
 Retiring a store does not make its old location reusable. That tombstone is
 intentional: reusing the location could make a rollback open unrelated data.
@@ -153,11 +144,10 @@ intentional: reusing the location could make a rollback open unrelated data.
 
 Most integrations use one of these paths:
 
-| Style | Who chooses the memory ID? | Best fit |
-| --- | --- | --- |
-| **Fixed allocation** | The component declares a specific ID | Applications with an intentionally managed layout |
-| **Automatic allocation** | The host assigns an ID from an `Allowed` range | Reusable libraries, plugins, and generated components |
-| **Host adoption** | An already bootstrapped host has committed the ID | A library joining a composed application without replacing host policy |
+<p align="center">
+  <img src="https://raw.githubusercontent.com/dragginzgame/ic-memory/main/images/ic-memory-allocation-styles.svg" alt="Integration styles: fixed allocation lets a component declare a specific memory ID; automatic allocation lets the host assign an ID from an Allowed range; host adoption lets a library use an ID already committed by the bootstrapped host." width="900">
+</p>
+<p align="center"><em>Choose who assigns the memory ID without changing its durable ownership.</em></p>
 
 Fixed and automatic declarations may coexist in one host. The application that
 owns the concrete runtime still bootstraps the combined layout exactly once.
@@ -344,38 +334,38 @@ instead.
 
 ## Frequently asked questions
 
-### Does ic-memory move or migrate application data?
+<p><img src="https://raw.githubusercontent.com/dragginzgame/ic-memory/main/images/ic-faq-question.svg" alt="" width="22"> <strong>Does ic-memory move or migrate application data?</strong></p>
 
 No. It validates allocation identity. Schema and data migrations remain the
 application's responsibility.
 
-### Does it back up stable memory or recover corrupted application data?
+<p><img src="https://raw.githubusercontent.com/dragginzgame/ic-memory/main/images/ic-faq-question.svg" alt="" width="22"> <strong>Does it back up stable memory or recover corrupted application data?</strong></p>
 
 No. Keep a separate backup and disaster-recovery plan. `ic-memory` fails closed
 when its allocation metadata cannot be recovered safely.
 
-### What happens when validation fails?
+<p><img src="https://raw.githubusercontent.com/dragginzgame/ic-memory/main/images/ic-faq-question.svg" alt="" width="22"> <strong>What happens when validation fails?</strong></p>
 
 Bootstrap returns an error and publishes no open capability. Fix the proposed
 layout or policy; do not erase the ledger to bypass the conflict.
 
-### Can a retired memory location be reused?
+<p><img src="https://raw.githubusercontent.com/dragginzgame/ic-memory/main/images/ic-faq-question.svg" alt="" width="22"> <strong>Can a retired memory location be reused?</strong></p>
 
 No. Retirement is a permanent tombstone so a future version or rollback cannot
 mistake unrelated data for the retired store.
 
-### Does every library bootstrap separately?
+<p><img src="https://raw.githubusercontent.com/dragginzgame/ic-memory/main/images/ic-faq-question.svg" alt="" width="22"> <strong>Does every library bootstrap separately?</strong></p>
 
 No. One owner bootstraps each concrete runtime. Libraries verify their
 requirements against the host's committed layout and open only their keys.
 
-### When should I use fixed versus automatic allocation?
+<p><img src="https://raw.githubusercontent.com/dragginzgame/ic-memory/main/images/ic-faq-question.svg" alt="" width="22"> <strong>When should I use fixed versus automatic allocation?</strong></p>
 
 Use fixed IDs when the application deliberately manages its layout. Use
 automatic allocation when a host should place reusable components within
 explicitly granted ranges. Both preserve the assigned ID after commitment.
 
-### Can an upgrade add a new store safely?
+<p><img src="https://raw.githubusercontent.com/dragginzgame/ic-memory/main/images/ic-faq-question.svg" alt="" width="22"> <strong>Can an upgrade add a new store safely?</strong></p>
 
 Yes, provided its key is new, its fixed ID or automatic range is eligible, and
 the complete layout passes current policy and historical validation.
