@@ -16,12 +16,9 @@ opening the wrong data.
 > `ic-memory` protects the connection between a store and its storage location.
 > It is not a backup system, a database schema migrator, or a data validator.
 
-<!--
-Diagram insertion point: show Users -> storage 100 and Orders -> storage 101,
-followed by an upgrade that accidentally swaps the arrows. End with ic-memory
-blocking the upgrade before either store opens.
-Suggested asset name: images/allocation-swap.svg
--->
+<p align="center">
+  <img src="https://raw.githubusercontent.com/dragginzgame/ic-memory/main/images/ic-memory-upgrade-blocked.svg" alt="Before an upgrade, Users uses storage 100 and Orders uses storage 101. A mistaken upgrade swaps those assignments, so ic-memory blocks the upgrade before either store opens." width="900">
+</p>
 
 ## Why this matters
 
@@ -50,6 +47,10 @@ number in source code.
 
 ## Is it useful for my application?
 
+<p align="center">
+  <img src="https://raw.githubusercontent.com/dragginzgame/ic-memory/main/images/ic-memory-decision-guide.svg" alt="Decision guide: ic-memory is most useful for applications with several persistent stores, libraries or plugins that contribute stores, or storage layouts that change across upgrades. It is not a backup or schema-migration tool." width="800">
+</p>
+
 | Situation | Recommendation |
 | --- | --- |
 | One small, hand-written store whose location never changes | Probably unnecessary |
@@ -71,24 +72,9 @@ At a high level, the application:
 4. Lets `ic-memory` compare the proposed layout with durable allocation history.
 5. Opens stores only after that comparison succeeds.
 
-```text
-new application version
-        |
-        v
-declared store names and locations
-        |
-        v
-compare with saved allocation history
-        |
-        +-- compatible --> publish permission --> open stores
-        |
-        `-- conflict ----> return an error -----> open nothing
-```
-
-<!--
-Diagram insertion point: turn the flow above into a compact validation-before-
-open diagram. Suggested asset name: images/validation-before-open.svg
--->
+<p align="center">
+  <img src="https://raw.githubusercontent.com/dragginzgame/ic-memory/main/images/ic-memory-lifecycle.svg" alt="The ic-memory lifecycle: name each store, remember its storage location, then compare the expected and remembered layouts before opening data. Matching layouts open safely; conflicts stop with an error." width="760">
+</p>
 
 The important guarantee is **validation before open**. A diagnostic report or
 an uncommitted validation result cannot grant access to a store. The runtime
@@ -130,7 +116,7 @@ Add the crate:
 
 ```toml
 [dependencies]
-ic-memory = "0.24.10"
+ic-memory = "0.24.11"
 ```
 
 `ic-memory` re-exports its exact `ic-stable-structures` dependency through

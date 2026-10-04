@@ -1,0 +1,54 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="790" viewBox="0 0 1200 790" role="img" aria-labelledby="title desc">
+  <title id="title">ic-memory: multiple libraries, one combined layout check</title>
+  <desc id="desc">Within one application, Library A owns storage locations 100 to 109 and Library B owns storage locations 110 to 119. Both libraries contribute their declarations to the combined layout. ic-memory checks that combined layout once.</desc>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto"><path d="M0 0L10 5L0 10Z" fill="#53718F"/></marker>
+  </defs>
+  <rect width="1200" height="790" fill="#F7FAFD"/>
+  <g font-family="Inter, Arial, sans-serif" fill="#102B50">
+    <text x="56" y="57" font-size="14" font-weight="700" letter-spacing="2" fill="#53718F">IC MEMORY · LIBRARY OWNERSHIP</text>
+    <text x="56" y="107" font-size="34" font-weight="700">Multiple libraries. One layout check.</text>
+    <text x="56" y="143" font-size="19" fill="#53718F">Each library owns its storage range within the application.</text>
+
+    <rect x="56" y="182" width="1088" height="552" rx="22" fill="white" stroke="#D7E3EF" stroke-width="1.5"/>
+    <rect x="442" y="214" width="316" height="70" rx="14" fill="#102B50"/>
+    <text x="600" y="259" font-size="25" font-weight="700" text-anchor="middle" fill="white">Application</text>
+    <path d="M600 284V321M320 348V321H880V348" fill="none" stroke="#71859A" stroke-width="2.5"/>
+    <circle cx="600" cy="321" r="4" fill="#71859A"/>
+
+    <rect x="112" y="350" width="416" height="178" rx="18" fill="#F0FBFD" stroke="#009DBD" stroke-width="2"/>
+    <path d="M144 378H172L180 387H208V414H144Z" fill="#DDF6FA" stroke="#009DBD" stroke-width="2" stroke-linejoin="round"/>
+    <text x="228" y="409" font-size="25" font-weight="700">Library A</text>
+    <text x="144" y="452" font-size="18" fill="#53718F">Owns storage</text>
+    <text x="144" y="493" font-size="32" font-weight="700" fill="#087C94">100–109</text>
+    <g fill="#DDF6FA" stroke="#009DBD" stroke-width="1.5">
+      <rect x="370" y="447" width="28" height="43" rx="5"/>
+      <rect x="405" y="447" width="28" height="43" rx="5"/>
+      <rect x="440" y="447" width="28" height="43" rx="5"/>
+    </g>
+    <path d="M375 458H393M410 458H428M445 458H463" stroke="#009DBD" stroke-width="1.5"/>
+
+    <rect x="672" y="350" width="416" height="178" rx="18" fill="#F5F1FD" stroke="#7354C6" stroke-width="2"/>
+    <path d="M704 378H732L740 387H768V414H704Z" fill="#EEE8FB" stroke="#7354C6" stroke-width="2" stroke-linejoin="round"/>
+    <text x="788" y="409" font-size="25" font-weight="700">Library B</text>
+    <text x="704" y="452" font-size="18" fill="#53718F">Owns storage</text>
+    <text x="704" y="493" font-size="32" font-weight="700" fill="#7354C6">110–119</text>
+    <g fill="#EEE8FB" stroke="#7354C6" stroke-width="1.5">
+      <rect x="930" y="447" width="28" height="43" rx="5"/>
+      <rect x="965" y="447" width="28" height="43" rx="5"/>
+      <rect x="1000" y="447" width="28" height="43" rx="5"/>
+    </g>
+    <path d="M935 458H953M970 458H988M1005 458H1023" stroke="#7354C6" stroke-width="1.5"/>
+
+    <path d="M320 529V565H600" fill="none" stroke="#009DBD" stroke-width="2.5"/>
+    <path d="M880 529V565H600" fill="none" stroke="#7354C6" stroke-width="2.5"/>
+    <circle cx="600" cy="565" r="5" fill="#53718F"/>
+    <path d="M600 568V609" fill="none" stroke="#53718F" stroke-width="2.5" marker-end="url(#arrow)"/>
+
+    <rect x="260" y="623" width="680" height="84" rx="16" fill="#EDF3F9" stroke="#B8CBDF" stroke-width="1.5"/>
+    <path d="M304 641L324 649V666C324 679 314 690 304 695C294 690 284 679 284 666V649Z" fill="#102B50"/>
+    <path d="M295 666L302 673L315 657" fill="none" stroke="#5CD7EA" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/>
+    <text x="348" y="657" font-size="22" font-weight="700">ic-memory</text>
+    <text x="348" y="687" font-size="20">Checks the combined layout once</text>
+  </g>
+</svg>
