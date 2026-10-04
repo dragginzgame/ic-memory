@@ -23,7 +23,7 @@ impl<M: Memory> MemoryRuntime<M> {
         let record = self.ledger_record_from_memory()?;
         let (recovered, commit_recovery) = record.store().recover_with_diagnostic();
         let recovered = recovered?;
-        Ok(self.recovered_diagnostic_export(&recovered, commit_recovery))
+        Ok(self.recovered_diagnostic_export(Cow::Owned(recovered), commit_recovery))
     }
 
     /// Diagnose protected commit recovery from this runtime's ledger memory.
@@ -58,10 +58,9 @@ impl<M: Memory> MemoryRuntime<M> {
             .as_ref()
             .map(|record| record.store().recover_with_diagnostic());
         let ledger = recovery.as_ref().and_then(|(recovered, diagnostic)| {
-            recovered
-                .as_ref()
-                .ok()
-                .map(|recovered| self.recovered_diagnostic_export(recovered, *diagnostic))
+            recovered.as_ref().ok().map(|recovered| {
+                self.recovered_diagnostic_export(Cow::Borrowed(recovered), *diagnostic)
+            })
         });
         let diagnostic_declarations = declarations
             .registered_declarations()
@@ -119,11 +118,16 @@ impl<M: Memory> MemoryRuntime<M> {
 
     fn recovered_diagnostic_export(
         &self,
-        recovered: &RecoveredLedger,
+        recovered: Cow<'_, RecoveredLedger>,
         commit_recovery: CommitStoreDiagnostic,
     ) -> DiagnosticExport {
-        let mut export =
-            DiagnosticExport::from_ledger(recovered.ledger(), ledger_anchor_descriptor());
+        let anchor = ledger_anchor_descriptor();
+        let mut export = match recovered {
+            Cow::Borrowed(recovered) => DiagnosticExport::from_ledger(recovered.ledger(), anchor),
+            Cow::Owned(recovered) => {
+                DiagnosticExport::from_owned_ledger(recovered.into_ledger(), anchor)
+            }
+        };
         export.commit_recovery = Some(commit_recovery);
         for record in &mut export.records {
             let id = record

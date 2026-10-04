@@ -1,5 +1,29 @@
 # Changelog
 
+## 0.24.13
+
+- Decode the ledger stable-cell record once per cold bootstrap attempt and reuse
+  it for recovery and staging. Remove the private cell-opening wrapper, the
+  second panic-based decode and the complete record clone. Use capacity-checked
+  `Cell` writes and publish committed authority only after persistence succeeds.
+- Preserve fresh-cell acquisition before admission without committing genesis
+  on rejection. Extend the existing regression to check that a second rejected
+  attempt leaves the initialized root unchanged and a successful retry commits
+  generation one. Existing-cell retries still decode persisted memory afresh.
+- Move recovered allocation records and generation history into normal
+  diagnostic exports instead of cloning them. Share the projection with the
+  public borrowed constructor and doctor reports; retain doctor recovery evidence
+  for validation and preserve memory-measurement and policy-callback ordering.
+- Update runtime ownership and safety documentation. Public APIs, error payloads,
+  durable and diagnostic formats, and declaration fingerprints are unchanged.
+  No Canic source patch is required.
+- Validation: the complete Rust test suite passes, including 272 library tests,
+  compile-fail boundaries, public integrations, composed-host regressions and
+  doctests. Strict all-target Clippy, Rust 1.88.0 all-target compilation,
+  warning-denied Rustdoc, formatting, whitespace checks, Wasm test compilation
+  and all five raw Wasm size gates pass. Package/release workflows, consumer builds
+  and live deployments were not rerun. Runtime performance was not measured.
+
 ## 0.24.12
 
 - Make the ledger cell local to each bootstrap attempt. Remove the runtime's

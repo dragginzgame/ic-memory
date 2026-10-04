@@ -364,7 +364,8 @@ fn failed_persistence_retries_admission_without_partial_publication() {
 
 #[test]
 fn fresh_rejection_can_acquire_root_but_cannot_commit_genesis() {
-    let mut runtime = MemoryRuntime::new(VectorMemory::default()).unwrap();
+    let backing = VectorMemory::default();
+    let mut runtime = MemoryRuntime::new(backing.clone()).unwrap();
     let current = snapshot(&[CONTROL], "app", 100, 110, &[]);
     let policy = AdmissionPolicy {
         reject: true,
@@ -375,6 +376,9 @@ fn fresh_rejection_can_acquire_root_but_cannot_commit_genesis() {
         Err(RuntimeBootstrapError::AdmissionPolicy(_))
     ));
     assert!(!runtime.is_bootstrapped());
+    // A fresh rejection still initializes a readable cell, without committing
+    // genesis. Retrying the rejection must leave that initialized root unchanged.
+    assert_eq!(runtime.memory(MEMORY_MANAGER_LEDGER_ID).size(), 1);
     assert!(
         runtime
             .ledger_record_from_memory()
@@ -383,6 +387,13 @@ fn fresh_rejection_can_acquire_root_but_cannot_commit_genesis() {
             .physical()
             .is_uninitialized()
     );
+    let before = backing.borrow().clone();
+    assert!(matches!(
+        runtime.bootstrap(&current, &policy),
+        Err(RuntimeBootstrapError::AdmissionPolicy(_))
+    ));
+    assert_eq!(*backing.borrow(), before);
+    assert!(!runtime.is_bootstrapped());
     let policy = AdmissionPolicy::default();
     assert_eq!(
         runtime.bootstrap(&current, &policy).unwrap().generation(),

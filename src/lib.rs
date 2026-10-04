@@ -54,8 +54,9 @@
 //!
 //! [`MemoryRuntime`] is the canonical owner for one backing memory instance. It
 //! owns that memory's manager, ledger persistence, bootstrap lifecycle, committed
-//! capability, opens, and diagnostics. Each bootstrap attempt opens a temporary
-//! ledger cell after preflight. Linked code contributes declarations to
+//! capability, opens, and diagnostics. Each bootstrap attempt fallibly decodes
+//! its ledger record and uses a temporary cell for capacity-checked writes.
+//! Linked code contributes declarations to
 //! one immutable [`SealedDeclarationSnapshot`], which is supplied to each
 //! runtime independently.
 //!

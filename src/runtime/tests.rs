@@ -872,7 +872,10 @@ fn doctor_uses_genesis_only_for_empty_commit_storage() {
     let runtime = MemoryRuntime::new(backing.clone()).unwrap();
     for initialized in [false, true] {
         if initialized {
-            let _cell = runtime.open_ledger_cell::<Infallible>().unwrap();
+            let _cell = Cell::new(
+                runtime.memory(crate::MEMORY_MANAGER_LEDGER_ID),
+                crate::StableCellLedgerRecord::default(),
+            );
         }
         let before = backing.borrow().clone();
         let report = runtime.doctor_report(&declarations, &GenericRangePolicy);

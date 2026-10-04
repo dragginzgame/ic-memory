@@ -45,10 +45,12 @@ to one runtime. A cold bootstrap then:
 
 The important rule: validate layout before touching stable data.
 
-The default runtime also preflights the ledger stable-cell before opening it
-through `ic-stable-structures::Cell`. Corrupt cell envelopes or ledger-record
-bytes are reported as bootstrap errors instead of relying on panic behavior
-inside `Cell::init`.
+The runtime fallibly decodes the ledger stable-cell once per cold bootstrap
+attempt and reuses that record for recovery and staging. Corrupt cell envelopes
+or ledger-record bytes are reported as bootstrap errors before admission.
+`ic-stable-structures::Cell` performs capacity-checked writes. Fresh bootstrap
+initializes a readable cell with empty protected slots before admission;
+the staged generation is persisted only after validation succeeds.
 
 ## Runtime Ownership
 
@@ -58,10 +60,9 @@ committed allocation capability, memory opens, recovery diagnostics, and live
 memory-size inspection. The runtime and its opened handles share the backing
 memory and growth accounting; the manager owns bucket metadata.
 
-The ledger cell belongs to a single bootstrap attempt. Every retry preflights
-and opens the persisted cell again before recovery and admission; no decoded
-cell value remains cached after success or failure. Diagnostics read persisted
-memory directly.
+The decoded ledger record belongs to a single bootstrap attempt. Every retry
+decodes persisted memory again before recovery and admission; no record remains
+cached after success or failure. Diagnostics read persisted memory directly.
 
 Linked crates compose declarations into one immutable
 `SealedDeclarationSnapshot`. That process-global snapshot is declaration

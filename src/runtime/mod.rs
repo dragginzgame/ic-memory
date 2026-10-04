@@ -92,8 +92,9 @@ struct RuntimeBootstrapBinding {
 /// linked-program declarations are supplied separately as one immutable
 /// [`SealedDeclarationSnapshot`].
 ///
-/// Each bootstrap attempt opens its own ledger cell after fallible preflight;
-/// diagnostics read persisted memory directly.
+/// Each bootstrap attempt fallibly decodes its ledger record from persisted
+/// memory. Capacity-checked writes use `Cell`; diagnostics also read persisted
+/// memory directly.
 ///
 /// `M` needs only [`Memory`]. The runtime does not require the backing memory
 /// to be `Send`, `Sync`, `Clone`, or `'static`.
@@ -248,8 +249,14 @@ impl<M: Memory> MemoryRuntime<M> {
         policy: &P,
         policy_identity: PolicyIdentity,
     ) -> Result<(), RuntimeBootstrapError<P::Error>> {
-        let mut cell = self.open_ledger_cell()?;
-        let mut record = cell.get().clone();
+        let memory = self.memory(MEMORY_MANAGER_LEDGER_ID);
+        let mut record = decode_stable_cell_ledger_record_from_memory(&memory)?;
+        if memory.size() == 0 {
+            // Empty memory decodes to an uninitialized record. Preserve fresh
+            // cell acquisition before admission without persisting genesis.
+            ensure_ledger_cell_capacity(&memory, &record)?;
+            drop(Cell::new(memory.clone(), StableCellLedgerRecord::default()));
+        }
         let genesis = AllocationLedger::empty_genesis();
         let recovered = record.store_mut().recover_or_initialize(&genesis)?;
         let mut admission = BootstrapAdmission::new(recovered.ledger(), declarations);
@@ -269,8 +276,8 @@ impl<M: Memory> MemoryRuntime<M> {
                 None,
             )
             .map_err(runtime_bootstrap_error_from_bootstrap)?;
-        ensure_ledger_cell_capacity(&self.memory(MEMORY_MANAGER_LEDGER_ID), &record)?;
-        let _previous = cell.set(record);
+        ensure_ledger_cell_capacity(&memory, &record)?;
+        drop(Cell::new(memory, record));
         let committed = commit.confirm_persisted().into_application_allocations();
         self.lifecycle = RuntimeLifecycle::Bootstrapped {
             committed_allocations: committed,
@@ -337,15 +344,6 @@ impl<M: Memory> MemoryRuntime<M> {
             .slot_for(&key)
             .ok_or_else(|| RuntimeOpenError::StableKeyNotCommitted(stable_key.to_string()))?;
         Ok(slot.memory_manager_id().expect("committed allocation slot"))
-    }
-
-    fn open_ledger_cell<P>(
-        &self,
-    ) -> Result<Cell<StableCellLedgerRecord, RuntimeMemory<M>>, RuntimeBootstrapError<P>> {
-        let memory = self.memory(MEMORY_MANAGER_LEDGER_ID);
-        crate::validate_stable_cell_ledger_memory(&memory)?;
-        ensure_ledger_cell_capacity(&memory, &StableCellLedgerRecord::default())?;
-        Ok(Cell::init(memory, StableCellLedgerRecord::default()))
     }
 
     fn memory(&self, id: u8) -> RuntimeMemory<M> {

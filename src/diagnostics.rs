@@ -324,20 +324,44 @@ impl DiagnosticExport {
     /// evidence; this DTO constructor neither recovers nor measures memory.
     #[must_use]
     pub fn from_ledger(ledger: &AllocationLedger, ledger_anchor: AllocationSlotDescriptor) -> Self {
-        Self {
-            current_generation: ledger.current_generation,
+        Self::from_records(
+            ledger.current_generation,
             ledger_anchor,
-            records: ledger
-                .allocation_history()
-                .records()
-                .iter()
-                .cloned()
+            ledger.allocation_history.records.iter().cloned(),
+            ledger.allocation_history.generations.clone(),
+        )
+    }
+
+    // Normal exports consume their decoded history. Borrowed exports copy
+    // records directly into the same projection without an intermediate ledger.
+    pub(crate) fn from_owned_ledger(
+        ledger: AllocationLedger,
+        ledger_anchor: AllocationSlotDescriptor,
+    ) -> Self {
+        Self::from_records(
+            ledger.current_generation,
+            ledger_anchor,
+            ledger.allocation_history.records.into_iter(),
+            ledger.allocation_history.generations,
+        )
+    }
+
+    fn from_records(
+        current_generation: u64,
+        ledger_anchor: AllocationSlotDescriptor,
+        records: impl Iterator<Item = AllocationRecord>,
+        generations: Vec<GenerationRecord>,
+    ) -> Self {
+        Self {
+            current_generation,
+            ledger_anchor,
+            records: records
                 .map(|allocation| DiagnosticRecord {
                     allocation,
                     memory_size: None,
                 })
                 .collect(),
-            generations: ledger.allocation_history().generations().to_vec(),
+            generations,
             commit_recovery: None,
         }
     }
@@ -436,6 +460,10 @@ mod tests {
         assert_eq!(
             export.generations,
             ledger.allocation_history().generations()
+        );
+        assert_eq!(
+            export,
+            DiagnosticExport::from_owned_ledger(ledger, export.ledger_anchor.clone())
         );
         let wire = serde_json::to_value(&export).expect("diagnostic JSON");
         assert_eq!(

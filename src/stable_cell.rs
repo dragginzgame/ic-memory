@@ -185,6 +185,11 @@ pub fn decode_stable_cell_ledger_record(
     crate::cbor::from_slice_exact(bytes)
 }
 
+/// Fallibly decode a ledger record from its stable-cell envelope and value.
+///
+/// Empty memory returns an uninitialized record without writing a cell. Nonempty
+/// memory must pass the current envelope, byte bounds and record decoding. The
+/// returned DTO still requires protected ledger recovery before it is authority.
 pub fn decode_stable_cell_ledger_record_from_memory<M: Memory>(
     memory: &M,
 ) -> Result<StableCellLedgerRecord, StableCellLedgerError> {
@@ -200,9 +205,11 @@ pub fn decode_stable_cell_ledger_record_from_memory<M: Memory>(
 /// `ic-stable-structures::Cell`.
 ///
 /// `Cell::init` decodes the existing value through [`Storable::from_bytes`].
-/// That trait is panic-based, so the runtime preflights the raw memory with
-/// this fallible helper first. Empty memory is treated as uninitialized and is
-/// safe for `Cell::init` to create.
+/// That trait is panic-based, so callers can preflight raw memory with this
+/// fallible helper first. Empty memory is treated as uninitialized and is safe
+/// for `Cell::init` to create. Callers retaining an existing record for recovery
+/// can use [`decode_stable_cell_payload`] followed by
+/// [`decode_stable_cell_ledger_record`].
 pub fn validate_stable_cell_ledger_memory<M: Memory>(
     memory: &M,
 ) -> Result<(), StableCellLedgerError> {

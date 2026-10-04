@@ -64,10 +64,11 @@ authorization, or endpoint safety.
   doing so could forget committed allocation history.
 - Decoded ledger DTOs are untrusted until the explicit current-format
   discriminator and committed-integrity checks succeed.
-- Stable-cell ledger storage used by every `MemoryRuntime` must be preflighted
-  before opening it through `ic-stable-structures::Cell`, so envelope or record
-  corruption is classified as a bootstrap error instead of escaping as a decode
-  panic.
+- Stable-cell ledger storage used by every `MemoryRuntime` must pass fallible
+  envelope and record decoding before recovery and admission, so corruption is
+  classified as a bootstrap error instead of escaping as a decode panic.
+  Capacity-checked writes use `ic-stable-structures::Cell` after successful
+  validation. Fresh-cell initialization writes empty protected slots only.
 - Each runtime's internal `ic_memory.*` governance allocations must stay
   recoverable in the durable ledger, but must not be published or opened through
   public application-memory helpers.
@@ -136,9 +137,9 @@ Every fact derived from a backing memory belongs to one `MemoryRuntime<M>`:
 - diagnostic ledger and commit-recovery view; and
 - live virtual-memory sizes.
 
-Each bootstrap attempt preflights and opens its ledger cell from persisted
-memory. A failed attempt must not retain a cached cell value that could bypass
-preflight on retry. Capability publication follows successful persistence.
+Each bootstrap attempt decodes its ledger record from persisted memory. A failed
+attempt must not retain a cached record that could bypass decoding on retry.
+Capability publication follows successful persistence.
 
 One runtime must never use another runtime's lifecycle or committed capability.
 The only process-global authority is the immutable canonical snapshot of linked
