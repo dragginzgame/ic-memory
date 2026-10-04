@@ -1,0 +1,46 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1400" height="1000" viewBox="0 0 1400 1000" role="img" aria-labelledby="title desc">
+<title id="title">IC Memory runtime ownership and process-global declarations</title>
+<desc id="desc">One MemoryRuntime owns its backing memory, manager, ledger, bootstrap lifecycle, committed capability, diagnostics and opened handles. The process-global declaration snapshot is shown separately, outside the runtime ownership boundary. The seven owned items are not an execution sequence.</desc>
+<rect width="1400" height="1000" fill="#F7FAFD"/>
+<g font-family="Inter, Arial, sans-serif" fill="#102B50">
+  <text x="56" y="57" font-size="14" font-weight="700" letter-spacing="2" fill="#53718F">IC MEMORY · RUNTIME OWNERSHIP</text>
+  <text x="56" y="107" font-size="34" font-weight="700">One runtime owns the memory resources.</text>
+  <text x="56" y="143" font-size="19" fill="#53718F">Process-global declarations have a separate scope.</text>
+
+  <rect x="56" y="182" width="380" height="716" rx="22" fill="#EDF3F9" stroke="#A9BED3" stroke-width="2"/>
+  <text x="88" y="224" font-size="14" font-weight="700" letter-spacing="1.5" fill="#53718F">PROCESS-GLOBAL</text>
+  <rect x="88" y="258" width="316" height="150" rx="16" fill="white" stroke="#B8CBDF" stroke-width="1.5"/>
+  <g transform="translate(218 277)" fill="none" stroke="#53718F" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+    <rect width="40" height="40" rx="6"/><path d="M10 11H30M10 20H30M10 29H23M45 9H51V49H11V45"/>
+  </g>
+  <text x="246" y="353" text-anchor="middle" font-size="24" font-weight="700">Declaration</text>
+  <text x="246" y="384" text-anchor="middle" font-size="24" font-weight="700">snapshot</text>
+  <text x="88" y="465" font-size="20" fill="#53718F">Outside the runtime's</text>
+  <text x="88" y="495" font-size="20" fill="#53718F">resource ownership boundary.</text>
+
+  <rect x="476" y="182" width="868" height="716" rx="22" fill="#F0FBFD" stroke="#009DBD" stroke-width="2"/>
+  <text x="508" y="224" font-size="14" font-weight="700" letter-spacing="1.5" fill="#087C94">ONE RUNTIME · OWNED RESOURCES</text>
+  <rect x="508" y="248" width="804" height="82" rx="16" fill="#102B50"/>
+  <text x="910" y="299" text-anchor="middle" font-family="Consolas, monospace" font-size="30" font-weight="700" fill="white">MemoryRuntime</text>
+
+  <g fill="white" stroke="#A2DCE5" stroke-width="1.5">
+    <rect x="528" y="370" width="372" height="108" rx="14"/>
+    <rect x="928" y="370" width="372" height="108" rx="14"/>
+    <rect x="528" y="526" width="372" height="108" rx="14"/>
+    <rect x="928" y="526" width="372" height="108" rx="14"/>
+    <rect x="528" y="682" width="372" height="108" rx="14"/>
+    <rect x="928" y="682" width="372" height="108" rx="14"/>
+    <rect x="730" y="826" width="360" height="48" rx="12"/>
+  </g>
+  <g font-size="23" font-weight="600" text-anchor="middle">
+    <text x="714" y="433">Backing memory</text>
+    <text x="1114" y="433">Manager</text>
+    <text x="714" y="589">Ledger</text>
+    <text x="1114" y="589">Bootstrap lifecycle</text>
+    <text x="714" y="745">Committed capability</text>
+    <text x="1114" y="745">Diagnostics</text>
+    <text x="910" y="858">Opened handles</text>
+  </g>
+  <text x="700" y="954" text-anchor="middle" font-size="17" fill="#53718F">Containment shows ownership, not execution order.</text>
+</g>
+</svg>

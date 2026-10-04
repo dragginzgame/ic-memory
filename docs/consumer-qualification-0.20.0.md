@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="https://raw.githubusercontent.com/dragginzgame/ic-memory/main/images/ic-memory-readme-header.svg" alt="IC Memory — Internet Computer helper library" width="100%">
+</p>
+
 # Released 0.20.0 consumer qualification — 2026-10-03
 
 Published ic-memory **0.20.0** passes the focused IcyDB admission, lifecycle,

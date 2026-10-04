@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="https://raw.githubusercontent.com/dragginzgame/ic-memory/main/images/ic-memory-readme-header.svg" alt="IC Memory — Internet Computer helper library" width="100%">
+</p>
+
 # CBOR Codec Raw Wasm Size Check — 2026-07-14
 
 Historical measurement of the pinned codec/toolchain probe below. Dependency

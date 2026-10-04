@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="https://raw.githubusercontent.com/dragginzgame/ic-memory/main/images/ic-memory-readme-header.svg" alt="IC Memory — Internet Computer helper library" width="100%">
+</p>
+
 # Released 0.24.6 Canic memory qualification — 2026-10-04
 
 Canic **0.110.52** passes 14 focused native memory regressions and default-feature

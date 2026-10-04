@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="https://raw.githubusercontent.com/dragginzgame/ic-memory/main/images/ic-memory-readme-header.svg" alt="IC Memory — Internet Computer helper library" width="100%">
+</p>
+
 # Logical bootstrap cleanup (#6)
 
 Baseline: release 0.14.1, commit `91288c45e450d98c96e447a6f64487223d004087`.

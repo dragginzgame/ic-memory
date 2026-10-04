@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="https://raw.githubusercontent.com/dragginzgame/ic-memory/main/images/ic-memory-readme-header.svg" alt="IC Memory — Internet Computer helper library" width="100%">
+</p>
+
 # Opaque ledger payload encoding (#7)
 
 The current codec stores `CommittedGenerationBytes::payload` as a definite-length
