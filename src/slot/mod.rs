@@ -172,48 +172,50 @@ mod tests {
     }
 
     #[test]
-    fn memory_manager_range_authority_from_records_rejects_decoded_reversed_range() {
-        let err = MemoryManagerRangeAuthority::from_records(vec![MemoryManagerAuthorityRecord {
-            range: MemoryManagerIdRange {
-                start: 100,
-                end: 99,
-            },
-            authority: "applications".to_string(),
-            mode: MemoryManagerRangeMode::Allowed,
-            purpose: None,
-        }])
-        .expect_err("decoded reversed range must fail");
-
+    fn memory_manager_range_decode_enforces_usable_bounds() {
+        for (start, end) in [(0, 0), (0, 254), (100, 109), (254, 254)] {
+            let range = MemoryManagerIdRange::new(start, end).unwrap();
+            let json = serde_json::to_value(range).unwrap();
+            assert_eq!(json, serde_json::json!({ "start": start, "end": end }));
+            assert_eq!(
+                serde_json::from_value::<MemoryManagerIdRange>(json).unwrap(),
+                range
+            );
+            let bytes = crate::test_cbor::to_vec(&range).unwrap();
+            assert_eq!(
+                crate::test_cbor::from_slice::<MemoryManagerIdRange>(&bytes).unwrap(),
+                range
+            );
+        }
+        let range = MemoryManagerIdRange::new(100, 109).unwrap();
         assert_eq!(
-            err,
-            MemoryManagerRangeAuthorityError::Range(MemoryManagerRangeError::InvalidRange {
-                start: 100,
-                end: 99,
-            })
+            crate::test_cbor::to_vec(&range).unwrap(),
+            b"\xa2\x65start\x18\x64\x63end\x18\x6d"
         );
-    }
 
-    #[test]
-    fn memory_manager_range_authority_from_records_rejects_decoded_sentinel_range() {
-        let err = MemoryManagerRangeAuthority::from_records(vec![MemoryManagerAuthorityRecord {
-            range: MemoryManagerIdRange {
-                start: 100,
-                end: MEMORY_MANAGER_INVALID_ID,
-            },
-            authority: "applications".to_string(),
-            mode: MemoryManagerRangeMode::Allowed,
-            purpose: None,
-        }])
-        .expect_err("decoded sentinel range must fail");
-
-        assert_eq!(
-            err,
-            MemoryManagerRangeAuthorityError::Range(
-                MemoryManagerRangeError::InvalidMemoryManagerId {
-                    id: MEMORY_MANAGER_INVALID_ID,
-                }
-            )
-        );
+        for json in [
+            serde_json::json!({ "start": 100, "end": 99 }),
+            serde_json::json!({ "start": 100, "end": 255 }),
+            serde_json::json!({ "start": 255, "end": 255 }),
+            serde_json::json!({ "start": 0, "end": 256 }),
+            serde_json::json!({ "start": 0 }),
+            serde_json::json!({ "start": 0, "end": 1, "extra": true }),
+        ] {
+            assert!(serde_json::from_value::<MemoryManagerIdRange>(json.clone()).is_err());
+            let bytes = crate::test_cbor::to_vec(&json).unwrap();
+            assert!(crate::test_cbor::from_slice::<MemoryManagerIdRange>(&bytes).is_err());
+            let record = serde_json::json!({
+                "range": json,
+                "authority": "app",
+                "mode": "Allowed",
+                "purpose": null,
+            });
+            assert!(
+                serde_json::from_value::<MemoryManagerAuthorityRecord>(record.clone()).is_err()
+            );
+            let bytes = crate::test_cbor::to_vec(&record).unwrap();
+            assert!(crate::test_cbor::from_slice::<MemoryManagerAuthorityRecord>(&bytes).is_err());
+        }
     }
 
     #[test]

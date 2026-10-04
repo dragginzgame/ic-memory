@@ -22,9 +22,6 @@ pub enum LedgerIntegrityError {
         resource: &'static str,
         limit: usize,
     },
-    /// Stable-key grammar was invalid after durable decode.
-    #[error(transparent)]
-    InvalidStableKey(StableKeyError),
     /// Stable key appears in more than one allocation record.
     #[error("stable key '{stable_key}' appears in more than one allocation record")]
     DuplicateStableKey {

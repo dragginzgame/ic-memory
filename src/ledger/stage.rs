@@ -136,7 +136,6 @@ pub fn stage_retirement_generation(
     retirement: &AllocationRetirement,
     committed_at: Option<u64>,
 ) -> Result<AllocationLedger, AllocationRetirementError> {
-    retirement.validate()?;
     ledger.validate_staging_bounds()?;
     let parent_generation = ledger.current_generation;
     let next_generation = checked_next_generation(parent_generation)

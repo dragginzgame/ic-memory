@@ -1233,9 +1233,7 @@ mod tests {
     }
 
     #[test]
-    fn stage_retirement_generation_rejects_invalid_decoded_stable_key() {
-        let mut ledger = ledger();
-        ledger.allocation_history.records = vec![active_record("app.users.v1", 100)];
+    fn retirement_decode_rejects_invalid_stable_key() {
         let retirement = AllocationRetirement::new(
             "app.users.v1",
             MemoryManagerSlot::new(100).expect("usable slot"),
@@ -1245,14 +1243,7 @@ mod tests {
         *map_field_mut(value_map_mut(&mut value), "stable_key") =
             crate::test_cbor::Value::Text("App.users.v1".to_string());
         let bytes = crate::test_cbor::to_vec(&value).expect("retirement bytes");
-        let retirement: AllocationRetirement =
-            crate::test_cbor::from_slice(&bytes).expect("decoded DTO");
-
-        let err = ledger
-            .stage_retirement_generation(&retirement, None)
-            .expect_err("decoded invalid stable key must fail at the boundary");
-
-        assert!(matches!(err, AllocationRetirementError::Key(_)));
+        assert!(crate::test_cbor::from_slice::<AllocationRetirement>(&bytes).is_err());
     }
 
     #[test]
@@ -1583,20 +1574,10 @@ mod tests {
                 slot: MemoryManagerSlot::new(100).unwrap(),
             }
         );
-
-        ledger.allocation_history.records[1].stable_key =
-            serde_json::from_str("\"App.orders.v1\"").expect("decoded unvalidated key");
-        assert_eq!(
-            ledger.validate_integrity().unwrap_err(),
-            LedgerIntegrityError::DuplicateSlot {
-                slot: MemoryManagerSlot::new(100).unwrap(),
-            },
-            "duplicate slot precedes the second record's key validation"
-        );
     }
 
     #[test]
-    fn validate_committed_integrity_rejects_decoded_invalid_stable_key() {
+    fn recovery_rejects_invalid_stable_key_during_ledger_decode() {
         let mut ledger = committed_ledger(1);
         ledger
             .allocation_history
@@ -1608,14 +1589,14 @@ mod tests {
             .position(|window| window == b"app.users.v1")
             .expect("encoded stable key");
         bytes[key_start] = b'A';
-        let decoded: AllocationLedger =
-            crate::test_cbor::from_slice(&bytes).expect("decode ledger");
-
-        let err = decoded
-            .validate_committed_integrity()
-            .expect_err("invalid decoded key must fail");
-
-        assert!(matches!(err, LedgerIntegrityError::InvalidStableKey(_)));
+        assert!(crate::test_cbor::from_slice::<AllocationLedger>(&bytes).is_err());
+        let payload = LedgerPayloadEnvelope::current(bytes).encode();
+        let mut physical = DualCommitStore::default();
+        physical.commit_payload_at_generation(1, payload).unwrap();
+        let store = LedgerCommitStore { physical };
+        let before = store.clone();
+        assert!(matches!(store.recover(), Err(LedgerCommitError::Codec(_))));
+        assert_eq!(store, before, "malformed-key recovery must preserve slots");
     }
 
     #[test]

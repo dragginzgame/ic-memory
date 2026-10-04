@@ -151,11 +151,6 @@ fn validate_record_integrity(
     current_generation: u64,
     record: &AllocationRecord,
 ) -> Result<(), LedgerIntegrityError> {
-    record
-        .stable_key
-        .validate()
-        .map_err(LedgerIntegrityError::InvalidStableKey)?;
-
     if record.first_generation > record.last_seen_generation {
         return Err(LedgerIntegrityError::InvalidRecordGenerationOrder {
             stable_key: record.stable_key.clone(),

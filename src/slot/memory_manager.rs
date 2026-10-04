@@ -109,10 +109,12 @@ pub fn is_ic_memory_stable_key(stable_key: &str) -> bool {
 /// MemoryManager range reserved for `ic-memory` governance in the current substrate.
 #[must_use]
 pub const fn memory_manager_governance_range() -> MemoryManagerIdRange {
-    MemoryManagerIdRange {
-        start: MEMORY_MANAGER_MIN_ID,
-        end: MEMORY_MANAGER_GOVERNANCE_MAX_ID,
-    }
+    const RANGE: MemoryManagerIdRange =
+        match MemoryManagerIdRange::new(MEMORY_MANAGER_MIN_ID, MEMORY_MANAGER_GOVERNANCE_MAX_ID) {
+            Ok(range) => range,
+            Err(_) => panic!("the governance range must be usable"),
+        };
+    RANGE
 }
 
 ///

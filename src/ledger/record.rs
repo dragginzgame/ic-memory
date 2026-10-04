@@ -89,6 +89,10 @@ pub struct AllocationRecord {
 ///
 /// Retirement prevents a stable key from being redeclared. It does not make the
 /// physical slot safe for another active stable key.
+/// Its key and slot are checked during construction and decoding; staging still
+/// verifies the historical assignment and retirement eligibility.
+///
+
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct AllocationRetirement {
@@ -118,13 +122,6 @@ impl AllocationRetirement {
     #[must_use]
     pub const fn slot(&self) -> &MemoryManagerSlot {
         &self.slot
-    }
-
-    /// Validate constructor invariants after decode or manual assembly.
-    pub fn validate(&self) -> Result<(), AllocationRetirementError> {
-        self.stable_key
-            .validate()
-            .map_err(AllocationRetirementError::Key)
     }
 }
 

@@ -1,5 +1,31 @@
 # Changelog
 
+## 0.25.4
+
+- Establish stable-key grammar and usable range bounds during deserialization,
+  sharing their existing constructor rules. `StableKey` retains its decoded
+  string directly; `MemoryManagerIdRange` keeps private ordered bounds excluding
+  sentinel ID 255. Valid JSON/CBOR shapes and declaration fingerprints remain
+  unchanged.
+- Hard-cut `StableKey::validate`, `MemoryManagerIdRange::validate`,
+  `AllocationRetirement::validate` and `LedgerIntegrityError::InvalidStableKey`.
+  Remove repeated key/range checks from declaration, record and retirement
+  validation. Constructor key errors, diagnostic metadata, duplicate claims,
+  authorization, history, recovery and persistence checks remain.
+- Malformed keys and ranges now reject during decode. Invalid logical ledger
+  keys report `LedgerCommitError::Codec` instead of a later integrity error;
+  retirement and range records cannot carry invalid decoded identities into
+  staging or registry admission. No compatibility forwarders or fallback readers
+  are retained.
+- Consolidate malformed-range tests at the decoding boundary and retain registry
+  refusal tests for unchecked schema/purpose metadata. Pin current key/range
+  encodings and verify malformed-key recovery preserves protected slots. Both
+  new identity-decoding regressions fail against 0.25.3.
+- Validation: 274 library tests, public integration/composed-host tests, all eight
+  compile-fail cases and six doctests pass. Strict library/test Clippy, Rust
+  1.88.0 library/test compilation, Wasm library compilation, warning-denied
+  Rustdoc, formatting, whitespace checks and all five raw Wasm size gates pass.
+
 ## 0.25.3
 
 - Branch bootstrap directly on the authoritative runtime lifecycle. Remove

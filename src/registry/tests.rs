@@ -102,39 +102,47 @@ fn static_range_declaration_uses_record_authority() {
 
 #[test]
 fn static_declaration_rejects_invalid_decoded_declaration() {
-    let mut declaration =
+    let declaration =
         AllocationDeclaration::memory_manager("app.users.v1", 100, "users").expect("declaration");
-    declaration.stable_key = serde_json::from_str("\"App.users.v1\"").unwrap();
+    let mut value = serde_json::to_value(declaration).unwrap();
+    value["schema"]["schema_version"] = serde_json::json!(0);
+    let declaration = serde_json::from_value(value).expect("decoded declaration metadata");
 
     let err = StaticMemoryDeclaration::new("app", declaration)
         .expect_err("decoded invalid declaration must fail at the registry boundary");
 
     assert!(matches!(
         err,
-        StaticMemoryDeclarationError::Declaration(crate::DeclarationSnapshotError::Key(_))
+        StaticMemoryDeclarationError::Declaration(crate::DeclarationSnapshotError::SchemaMetadata(
+            crate::SchemaMetadataError::InvalidVersion
+        ))
     ));
 }
 
 #[test]
 fn static_range_declaration_rejects_invalid_decoded_record() {
-    let mut record = MemoryManagerAuthorityRecord::new(
+    let record = MemoryManagerAuthorityRecord::new(
         MemoryManagerIdRange::new(100, 109).expect("range"),
         "app",
         MemoryManagerRangeMode::Reserved,
         None,
     )
     .expect("record");
-    record.range = MemoryManagerIdRange {
-        start: 109,
-        end: 100,
-    };
+    let mut value = serde_json::to_value(record).unwrap();
+    value["purpose"] = serde_json::json!("");
+    let record = serde_json::from_value(value).expect("decoded range metadata");
 
     let err = StaticMemoryRangeDeclaration::new(record)
         .expect_err("decoded invalid range record must fail at the registry boundary");
 
     assert!(matches!(
         err,
-        StaticMemoryDeclarationError::Range(MemoryManagerRangeAuthorityError::Range(_))
+        StaticMemoryDeclarationError::Range(
+            MemoryManagerRangeAuthorityError::InvalidDiagnosticString {
+                field: "purpose",
+                ..
+            }
+        )
     ));
 }
 

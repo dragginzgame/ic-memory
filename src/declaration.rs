@@ -117,11 +117,9 @@ impl AllocationDeclaration {
         &self.schema
     }
 
-    /// Validate constructor invariants after decode or manual assembly.
+    /// Validate label and schema metadata after decode or manual assembly.
+    /// Key syntax and usable slot IDs are established by their checked types.
     pub fn validate(&self) -> Result<(), DeclarationSnapshotError> {
-        self.stable_key
-            .validate()
-            .map_err(DeclarationSnapshotError::Key)?;
         validate_label(self.label.as_deref())?;
         self.schema
             .validate()

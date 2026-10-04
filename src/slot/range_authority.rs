@@ -9,11 +9,27 @@ use serde::{Deserialize, Deserializer, Serialize, de::Error as _};
 /// MemoryManagerIdRange
 ///
 /// Inclusive range of usable `MemoryManager` virtual memory IDs.
-#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
-#[serde(deny_unknown_fields)]
+/// Construction and deserialization reject reversed bounds and sentinel ID 255.
+///
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
 pub struct MemoryManagerIdRange {
-    pub(crate) start: u8,
-    pub(crate) end: u8,
+    start: u8,
+    end: u8,
+}
+
+impl<'de> Deserialize<'de> for MemoryManagerIdRange {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        #[derive(Deserialize)]
+        #[serde(rename = "MemoryManagerIdRange", deny_unknown_fields)]
+        struct Bounds {
+            start: u8,
+            end: u8,
+        }
+
+        let bounds = Bounds::deserialize(deserializer)?;
+        Self::new(bounds.start, bounds.end).map_err(D::Error::custom)
+    }
 }
 
 impl MemoryManagerIdRange {
@@ -42,14 +58,6 @@ impl MemoryManagerIdRange {
     #[must_use]
     pub const fn contains(&self, id: u8) -> bool {
         id >= self.start && id <= self.end
-    }
-
-    /// Validate this range's decoded bounds.
-    pub const fn validate(&self) -> Result<(), MemoryManagerRangeError> {
-        match Self::new(self.start, self.end) {
-            Ok(_) => Ok(()),
-            Err(err) => Err(err),
-        }
     }
 
     /// First usable ID in the range.
@@ -173,7 +181,8 @@ impl MemoryManagerAuthorityRecord {
         self.purpose.as_deref()
     }
 
-    /// Validate constructor invariants after decode or manual assembly.
+    /// Validate diagnostic metadata after decode or manual assembly.
+    /// Range bounds are already established by the checked range type.
     pub fn validate(&self) -> Result<(), MemoryManagerRangeAuthorityError> {
         validate_authority_record(self)
     }
@@ -406,7 +415,6 @@ impl MemoryManagerRangeAuthority {
 fn validate_authority_record(
     record: &MemoryManagerAuthorityRecord,
 ) -> Result<(), MemoryManagerRangeAuthorityError> {
-    record.range.validate()?;
     validate_diagnostic_string("authority", &record.authority)?;
     if let Some(purpose) = &record.purpose {
         validate_diagnostic_string("purpose", purpose)?;
