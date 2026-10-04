@@ -288,7 +288,9 @@ impl MemoryManagerRangeAuthority {
         expected_authority: &str,
     ) -> Result<&MemoryManagerAuthorityRecord, MemoryManagerRangeAuthorityError> {
         validate_diagnostic_string("expected_authority", expected_authority)?;
-        let record = self.covering_record(id)?;
+        let record = self
+            .authority_for_id(id)?
+            .ok_or(MemoryManagerRangeAuthorityError::UnclaimedId { id })?;
 
         if record.authority != expected_authority {
             return Err(MemoryManagerRangeAuthorityError::AuthorityMismatch {
@@ -326,10 +328,16 @@ impl MemoryManagerRangeAuthority {
         id: u8,
     ) -> Result<Option<&MemoryManagerAuthorityRecord>, MemoryManagerRangeAuthorityError> {
         validate_memory_manager_id(id).map_err(MemoryManagerRangeAuthorityError::Slot)?;
+        // Construction and decoding establish ordered, disjoint ranges, so
+        // their ends are increasing. Only the first end at or above this ID
+        // can cover it; its start distinguishes coverage from a gap.
+        let index = self
+            .authorities
+            .partition_point(|record| record.range.end() < id);
         Ok(self
             .authorities
-            .iter()
-            .find(|record| record.range.contains(id)))
+            .get(index)
+            .filter(|record| record.range.start() <= id))
     }
 
     /// Ordered non-overlapping authority records.
@@ -392,16 +400,6 @@ impl MemoryManagerRangeAuthority {
         }
 
         Ok(())
-    }
-
-    fn covering_record(
-        &self,
-        id: u8,
-    ) -> Result<&MemoryManagerAuthorityRecord, MemoryManagerRangeAuthorityError> {
-        let Some(record) = self.authority_for_id(id)? else {
-            return Err(MemoryManagerRangeAuthorityError::UnclaimedId { id });
-        };
-        Ok(record)
     }
 }
 

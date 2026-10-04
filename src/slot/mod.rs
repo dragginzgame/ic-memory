@@ -258,6 +258,13 @@ mod tests {
             )
             .expect("authority record"),
             MemoryManagerAuthorityRecord::new(
+                MemoryManagerIdRange::new(50, 50).expect("singleton range"),
+                "singleton",
+                MemoryManagerRangeMode::Reserved,
+                None,
+            )
+            .expect("authority record"),
+            MemoryManagerAuthorityRecord::new(
                 memory_manager_governance_range(),
                 IC_MEMORY_AUTHORITY_OWNER,
                 MemoryManagerRangeMode::Reserved,
@@ -280,6 +287,42 @@ mod tests {
                 .expect("valid unclaimed ID")
                 .is_none()
         );
+
+        for id in MEMORY_MANAGER_MIN_ID..=MEMORY_MANAGER_MAX_ID {
+            let expected = match id {
+                0..=9 => Some(IC_MEMORY_AUTHORITY_OWNER),
+                50 => Some("singleton"),
+                100..=254 => Some("applications"),
+                _ => None,
+            };
+            assert_eq!(
+                authority
+                    .authority_for_id(id)
+                    .unwrap()
+                    .map(MemoryManagerAuthorityRecord::authority),
+                expected,
+                "ID {id}"
+            );
+            assert!(
+                MemoryManagerRangeAuthority::new()
+                    .authority_for_id(id)
+                    .unwrap()
+                    .is_none()
+            );
+        }
+
+        let early_ranges = MemoryManagerRangeAuthority::from_records(
+            authority
+                .authorities()
+                .iter()
+                .filter(|record| record.authority() != "applications")
+                .cloned()
+                .collect(),
+        )
+        .unwrap();
+        for id in [51, 100, MEMORY_MANAGER_MAX_ID] {
+            assert!(early_ranges.authority_for_id(id).unwrap().is_none());
+        }
     }
 
     #[test]
