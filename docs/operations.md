@@ -141,6 +141,10 @@ The upstream `ic_stable_structures::Memory` trait requires an `i64` result, so
 only that adapter maps a growth failure to `-1`. Applications calling the
 runtime handle directly should use `?`, `match`, or an explicit error handler.
 
+A zero-page growth request returns the current virtual extent without backing
+reads, writes or growth. It still rejects reentrant growth while another handle
+holds the runtime's capacity reservation.
+
 ## Security and access control
 
 Allocation reports do not authorize endpoints or users. Keep controller checks

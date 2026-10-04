@@ -20,8 +20,10 @@ impl<M: Memory> MemoryRuntime<M> {
         if !self.is_bootstrapped() {
             return Err(RuntimeDiagnosticError::NotBootstrapped);
         }
-        let record = self.ledger_record_from_memory()?;
-        let (recovered, commit_recovery) = record.store().recover_with_diagnostic();
+        let (recovered, commit_recovery) = self
+            .ledger_record_from_memory()?
+            .store()
+            .recover_with_diagnostic();
         let recovered = recovered?;
         Ok(self.recovered_diagnostic_export(Cow::Owned(recovered), commit_recovery))
     }
@@ -53,9 +55,10 @@ impl<M: Memory> MemoryRuntime<M> {
         P::Error: Display,
     {
         let stable_cell = self.stable_cell_diagnostic();
+        // Recovery owns its ledger and diagnostic evidence. Release the decoded
+        // physical slots before projecting the report or invoking custom policy.
         let recovery = stable_cell
             .record
-            .as_ref()
             .map(|record| record.store().recover_with_diagnostic());
         let ledger = recovery.as_ref().and_then(|(recovered, diagnostic)| {
             recovered.as_ref().ok().map(|recovered| {

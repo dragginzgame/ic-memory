@@ -789,7 +789,7 @@ mod tests {
     #[test]
     fn stage_validated_generation_rejects_same_key_different_slot() {
         let mut ledger = committed_ledger(3);
-        *ledger.allocation_history.records_mut() = vec![active_record("app.users.v1", 100)];
+        ledger.allocation_history.records = vec![active_record("app.users.v1", 100)];
         ledger.validate_committed_integrity().unwrap();
         // A proof minted against another valid history at the same generation
         // cannot override this receiver's allocation facts.
@@ -817,7 +817,7 @@ mod tests {
     #[test]
     fn stage_validated_generation_rejects_same_slot_different_key() {
         let mut ledger = ledger();
-        *ledger.allocation_history.records_mut() = vec![active_record("app.users.v1", 100)];
+        ledger.allocation_history.records = vec![active_record("app.users.v1", 100)];
         let validated = validated(3, vec![declaration("app.orders.v1", 100, None)]);
 
         let err = ledger
@@ -835,7 +835,7 @@ mod tests {
         let mut ledger = ledger();
         let mut record = active_record("app.users.v1", 100);
         record.state = AllocationState::Retired { generation: 3 };
-        *ledger.allocation_history.records_mut() = vec![record];
+        ledger.allocation_history.records = vec![record];
         let validated = validated(3, vec![declaration("app.users.v1", 100, None)]);
 
         let err = ledger
@@ -1025,7 +1025,7 @@ mod tests {
     #[test]
     fn stage_reservation_generation_rejects_same_key_different_slot() {
         let mut ledger = ledger();
-        *ledger.allocation_history.records_mut() = vec![AllocationRecord::reserved(
+        ledger.allocation_history.records = vec![AllocationRecord::reserved(
             3,
             &declaration("app.future_store.v1", 100, None),
         )];
@@ -1044,7 +1044,7 @@ mod tests {
     #[test]
     fn stage_reservation_generation_rejects_same_slot_different_key() {
         let mut ledger = ledger();
-        *ledger.allocation_history.records_mut() = vec![AllocationRecord::reserved(
+        ledger.allocation_history.records = vec![AllocationRecord::reserved(
             3,
             &declaration("app.future_store.v1", 100, None),
         )];
@@ -1083,7 +1083,7 @@ mod tests {
         let mut ledger = ledger();
         let mut record = active_record("app.users.v1", 100);
         record.state = AllocationState::Retired { generation: 3 };
-        *ledger.allocation_history.records_mut() = vec![record];
+        ledger.allocation_history.records = vec![record];
         let reservations = vec![declaration("app.users.v1", 100, None)];
 
         let err = ledger
@@ -1170,7 +1170,7 @@ mod tests {
     fn stage_retirement_generation_rejects_generation_overflow() {
         let mut ledger = ledger();
         ledger.current_generation = u64::MAX;
-        *ledger.allocation_history.records_mut() = vec![active_record("app.users.v1", 100)];
+        ledger.allocation_history.records = vec![active_record("app.users.v1", 100)];
         let retirement = AllocationRetirement::new(
             "app.users.v1",
             AllocationSlotDescriptor::memory_manager(100).expect("usable slot"),
@@ -1276,7 +1276,7 @@ mod tests {
     #[test]
     fn stage_retirement_generation_rejects_invalid_decoded_slot() {
         let mut ledger = ledger();
-        *ledger.allocation_history.records_mut() = vec![active_record("app.users.v1", 100)];
+        ledger.allocation_history.records = vec![active_record("app.users.v1", 100)];
         let mut retirement = AllocationRetirement::new(
             "app.users.v1",
             AllocationSlotDescriptor::memory_manager(100).expect("usable slot"),
@@ -1300,7 +1300,7 @@ mod tests {
     #[test]
     fn stage_retirement_generation_rejects_invalid_decoded_stable_key() {
         let mut ledger = ledger();
-        *ledger.allocation_history.records_mut() = vec![active_record("app.users.v1", 100)];
+        ledger.allocation_history.records = vec![active_record("app.users.v1", 100)];
         let retirement = AllocationRetirement::new(
             "app.users.v1",
             AllocationSlotDescriptor::memory_manager(100).expect("usable slot"),
@@ -1614,7 +1614,7 @@ mod tests {
     fn validate_integrity_rejects_duplicate_stable_keys() {
         let mut ledger = ledger();
         for second_id in [101, 100] {
-            *ledger.allocation_history.records_mut() = vec![
+            ledger.allocation_history.records = vec![
                 active_record("app.users.v1", 100),
                 active_record("app.users.v1", second_id),
             ];
@@ -1635,7 +1635,7 @@ mod tests {
     #[test]
     fn validate_integrity_rejects_duplicate_slots() {
         let mut ledger = ledger();
-        *ledger.allocation_history.records_mut() = vec![
+        ledger.allocation_history.records = vec![
             active_record("app.users.v1", 100),
             active_record("app.orders.v1", 100),
         ];
@@ -1649,7 +1649,7 @@ mod tests {
             }
         );
 
-        ledger.allocation_history.records_mut()[1].stable_key =
+        ledger.allocation_history.records[1].stable_key =
             serde_json::from_str("\"App.orders.v1\"").expect("decoded unvalidated key");
         assert_eq!(
             ledger.validate_integrity().unwrap_err(),
@@ -1708,7 +1708,7 @@ mod tests {
         let mut record = active_record("app.users.v1", 100);
         record.last_seen_generation = 4;
         record.state = AllocationState::Retired { generation: 3 };
-        *ledger.allocation_history.records_mut() = vec![record];
+        ledger.allocation_history.records = vec![record];
 
         let err = ledger
             .validate_committed_integrity()
@@ -1725,7 +1725,7 @@ mod tests {
         let mut ledger = committed_ledger(2);
         let mut record = active_record("app.users.v1", 100);
         record.state = AllocationState::Retired { generation: 0 };
-        *ledger.allocation_history.records_mut() = vec![record];
+        ledger.allocation_history.records = vec![record];
 
         let err = ledger
             .validate_committed_integrity()
@@ -1743,7 +1743,7 @@ mod tests {
         let mut record = active_record("app.users.v1", 100);
         record.last_seen_generation = 2;
         record.schema_history[0].generation = 2;
-        *ledger.allocation_history.records_mut() = vec![record];
+        ledger.allocation_history.records = vec![record];
 
         let err = ledger
             .validate_committed_integrity()
@@ -1768,7 +1768,7 @@ mod tests {
                 )
                 .expect("schema record"),
             );
-            *ledger.allocation_history.records_mut() = vec![record];
+            ledger.allocation_history.records = vec![record];
 
             let err = ledger
                 .validate_committed_integrity()
@@ -1800,7 +1800,7 @@ mod tests {
                 generation,
                 schema: SchemaMetadata::default(),
             });
-            *ledger.allocation_history.records_mut() = vec![record];
+            ledger.allocation_history.records = vec![record];
 
             let err = ledger
                 .validate_integrity()
@@ -1818,7 +1818,7 @@ mod tests {
         let mut ledger = committed_ledger(1);
         let mut record = active_record("app.users.v1", 100);
         record.schema_history[0].schema = invalid_schema_metadata();
-        *ledger.allocation_history.records_mut() = vec![record];
+        ledger.allocation_history.records = vec![record];
 
         let err = ledger
             .validate_committed_integrity()
@@ -1860,7 +1860,7 @@ mod tests {
                     .push(SchemaMetadataRecord::new(1, SchemaMetadata::default()).unwrap());
                 record.state = AllocationState::Retired { generation: 2 };
             }
-            ledger.allocation_history.push_record(record);
+            ledger.allocation_history.records.push(record);
             ledger.validate_integrity().expect("structurally valid DTO");
             assert_eq!(
                 ledger.validate_committed_integrity(),
@@ -1875,10 +1875,11 @@ mod tests {
     #[test]
     fn validate_committed_integrity_rejects_generation_history_gaps() {
         let mut ledger = committed_ledger(3);
-        ledger.allocation_history.generations_mut().remove(1);
+        ledger.allocation_history.generations.remove(1);
         ledger
             .allocation_history
-            .push_record(AllocationRecord::active(
+            .records
+            .push(AllocationRecord::active(
                 0,
                 &declaration("app.genesis.v1", 100, None),
             ));
@@ -1896,7 +1897,7 @@ mod tests {
     #[test]
     fn committed_integrity_rejects_a_skipped_parent_in_contiguous_history() {
         let mut ledger = committed_ledger(3);
-        ledger.allocation_history.generations_mut()[2].parent_generation = 1;
+        ledger.allocation_history.generations[2].parent_generation = 1;
         ledger
             .validate_integrity()
             .expect("structurally valid history");
@@ -1915,7 +1916,7 @@ mod tests {
     fn ledger_commit_store_rejects_invalid_ledger_before_write() {
         let mut store = LedgerCommitStore::default();
         let mut invalid = ledger();
-        *invalid.allocation_history.records_mut() = vec![
+        invalid.allocation_history.records = vec![
             active_record("app.users.v1", 100),
             active_record("app.orders.v1", 100),
         ];
@@ -2287,7 +2288,8 @@ mod tests {
         let mut source = committed_ledger(crate::constants::MAX_LEDGER_GENERATIONS as u64 - 1);
         source
             .allocation_history
-            .push_record(active_record("app.users.v1", 100));
+            .records
+            .push(active_record("app.users.v1", 100));
         let retirement = AllocationRetirement::new(
             "app.users.v1",
             AllocationSlotDescriptor::memory_manager(100).unwrap(),
@@ -2420,7 +2422,7 @@ mod tests {
         store.commit(&committed_ledger(0)).unwrap();
         let before = store.clone();
         let mut ledger = committed_ledger(crate::constants::MAX_LEDGER_GENERATIONS as u64);
-        for generation in ledger.allocation_history.generations_mut() {
+        for generation in &mut ledger.allocation_history.generations {
             generation.runtime_fingerprint =
                 Some("x".repeat(crate::constants::DIAGNOSTIC_STRING_MAX_BYTES));
         }

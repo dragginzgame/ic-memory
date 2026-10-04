@@ -275,23 +275,6 @@ impl AllocationHistory {
     pub const fn is_empty(&self) -> bool {
         self.records.is_empty() && self.generations.is_empty()
     }
-
-    pub(crate) const fn records_mut(&mut self) -> &mut Vec<AllocationRecord> {
-        &mut self.records
-    }
-
-    #[cfg(test)]
-    pub(crate) const fn generations_mut(&mut self) -> &mut Vec<GenerationRecord> {
-        &mut self.generations
-    }
-
-    pub(crate) fn push_record(&mut self, record: AllocationRecord) {
-        self.records.push(record);
-    }
-
-    pub(crate) fn push_generation(&mut self, generation: GenerationRecord) {
-        self.generations.push(generation);
-    }
 }
 
 impl SchemaMetadataRecord {

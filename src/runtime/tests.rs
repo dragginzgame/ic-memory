@@ -771,7 +771,7 @@ fn diagnostics_reject_invalid_persisted_slots_before_measuring_sizes() {
         .unwrap();
     let record = runtime.ledger_record_from_memory().unwrap();
     let mut ledger = record.store().recover().unwrap().into_ledger();
-    ledger.allocation_history.records_mut()[0].slot =
+    ledger.allocation_history.records[0].slot =
         AllocationSlotDescriptor::memory_manager_unchecked(crate::MEMORY_MANAGER_INVALID_ID);
     let payload = crate::LedgerPayloadEnvelope::current(crate::test_cbor::to_vec(&ledger).unwrap())
         .try_encode()

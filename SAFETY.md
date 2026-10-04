@@ -175,6 +175,9 @@ preflight violates the private growth-accounting invariant and must panic. Nativ
 backing panics or partial writes are outside this refusal guarantee. All handles
 share the runtime's assigned-bucket count.
 
+Zero-page growth must check the shared reservation for reentry, then return the
+current extent without backing IO or manager mutation.
+
 Physical reports and numeric summaries must remain read-only and bounded to
 34,848 bytes of validated manager metadata, without decoding ledger history.
 They distinguish current, ledger and unknown bindings and preserve physical,

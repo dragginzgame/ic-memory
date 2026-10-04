@@ -1,5 +1,33 @@
 # Changelog
 
+## 0.24.14
+
+- Make zero-page runtime growth return the current virtual extent after the
+  shared reentrancy check. Skip capacity planning, backing IO and the upstream
+  manager's redundant header write when no growth was requested. Positive growth
+  retains its existing capacity reservation, refusal and persistence behavior.
+- Extend existing growth regressions to cover zero-page calls through both the
+  typed method and substrate `Memory` adapter, empty and grown memories, detached
+  handles, backing refusal and reentry. The no-write assertion fails against the
+  previous implementation and passes after the cleanup.
+- Release decoded physical commit-slot records immediately after diagnostic
+  recovery, before projecting normal exports or running doctor policy callbacks.
+  Keep the independently recovered ledger and diagnostic evidence, read-only
+  behavior, recovery errors and memory-measurement ordering unchanged.
+- Remove four crate-private allocation-history mutation forwarders. Staging and
+  corruption fixtures use the already crate-visible vectors directly; public
+  read-only accessors, validation, lifecycle transitions and commit ordering
+  remain unchanged.
+- Document zero-page growth in the runtime API, operations guide and safety
+  invariants. Public signatures, error payloads, durable and diagnostic formats,
+  and declaration fingerprints are unchanged. No Canic source patch is required.
+- Validation: all 272 library tests and two composed-host regressions pass.
+  Strict all-target Clippy, Rust 1.88.0 all-target compilation, warning-denied
+  Rustdoc, formatting, whitespace checks and all five raw Wasm size gates pass.
+  Integration tests, doctests, package/release workflows, consumer builds and
+  live deployments were not rerun for this candidate. Runtime performance was
+  not measured.
+
 ## 0.24.13
 
 - Decode the ledger stable-cell record once per cold bootstrap attempt and reuse

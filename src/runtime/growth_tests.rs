@@ -88,6 +88,7 @@ fn backing_reentry_cannot_assign_buckets_during_an_outer_reservation() {
         bytes: VectorMemory,
         nested: RefCell<Option<RuntimeMemory<Rc<Self>>>>,
         result: Cell<Option<Result<u64, RuntimeGrowError>>>,
+        zero_result: Cell<Option<Result<u64, RuntimeGrowError>>>,
     }
     impl Memory for ReentrantMemory {
         fn size(&self) -> u64 {
@@ -96,6 +97,7 @@ fn backing_reentry_cannot_assign_buckets_during_an_outer_reservation() {
         fn grow(&self, pages: u64) -> i64 {
             if let Some(memory) = self.nested.borrow().as_ref() {
                 self.result.set(Some(memory.grow(1)));
+                self.zero_result.set(Some(memory.grow(0)));
             }
             self.bytes.grow(pages)
         }
@@ -110,6 +112,7 @@ fn backing_reentry_cannot_assign_buckets_during_an_outer_reservation() {
         bytes: VectorMemory::default(),
         nested: RefCell::new(None),
         result: Cell::new(None),
+        zero_result: Cell::new(None),
     });
     let runtime =
         MemoryRuntime::new_with_config(Rc::clone(&backing), MemoryManagerConfig::new(1).unwrap())
@@ -118,6 +121,10 @@ fn backing_reentry_cannot_assign_buckets_during_an_outer_reservation() {
     assert_eq!(runtime.memory(120).grow(1), Ok(0));
     assert_eq!(
         backing.result.get(),
+        Some(Err(RuntimeGrowError::ReentrantAccess))
+    );
+    assert_eq!(
+        backing.zero_result.get(),
         Some(Err(RuntimeGrowError::ReentrantAccess))
     );
     assert_eq!(runtime.memory(121).size(), 0);
@@ -140,6 +147,13 @@ fn refused_application_growth_preserves_bytes_extents_and_retry() {
         let before = backing.bytes.borrow().clone();
         let reads_before = backing.reads.get();
         backing.refuse.set(true);
+        let writes = backing.writes.get();
+        let grows = backing.grows.get();
+        assert_eq!(rows.grow(0), Ok(0));
+        assert_eq!(Memory::grow(&rows, 0), 0);
+        assert_eq!(backing.reads.get(), reads_before);
+        assert_eq!(backing.writes.get(), writes);
+        assert_eq!(backing.grows.get(), grows);
         assert_eq!(
             rows.grow(1),
             Err(RuntimeGrowError::BackingRefused {
@@ -176,12 +190,16 @@ fn refused_application_growth_preserves_bytes_extents_and_retry() {
         assert_eq!(backing.grows.get(), grows);
         backing.refuse.set(false);
         assert_eq!(rows.grow(1), Ok(u64::from(bucket)));
+        let writes = backing.writes.get();
+        let grows = backing.grows.get();
         assert_eq!(Memory::grow(&rows, 0), i64::from(bucket) + 1);
         let mut bytes = [0; 8];
         rows.read(0, &mut bytes);
         assert_eq!(&bytes, b"retained");
         drop(rows);
         assert_eq!(clone.grow(0), Ok(u64::from(bucket) + 1));
+        assert_eq!(backing.writes.get(), writes);
+        assert_eq!(backing.grows.get(), grows);
     }
 }
 
@@ -215,6 +233,11 @@ fn interleaved_clones_reopen_and_detached_handles_share_growth_accounting() {
     assert_eq!(runtime.memory_allocations().unwrap().allocated_buckets, 5);
     let detached = runtime.memory(120);
     drop(runtime);
+    let writes = backing.writes.get();
+    let grows = backing.grows.get();
+    assert_eq!(detached.grow(0), Ok(17));
+    assert_eq!(backing.writes.get(), writes);
+    assert_eq!(backing.grows.get(), grows);
     assert_eq!(detached.grow(8), Ok(17));
     drop(detached);
     assert_eq!(
