@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.24.5
+
+- Delete the four archived 0.12 runtime, construction and policy design
+  documents, removing 818 lines of superseded guidance. Current architecture
+  and safety documentation remain in `README.md`, `ADVANCED.md` and `SAFETY.md`.
+- Record qualification of published 0.24.4 against an isolated IcyDB source
+  snapshot: all 27 focused admission, error-projection, lifecycle and
+  logical-memory tests pass. Installed lifecycle phases remain below the
+  unchanged 12,750,000 instruction ceiling, with stable extents preserved.
+  The receipt identifies the tested inputs; IcyDB's subsequent commit and
+  dependency graph remain outside its scope. Canic qualification remains pending.
+- This release changes documentation only. Public APIs, durable and diagnostic
+  formats, and declaration fingerprints are unchanged.
+- Validation: removed-document references, qualification evidence, receipt
+  links and whitespace checks pass. The downstream results cover published
+  0.24.4, not this candidate; producer test suites, package verification and
+  live deployments were not rerun for this documentation-only change.
+
 ## 0.24.4
 
 - Consolidate runtime governance filtering into one committed-capability

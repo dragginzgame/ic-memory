@@ -145,3 +145,17 @@ problems remain outside the passing IcyDB receipt, and its current selected
 graph and lifecycle integration still require qualification once settled.
 Historical issue dispositions and release evidence remain unchanged; no GitHub
 issue or comment was updated.
+
+## Released 0.24.4 isolated IcyDB recheck
+
+The [2026-10-04 qualification receipt](consumer-qualification-0.24.4.md) records
+27 passing focused tests against published ic-memory **0.24.4** in an isolated
+snapshot of the same committed IcyDB Rust sources used for the 0.24.3 recheck.
+Only ic-memory changed in the snapshot dependency graph. The worst lifecycle
+phase is **4,454,357 instructions** against the unchanged 12,750,000 ceiling;
+empty and populated stable extents remain 23,134,208 bytes.
+
+The active IcyDB checkout advanced independently during qualification and was
+not edited by these checks. Its newer commit and graph are outside this receipt.
+Canic remains unqualified on its current graph. No GitHub issue disposition or
+comment was updated.
