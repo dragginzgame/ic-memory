@@ -30,6 +30,11 @@ When current guides disagree, the crate's public API and safety invariants are
 authoritative. This project is pre-1.0 and maintains only its current API and
 durable format.
 
+The package version is declared in [Cargo.toml](../Cargo.toml); current guides
+describe the maintained implementation without separate release stamps.
+Historical qualification records retain the exact versions and source snapshots
+they checked.
+
 ## Integration and qualification records
 
 These documents record specific consumer source snapshots, environments, and
@@ -37,6 +42,7 @@ test results. They are evidence for the versions named in each document, not a
 promise that a later consumer graph or deployment was requalified.
 
 - [Issue reconciliation](issue-reconciliation.md)
+- [Canic checked-slot qualification for 0.25.0](consumer-qualification-0.25.0-canic.md)
 - [Canic memory qualification for 0.24.6](consumer-qualification-0.24.6-canic.md)
 - [IcyDB qualification for 0.24.4](consumer-qualification-0.24.4.md)
 - [IcyDB qualification for 0.24.3](consumer-qualification-0.24.3.md)
@@ -67,7 +73,6 @@ Before publishing a release that changes the API, durable format, terminology,
 or workflow:
 
 - update the crate version and README dependency example together;
-- update “reviewed against” markers in every current guide that was checked;
 - update examples, diagrams, captions, and alt text when terminology changes;
 - run doctests with warnings denied;
 - verify every local Markdown link and heading anchor;

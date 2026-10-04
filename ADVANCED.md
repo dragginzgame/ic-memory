@@ -1,7 +1,5 @@
 # Advanced ic-memory
 
-*Documentation reviewed against ic-memory 0.24.12.*
-
 This document covers the lower-level pieces behind the macro runtime. Most
 applications should start with the README.
 

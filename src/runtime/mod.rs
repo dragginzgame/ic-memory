@@ -58,8 +58,8 @@ use self::policy::{RuntimeMemoryManagerPolicy, runtime_bootstrap_error_from_boot
 use crate::{
     AllocationBootstrap, AllocationLedger, CommittedAllocations, PolicyIdentity,
     RuntimeBootstrapPolicy, STABLE_CELL_VALUE_OFFSET, StableCellLedgerError,
-    StableCellLedgerRecord, StableKey, registry::SealedDeclarationSnapshot,
-    slot::MEMORY_MANAGER_LEDGER_ID, stable_cell::decode_stable_cell_ledger_record_from_memory,
+    StableCellLedgerRecord, registry::SealedDeclarationSnapshot, slot::MEMORY_MANAGER_LEDGER_ID,
+    stable_cell::decode_stable_cell_ledger_record_from_memory,
 };
 use ic_stable_structures::{
     Cell, Memory,
@@ -329,16 +329,17 @@ impl<M: Memory> MemoryRuntime<M> {
     /// Resolve an application key's committed ID without opening memory,
     /// reading history, or changing the host's policy or bucket configuration.
     pub fn memory_id(&self, stable_key: &str) -> Result<u8, RuntimeOpenError> {
-        let key = StableKey::parse(stable_key)?;
-        if crate::is_ic_memory_stable_key(key.as_str()) {
+        crate::key::validate(stable_key)?;
+        if crate::is_ic_memory_stable_key(stable_key) {
             return Err(RuntimeOpenError::ReservedStableKey {
                 stable_key: stable_key.to_string(),
             });
         }
-        let slot = self
-            .committed_allocations()?
-            .slot_for(&key)
-            .ok_or_else(|| RuntimeOpenError::StableKeyNotCommitted(stable_key.to_string()))?;
+        let slot = crate::capability::slot_for_key(
+            self.committed_allocations()?.declarations(),
+            stable_key,
+        )
+        .ok_or_else(|| RuntimeOpenError::StableKeyNotCommitted(stable_key.to_string()))?;
         Ok(slot.id())
     }
 

@@ -1,7 +1,5 @@
 # Troubleshooting ic-memory
 
-*Documentation reviewed against ic-memory 0.24.12.*
-
 This guide starts with the symptom an application owner sees. Preserve the
 existing stable memory while investigating. Never delete or replace the
 allocation ledger merely to make bootstrap succeed.

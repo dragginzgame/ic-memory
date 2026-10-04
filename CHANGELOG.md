@@ -1,5 +1,35 @@
 # Changelog
 
+## 0.25.1
+
+- Hash sealed declarations' canonical CBOR directly into the existing FNV-1a
+  state. Remove the temporary encoded fingerprint buffer and subsequent scan;
+  retain the same fingerprint material, algorithm version and values.
+- Resolve committed memory IDs from validated borrowed key text, removing the
+  temporary owned `StableKey` from ID resolution and memory opens. Typed
+  capability callers share the same lookup. Preserve grammar and reserved-key
+  refusal before bootstrap checks, committed authority and missing-key errors.
+  The refusal-order and memory-conservation regression also passes against
+  the preceding implementation.
+- Remove per-guide release review stamps and their manual release-checklist
+  maintenance. Current guides describe the maintained implementation; package
+  metadata owns the release version. Historical qualification and measurement
+  records retain their exact versions and scope.
+- Correct the safety guide's runtime owner to `MemoryManager<Rc<M>>`.
+- Record published 0.25.0 Canic qualification: 32 focused Core tests, strict
+  library/test Clippy and default-feature Wasm compilation. Separately record
+  the published blob dependency alignment, strict adapter/consumer library
+  Clippy, managed Fast-profile consumer build and embedded fixture regeneration
+  and verification. Installed behavior and deployments remain unqualified.
+- Public APIs, durable formats and diagnostic fingerprint values are unchanged.
+  Validation: 59 focused tests across fingerprinting, key validation, capability,
+  adoption, placement, admission, default/public runtime and doctor behavior;
+  strict library/test Clippy, Rust 1.88.0 library compilation, Wasm library
+  compilation, warning-denied Rustdoc, formatting, local documentation links
+  and heading anchors, and whitespace checks pass. Core raw Wasm is 242,402
+  bytes against 260,000; runtime integration is 251,440 against 270,000.
+  Both focused size gates pass.
+
 ## 0.25.0
 
 - Replace `AllocationSlot` and `AllocationSlotDescriptor` with one checked

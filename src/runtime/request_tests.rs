@@ -2,7 +2,8 @@ use super::*;
 use crate::{
     AllocationDeclaration, AllocationHistory, AllocationPolicy, AllocationRetirement,
     MemoryManagerAuthorityRecord, MemoryManagerIdRange, MemoryManagerRangeMode, MemoryManagerSlot,
-    MemoryRequest, SchemaMetadata, StaticMemoryDeclaration, StaticMemoryRangeDeclaration,
+    MemoryRequest, SchemaMetadata, StableKey, StaticMemoryDeclaration,
+    StaticMemoryRangeDeclaration,
 };
 use ic_stable_structures::VectorMemory;
 

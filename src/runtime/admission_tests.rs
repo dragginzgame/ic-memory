@@ -1,6 +1,8 @@
 use super::request_tests::snapshot;
 use super::*;
-use crate::{AllocationPolicy, BootstrapAdmissionError as AdmissionError, MemoryManagerSlot};
+use crate::{
+    AllocationPolicy, BootstrapAdmissionError as AdmissionError, MemoryManagerSlot, StableKey,
+};
 use ic_stable_structures::VectorMemory;
 use std::cell::Cell as Counter;
 

@@ -68,6 +68,46 @@ fn requirements(
 }
 
 #[test]
+fn key_lookup_preserves_refusal_order_without_memory_effects() {
+    let backing = VectorMemory::default();
+    let source = super::request_tests::snapshot(&[KEY], "db", 100, 110, &[(FIXED, 100)]);
+    let mut runtime = MemoryRuntime::new(backing.clone()).unwrap();
+    for bootstrapped in [false, true] {
+        if bootstrapped {
+            runtime.bootstrap(&source, &GenericRangePolicy).unwrap();
+        }
+        let before = backing.borrow().clone();
+        for key in ["", "INVALID", "db.rows.v0", "ic_memory.ledger.v0"] {
+            let expected = RuntimeOpenError::StableKey(StableKey::parse(key).unwrap_err());
+            assert_eq!(runtime.memory_id(key), Err(expected.clone()));
+            assert_eq!(
+                runtime.open_memory_by_key(key).err(),
+                Some(expected.clone())
+            );
+            assert_eq!(runtime.open_memory(key, 100).err(), Some(expected));
+        }
+        let reserved = crate::IC_MEMORY_LEDGER_STABLE_KEY;
+        assert_eq!(
+            runtime.memory_id(reserved),
+            Err(RuntimeOpenError::ReservedStableKey {
+                stable_key: reserved.into(),
+            })
+        );
+        for key in [KEY, "db.missing.v1"] {
+            let expected = if !bootstrapped {
+                Err(RuntimeOpenError::NotBootstrapped)
+            } else if key == KEY {
+                Ok(101)
+            } else {
+                Err(RuntimeOpenError::StableKeyNotCommitted(key.into()))
+            };
+            assert_eq!(runtime.memory_id(key), expected);
+        }
+        assert_eq!(*backing.borrow(), before);
+    }
+}
+
+#[test]
 fn adoption_checks_fixed_and_logical_requirements_without_replaying_host() {
     let backing = VectorMemory::default();
     let source = super::request_tests::snapshot(&[KEY], "db", 100, 110, &[(FIXED, 100)]);

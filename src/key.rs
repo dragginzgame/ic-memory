@@ -76,7 +76,7 @@ pub struct StableKeyError {
     pub reason: &'static str,
 }
 
-fn validate(stable_key: &str) -> Result<(), StableKeyError> {
+pub fn validate(stable_key: &str) -> Result<(), StableKeyError> {
     if stable_key.is_empty() {
         return invalid(stable_key, "must not be empty");
     }

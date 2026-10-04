@@ -69,10 +69,7 @@ impl ValidatedAllocations {
     /// Find a validated slot by stable key.
     #[must_use]
     pub fn slot_for(&self, key: &StableKey) -> Option<&MemoryManagerSlot> {
-        self.declarations()
-            .iter()
-            .find(|declaration| &declaration.stable_key == key)
-            .map(|declaration| &declaration.slot)
+        slot_for_key(self.declarations(), key.as_str())
     }
 
     pub(crate) const fn confirm_persisted(self, generation: u64) -> CommittedAllocations {
@@ -81,6 +78,18 @@ impl ValidatedAllocations {
             generation,
         }
     }
+}
+
+// Typed capability callers and the runtime's validated borrowed input share
+// one lookup. Comparing text needs no temporary owned StableKey or second index.
+pub fn slot_for_key<'a>(
+    declarations: &'a [AllocationDeclaration],
+    key: &str,
+) -> Option<&'a MemoryManagerSlot> {
+    declarations
+        .iter()
+        .find(|declaration| declaration.stable_key.as_str() == key)
+        .map(|declaration| &declaration.slot)
 }
 
 ///

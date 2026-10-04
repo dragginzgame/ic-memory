@@ -1,7 +1,5 @@
 # Safety Invariants
 
-*Documentation reviewed against ic-memory 0.24.12.*
-
 `ic-memory` is stable-memory allocation-governance infrastructure. Future
 changes must preserve these invariants on every recovery, validation, staging,
 commit, and allocation-opening path.
@@ -132,7 +130,7 @@ and `ValidatedAllocations` are not open authority.
 
 Every fact derived from a backing memory belongs to one `MemoryRuntime<M>`:
 
-- `MemoryManager<M>` and ledger persistence;
+- `MemoryManager<Rc<M>>` and ledger persistence;
 - bootstrap lifecycle and recovery result;
 - committed allocation capability;
 - memory-open authority;

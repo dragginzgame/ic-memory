@@ -861,6 +861,21 @@ struct SealedDeclarationFingerprintMaterial<'a> {
     requests: &'a [MemoryRequest],
 }
 
+// Fingerprints need the canonical encoded bytes only as input to the hash;
+// keep no payload buffer after serialization.
+struct FingerprintWriter(u64);
+
+impl std::io::Write for FingerprintWriter {
+    fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+        self.0 = crate::hash::fnv64(self.0, bytes);
+        Ok(bytes.len())
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        Ok(())
+    }
+}
+
 fn sealed_declaration_fingerprint(
     allocation_snapshot: &DeclarationSnapshot,
     registered_declarations: &[StaticMemoryDeclaration],
@@ -874,14 +889,14 @@ fn sealed_declaration_fingerprint(
         effective_ranges,
         requests,
     };
-    let mut bytes = Vec::new();
-    // Concrete derived serializers and a Vec writer have no recoverable failures.
-    ciborium::into_writer(&material, &mut bytes)
-        .expect("sealed declaration fingerprint encodes into Vec");
+    let mut writer = FingerprintWriter(crate::hash::FNV_OFFSET);
+    // Concrete derived serializers and this hash writer have no recoverable failures.
+    ciborium::into_writer(&material, &mut writer)
+        .expect("sealed declaration fingerprint encodes into hash");
 
     SealedDeclarationFingerprint {
         algorithm_version: SEALED_DECLARATION_FINGERPRINT_VERSION,
-        value: crate::hash::fnv64(crate::hash::FNV_OFFSET, &bytes),
+        value: writer.0,
     }
 }
 
