@@ -1,5 +1,5 @@
 use crate::{
-    AllocationLedger, AllocationSlotDescriptor, AllocationState, MemoryRequest, SchemaMetadata,
+    AllocationLedger, AllocationState, MemoryManagerSlot, MemoryRequest, SchemaMetadata,
     SealedDeclarationSnapshot, StableKey,
 };
 
@@ -16,7 +16,7 @@ pub struct RecoveredAllocationMetadata<'a> {
     /// Durable allocation identity.
     pub stable_key: &'a StableKey,
     /// Persisted assignment, not permission to open it.
-    pub slot: &'a AllocationSlotDescriptor,
+    pub slot: &'a MemoryManagerSlot,
     /// Current generic allocation lifecycle state.
     pub state: AllocationState,
     /// Latest diagnostic schema metadata, not application schema validation.

@@ -1,6 +1,6 @@
 use ic_memory::{
-    AllocationPolicy, AllocationSlotDescriptor, BootstrapAdmission, PolicyIdentity,
-    PolicyIdentityError, RuntimeBootstrapPolicy, StableKey,
+    AllocationPolicy, BootstrapAdmission, MemoryManagerSlot, PolicyIdentity, PolicyIdentityError,
+    RuntimeBootstrapPolicy, StableKey,
 };
 
 const AUTHORITY: &str = "wasm_core_size_probe";
@@ -18,17 +18,13 @@ impl AllocationPolicy for HostPolicy {
     fn validate_key(&self, _: &StableKey) -> Result<(), Self::Error> {
         Ok(())
     }
-    fn validate_slot(
-        &self,
-        _: &StableKey,
-        _: &AllocationSlotDescriptor,
-    ) -> Result<(), Self::Error> {
+    fn validate_slot(&self, _: &StableKey, _: &MemoryManagerSlot) -> Result<(), Self::Error> {
         Ok(())
     }
     fn validate_reserved_slot(
         &self,
         _: &StableKey,
-        _: &AllocationSlotDescriptor,
+        _: &MemoryManagerSlot,
     ) -> Result<(), Self::Error> {
         Ok(())
     }

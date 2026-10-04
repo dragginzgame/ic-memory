@@ -1,8 +1,6 @@
 use super::request_tests::snapshot;
 use super::*;
-use crate::{
-    AllocationPolicy, AllocationSlotDescriptor, BootstrapAdmissionError as AdmissionError,
-};
+use crate::{AllocationPolicy, BootstrapAdmissionError as AdmissionError, MemoryManagerSlot};
 use ic_stable_structures::VectorMemory;
 use std::cell::Cell as Counter;
 
@@ -24,17 +22,13 @@ impl AllocationPolicy for AdmissionPolicy {
             Ok(())
         }
     }
-    fn validate_slot(
-        &self,
-        _: &StableKey,
-        _: &AllocationSlotDescriptor,
-    ) -> Result<(), Self::Error> {
+    fn validate_slot(&self, _: &StableKey, _: &MemoryManagerSlot) -> Result<(), Self::Error> {
         Ok(())
     }
     fn validate_reserved_slot(
         &self,
         _: &StableKey,
-        _: &AllocationSlotDescriptor,
+        _: &MemoryManagerSlot,
     ) -> Result<(), Self::Error> {
         Ok(())
     }
@@ -167,8 +161,7 @@ fn discovers_omitted_journal_before_one_commit_and_skips_warm_admission() {
             .unwrap()
             .slot_for(&StableKey::parse(JOURNAL).unwrap())
             .unwrap()
-            .memory_manager_id()
-            .unwrap(),
+            .id(),
         101
     );
     let before = backing.borrow().clone();
@@ -284,11 +277,8 @@ fn current_policy_revoked_grants_and_retirement_still_reject() {
     let mut record = runtime.ledger_record_from_memory().unwrap();
     AllocationBootstrap::new(record.store_mut())
         .retire_and_commit(
-            &crate::AllocationRetirement::new(
-                JOURNAL,
-                AllocationSlotDescriptor::memory_manager(101).unwrap(),
-            )
-            .unwrap(),
+            &crate::AllocationRetirement::new(JOURNAL, MemoryManagerSlot::new(101).unwrap())
+                .unwrap(),
             None,
         )
         .unwrap();
@@ -498,5 +488,5 @@ fn completion_bound_and_reservation_activation_preserve_evidence() {
         declaration.schema(),
         &crate::SchemaMetadata::new(Some(5)).unwrap()
     );
-    assert_eq!(declaration.slot().memory_manager_id().unwrap(), 102);
+    assert_eq!(declaration.slot().id(), 102);
 }

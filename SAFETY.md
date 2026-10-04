@@ -210,9 +210,10 @@ Public durable structs are DTOs. Decoded, deserialized, and diagnostic values
 are untrusted until the relevant recovery, current-format, integrity,
 validation, or commit path has accepted them.
 
-Serde decode is not validation. Constructor-backed invariants such as stable-key
-grammar and `MemoryManager` slot descriptor rules must be rechecked by the
-validation boundary before decoded values influence allocation authority.
+Serde decoding alone does not grant allocation authority. `MemoryManagerSlot`
+rejects sentinel ID 255 during construction and decoding; its numeric ID is
+infallible. Other DTO invariants, including stable-key grammar and ledger history,
+must still be checked by the validation boundary before influencing authority.
 
 Invariant-bearing DTO fields are intentionally private where feasible. Callers
 should use checked constructors and accessors instead of fabricating durable

@@ -1,5 +1,5 @@
 use ic_memory::{
-    AllocationPolicy, AllocationSlotDescriptor, PolicyIdentity, PolicyIdentityError,
+    AllocationPolicy, MemoryManagerSlot, PolicyIdentity, PolicyIdentityError,
     RuntimeBootstrapPolicy, StableKey,
 };
 
@@ -27,7 +27,7 @@ impl AllocationPolicy for CustomPolicy {
     fn validate_slot(
         &self,
         _key: &StableKey,
-        _slot: &AllocationSlotDescriptor,
+        _slot: &MemoryManagerSlot,
     ) -> Result<(), Self::Error> {
         Ok(())
     }
@@ -35,7 +35,7 @@ impl AllocationPolicy for CustomPolicy {
     fn validate_reserved_slot(
         &self,
         _key: &StableKey,
-        _slot: &AllocationSlotDescriptor,
+        _slot: &MemoryManagerSlot,
     ) -> Result<(), Self::Error> {
         Ok(())
     }

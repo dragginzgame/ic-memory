@@ -2,9 +2,9 @@
 //! to complete declarations; real journal/commit safety remains consumer-owned.
 use ic_memory::ic_stable_structures::{Memory, VectorMemory};
 use ic_memory::{
-    AllocationPolicy, AllocationSlotDescriptor, AllocationState, BootstrapAdmission,
-    MemoryManagerAuthorityRecord, MemoryManagerIdRange, MemoryManagerRangeMode, MemoryRequest,
-    MemoryRuntime, PolicyIdentity, PolicyIdentityError, RuntimeBootstrapPolicy, SchemaMetadata,
+    AllocationPolicy, AllocationState, BootstrapAdmission, MemoryManagerAuthorityRecord,
+    MemoryManagerIdRange, MemoryManagerRangeMode, MemoryManagerSlot, MemoryRequest, MemoryRuntime,
+    PolicyIdentity, PolicyIdentityError, RuntimeBootstrapPolicy, SchemaMetadata,
     SealedDeclarationSnapshot, StableKey, StaticMemoryRangeDeclaration,
 };
 
@@ -17,17 +17,13 @@ impl AllocationPolicy for HostPolicy {
     fn validate_key(&self, _: &StableKey) -> Result<(), Self::Error> {
         Ok(())
     }
-    fn validate_slot(
-        &self,
-        _: &StableKey,
-        _: &AllocationSlotDescriptor,
-    ) -> Result<(), Self::Error> {
+    fn validate_slot(&self, _: &StableKey, _: &MemoryManagerSlot) -> Result<(), Self::Error> {
         Ok(())
     }
     fn validate_reserved_slot(
         &self,
         _: &StableKey,
-        _: &AllocationSlotDescriptor,
+        _: &MemoryManagerSlot,
     ) -> Result<(), Self::Error> {
         Ok(())
     }

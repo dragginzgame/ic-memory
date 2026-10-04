@@ -1,13 +1,12 @@
-mod descriptor;
 mod memory_manager;
 mod range_authority;
 
-pub use descriptor::{AllocationSlot, AllocationSlotDescriptor};
+pub use memory_manager::LEDGER_SLOT;
 pub use memory_manager::{
     IC_MEMORY_AUTHORITY_OWNER, IC_MEMORY_AUTHORITY_PURPOSE, IC_MEMORY_LEDGER_LABEL,
     IC_MEMORY_LEDGER_STABLE_KEY, IC_MEMORY_STABLE_KEY_PREFIX, MEMORY_MANAGER_GOVERNANCE_MAX_ID,
     MEMORY_MANAGER_INVALID_ID, MEMORY_MANAGER_LEDGER_ID, MEMORY_MANAGER_MAX_ID,
-    MEMORY_MANAGER_MIN_ID, MemoryManagerSlotError, is_ic_memory_stable_key,
+    MEMORY_MANAGER_MIN_ID, MemoryManagerSlot, MemoryManagerSlotError, is_ic_memory_stable_key,
     memory_manager_governance_range, validate_memory_manager_id,
 };
 pub use range_authority::{
@@ -21,8 +20,8 @@ mod tests {
 
     #[test]
     fn memory_manager_default_constructor_rejects_sentinel() {
-        let err = AllocationSlotDescriptor::memory_manager(MEMORY_MANAGER_INVALID_ID)
-            .expect_err("sentinel must fail");
+        let err =
+            MemoryManagerSlot::new(MEMORY_MANAGER_INVALID_ID).expect_err("sentinel must fail");
 
         assert_eq!(
             err,
@@ -39,28 +38,45 @@ mod tests {
         assert_eq!(MEMORY_MANAGER_INVALID_ID, 255);
         assert_eq!(MEMORY_MANAGER_INVALID_ID, u8::MAX);
 
-        AllocationSlotDescriptor::memory_manager(MEMORY_MANAGER_MAX_ID)
+        MemoryManagerSlot::new(MEMORY_MANAGER_MAX_ID)
             .expect("254 is the last usable MemoryManager ID");
-        AllocationSlotDescriptor::memory_manager(MEMORY_MANAGER_INVALID_ID)
+        MemoryManagerSlot::new(MEMORY_MANAGER_INVALID_ID)
             .expect_err("255 is always the unallocated sentinel");
     }
 
     #[test]
-    fn memory_manager_id_validates_sentinel() {
-        let slot = AllocationSlotDescriptor::memory_manager(42).expect("usable slot");
-        assert_eq!(slot.memory_manager_id().expect("usable ID"), 42);
-
-        let err = AllocationSlotDescriptor {
-            slot: AllocationSlot::MemoryManagerId(MEMORY_MANAGER_INVALID_ID),
+    fn slots_validate_ids_at_construction_and_decode() {
+        for id in 0..MEMORY_MANAGER_INVALID_ID {
+            let slot = MemoryManagerSlot::new(id).unwrap();
+            assert_eq!(slot.id(), id);
+            let json = serde_json::to_value(&slot).unwrap();
+            assert_eq!(
+                json,
+                serde_json::json!({ "slot": { "MemoryManagerId": id } })
+            );
+            assert_eq!(
+                serde_json::from_value::<MemoryManagerSlot>(json).unwrap(),
+                slot
+            );
+            let bytes = crate::test_cbor::to_vec(&slot).unwrap();
+            assert_eq!(
+                crate::cbor::from_slice_exact::<MemoryManagerSlot>(&bytes).unwrap(),
+                slot
+            );
         }
-        .memory_manager_id()
-        .expect_err("sentinel should fail");
-        assert_eq!(
-            err,
-            MemoryManagerSlotError::InvalidMemoryManagerId {
-                id: MEMORY_MANAGER_INVALID_ID
-            }
-        );
+        for json in [
+            serde_json::json!({ "slot": { "MemoryManagerId": 255 } }),
+            serde_json::json!({ "slot": { "MemoryManagerId": 256 } }),
+            serde_json::json!({ "slot": { "MemoryManagerId": -1 } }),
+            serde_json::json!({ "slot": { "MemoryManagerId": 1 }, "extra": true }),
+            serde_json::json!({ "slot": { "Other": 1 } }),
+            serde_json::json!({ "slot": null }),
+            serde_json::json!({}),
+        ] {
+            assert!(serde_json::from_value::<MemoryManagerSlot>(json.clone()).is_err());
+            let bytes = crate::test_cbor::to_vec(&json).unwrap();
+            assert!(crate::cbor::from_slice_exact::<MemoryManagerSlot>(&bytes).is_err());
+        }
     }
 
     #[test]
@@ -347,7 +363,7 @@ mod tests {
 
         let record = authority
             .validate_slot_authority(
-                &AllocationSlotDescriptor::memory_manager(42).expect("framework slot"),
+                &MemoryManagerSlot::new(42).expect("framework slot"),
                 "framework",
             )
             .expect("framework authority");
@@ -355,7 +371,7 @@ mod tests {
 
         let err = authority
             .validate_slot_authority(
-                &AllocationSlotDescriptor::memory_manager(42).expect("framework slot"),
+                &MemoryManagerSlot::new(42).expect("framework slot"),
                 "applications",
             )
             .expect_err("wrong authority must fail");
@@ -391,7 +407,7 @@ mod tests {
 
         let record = authority
             .validate_slot_authority_mode(
-                &AllocationSlotDescriptor::memory_manager(42).expect("framework slot"),
+                &MemoryManagerSlot::new(42).expect("framework slot"),
                 "framework",
                 MemoryManagerRangeMode::Reserved,
             )
@@ -400,7 +416,7 @@ mod tests {
 
         let err = authority
             .validate_slot_authority_mode(
-                &AllocationSlotDescriptor::memory_manager(42).expect("framework slot"),
+                &MemoryManagerSlot::new(42).expect("framework slot"),
                 "framework",
                 MemoryManagerRangeMode::Allowed,
             )

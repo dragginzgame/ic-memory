@@ -3,7 +3,7 @@ use crate::{
     declaration::{AllocationDeclaration, DeclarationSnapshotError, validate_runtime_fingerprint},
     key::StableKey,
     schema::{SchemaMetadata, SchemaMetadataError},
-    slot::AllocationSlotDescriptor,
+    slot::MemoryManagerSlot,
 };
 use serde::{Deserialize, Serialize};
 
@@ -70,7 +70,7 @@ pub struct AllocationRecord {
     /// Stable key that owns the slot.
     pub(crate) stable_key: StableKey,
     /// Durable allocation slot owned by the key.
-    pub(crate) slot: AllocationSlotDescriptor,
+    pub(crate) slot: MemoryManagerSlot,
     /// Current allocation lifecycle state.
     pub(crate) state: AllocationState,
     /// First committed generation that recorded this allocation.
@@ -95,18 +95,16 @@ pub struct AllocationRetirement {
     /// Stable key being retired.
     pub(crate) stable_key: StableKey,
     /// Allocation slot historically owned by the stable key.
-    pub(crate) slot: AllocationSlotDescriptor,
+    pub(crate) slot: MemoryManagerSlot,
 }
 
 impl AllocationRetirement {
     /// Build an explicit retirement request from raw parts.
     pub fn new(
         stable_key: impl AsRef<str>,
-        slot: AllocationSlotDescriptor,
+        slot: MemoryManagerSlot,
     ) -> Result<Self, AllocationRetirementError> {
         let stable_key = StableKey::parse(stable_key).map_err(AllocationRetirementError::Key)?;
-        slot.validate()
-            .map_err(AllocationRetirementError::MemoryManagerSlot)?;
         Ok(Self { stable_key, slot })
     }
 
@@ -118,7 +116,7 @@ impl AllocationRetirement {
 
     /// Return the allocation slot historically owned by the stable key.
     #[must_use]
-    pub const fn slot(&self) -> &AllocationSlotDescriptor {
+    pub const fn slot(&self) -> &MemoryManagerSlot {
         &self.slot
     }
 
@@ -126,10 +124,7 @@ impl AllocationRetirement {
     pub fn validate(&self) -> Result<(), AllocationRetirementError> {
         self.stable_key
             .validate()
-            .map_err(AllocationRetirementError::Key)?;
-        self.slot
-            .validate()
-            .map_err(AllocationRetirementError::MemoryManagerSlot)
+            .map_err(AllocationRetirementError::Key)
     }
 }
 
@@ -387,7 +382,7 @@ impl AllocationRecord {
 
     /// Return the durable allocation slot owned by this record.
     #[must_use]
-    pub const fn slot(&self) -> &AllocationSlotDescriptor {
+    pub const fn slot(&self) -> &MemoryManagerSlot {
         &self.slot
     }
 

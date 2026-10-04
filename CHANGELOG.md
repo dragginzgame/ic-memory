@@ -1,5 +1,35 @@
 # Changelog
 
+## 0.25.0
+
+- Replace `AllocationSlot` and `AllocationSlotDescriptor` with one checked
+  `MemoryManagerSlot`. Construct it with `MemoryManagerSlot::new(id)`; `.id()`
+  returns a usable MemoryManager ID directly. Construction and deserialization
+  reject sentinel ID 255 before the value reaches allocation execution.
+- Remove the descriptor module, unchecked slot constructor, repeated slot
+  validation and extraction assertions, and the unreachable invalid-slot
+  integrity/retirement errors. Keep raw numeric-ID validation, ownership,
+  authorization, duplicate claims, history validation and persistence ordering.
+- Preserve the current nested slot encoding through private serde-only fields.
+  Valid durable and diagnostic slot encodings, current format identifiers,
+  checksums and declaration fingerprints are unchanged. Invalid slots now fail
+  decoding rather than subsequent ledger integrity or retirement validation.
+- Exercise construction and JSON/CBOR decoding across all 255 usable IDs and
+  reject sentinel, out-of-range and malformed encoded slots. Update declaration,
+  retirement and persisted-corruption regressions for the owning decode boundary;
+  retain rejection conservation, doctor classification and retry checks.
+- Update public callers, examples, current fixture naming and safety guidance.
+  This is a source API hard cut: consumers must update their policy signatures,
+  slot constructors and accessors. No aliases or superseded execution path remain.
+- Validation: the complete Rust suite passes, including 272 library tests,
+  public integrations, two composed-host regressions and six active doctests;
+  all eight compile-fail cases pass, including the new checked-slot privacy
+  boundary. Strict all-target Clippy, Rust 1.88.0 all-target compilation,
+  warning-denied Rustdoc, formatting, whitespace checks, Wasm test compilation
+  and all five raw Wasm size gates pass. Canic's isolated source candidate passes
+  32 focused memory/ABI/metrics tests and strict Core Clippy. Published dependency
+  adoption, the independent blob adapter and live deployments remain unqualified.
+
 ## 0.24.15
 
 - Reuse the sealed snapshot's canonical fixed-key lookup and binary-search its

@@ -1,4 +1,4 @@
-use crate::{declaration::AllocationDeclaration, key::StableKey, slot::AllocationSlotDescriptor};
+use crate::{declaration::AllocationDeclaration, key::StableKey, slot::MemoryManagerSlot};
 use std::sync::Arc;
 
 ///
@@ -68,7 +68,7 @@ impl ValidatedAllocations {
 
     /// Find a validated slot by stable key.
     #[must_use]
-    pub fn slot_for(&self, key: &StableKey) -> Option<&AllocationSlotDescriptor> {
+    pub fn slot_for(&self, key: &StableKey) -> Option<&MemoryManagerSlot> {
         self.declarations()
             .iter()
             .find(|declaration| &declaration.stable_key == key)
@@ -128,7 +128,7 @@ impl CommittedAllocations {
 
     /// Find a committed slot by stable key.
     #[must_use]
-    pub fn slot_for(&self, key: &StableKey) -> Option<&AllocationSlotDescriptor> {
+    pub fn slot_for(&self, key: &StableKey) -> Option<&MemoryManagerSlot> {
         self.validated.slot_for(key)
     }
 

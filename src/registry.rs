@@ -330,21 +330,10 @@ impl SealedDeclarationSnapshot {
         let mut declarations = self.registered_declarations().to_vec();
         let mut occupied = [false; 255];
         for record in ledger.allocation_history().records() {
-            occupied[usize::from(
-                record
-                    .slot()
-                    .memory_manager_id()
-                    .expect("validated ledger slot"),
-            )] = true;
+            occupied[usize::from(record.slot().id())] = true;
         }
         for fixed in &declarations {
-            occupied[usize::from(
-                fixed
-                    .declaration()
-                    .slot()
-                    .memory_manager_id()
-                    .expect("checked slot"),
-            )] = true;
+            occupied[usize::from(fixed.declaration().slot().id())] = true;
         }
         // Only the original requests can allocate new slots and they are already
         // canonical. Admission selections are known-only: all their slots are
@@ -362,10 +351,7 @@ impl SealedDeclarationSnapshot {
                 .iter()
                 .find(|record| record.stable_key() == &request.stable_key);
             let id = if let Some(record) = historical {
-                let id = record
-                    .slot()
-                    .memory_manager_id()
-                    .expect("validated ledger slot");
+                let id = record.slot().id();
                 // Historical assignment is not current authorization. Fresh
                 // placement below obtains its authorization from the grant
                 // that supplies the ID.
@@ -390,7 +376,7 @@ impl SealedDeclarationSnapshot {
                         authority: request.authority.clone(),
                     })?
             };
-            let slot = crate::AllocationSlotDescriptor::memory_manager(id).expect("usable id");
+            let slot = crate::MemoryManagerSlot::new(id).expect("usable id");
             occupied[usize::from(id)] = true;
             // Request construction checked authority/key/schema, and recovery
             // checked historical schemas. Copy borrowed source requests only;

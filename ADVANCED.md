@@ -556,10 +556,12 @@ authority
 
 ## Current MemoryManager Rules
 
-For the built-in `ic-stable-structures::MemoryManager` slot descriptor:
+For the checked `MemoryManagerSlot` allocation identity:
 
 - IDs `0..=254` are usable stable-memory slots.
 - ID `255` is rejected because it is the unallocated sentinel.
+- `MemoryManagerSlot::new(id)` and deserialization check this bound;
+  `.id()` returns a usable ID without another validation step.
 - IDs `0..=9` are reserved for `ic-memory` governance.
 - ID `0` is assigned to the allocation ledger.
 - Stable keys under `ic_memory.*` are reserved for `ic-memory` governance and

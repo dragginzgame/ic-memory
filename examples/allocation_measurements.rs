@@ -2,9 +2,8 @@
 #[path = "support/metered.rs"]
 mod metered;
 use ic_memory::{
-    AllocationPolicy, AllocationSlotDescriptor, MemoryAllocations, MemoryManagerConfig,
-    MemoryRuntime, PolicyIdentity, PolicyIdentityError, RuntimeBootstrapPolicy, RuntimeMemory,
-    StableKey,
+    AllocationPolicy, MemoryAllocations, MemoryManagerConfig, MemoryManagerSlot, MemoryRuntime,
+    PolicyIdentity, PolicyIdentityError, RuntimeBootstrapPolicy, RuntimeMemory, StableKey,
 };
 use ic_stable_structures::{Cell, Memory, StableVec};
 use metered::Metered;
@@ -16,13 +15,13 @@ impl AllocationPolicy for Allow {
     fn validate_key(&self, _: &StableKey) -> Result<(), Infallible> {
         Ok(())
     }
-    fn validate_slot(&self, _: &StableKey, _: &AllocationSlotDescriptor) -> Result<(), Infallible> {
+    fn validate_slot(&self, _: &StableKey, _: &MemoryManagerSlot) -> Result<(), Infallible> {
         Ok(())
     }
     fn validate_reserved_slot(
         &self,
         _: &StableKey,
-        _: &AllocationSlotDescriptor,
+        _: &MemoryManagerSlot,
     ) -> Result<(), Infallible> {
         Ok(())
     }

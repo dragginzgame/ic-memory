@@ -1,7 +1,7 @@
 use crate::{
     key::{StableKey, StableKeyError},
     schema::{SchemaMetadata, SchemaMetadataError},
-    slot::{AllocationSlot, AllocationSlotDescriptor, MemoryManagerSlotError},
+    slot::{MemoryManagerSlot, MemoryManagerSlotError},
     text::{DiagnosticTextError, validate_diagnostic_text},
 };
 use serde::{Deserialize, Serialize};
@@ -13,9 +13,9 @@ use std::collections::BTreeSet;
 /// Checked runtime claim that a stable key should own an allocation slot.
 ///
 /// Declarations are supplied by the current binary before opening storage.
-/// Constructors validate the stable key, slot descriptor, label, and schema
-/// metadata, but a declaration is not authoritative until it has been validated
-/// against the recovered ledger and committed as part of a generation.
+/// Constructors validate the stable key, label and schema metadata and accept
+/// an already checked slot. A declaration becomes authoritative only after
+/// validation against the recovered ledger and commitment in a generation.
 ///
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -24,7 +24,7 @@ pub struct AllocationDeclaration {
     /// Durable stable key.
     pub(crate) stable_key: StableKey,
     /// Claimed allocation slot.
-    pub(crate) slot: AllocationSlotDescriptor,
+    pub(crate) slot: MemoryManagerSlot,
     /// Optional diagnostic label.
     #[serde(deserialize_with = "crate::cbor::deserialize_present_option")]
     pub(crate) label: Option<String>,
@@ -36,13 +36,11 @@ impl AllocationDeclaration {
     /// Build a declaration from raw parts after validating diagnostic metadata.
     pub fn new(
         stable_key: impl AsRef<str>,
-        slot: AllocationSlotDescriptor,
+        slot: MemoryManagerSlot,
         label: Option<String>,
         schema: SchemaMetadata,
     ) -> Result<Self, DeclarationSnapshotError> {
         let stable_key = StableKey::parse(stable_key).map_err(DeclarationSnapshotError::Key)?;
-        slot.validate()
-            .map_err(DeclarationSnapshotError::MemoryManagerSlot)?;
         validate_label(label.as_deref())?;
         schema
             .validate()
@@ -79,8 +77,8 @@ impl AllocationDeclaration {
         label: impl Into<String>,
         schema: SchemaMetadata,
     ) -> Result<Self, DeclarationSnapshotError> {
-        let slot = AllocationSlotDescriptor::memory_manager(id)
-            .map_err(DeclarationSnapshotError::MemoryManagerSlot)?;
+        let slot =
+            MemoryManagerSlot::new(id).map_err(DeclarationSnapshotError::MemoryManagerSlot)?;
         Self::new(stable_key, slot, Some(label.into()), schema)
     }
 
@@ -90,8 +88,8 @@ impl AllocationDeclaration {
         id: u8,
         schema: SchemaMetadata,
     ) -> Result<Self, DeclarationSnapshotError> {
-        let slot = AllocationSlotDescriptor::memory_manager(id)
-            .map_err(DeclarationSnapshotError::MemoryManagerSlot)?;
+        let slot =
+            MemoryManagerSlot::new(id).map_err(DeclarationSnapshotError::MemoryManagerSlot)?;
         Self::new(stable_key, slot, None, schema)
     }
 
@@ -103,7 +101,7 @@ impl AllocationDeclaration {
 
     /// Return the allocation slot claimed by this declaration.
     #[must_use]
-    pub const fn slot(&self) -> &AllocationSlotDescriptor {
+    pub const fn slot(&self) -> &MemoryManagerSlot {
         &self.slot
     }
 
@@ -124,9 +122,6 @@ impl AllocationDeclaration {
         self.stable_key
             .validate()
             .map_err(DeclarationSnapshotError::Key)?;
-        self.slot
-            .validate()
-            .map_err(DeclarationSnapshotError::MemoryManagerSlot)?;
         validate_label(self.label.as_deref())?;
         self.schema
             .validate()
@@ -235,7 +230,7 @@ pub enum DeclarationSnapshotError {
     DuplicateStableKey(StableKey),
     /// An allocation slot appeared more than once in one snapshot.
     #[error("allocation slot '{0:?}' is declared more than once")]
-    DuplicateSlot(AllocationSlotDescriptor),
+    DuplicateSlot(MemoryManagerSlot),
     /// Present declaration labels must be non-empty.
     #[error("allocation declaration label must not be empty when present")]
     EmptyLabel,
@@ -306,11 +301,10 @@ fn reject_duplicates(
     declarations: &[AllocationDeclaration],
 ) -> Result<(), DeclarationSnapshotError> {
     let mut keys = BTreeSet::new();
-    let mut slots = [false; 256];
+    let mut slots = [false; crate::constants::MAX_ALLOCATIONS];
 
     for declaration in declarations {
-        let AllocationSlot::MemoryManagerId(id) = declaration.slot.slot();
-        let occupied = &mut slots[usize::from(*id)];
+        let occupied = &mut slots[usize::from(declaration.slot.id())];
         if *occupied {
             return Err(DeclarationSnapshotError::DuplicateSlot(
                 declaration.slot.clone(),
@@ -330,12 +324,12 @@ fn reject_duplicates(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::slot::AllocationSlotDescriptor;
+    use crate::slot::MemoryManagerSlot;
 
     fn declaration(key: &str, id: u8) -> AllocationDeclaration {
         AllocationDeclaration::new(
             key,
-            AllocationSlotDescriptor::memory_manager(id).expect("usable slot"),
+            MemoryManagerSlot::new(id).expect("usable slot"),
             None,
             SchemaMetadata::default(),
         )
@@ -346,7 +340,7 @@ mod tests {
     fn declaration_rejects_unbounded_label_metadata() {
         let err = AllocationDeclaration::new(
             "app.users.v1",
-            AllocationSlotDescriptor::memory_manager(100).expect("usable slot"),
+            MemoryManagerSlot::new(100).expect("usable slot"),
             Some("x".repeat(257)),
             SchemaMetadata::default(),
         )
@@ -363,7 +357,7 @@ mod tests {
         assert_eq!(declaration.stable_key.as_str(), "app.orders.v1");
         assert_eq!(
             declaration.slot,
-            AllocationSlotDescriptor::memory_manager(100).expect("usable slot")
+            MemoryManagerSlot::new(100).expect("usable slot")
         );
         assert_eq!(declaration.label.as_deref(), Some("orders"));
         assert_eq!(declaration.schema, SchemaMetadata::default());
@@ -381,20 +375,11 @@ mod tests {
     }
 
     #[test]
-    fn snapshot_rejects_decoded_invalid_memory_manager_slot() {
-        let mut declaration = declaration("app.orders.v1", 100);
-        declaration.slot =
-            AllocationSlotDescriptor::memory_manager_unchecked(crate::MEMORY_MANAGER_INVALID_ID);
-
-        let err = DeclarationSnapshot::new(vec![declaration.clone(), declaration])
-            .expect_err("invalid slot must precede duplicate errors");
-
-        assert!(matches!(
-            err,
-            DeclarationSnapshotError::MemoryManagerSlot(
-                MemoryManagerSlotError::InvalidMemoryManagerId { id }
-            ) if id == crate::MEMORY_MANAGER_INVALID_ID
-        ));
+    fn snapshot_decode_rejects_unusable_memory_manager_slot() {
+        let snapshot = DeclarationSnapshot::new(vec![declaration("app.orders.v1", 100)]).unwrap();
+        let mut value = serde_json::to_value(snapshot).unwrap();
+        value["declarations"][0]["slot"]["slot"]["MemoryManagerId"] = serde_json::json!(255);
+        assert!(serde_json::from_value::<DeclarationSnapshot>(value).is_err());
     }
 
     #[test]
@@ -434,9 +419,7 @@ mod tests {
 
             assert_eq!(
                 err,
-                DeclarationSnapshotError::DuplicateSlot(
-                    AllocationSlotDescriptor::memory_manager(100).unwrap()
-                )
+                DeclarationSnapshotError::DuplicateSlot(MemoryManagerSlot::new(100).unwrap())
             );
         }
     }

@@ -6,9 +6,9 @@ use super::{
     policy::GenericRangePolicy,
 };
 use crate::{
-    AllocationPolicy, AllocationSlotDescriptor, DiagnosticCheck, DiagnosticCode,
-    DiagnosticMemorySize, LedgerCommitError, LedgerPayloadEnvelopeError, PolicyIdentity,
-    PolicyIdentityError, RuntimeBootstrapPolicy, StableKey,
+    AllocationPolicy, DiagnosticCheck, DiagnosticCode, DiagnosticMemorySize, LedgerCommitError,
+    LedgerPayloadEnvelopeError, MemoryManagerSlot, PolicyIdentity, PolicyIdentityError,
+    RuntimeBootstrapPolicy, StableKey,
     registry::{
         SealedDeclarationSnapshot, TEST_REGISTRY_LOCK, register_static_memory_manager_declaration,
         register_static_memory_manager_range, reset_static_memory_declarations_for_tests,
@@ -73,7 +73,7 @@ impl AllocationPolicy for CountingPolicy {
     fn validate_slot(
         &self,
         _key: &StableKey,
-        _slot: &AllocationSlotDescriptor,
+        _slot: &MemoryManagerSlot,
     ) -> Result<(), Self::Error> {
         self.0.set(self.0.get() + 1);
         Ok(())
@@ -82,7 +82,7 @@ impl AllocationPolicy for CountingPolicy {
     fn validate_reserved_slot(
         &self,
         _key: &StableKey,
-        _slot: &AllocationSlotDescriptor,
+        _slot: &MemoryManagerSlot,
     ) -> Result<(), Self::Error> {
         Ok(())
     }
@@ -196,7 +196,7 @@ impl AllocationPolicy for IdentityPolicy {
     fn validate_slot(
         &self,
         _key: &StableKey,
-        _slot: &AllocationSlotDescriptor,
+        _slot: &MemoryManagerSlot,
     ) -> Result<(), Self::Error> {
         Ok(())
     }
@@ -204,7 +204,7 @@ impl AllocationPolicy for IdentityPolicy {
     fn validate_reserved_slot(
         &self,
         _key: &StableKey,
-        _slot: &AllocationSlotDescriptor,
+        _slot: &MemoryManagerSlot,
     ) -> Result<(), Self::Error> {
         Ok(())
     }
@@ -609,7 +609,7 @@ impl AllocationPolicy for RejectPolicy {
     fn validate_slot(
         &self,
         _key: &StableKey,
-        _slot: &AllocationSlotDescriptor,
+        _slot: &MemoryManagerSlot,
     ) -> Result<(), Self::Error> {
         Ok(())
     }
@@ -617,7 +617,7 @@ impl AllocationPolicy for RejectPolicy {
     fn validate_reserved_slot(
         &self,
         _key: &StableKey,
-        _slot: &AllocationSlotDescriptor,
+        _slot: &MemoryManagerSlot,
     ) -> Result<(), Self::Error> {
         Ok(())
     }
@@ -770,10 +770,11 @@ fn diagnostics_reject_invalid_persisted_slots_before_measuring_sizes() {
         .bootstrap(&declarations, &GenericRangePolicy)
         .unwrap();
     let record = runtime.ledger_record_from_memory().unwrap();
-    let mut ledger = record.store().recover().unwrap().into_ledger();
-    ledger.allocation_history.records[0].slot =
-        AllocationSlotDescriptor::memory_manager_unchecked(crate::MEMORY_MANAGER_INVALID_ID);
-    let payload = crate::LedgerPayloadEnvelope::current(crate::test_cbor::to_vec(&ledger).unwrap())
+    let ledger = record.store().recover().unwrap().into_ledger();
+    let mut value = serde_json::to_value(&ledger).unwrap();
+    value["allocation_history"]["records"][0]["slot"]["slot"]["MemoryManagerId"] =
+        serde_json::json!(255);
+    let payload = crate::LedgerPayloadEnvelope::current(crate::test_cbor::to_vec(&value).unwrap())
         .try_encode()
         .unwrap();
     // Keep physical framing/checksums valid so recovery reaches slot validation.
@@ -793,7 +794,7 @@ fn diagnostics_reject_invalid_persisted_slots_before_measuring_sizes() {
     assert!(matches!(
         runtime.diagnostic_export(),
         Err(RuntimeDiagnosticError::LedgerCommit(
-            LedgerCommitError::Integrity(crate::LedgerIntegrityError::InvalidSlotDescriptor(_))
+            LedgerCommitError::Codec(_)
         ))
     ));
     let doctor = runtime.doctor_report(&declarations, &GenericRangePolicy);
@@ -809,7 +810,7 @@ fn diagnostics_reject_invalid_persisted_slots_before_measuring_sizes() {
     assert!(matches!(
         reopened.bootstrap(&declarations, &GenericRangePolicy),
         Err(super::RuntimeBootstrapError::LedgerCommit(
-            LedgerCommitError::Integrity(crate::LedgerIntegrityError::InvalidSlotDescriptor(_))
+            LedgerCommitError::Codec(_)
         ))
     ));
     assert!(!reopened.is_bootstrapped());

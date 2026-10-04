@@ -328,10 +328,6 @@ impl<M: Memory> MemoryRuntime<M> {
 
     /// Resolve an application key's committed ID without opening memory,
     /// reading history, or changing the host's policy or bucket configuration.
-    ///
-    /// # Panics
-    ///
-    /// Panics only if an internal committed-allocation invariant is broken.
     pub fn memory_id(&self, stable_key: &str) -> Result<u8, RuntimeOpenError> {
         let key = StableKey::parse(stable_key)?;
         if crate::is_ic_memory_stable_key(key.as_str()) {
@@ -343,7 +339,7 @@ impl<M: Memory> MemoryRuntime<M> {
             .committed_allocations()?
             .slot_for(&key)
             .ok_or_else(|| RuntimeOpenError::StableKeyNotCommitted(stable_key.to_string()))?;
-        Ok(slot.memory_manager_id().expect("committed allocation slot"))
+        Ok(slot.id())
     }
 
     fn memory(&self, id: u8) -> RuntimeMemory<M> {

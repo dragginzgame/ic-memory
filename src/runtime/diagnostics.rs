@@ -1,11 +1,10 @@
 use super::{MemoryRuntime, RuntimeDiagnosticError, RuntimeLifecycle};
 use crate::{
-    AllocationLedger, AllocationPolicy, AllocationSlotDescriptor, DiagnosticCheck, DiagnosticCode,
-    DiagnosticDeclaration, DiagnosticExport, DiagnosticFailure, DiagnosticMemorySize,
-    DiagnosticRangeAuthority, DiagnosticRuntimeBinding, DiagnosticStableCell,
-    DiagnosticStableCellStatus, LedgerCommitError, LedgerPayloadEnvelopeError,
-    MemoryRuntimeDoctorReport, PolicyIdentity, RecoveredLedger, RuntimeBootstrapPolicy,
-    StableCellLedgerRecord,
+    AllocationLedger, AllocationPolicy, DiagnosticCheck, DiagnosticCode, DiagnosticDeclaration,
+    DiagnosticExport, DiagnosticFailure, DiagnosticMemorySize, DiagnosticRangeAuthority,
+    DiagnosticRuntimeBinding, DiagnosticStableCell, DiagnosticStableCellStatus, LedgerCommitError,
+    LedgerPayloadEnvelopeError, MemoryRuntimeDoctorReport, PolicyIdentity, RecoveredLedger,
+    RuntimeBootstrapPolicy, StableCellLedgerRecord,
     physical::CommitStoreDiagnostic,
     registry::{SealedDeclarationFingerprint, SealedDeclarationSnapshot},
     slot::MEMORY_MANAGER_LEDGER_ID,
@@ -109,7 +108,7 @@ impl<M: Memory> MemoryRuntime<M> {
             tested_declaration_fingerprint,
             established_bootstrap_binding,
             bootstrap_binding,
-            ledger_anchor: ledger_anchor_descriptor(),
+            ledger_anchor: crate::slot::LEDGER_SLOT,
             stable_cell: stable_cell.diagnostic,
             commit_recovery: recovery.as_ref().map(|(_, diagnostic)| *diagnostic),
             ledger,
@@ -124,7 +123,7 @@ impl<M: Memory> MemoryRuntime<M> {
         recovered: Cow<'_, RecoveredLedger>,
         commit_recovery: CommitStoreDiagnostic,
     ) -> DiagnosticExport {
-        let anchor = ledger_anchor_descriptor();
+        let anchor = crate::slot::LEDGER_SLOT;
         let mut export = match recovered {
             Cow::Borrowed(recovered) => DiagnosticExport::from_ledger(recovered.ledger(), anchor),
             Cow::Owned(recovered) => {
@@ -133,11 +132,7 @@ impl<M: Memory> MemoryRuntime<M> {
         };
         export.commit_recovery = Some(commit_recovery);
         for record in &mut export.records {
-            let id = record
-                .allocation
-                .slot()
-                .memory_manager_id()
-                .expect("recovered ledger slot");
+            let id = record.allocation.slot().id();
             record.memory_size = Some(DiagnosticMemorySize::from_wasm_pages(
                 self.memory(id).size(),
             ));
@@ -189,10 +184,6 @@ impl<M: Memory> MemoryRuntime<M> {
 struct StableCellDiagnostic {
     diagnostic: DiagnosticStableCell,
     record: Option<StableCellLedgerRecord>,
-}
-
-const fn ledger_anchor_descriptor() -> AllocationSlotDescriptor {
-    AllocationSlotDescriptor::memory_manager_unchecked(MEMORY_MANAGER_LEDGER_ID)
 }
 
 fn diagnostic_validation<P: AllocationPolicy>(

@@ -1,6 +1,5 @@
-use super::descriptor::AllocationSlotDescriptor;
 use super::memory_manager::{
-    MEMORY_MANAGER_INVALID_ID, MEMORY_MANAGER_MAX_ID, MEMORY_MANAGER_MIN_ID,
+    MEMORY_MANAGER_INVALID_ID, MEMORY_MANAGER_MAX_ID, MEMORY_MANAGER_MIN_ID, MemoryManagerSlot,
     MemoryManagerSlotError, validate_memory_manager_id,
 };
 use crate::text::validate_diagnostic_text;
@@ -259,25 +258,21 @@ impl MemoryManagerRangeAuthority {
     /// Validate that `slot` belongs to `expected_authority`.
     pub fn validate_slot_authority(
         &self,
-        slot: &AllocationSlotDescriptor,
+        slot: &MemoryManagerSlot,
         expected_authority: &str,
     ) -> Result<&MemoryManagerAuthorityRecord, MemoryManagerRangeAuthorityError> {
-        let id = slot
-            .memory_manager_id()
-            .map_err(MemoryManagerRangeAuthorityError::Slot)?;
+        let id = slot.id();
         self.validate_id_authority(id, expected_authority)
     }
 
     /// Validate that `slot` belongs to `expected_authority` with `expected_mode`.
     pub fn validate_slot_authority_mode(
         &self,
-        slot: &AllocationSlotDescriptor,
+        slot: &MemoryManagerSlot,
         expected_authority: &str,
         expected_mode: MemoryManagerRangeMode,
     ) -> Result<&MemoryManagerAuthorityRecord, MemoryManagerRangeAuthorityError> {
-        let id = slot
-            .memory_manager_id()
-            .map_err(MemoryManagerRangeAuthorityError::Slot)?;
+        let id = slot.id();
         self.validate_id_authority_mode(id, expected_authority, expected_mode)
     }
 
@@ -424,7 +419,7 @@ pub enum MemoryManagerRangeAuthorityError {
     /// Authority range bounds are invalid.
     #[error(transparent)]
     Range(#[from] MemoryManagerRangeError),
-    /// Slot descriptor is not a usable `MemoryManager` ID slot.
+    /// A raw numeric ID is not a usable `MemoryManager` slot.
     #[error("{0}")]
     Slot(#[from] MemoryManagerSlotError),
     /// Authority range overlaps an existing range.

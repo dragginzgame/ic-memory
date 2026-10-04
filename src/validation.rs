@@ -4,7 +4,7 @@ use crate::{
     key::StableKey,
     ledger::{AllocationLedger, ClaimConflict, RecoveredLedger, validate_declaration_claim},
     policy::AllocationPolicy,
-    slot::AllocationSlotDescriptor,
+    slot::MemoryManagerSlot,
 };
 
 ///
@@ -29,15 +29,15 @@ pub enum AllocationValidationError<P> {
         /// Stable key that was redeclared.
         stable_key: StableKey,
         /// Historical slot for the stable key.
-        historical_slot: AllocationSlotDescriptor,
+        historical_slot: MemoryManagerSlot,
         /// Slot claimed by the current declaration.
-        declared_slot: AllocationSlotDescriptor,
+        declared_slot: MemoryManagerSlot,
     },
     /// Slot was historically bound to a different stable key.
     #[error("allocation slot '{slot:?}' was historically bound to stable key '{historical_key}'")]
     SlotStableKeyConflict {
         /// Slot claimed by the current declaration.
-        slot: AllocationSlotDescriptor,
+        slot: MemoryManagerSlot,
         /// Historical stable key for the slot.
         historical_key: StableKey,
         /// Stable key claimed by the current declaration.
@@ -49,7 +49,7 @@ pub enum AllocationValidationError<P> {
         /// Retired stable key.
         stable_key: StableKey,
         /// Retired allocation slot.
-        slot: AllocationSlotDescriptor,
+        slot: MemoryManagerSlot,
     },
 }
 
@@ -142,7 +142,7 @@ mod tests {
         declaration::AllocationDeclaration,
         ledger::{AllocationHistory, AllocationRecord, AllocationState, GenerationRecord},
         schema::SchemaMetadata,
-        slot::AllocationSlotDescriptor,
+        slot::MemoryManagerSlot,
     };
 
     #[derive(Debug, Eq, PartialEq)]
@@ -161,22 +161,15 @@ mod tests {
         fn validate_slot(
             &self,
             _key: &StableKey,
-            slot: &AllocationSlotDescriptor,
+            _slot: &MemoryManagerSlot,
         ) -> Result<(), Self::Error> {
-            if slot
-                == &AllocationSlotDescriptor::memory_manager_unchecked(
-                    crate::MEMORY_MANAGER_INVALID_ID,
-                )
-            {
-                return Err("bad slot");
-            }
             Ok(())
         }
 
         fn validate_reserved_slot(
             &self,
             _key: &StableKey,
-            _slot: &AllocationSlotDescriptor,
+            _slot: &MemoryManagerSlot,
         ) -> Result<(), Self::Error> {
             Ok(())
         }
@@ -205,7 +198,7 @@ mod tests {
     fn declaration(key: &str, id: u8) -> AllocationDeclaration {
         AllocationDeclaration::new(
             key,
-            AllocationSlotDescriptor::memory_manager(id).expect("usable slot"),
+            MemoryManagerSlot::new(id).expect("usable slot"),
             None,
             SchemaMetadata::default(),
         )

@@ -1,0 +1,12 @@
+error[E0423]: cannot initialize a tuple struct which contains private fields
+ --> tests/ui/fabricate_memory_manager_slot.rs:4:17
+  |
+4 |     let _slot = MemoryManagerSlot(255);
+  |                 ^^^^^^^^^^^^^^^^^
+  |
+  = note: a struct named `MemoryManagerSlot` exists in another namespace
+note: constructor is not visible here due to private fields
+ --> src/slot/memory_manager.rs
+  |
+  | pub struct MemoryManagerSlot(u8);
+  |                              ^^ private field

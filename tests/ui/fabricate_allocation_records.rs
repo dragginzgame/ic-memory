@@ -1,11 +1,11 @@
 use ic_memory::{
-    AllocationRetirement, AllocationSlotDescriptor, MemoryManagerAuthorityRecord,
+    AllocationRetirement, MemoryManagerSlot, MemoryManagerAuthorityRecord,
     MemoryManagerIdRange, MemoryManagerRangeMode, SchemaMetadata, StableKey,
 };
 
 fn main() {
     let stable_key = StableKey::parse("app.orders.v1").expect("valid stable key");
-    let slot = AllocationSlotDescriptor::memory_manager(100).expect("valid slot");
+    let slot = MemoryManagerSlot::new(100).expect("valid slot");
 
     let _retirement = AllocationRetirement { stable_key, slot };
 

@@ -2,8 +2,8 @@ use super::{
     GenericRangePolicy, MemoryManagerConfig, MemoryRuntime, RuntimeAdoptionError, RuntimeOpenError,
 };
 use crate::{
-    AllocationDeclaration, AllocationPolicy, AllocationSlotDescriptor, BootstrapAdmission,
-    MemoryRequest, PolicyIdentity, PolicyIdentityError, RuntimeBootstrapPolicy, SchemaMetadata,
+    AllocationDeclaration, AllocationPolicy, BootstrapAdmission, MemoryManagerSlot, MemoryRequest,
+    PolicyIdentity, PolicyIdentityError, RuntimeBootstrapPolicy, SchemaMetadata,
     SealedDeclarationSnapshot, StableKey, StaticMemoryDeclaration,
 };
 use ic_stable_structures::VectorMemory;
@@ -18,17 +18,13 @@ impl AllocationPolicy for HostPolicy {
     fn validate_key(&self, _: &StableKey) -> Result<(), Self::Error> {
         Ok(())
     }
-    fn validate_slot(
-        &self,
-        _: &StableKey,
-        _: &AllocationSlotDescriptor,
-    ) -> Result<(), Self::Error> {
+    fn validate_slot(&self, _: &StableKey, _: &MemoryManagerSlot) -> Result<(), Self::Error> {
         Ok(())
     }
     fn validate_reserved_slot(
         &self,
         _: &StableKey,
-        _: &AllocationSlotDescriptor,
+        _: &MemoryManagerSlot,
     ) -> Result<(), Self::Error> {
         Ok(())
     }

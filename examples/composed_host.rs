@@ -2,8 +2,8 @@
 //! Its public-API regressions also run in the ordinary `cargo test` suite.
 use ic_memory::ic_stable_structures::{Memory, VectorMemory};
 use ic_memory::{
-    AllocationPolicy, AllocationSlotDescriptor, BootstrapAdmission, MemoryManagerConfig,
-    MemoryRequest, MemoryRuntime, PolicyIdentity, PolicyIdentityError, RuntimeBootstrapError,
+    AllocationPolicy, BootstrapAdmission, MemoryManagerConfig, MemoryManagerSlot, MemoryRequest,
+    MemoryRuntime, PolicyIdentity, PolicyIdentityError, RuntimeBootstrapError,
     RuntimeBootstrapPolicy, RuntimeOpenError, SchemaMetadata, SealedDeclarationSnapshot, StableKey,
 };
 use std::cell::Cell;
@@ -42,18 +42,14 @@ impl AllocationPolicy for HostPolicy {
         Ok(())
     }
 
-    fn validate_slot(
-        &self,
-        _: &StableKey,
-        _: &AllocationSlotDescriptor,
-    ) -> Result<(), Self::Error> {
+    fn validate_slot(&self, _: &StableKey, _: &MemoryManagerSlot) -> Result<(), Self::Error> {
         Ok(())
     }
 
     fn validate_reserved_slot(
         &self,
         _: &StableKey,
-        _: &AllocationSlotDescriptor,
+        _: &MemoryManagerSlot,
     ) -> Result<(), Self::Error> {
         Ok(())
     }
