@@ -1757,43 +1757,60 @@ mod tests {
 
     #[test]
     fn validate_integrity_rejects_schema_history_after_last_observation() {
-        let mut ledger = committed_ledger(3);
-        let mut record = active_record("app.users.v1", 100);
-        record.last_seen_generation = 2;
-        record.schema_history.push(
-            SchemaMetadataRecord::new(3, SchemaMetadata::new(Some(2)).expect("schema"))
+        for generation in [3, 4] {
+            let mut ledger = committed_ledger(3);
+            let mut record = active_record("app.users.v1", 100);
+            record.last_seen_generation = 2;
+            record.schema_history.push(
+                SchemaMetadataRecord::new(
+                    generation,
+                    SchemaMetadata::new(Some(2)).expect("schema"),
+                )
                 .expect("schema record"),
-        );
-        *ledger.allocation_history.records_mut() = vec![record];
+            );
+            *ledger.allocation_history.records_mut() = vec![record];
 
-        let err = ledger
-            .validate_committed_integrity()
-            .expect_err("schema metadata cannot postdate the last observation");
+            let err = ledger
+                .validate_committed_integrity()
+                .expect_err("schema metadata cannot postdate the last observation");
 
-        assert!(matches!(
-            err,
-            LedgerIntegrityError::SchemaHistoryAfterLastSeen { .. }
-        ));
+            assert!(matches!(
+                (generation, err),
+                (
+                    3,
+                    LedgerIntegrityError::SchemaHistoryAfterLastSeen {
+                        generation: 3,
+                        last_seen_generation: 2,
+                        ..
+                    }
+                ) | (
+                    4,
+                    LedgerIntegrityError::SchemaHistoryOutOfBounds { generation: 4, .. }
+                )
+            ));
+        }
     }
 
     #[test]
     fn validate_integrity_rejects_non_increasing_schema_history() {
-        let mut ledger = ledger();
-        let mut record = active_record("app.users.v1", 100);
-        record.schema_history.push(SchemaMetadataRecord {
-            generation: 1,
-            schema: SchemaMetadata::default(),
-        });
-        *ledger.allocation_history.records_mut() = vec![record];
+        for generation in [0, 1] {
+            let mut ledger = ledger();
+            let mut record = active_record("app.users.v1", 100);
+            record.schema_history.push(SchemaMetadataRecord {
+                generation,
+                schema: SchemaMetadata::default(),
+            });
+            *ledger.allocation_history.records_mut() = vec![record];
 
-        let err = ledger
-            .validate_integrity()
-            .expect_err("non-increasing schema history");
+            let err = ledger
+                .validate_integrity()
+                .expect_err("non-increasing schema history");
 
-        assert!(matches!(
-            err,
-            LedgerIntegrityError::NonIncreasingSchemaHistory { .. }
-        ));
+            assert!(matches!(
+                err,
+                LedgerIntegrityError::NonIncreasingSchemaHistory { .. }
+            ));
+        }
     }
 
     #[test]

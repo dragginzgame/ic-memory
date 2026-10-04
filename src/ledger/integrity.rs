@@ -242,7 +242,8 @@ fn validate_schema_history_integrity(
                 stable_key: record.stable_key.clone(),
             });
         }
-        if schema.generation < record.first_generation || schema.generation > current_generation {
+        // The matching first entry and strict ordering establish the lower bound.
+        if schema.generation > current_generation {
             return Err(LedgerIntegrityError::SchemaHistoryOutOfBounds {
                 stable_key: record.stable_key.clone(),
                 generation: schema.generation,

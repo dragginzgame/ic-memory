@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.24.11
+
+- Keep doctor recovery results and physical diagnostics together until report
+  construction. Remove independent optional recovery state and require concrete
+  recovery evidence in the private ledger-export helper.
+- Preserve empty, readable and corrupt storage classifications, read-only
+  diagnostics, public report fields and durable formats. Extend existing tests
+  to check evidence availability and agreement with the normal ledger export.
+- Remove schema history's redundant lower-generation comparison. Its matching
+  first entry and strict ordering already establish that bound. Preserve future
+  generation, last-observation and malformed-history error precedence.
+- Validation: focused doctor, ledger-integrity and registry regressions, strict
+  all-target Clippy, formatting and whitespace checks pass. All five raw Wasm
+  probes build within their unchanged size budgets. The complete Rust suite,
+  consumer builds against this candidate and live deployments were not rerun.
+
 ## 0.24.10
 
 - Disable unused constructor-priority support. Constructors still register hooks;

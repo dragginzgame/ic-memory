@@ -711,6 +711,8 @@ fn doctor_and_diagnostics_report_the_same_runtime_lifecycle() {
     let export = runtime.diagnostic_export().expect("diagnostic export");
     assert!(doctor.bootstrapped);
     assert_eq!(doctor.ledger.as_ref().expect("doctor ledger"), &export);
+    assert!(doctor.commit_recovery.is_some());
+    assert_eq!(doctor.commit_recovery, export.commit_recovery);
     assert_eq!(
         export
             .records
@@ -848,6 +850,8 @@ fn doctor_preserves_distinct_record_decode_causes_without_writes() {
         let before = backing.borrow().clone();
 
         let report = runtime.doctor_report(&declarations, &GenericRangePolicy);
+        assert!(report.commit_recovery.is_none());
+        assert!(report.ledger.is_none());
         let crate::DiagnosticStableCellStatus::Corrupt { failure } = report.stable_cell.status
         else {
             panic!("malformed record must be reported as corrupt");
@@ -881,6 +885,7 @@ fn doctor_uses_genesis_only_for_empty_commit_storage() {
             }
         );
         assert!(matches!(report.validation, DiagnosticCheck::Passed));
+        assert!(report.commit_recovery.is_some());
         assert!(report.ledger.is_none());
         assert_eq!(*backing.borrow(), before);
     }
@@ -908,6 +913,7 @@ fn doctor_uses_genesis_only_for_empty_commit_storage() {
     ));
     assert!(report.ledger.is_none());
     assert!(!runtime.is_bootstrapped());
+    assert!(report.commit_recovery.is_some());
     assert_eq!(*backing.borrow(), before);
 }
 

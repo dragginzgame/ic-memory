@@ -23,7 +23,7 @@ impl<M: Memory> MemoryRuntime<M> {
         let record = self.ledger_record_from_memory()?;
         let (recovered, commit_recovery) = record.store().recover_with_diagnostic();
         let recovered = recovered?;
-        Ok(self.recovered_diagnostic_export(&recovered, Some(commit_recovery)))
+        Ok(self.recovered_diagnostic_export(&recovered, commit_recovery))
     }
 
     /// Diagnose protected commit recovery from this runtime's ledger memory.
@@ -53,16 +53,16 @@ impl<M: Memory> MemoryRuntime<M> {
         P::Error: Display,
     {
         let stable_cell = self.stable_cell_diagnostic();
-        let (recovered, commit_recovery) = stable_cell
+        let recovery = stable_cell
             .record
             .as_ref()
-            .map(|record| record.store().recover_with_diagnostic())
-            .map_or((None, None), |(recovered, diagnostic)| {
-                (Some(recovered), Some(diagnostic))
-            });
-        let recovered_for_export = recovered.as_ref().and_then(|result| result.as_ref().ok());
-        let ledger = recovered_for_export
-            .map(|recovered| self.recovered_diagnostic_export(recovered, commit_recovery));
+            .map(|record| record.store().recover_with_diagnostic());
+        let ledger = recovery.as_ref().and_then(|(recovered, diagnostic)| {
+            recovered
+                .as_ref()
+                .ok()
+                .map(|recovered| self.recovered_diagnostic_export(recovered, *diagnostic))
+        });
         let diagnostic_declarations = declarations
             .registered_declarations()
             .iter()
@@ -93,7 +93,11 @@ impl<M: Memory> MemoryRuntime<M> {
             established_bootstrap_binding.as_ref(),
         );
         let validation = match &tested_policy_identity {
-            Ok(_) => diagnostic_validation(declarations, policy, recovered.as_ref()),
+            Ok(_) => diagnostic_validation(
+                declarations,
+                policy,
+                recovery.as_ref().map(|(recovered, _)| recovered),
+            ),
             Err(failure) => DiagnosticCheck::not_run(failure.code, failure.message.clone()),
         };
 
@@ -105,7 +109,7 @@ impl<M: Memory> MemoryRuntime<M> {
             bootstrap_binding,
             ledger_anchor: ledger_anchor_descriptor(),
             stable_cell: stable_cell.diagnostic,
-            commit_recovery,
+            commit_recovery: recovery.as_ref().map(|(_, diagnostic)| *diagnostic),
             ledger,
             registered_declarations: diagnostic_declarations,
             range_authority,
@@ -116,11 +120,11 @@ impl<M: Memory> MemoryRuntime<M> {
     fn recovered_diagnostic_export(
         &self,
         recovered: &RecoveredLedger,
-        commit_recovery: Option<CommitStoreDiagnostic>,
+        commit_recovery: CommitStoreDiagnostic,
     ) -> DiagnosticExport {
         let mut export =
             DiagnosticExport::from_ledger(recovered.ledger(), ledger_anchor_descriptor());
-        export.commit_recovery = commit_recovery;
+        export.commit_recovery = Some(commit_recovery);
         for record in &mut export.records {
             let id = record
                 .allocation
