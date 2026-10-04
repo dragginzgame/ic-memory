@@ -123,10 +123,6 @@ mod test_cbor {
         Value::serialized(&value)
     }
 
-    pub fn map_insert(map: &mut Vec<(Value, Value)>, key: Value, value: Value) {
-        map.push((key, value));
-    }
-
     pub fn hex_fixture(contents: &str) -> Vec<u8> {
         let hex = contents
             .chars()

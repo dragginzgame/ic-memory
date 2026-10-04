@@ -343,17 +343,13 @@ mod tests {
     fn stable_cell_ledger_record_rejects_unknown_top_level_fields() {
         use crate::test_cbor::Value;
 
-        let mut map = Vec::new();
-        crate::test_cbor::map_insert(
-            &mut map,
-            Value::Text("store".to_string()),
-            crate::test_cbor::to_value(LedgerCommitStore::default()).expect("store value"),
-        );
-        crate::test_cbor::map_insert(
-            &mut map,
-            Value::Text("future_field".to_string()),
-            Value::Bool(true),
-        );
+        let map = vec![
+            (
+                Value::Text("store".to_string()),
+                crate::test_cbor::to_value(LedgerCommitStore::default()).expect("store value"),
+            ),
+            (Value::Text("future_field".to_string()), Value::Bool(true)),
+        ];
         let bytes = crate::test_cbor::to_vec(&Value::Map(map)).expect("unknown-field stable cell");
 
         let err = decode_stable_cell_ledger_record(&bytes)
@@ -367,24 +363,9 @@ mod tests {
         use crate::test_cbor::Value;
 
         for (missing, present) in [("slot0", "slot1"), ("slot1", "slot0")] {
-            let mut physical = Vec::new();
-            crate::test_cbor::map_insert(
-                &mut physical,
-                Value::Text(present.to_string()),
-                Value::Null,
-            );
-            let mut store = Vec::new();
-            crate::test_cbor::map_insert(
-                &mut store,
-                Value::Text("physical".to_string()),
-                Value::Map(physical),
-            );
-            let mut record = Vec::new();
-            crate::test_cbor::map_insert(
-                &mut record,
-                Value::Text("store".to_string()),
-                Value::Map(store),
-            );
+            let physical = vec![(Value::Text(present.to_string()), Value::Null)];
+            let store = vec![(Value::Text("physical".to_string()), Value::Map(physical))];
+            let record = vec![(Value::Text("store".to_string()), Value::Map(store))];
             let bytes = crate::test_cbor::to_vec(&Value::Map(record)).expect("record bytes");
 
             let err = decode_stable_cell_ledger_record(&bytes)

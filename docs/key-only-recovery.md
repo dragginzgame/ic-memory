@@ -133,7 +133,7 @@ inputs. These did not establish a small history or pre-allocation bound.
 | Resource | Current ceiling | Earliest enforcement |
 | --- | ---: | --- |
 | Stable-cell ledger value | 33,558,528 bytes (32 MiB + 4 KiB) | Header check before payload allocation/read; direct record decode before CBOR |
-| Logical ledger CBOR | 16,777,216 bytes (16 MiB) | Envelope decode before payload copy/CBOR; writer before envelope creation or commit mutation |
+| Logical ledger CBOR | 16,777,216 bytes (16 MiB) | Envelope decode before payload copy/CBOR; direct ledger writer after serialization into the envelope buffer, before header finalization or commit mutation |
 | CBOR container depth | 32 nested edges | Allocation-free syntax walk before serde |
 | Advertised CBOR text length | Remaining input bytes | Syntax walk before serde allocation |
 | Opaque generation byte string | 16,777,240 bytes (16 MiB + 24-byte envelope) and remaining input bytes | Allocation-free syntax walk before serde; writer checks the same limit |

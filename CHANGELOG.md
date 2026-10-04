@@ -1,5 +1,33 @@
 # Changelog
 
+## 0.24.4
+
+- Consolidate runtime governance filtering into one committed-capability
+  operation. Remove the arbitrary prefix parameter and runtime forwarding
+  helper; preserve shared-capability isolation and publication only after
+  persistence confirmation.
+- Remove the test-only CBOR map insertion wrapper. Build fixture maps directly
+  with tuples and vector literals; retain unknown-field, missing-field and
+  retirement-state rejection coverage.
+- Remove the whitepaper, Lean model, mdBook/Nix/Lake scaffolding, all four
+  associated maintainer targets, obsolete ignore rules and documentation links.
+  Delete the superseded 0.6 protocol proposal. Current architecture and safety
+  guidance remain in `ADVANCED.md` and `SAFETY.md`.
+- Correct runtime ownership documentation for shared backing and lazy TLS
+  construction with cached failures. Update the direct ledger writer's bound
+  enforcement description. Record the published 0.24.3 IcyDB qualification:
+  27 focused tests passed, including installed lifecycle and logical-memory
+  recovery. That receipt covers 0.24.3, not this candidate; Canic qualification
+  remains pending.
+- Public APIs, durable and diagnostic formats, and declaration fingerprints are
+  unchanged. No Canic source patch is required for these local changes.
+- Validation: 270 library tests, three selected public runtime/configuration
+  integration tests and two composed-host regressions pass. Strict all-target
+  Clippy, formatting and whitespace checks, six Wasm budget-tooling regression
+  tests, and all five raw Wasm size gates pass. Package contents were checked
+  for removal of the whitepaper and Lean files; complete package verification,
+  consumer builds and live deployments were not rerun for this candidate.
+
 ## 0.24.3
 
 - Encode ledger CBOR directly into the final payload-envelope buffer. Remove

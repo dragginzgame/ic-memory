@@ -28,11 +28,3 @@ tarpaulin-report.html
 # Rust/package scratch files
 *.rs.bk
 *.rlib
-
-# Nix build symlinks
-result
-result-*
-
-# Whitepaper local build output
-whitepaper/book/
-whitepaper/lean/.lake/

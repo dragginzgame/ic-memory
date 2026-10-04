@@ -132,11 +132,13 @@ impl CommittedAllocations {
         self.validated.slot_for(key)
     }
 
-    pub(crate) fn without_stable_key_prefix(mut self, prefix: &str) -> Self {
+    // Runtime publication exposes application allocations only. Manual commit
+    // owners retain the complete capability returned by persistence confirmation.
+    pub(crate) fn into_application_allocations(mut self) -> Self {
         let mut state = Arc::unwrap_or_clone(self.validated.inner);
         state
             .declarations
-            .retain(|declaration| !declaration.stable_key.as_str().starts_with(prefix));
+            .retain(|declaration| !crate::is_ic_memory_stable_key(declaration.stable_key.as_str()));
         self.validated.inner = Arc::new(state);
         self
     }
@@ -162,9 +164,7 @@ mod tests {
             Some("host".to_string()),
         );
         let committed = validated.clone().confirm_persisted(2);
-        let filtered = committed
-            .clone()
-            .without_stable_key_prefix(crate::IC_MEMORY_STABLE_KEY_PREFIX);
+        let filtered = committed.clone().into_application_allocations();
 
         assert_eq!(validated.declarations().len(), 2);
         assert_eq!(committed.declarations().len(), 2);

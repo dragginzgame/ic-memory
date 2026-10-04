@@ -276,7 +276,7 @@ impl<M: Memory> MemoryRuntime<M> {
             )
             .map_err(runtime_bootstrap_error_from_bootstrap)?;
         self.persist_ledger_record(record)?;
-        let committed = external_runtime_allocations(commit.confirm_persisted());
+        let committed = commit.confirm_persisted().into_application_allocations();
         self.lifecycle = RuntimeLifecycle::Bootstrapped {
             committed_allocations: committed,
             binding: RuntimeBootstrapBinding {
@@ -417,10 +417,6 @@ fn ensure_ledger_cell_capacity<M: Memory, P>(
     let grow_by = (required_bytes - available_bytes).div_ceil(crate::WASM_PAGE_SIZE_BYTES);
     memory.grow(grow_by)?;
     Ok(())
-}
-
-fn external_runtime_allocations(committed: CommittedAllocations) -> CommittedAllocations {
-    committed.without_stable_key_prefix(crate::IC_MEMORY_STABLE_KEY_PREFIX)
 }
 
 const fn check_bucket_size(

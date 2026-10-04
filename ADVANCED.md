@@ -53,9 +53,10 @@ inside `Cell::init`.
 ## Runtime Ownership
 
 `MemoryRuntime<M>` is the canonical owner for one backing memory instance. It
-owns the `MemoryManager<M>`, allocation-ledger cell, bootstrap lifecycle,
+owns the `MemoryManager<Rc<M>>`, allocation-ledger cell, bootstrap lifecycle,
 committed allocation capability, memory opens, recovery diagnostics, and live
-memory-size inspection.
+memory-size inspection. The runtime and its opened handles share the backing
+memory and growth accounting; the manager owns bucket metadata.
 
 Linked crates compose declarations into one immutable
 `SealedDeclarationSnapshot`. That process-global snapshot is declaration
@@ -79,13 +80,16 @@ If multiple layers need separate allocation domains, they should use distinct
 backing memories and runtime objects with an explicit bootstrap owner for each
 domain.
 
-The default convenience layer is one
-`thread_local! RefCell<MemoryRuntime<DefaultMemoryImpl>>`. Native threads get
-independent default memory instances and therefore independent runtime
-lifecycle and authority. IC Wasm execution is single-threaded, so that TLS
-runtime naturally has canister-instance lifetime. Default entry points use
-fallible TLS borrowing and return a typed reentrancy error instead of panicking
-or consulting another runtime.
+The default convenience layer lazily constructs one runtime per thread. Its TLS
+storage distinguishes an absent runtime, a successfully constructed runtime,
+and a cached construction failure. Bootstrap can construct the runtime;
+observations and memory opens never construct an absent runtime or choose its
+bucket configuration. A construction failure remains cached for that thread.
+Native threads get independent default memory instances and therefore
+independent runtime lifecycle and authority. IC Wasm execution is single-threaded,
+so that TLS runtime naturally has canister-instance lifetime. Default entry
+points use fallible TLS borrowing and return a typed reentrancy error instead of
+panicking or consulting another runtime.
 
 Bootstrap is once per runtime object, not once per process. A second call on the
 same successfully bootstrapped runtime is idempotent and does not advance the

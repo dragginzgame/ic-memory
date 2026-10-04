@@ -128,3 +128,20 @@ a matched performance comparison. Subsequent IcyDB query edits are outside
 these passing receipts; both dependency lockfiles stayed unchanged. The existing
 issue closures and historical release evidence remain unchanged; no GitHub
 issue or comment was updated.
+
+## Released 0.24.3 IcyDB recheck
+
+The [2026-10-04 qualification receipt](consumer-qualification-0.24.3.md) records
+27 passing tests against published ic-memory **0.24.3** on an unchanged clean
+IcyDB checkout: 16 native admission/default/participant tests, four public
+bootstrap/adoption error tests, one typed-cause projection test, and six installed
+lifecycle/logical-memory tests. The worst lifecycle phase is **4,454,129
+instructions** against the unchanged 12,750,000 ceiling; empty and populated
+stable extents remain 23,134,208 bytes. These measurements do not establish a
+release-to-release performance improvement.
+
+Canic was neither inspected nor modified in this recheck. Its deployment
+problems remain outside the passing IcyDB receipt, and its current selected
+graph and lifecycle integration still require qualification once settled.
+Historical issue dispositions and release evidence remain unchanged; no GitHub
+issue or comment was updated.

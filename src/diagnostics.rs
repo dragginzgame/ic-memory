@@ -467,11 +467,7 @@ mod tests {
         else {
             panic!("diagnostic export encodes as a map");
         };
-        crate::test_cbor::map_insert(
-            &mut map,
-            Value::Text("future_field".to_string()),
-            Value::Bool(true),
-        );
+        map.push((Value::Text("future_field".to_string()), Value::Bool(true)));
         let bytes = crate::test_cbor::to_vec(&Value::Map(map)).expect("diagnostic bytes");
 
         let err = crate::test_cbor::from_slice::<DiagnosticExport>(&bytes)

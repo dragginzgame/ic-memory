@@ -589,10 +589,7 @@ only then open stable memory
 Framework authors and policy adapters should read
 [ADVANCED.md](https://github.com/dragginzgame/ic-memory/blob/main/ADVANCED.md).
 The non-negotiable invariants are recorded in
-[SAFETY.md](https://github.com/dragginzgame/ic-memory/blob/main/SAFETY.md). The
-protocol whitepaper lives in
-[whitepaper/src/SUMMARY.md](https://github.com/dragginzgame/ic-memory/blob/main/whitepaper/src/SUMMARY.md)
-and builds as an mdBook with `make maintainer-build`.
+[SAFETY.md](https://github.com/dragginzgame/ic-memory/blob/main/SAFETY.md).
 
 `ic-memory` is early infrastructure extracted from Canic. It owns allocation
 governance, not schema migration, endpoint routing, authorization, or data

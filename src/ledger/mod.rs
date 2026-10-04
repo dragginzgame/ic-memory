@@ -303,11 +303,7 @@ mod tests {
         let records = value_array_mut(map_field_mut(value_map_mut(history), "records"));
         let state = map_field_mut(value_map_mut(&mut records[0]), "state");
         let retired_state = map_field_mut(value_map_mut(state), "Retired");
-        crate::test_cbor::map_insert(
-            value_map_mut(retired_state),
-            "unexpected".into(),
-            true.into(),
-        );
+        value_map_mut(retired_state).push(("unexpected".into(), true.into()));
         let bytes = crate::test_cbor::to_vec(&value).unwrap();
         let payload = LedgerPayloadEnvelope::current(bytes).try_encode().unwrap();
         let mut physical = DualCommitStore::default();
@@ -416,22 +412,17 @@ mod tests {
     fn cbor_ledger_codec_rejects_unknown_top_level_fields() {
         use crate::test_cbor::Value;
 
-        let mut map = Vec::new();
-        crate::test_cbor::map_insert(
-            &mut map,
-            Value::Text("current_generation".to_string()),
-            Value::Integer(0.into()),
-        );
-        crate::test_cbor::map_insert(
-            &mut map,
-            Value::Text("allocation_history".to_string()),
-            crate::test_cbor::to_value(AllocationHistory::default()).expect("history value"),
-        );
-        crate::test_cbor::map_insert(
-            &mut map,
-            Value::Text("future_field".to_string()),
-            Value::Bool(true),
-        );
+        let map = vec![
+            (
+                Value::Text("current_generation".to_string()),
+                Value::Integer(0.into()),
+            ),
+            (
+                Value::Text("allocation_history".to_string()),
+                crate::test_cbor::to_value(AllocationHistory::default()).expect("history value"),
+            ),
+            (Value::Text("future_field".to_string()), Value::Bool(true)),
+        ];
         let bytes = crate::test_cbor::to_vec(&Value::Map(map)).expect("unknown-field ledger");
 
         let err = decode_ledger(&bytes).expect_err("unknown ledger field must fail closed");
@@ -443,11 +434,10 @@ mod tests {
     fn cbor_ledger_codec_rejects_unknown_nested_history_fields() {
         let mut value = active_ledger_value();
         let history = map_field_mut(value_map_mut(&mut value), "allocation_history");
-        crate::test_cbor::map_insert(
-            value_map_mut(history),
+        value_map_mut(history).push((
             crate::test_cbor::Value::Text("future_history_field".to_string()),
             crate::test_cbor::Value::Bool(true),
-        );
+        ));
 
         let err = decode_mutated_ledger(value);
 
@@ -462,11 +452,10 @@ mod tests {
         let record = value_array_mut(records)
             .first_mut()
             .expect("allocation record");
-        crate::test_cbor::map_insert(
-            value_map_mut(record),
+        value_map_mut(record).push((
             crate::test_cbor::Value::Text("future_record_field".to_string()),
             crate::test_cbor::Value::Bool(true),
-        );
+        ));
 
         let err = decode_mutated_ledger(value);
 
@@ -482,11 +471,10 @@ mod tests {
             .first_mut()
             .expect("allocation record");
         let slot = map_field_mut(value_map_mut(record), "slot");
-        crate::test_cbor::map_insert(
-            value_map_mut(slot),
+        value_map_mut(slot).push((
             crate::test_cbor::Value::Text("future_slot_field".to_string()),
             crate::test_cbor::Value::Bool(true),
-        );
+        ));
 
         let err = decode_mutated_ledger(value);
 
@@ -501,11 +489,10 @@ mod tests {
         let generation = value_array_mut(generations)
             .first_mut()
             .expect("generation record");
-        crate::test_cbor::map_insert(
-            value_map_mut(generation),
+        value_map_mut(generation).push((
             crate::test_cbor::Value::Text("future_generation_field".to_string()),
             crate::test_cbor::Value::Bool(true),
-        );
+        ));
 
         let err = decode_mutated_ledger(value);
 
@@ -553,17 +540,13 @@ mod tests {
     fn ledger_commit_store_rejects_unknown_top_level_fields() {
         use crate::test_cbor::Value;
 
-        let mut map = Vec::new();
-        crate::test_cbor::map_insert(
-            &mut map,
-            Value::Text("physical".to_string()),
-            crate::test_cbor::to_value(DualCommitStore::default()).expect("physical value"),
-        );
-        crate::test_cbor::map_insert(
-            &mut map,
-            Value::Text("future_field".to_string()),
-            Value::Bool(true),
-        );
+        let map = vec![
+            (
+                Value::Text("physical".to_string()),
+                crate::test_cbor::to_value(DualCommitStore::default()).expect("physical value"),
+            ),
+            (Value::Text("future_field".to_string()), Value::Bool(true)),
+        ];
         let bytes = crate::test_cbor::to_vec(&Value::Map(map)).expect("unknown-field store");
 
         let err = crate::test_cbor::from_slice::<LedgerCommitStore>(&bytes)
