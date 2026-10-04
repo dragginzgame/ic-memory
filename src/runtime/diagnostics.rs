@@ -134,7 +134,7 @@ impl<M: Memory> MemoryRuntime<M> {
         for record in &mut export.records {
             let id = record.allocation.slot().id();
             record.memory_size = Some(DiagnosticMemorySize::from_wasm_pages(
-                self.memory(id).size(),
+                self.memory_size_pages(id),
             ));
         }
         export

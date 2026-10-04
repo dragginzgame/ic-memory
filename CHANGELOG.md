@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.25.3
+
+- Branch bootstrap directly on the authoritative runtime lifecycle. Remove
+  the derived `already_bootstrapped` flag and its separate conditional while
+  preserving policy-identity validation, effect-free warm binding checks and
+  publication only after persistence succeeds.
+- Read virtual page counts directly from the owned manager for allocation
+  accounting and ledger diagnostics. Size-only observations no longer construct
+  `RuntimeMemory` handles or clone their shared growth owner. Keep persisted
+  layout validation, live manager comparisons and guarded growth on actual
+  memory handles.
+- Public APIs, durable formats, diagnostic output and declaration fingerprints
+  are unchanged. Consumers need no source adoption for these internal cleanups.
+- Validation: 52 focused runtime, allocation accounting, default-runtime,
+  admission, growth, public-runtime and composed-host tests, and strict
+  library/test Clippy pass. Rust 1.88.0 library compilation, Wasm library
+  compilation, warning-denied Rustdoc, formatting, whitespace checks and all
+  five raw Wasm size gates pass.
+
 ## 0.25.2
 
 - Reuse the owned range-authority input vector when validating and ordering

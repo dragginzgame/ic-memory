@@ -288,7 +288,7 @@ impl<M: Memory> MemoryRuntime<M> {
         let mut total_pages = 0;
         for id in 0..255_u8 {
             let index = usize::from(id);
-            if self.memory(id).size() != measured.pages[index] {
+            if self.memory_size_pages(id) != measured.pages[index] {
                 return Err(super::RuntimeConstructionError::Layout(
                     MemoryManagerLayoutError::RuntimeMismatch,
                 )

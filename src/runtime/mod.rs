@@ -222,15 +222,13 @@ impl<M: Memory> MemoryRuntime<M> {
         policy: &P,
     ) -> Result<&CommittedAllocations, RuntimeBootstrapError<P::Error>> {
         let policy_identity = policy.runtime_bootstrap_identity()?;
-        let already_bootstrapped = match &self.lifecycle {
-            RuntimeLifecycle::Unbootstrapped => false,
+        match &self.lifecycle {
+            RuntimeLifecycle::Unbootstrapped => {
+                self.bootstrap_unbootstrapped(declarations, policy, policy_identity)?;
+            }
             RuntimeLifecycle::Bootstrapped { binding, .. } => {
                 binding.validate(declarations, &policy_identity)?;
-                true
             }
-        };
-        if !already_bootstrapped {
-            self.bootstrap_unbootstrapped(declarations, policy, policy_identity)?;
         }
         match &self.lifecycle {
             RuntimeLifecycle::Bootstrapped {
@@ -348,6 +346,11 @@ impl<M: Memory> MemoryRuntime<M> {
             memory: self.memory_manager.get(MemoryId::new(id)),
             growth: Rc::clone(&self.growth),
         }
+    }
+
+    // Size-only observations need no handle carrying runtime growth authority.
+    fn memory_size_pages(&self, id: u8) -> u64 {
+        self.memory_manager.get(MemoryId::new(id)).size()
     }
 
     fn ledger_record_from_memory(&self) -> Result<StableCellLedgerRecord, StableCellLedgerError> {
