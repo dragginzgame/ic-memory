@@ -83,6 +83,10 @@ ledger has been recovered, checked, and durably updated.
 
 ## What it protects
 
+<p align="center">
+  <img src="https://raw.githubusercontent.com/dragginzgame/ic-memory/main/images/ic-memory-scope-boundary.svg" alt="ic-memory protects store-to-location mappings, prevents slot reuse, validates upgrade layouts and component ownership, and checks layouts before opening. Applications still own backups, schema migrations, stored-data semantics, authorization, and disaster recovery." width="800">
+</p>
+
 | `ic-memory` protects | The application or framework still owns |
 | --- | --- |
 | A named store staying at the same location | Backups and disaster recovery |
@@ -215,19 +219,9 @@ Every linked crate contributes declarations to one immutable registry. The
 application grants each component only its intended range and bootstraps the
 combined layout once.
 
-```text
-application bootstrap owner
-|-- library A: storage 100-109
-|-- library B: storage 110-119
-`-- application: storage 120-129
-
-one combined layout check -> one committed allocation view -> stores may open
-```
-
-<!--
-Diagram insertion point: replace the tree above with a composed-ownership
-diagram. Suggested asset name: images/composed-ownership.svg
--->
+<p align="center">
+  <img src="https://raw.githubusercontent.com/dragginzgame/ic-memory/main/images/ic-memory-library-ownership.svg" alt="Library A owns storage locations 100 through 109 and Library B owns locations 110 through 119 inside one application. Both contribute declarations to one combined layout check." width="800">
+</p>
 
 Libraries adopting an already bootstrapped host can verify that all of their
 requirements were included without rerunning bootstrap or replacing the host's

@@ -1,7 +1,7 @@
 # CANIC-162: bounded physical allocation attribution
 
 Original qualification: 2026-09-10, prepared against 0.12.3.
-The API signatures and guidance were reviewed against ic-memory 0.24.10. The
+The API signatures and guidance were reviewed against ic-memory 0.24.11. The
 fixture measurements and original validation counts retain their 2026-09-10
 scope. A read-only sibling review on
 2026-10-03 confirms Canic selects 0.15.3, uses the detailed report and numeric

@@ -1,0 +1,43 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="730" viewBox="0 0 1200 730" role="img" aria-labelledby="title desc">
+  <title id="title">ic-memory scope: protections and application responsibilities</title>
+  <desc id="desc">ic-memory protects store-to-location mapping, prevention of slot reuse, upgrade layout validation, component storage ownership and validation before opening. The application still owns data backups, schema migrations, meaning and validity of stored data, user authorisation and disaster recovery. These columns are independent lists of responsibilities, not paired alternatives.</desc>
+  <rect width="1200" height="730" fill="#F7FAFD"/>
+  <g font-family="Inter, Arial, sans-serif" fill="#102B50">
+    <text x="56" y="57" font-size="14" font-weight="700" letter-spacing="2" fill="#53718F">IC MEMORY · SCOPE BOUNDARY</text>
+    <text x="56" y="107" font-size="34" font-weight="700">What ic-memory protects</text>
+    <text x="56" y="143" font-size="19" fill="#53718F">Storage-layout safety has a clear boundary.</text>
+
+    <rect x="56" y="182" width="1088" height="464" rx="18" fill="white" stroke="#D7E3EF" stroke-width="1.5"/>
+    <path d="M74 182H600V252H56V200Q56 182 74 182Z" fill="#DDF6FA"/>
+    <path d="M600 182H1126Q1144 182 1144 200V252H600Z" fill="#102B50"/>
+    <path d="M56 334H1144M56 412H1144M56 490H1144M56 568H1144" stroke="#E3EBF3" stroke-width="1.5"/>
+    <path d="M600 182V646" stroke="#D7E3EF" stroke-width="1.5"/>
+
+    <path d="M88 200L102 206V218C102 227 95 234 88 238C81 234 74 227 74 218V206Z" fill="#087C94"/>
+    <path d="M81 217L86 222L95 211" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+    <text x="118" y="226" font-size="21" font-weight="700" fill="#087C94">ic-memory protects</text>
+    <text x="626" y="226" font-size="21" font-weight="700" fill="white">The application still owns</text>
+
+    <g fill="#087C94">
+      <circle cx="88" cy="294" r="4"/>
+      <circle cx="88" cy="372" r="4"/>
+      <circle cx="88" cy="450" r="4"/>
+      <circle cx="88" cy="528" r="4"/>
+      <circle cx="88" cy="606" r="4"/>
+    </g>
+    <g font-size="21">
+      <text x="108" y="302">Store-to-location mapping</text>
+      <text x="108" y="380">Prevention of slot reuse</text>
+      <text x="108" y="458">Upgrade layout validation</text>
+      <text x="108" y="536">Component storage ownership</text>
+      <text x="108" y="614">Validation before opening</text>
+
+      <text x="626" y="302">Data backups</text>
+      <text x="626" y="380">Schema migrations</text>
+      <text x="626" y="458">Meaning and validity of stored data</text>
+      <text x="626" y="536">User authorisation</text>
+      <text x="626" y="614">Disaster recovery</text>
+    </g>
+    <text x="56" y="689" font-size="16" fill="#53718F">Layout validation supports application safety; it does not replace these responsibilities.</text>
+  </g>
+</svg>
