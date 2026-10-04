@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="https://raw.githubusercontent.com/dragginzgame/ic-memory/main/images/ic-memory-readme-header.svg" alt="" width="100%">
+</p>
+
 # ic-memory
 
 `ic-memory` is a safety system for an Internet Computer application's persistent
