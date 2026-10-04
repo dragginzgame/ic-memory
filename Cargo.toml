@@ -47,7 +47,8 @@ crate-type = ["cdylib"]
 
 [dependencies]
 ciborium = "0.2.2"
-ctor = "1.0"
+# Constructors register hooks; the registry owns their execution phases.
+ctor = { version = "1.0", default-features = false, features = ["std", "proc_macro"] }
 ic-stable-structures = "=0.7.2"
 serde = { version = "1.0", default-features = false, features = [
     "alloc",

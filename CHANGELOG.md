@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.24.10
+
+- Disable unused constructor-priority support. Constructors still register hooks;
+  the registry retains ownership of declaration and eager-initialization phases.
+  Keep the constructor attribute used by ic-memory and Canic, while removing
+  `link-section` from ic-memory's standalone dependency graph. No dependencies
+  were upgraded and no Canic source patch is required.
+- Public memory APIs, durable and diagnostic formats, and declaration
+  fingerprints are unchanged.
+- Validation: all 288 executed Rust tests pass, including current macro
+  registration, compile-fail boundaries and doctests. Strict all-target Clippy,
+  formatting, whitespace checks, Rust 1.88.0 all-target compilation, Wasm test
+  compilation and all five raw Wasm size gates pass.
+  Apple startup behavior was inspected in upstream source but not executed.
+  Consumer builds and live deployments were not rerun for this candidate.
+
 ## 0.24.9
 
 - Move historical selections' key, authority and schema into resolved
