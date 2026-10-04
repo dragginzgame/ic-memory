@@ -11,8 +11,8 @@ use crate::physical::{
 use serde::{Deserialize, Serialize};
 
 pub use claim::{
-    ClaimConflict, ClaimOutcome, ReservationClaimConflict, claim_conflict_record,
-    validate_declaration_claim, validate_reservation_claim,
+    ClaimConflict, ClaimOutcome, ReservationClaimConflict, validate_declaration_claim,
+    validate_reservation_claim,
 };
 pub use error::{
     AllocationReservationError, AllocationRetirementError, AllocationStageError, LedgerCommitError,

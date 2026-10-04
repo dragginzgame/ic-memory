@@ -19,10 +19,13 @@ use serde::{Deserialize, Serialize};
 /// [`AllocationLedger::new_committed`] when the value should also satisfy the
 /// strict committed-generation chain required by recovery and commit.
 ///
-/// Staging APIs clone this DTO before applying a logical generation. The ledger
-/// is expected to contain allocation metadata only, bounded by the number of
+/// Public staging APIs clone this DTO before applying a logical generation;
+/// bootstrap transfers its owned ledger into the same staging implementation.
+/// The ledger contains allocation metadata only, bounded by the number of
 /// stable allocation identities and committed bootstrap generations, not user
 /// collection contents.
+///
+
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct AllocationLedger {
@@ -427,17 +430,6 @@ impl AllocationRecord {
     #[must_use]
     pub fn schema_history(&self) -> &[SchemaMetadataRecord] {
         &self.schema_history
-    }
-
-    pub(crate) fn observe_declaration(
-        &mut self,
-        generation: u64,
-        declaration: &AllocationDeclaration,
-    ) {
-        if self.state == AllocationState::Reserved {
-            self.state = AllocationState::Active;
-        }
-        self.observe_schema(generation, &declaration.schema);
     }
 
     pub(super) fn observe_schema(&mut self, generation: u64, schema: &SchemaMetadata) {

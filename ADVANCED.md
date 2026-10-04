@@ -53,10 +53,15 @@ inside `Cell::init`.
 ## Runtime Ownership
 
 `MemoryRuntime<M>` is the canonical owner for one backing memory instance. It
-owns the `MemoryManager<Rc<M>>`, allocation-ledger cell, bootstrap lifecycle,
+owns the `MemoryManager<Rc<M>>`, allocation-ledger persistence, bootstrap lifecycle,
 committed allocation capability, memory opens, recovery diagnostics, and live
 memory-size inspection. The runtime and its opened handles share the backing
 memory and growth accounting; the manager owns bucket metadata.
+
+The ledger cell belongs to a single bootstrap attempt. Every retry preflights
+and opens the persisted cell again before recovery and admission; no decoded
+cell value remains cached after success or failure. Diagnostics read persisted
+memory directly.
 
 Linked crates compose declarations into one immutable
 `SealedDeclarationSnapshot`. That process-global snapshot is declaration

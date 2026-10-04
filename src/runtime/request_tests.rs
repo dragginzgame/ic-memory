@@ -303,9 +303,7 @@ fn reservation_activation_and_retirement_use_existing_claim_rules() {
             None,
         )
         .unwrap();
-    runtime
-        .persist_ledger_record::<std::convert::Infallible>(record)
-        .unwrap();
+    let _cell = Cell::new(runtime.memory(MEMORY_MANAGER_LEDGER_ID), record);
     drop(runtime);
     let mut runtime = MemoryRuntime::new(backing.clone()).unwrap();
     assert!(matches!(
