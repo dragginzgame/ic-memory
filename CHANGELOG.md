@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.24.9
+
+- Move historical selections' key, authority and schema into resolved
+  declarations instead of copying fields from requests that are then discarded.
+  Original sealed requests retain borrowed copy semantics through the same
+  resolution loop. Placement order, current grant checks, schema preservation
+  and final snapshot validation remain unchanged.
+- Public APIs, durable and diagnostic formats, and declaration fingerprints are
+  unchanged. No Canic source patch is required for these local changes.
+- Validation: 272 library tests, six selected public runtime/configuration/macro
+  integration tests and two composed-host regressions pass. Strict all-target
+  Clippy, formatting, whitespace checks and all five raw Wasm size gates pass.
+  Consumer builds, complete package verification and live deployments were not
+  rerun for this candidate. Runtime performance improvements were not measured.
+
 ## 0.24.8
 
 - Reuse the recovered ledger during declaration, reservation and retirement

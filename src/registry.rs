@@ -350,7 +350,12 @@ impl SealedDeclarationSnapshot {
         // canonical. Admission selections are known-only: all their slots are
         // occupied above regardless of selection order. Final declarations are
         // canonicalized and checked together below.
-        for request in self.requests().iter().chain(&historical) {
+        for request in self
+            .requests()
+            .iter()
+            .map(Cow::Borrowed)
+            .chain(historical.into_iter().map(Cow::Owned))
+        {
             let historical = ledger
                 .allocation_history()
                 .records()
@@ -388,15 +393,17 @@ impl SealedDeclarationSnapshot {
             let slot = crate::AllocationSlotDescriptor::memory_manager(id).expect("usable id");
             occupied[usize::from(id)] = true;
             // Request construction checked authority/key/schema, and recovery
-            // checked historical schemas. Reuse those fields and the checked
-            // slot; the final snapshot still validates all declarations together.
+            // checked historical schemas. Copy borrowed source requests only;
+            // owned selections move their fields into the final declarations.
+            // The final snapshot still validates all declarations together.
+            let request = request.into_owned();
             declarations.push(StaticMemoryDeclaration {
-                authority: request.authority.clone(),
+                authority: request.authority,
                 declaration: AllocationDeclaration {
-                    stable_key: request.stable_key.clone(),
+                    stable_key: request.stable_key,
                     slot,
                     label: None,
-                    schema: request.schema.clone(),
+                    schema: request.schema,
                 },
             });
         }
