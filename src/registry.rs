@@ -330,21 +330,10 @@ impl SealedDeclarationSnapshot {
         let mut declarations = self.registered_declarations().to_vec();
         let mut occupied = [false; 255];
         for record in ledger.allocation_history().records() {
-            occupied[usize::from(
-                record
-                    .slot()
-                    .memory_manager_id()
-                    .expect("validated ledger slot"),
-            )] = true;
+            occupied[usize::from(record.slot().id())] = true;
         }
         for fixed in &declarations {
-            occupied[usize::from(
-                fixed
-                    .declaration()
-                    .slot()
-                    .memory_manager_id()
-                    .expect("checked slot"),
-            )] = true;
+            occupied[usize::from(fixed.declaration().slot().id())] = true;
         }
         // Only the original requests can allocate new slots and they are already
         // canonical. Admission selections are known-only: all their slots are
@@ -362,10 +351,7 @@ impl SealedDeclarationSnapshot {
                 .iter()
                 .find(|record| record.stable_key() == &request.stable_key);
             let id = if let Some(record) = historical {
-                let id = record
-                    .slot()
-                    .memory_manager_id()
-                    .expect("validated ledger slot");
+                let id = record.slot().id();
                 // Historical assignment is not current authorization. Fresh
                 // placement below obtains its authorization from the grant
                 // that supplies the ID.
@@ -390,7 +376,7 @@ impl SealedDeclarationSnapshot {
                         authority: request.authority.clone(),
                     })?
             };
-            let slot = crate::AllocationSlotDescriptor::memory_manager(id).expect("usable id");
+            let slot = crate::MemoryManagerSlot::new(id).expect("usable id");
             occupied[usize::from(id)] = true;
             // Request construction checked authority/key/schema, and recovery
             // checked historical schemas. Copy borrowed source requests only;
@@ -875,6 +861,21 @@ struct SealedDeclarationFingerprintMaterial<'a> {
     requests: &'a [MemoryRequest],
 }
 
+// Fingerprints need the canonical encoded bytes only as input to the hash;
+// keep no payload buffer after serialization.
+struct FingerprintWriter(u64);
+
+impl std::io::Write for FingerprintWriter {
+    fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+        self.0 = crate::hash::fnv64(self.0, bytes);
+        Ok(bytes.len())
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        Ok(())
+    }
+}
+
 fn sealed_declaration_fingerprint(
     allocation_snapshot: &DeclarationSnapshot,
     registered_declarations: &[StaticMemoryDeclaration],
@@ -888,14 +889,14 @@ fn sealed_declaration_fingerprint(
         effective_ranges,
         requests,
     };
-    let mut bytes = Vec::new();
-    // Concrete derived serializers and a Vec writer have no recoverable failures.
-    ciborium::into_writer(&material, &mut bytes)
-        .expect("sealed declaration fingerprint encodes into Vec");
+    let mut writer = FingerprintWriter(crate::hash::FNV_OFFSET);
+    // Concrete derived serializers and this hash writer have no recoverable failures.
+    ciborium::into_writer(&material, &mut writer)
+        .expect("sealed declaration fingerprint encodes into hash");
 
     SealedDeclarationFingerprint {
         algorithm_version: SEALED_DECLARATION_FINGERPRINT_VERSION,
-        value: crate::hash::fnv64(crate::hash::FNV_OFFSET, &bytes),
+        value: writer.0,
     }
 }
 

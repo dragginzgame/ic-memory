@@ -4,8 +4,6 @@
 
 # Recovered-metadata admission
 
-*Documentation reviewed against ic-memory 0.24.12.*
-
 Current admission contract, introduced in 0.14.1 for completed issue #5 and
 simplified in 0.14.2. The design review and measurements below retain their
 original 0.14.0/0.14.1 scope; current downstream acceptance is recorded in the
@@ -157,15 +155,16 @@ crash-atomic by this hook.
 
 Recovered metadata has at most 255 records; iteration borrows key/slot/state and
 latest-schema references without copying histories. At most 254 external
-requests, including the original set, can be completed. Each selection performs
-bounded scans of current declarations, recovered records and grants. Completion
-returns the selected requests directly; the resolver builds the final canonical
-snapshot once, without constructing an intermediate completed snapshot. With S selected
-keys, D current declarations, H historical records and G grants, selection work
-is O(S × (D + H + G)); all four counts are at most 255. The consumer's own
-computation is trusted code, not metered by ic-memory. No new persisted fields,
-formats, mode flags or accounting machinery are added. For an identical completed
-declaration set the durable metadata-byte delta is zero.
+requests, including the original set, can be completed. Membership uses the sealed
+fixed-key lookup and canonical request vector; only earlier selections need a
+scan. Selection also scans bounded recovered records and checks current grants.
+Completion returns the selected requests directly; the resolver builds the final
+canonical snapshot once, without constructing an intermediate completed snapshot.
+With S selected keys, D current declarations, H historical records and G grants,
+selection work is O(S × (D + H + G)); all four counts are at most 255. The
+consumer's own computation is trusted code, not metered by ic-memory. No new
+persisted fields, formats, mode flags or accounting machinery are added. For an
+identical completed declaration set the durable metadata-byte delta is zero.
 
 The original 0.14.1 matched Rust 1.97.1 raw, uncompressed Wasm builds use the
 committed `wasm-size` profile and target `wasm32-unknown-unknown`, comparing the

@@ -13,6 +13,10 @@ current output to catch accidental wire-format drift in reviewable text form.
 Intentional protocol hard cuts replace these fixtures in place. The repository
 contains exactly one current fixture set and one current decoder path.
 
+Slot encoding retains the current nested `slot` / `MemoryManagerId` shape.
+Construction and decoding both reject sentinel ID 255; valid slot bytes are
+unchanged by the 0.25 source API consolidation.
+
 Current logical payload envelopes carry the `ICMEMLED` family magic followed
 by the `ICMF` format marker, format version `1`, payload length, and CBOR
 ledger bytes.
@@ -35,4 +39,4 @@ Fixture groups:
   back to the prior valid generation.
 - `stable_cell_record.cbor.hex`: `StableCellLedgerRecord` value bytes stored
   inside the `ic-stable-structures::Cell` envelope.
-- `memory_manager_descriptor.cbor.hex`: `MemoryManager` slot descriptor bytes.
+- `memory_manager_slot.cbor.hex`: checked `MemoryManagerSlot` bytes.

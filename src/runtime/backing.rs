@@ -46,6 +46,8 @@ impl<M: Memory> RuntimeMemory<M> {
     /// preserves virtual extents and manager metadata and permits retry. The
     /// upstream [`Memory::grow`] adapter translates errors into its required
     /// `-1` sentinel; direct runtime callers receive [`super::RuntimeGrowError`].
+    /// A zero-page request returns the current extent without backing IO or
+    /// manager mutation, after checking for reentrant growth.
     ///
     /// # Panics
     ///
@@ -59,6 +61,9 @@ impl<M: Memory> RuntimeMemory<M> {
             .try_borrow_mut()
             .map_err(|_| RuntimeGrowError::ReentrantAccess)?;
         let old_pages = self.memory.size();
+        if pages == 0 {
+            return Ok(old_pages);
+        }
         let new_pages = old_pages
             .checked_add(pages)
             .ok_or(RuntimeGrowError::ArithmeticOverflow)?;

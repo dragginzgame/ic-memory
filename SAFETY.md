@@ -4,8 +4,6 @@
 
 # Safety Invariants
 
-*Documentation reviewed against ic-memory 0.24.12.*
-
 `ic-memory` is stable-memory allocation-governance infrastructure. Future
 changes must preserve these invariants on every recovery, validation, staging,
 commit, and allocation-opening path.
@@ -70,10 +68,11 @@ authorization, or endpoint safety.
   doing so could forget committed allocation history.
 - Decoded ledger DTOs are untrusted until the explicit current-format
   discriminator and committed-integrity checks succeed.
-- Stable-cell ledger storage used by every `MemoryRuntime` must be preflighted
-  before opening it through `ic-stable-structures::Cell`, so envelope or record
-  corruption is classified as a bootstrap error instead of escaping as a decode
-  panic.
+- Stable-cell ledger storage used by every `MemoryRuntime` must pass fallible
+  envelope and record decoding before recovery and admission, so corruption is
+  classified as a bootstrap error instead of escaping as a decode panic.
+  Capacity-checked writes use `ic-stable-structures::Cell` after successful
+  validation. Fresh-cell initialization writes empty protected slots only.
 - Each runtime's internal `ic_memory.*` governance allocations must stay
   recoverable in the durable ledger, but must not be published or opened through
   public application-memory helpers.
@@ -135,16 +134,16 @@ and `ValidatedAllocations` are not open authority.
 
 Every fact derived from a backing memory belongs to one `MemoryRuntime<M>`:
 
-- `MemoryManager<M>` and ledger persistence;
+- `MemoryManager<Rc<M>>` and ledger persistence;
 - bootstrap lifecycle and recovery result;
 - committed allocation capability;
 - memory-open authority;
 - diagnostic ledger and commit-recovery view; and
 - live virtual-memory sizes.
 
-Each bootstrap attempt preflights and opens its ledger cell from persisted
-memory. A failed attempt must not retain a cached cell value that could bypass
-preflight on retry. Capability publication follows successful persistence.
+Each bootstrap attempt decodes its ledger record from persisted memory. A failed
+attempt must not retain a cached record that could bypass decoding on retry.
+Capability publication follows successful persistence.
 
 One runtime must never use another runtime's lifecycle or committed capability.
 The only process-global authority is the immutable canonical snapshot of linked
@@ -178,6 +177,9 @@ preflight violates the private growth-accounting invariant and must panic. Nativ
 backing panics or partial writes are outside this refusal guarantee. All handles
 share the runtime's assigned-bucket count.
 
+Zero-page growth must check the shared reservation for reentry, then return the
+current extent without backing IO or manager mutation.
+
 Physical reports and numeric summaries must remain read-only and bounded to
 34,848 bytes of validated manager metadata, without decoding ledger history.
 They distinguish current, ledger and unknown bindings and preserve physical,
@@ -210,9 +212,10 @@ Public durable structs are DTOs. Decoded, deserialized, and diagnostic values
 are untrusted until the relevant recovery, current-format, integrity,
 validation, or commit path has accepted them.
 
-Serde decode is not validation. Constructor-backed invariants such as stable-key
-grammar and `MemoryManager` slot descriptor rules must be rechecked by the
-validation boundary before decoded values influence allocation authority.
+Serde decoding alone does not grant allocation authority. `MemoryManagerSlot`
+rejects sentinel ID 255 during construction and decoding; its numeric ID is
+infallible. Other DTO invariants, including stable-key grammar and ledger history,
+must still be checked by the validation boundary before influencing authority.
 
 Invariant-bearing DTO fields are intentionally private where feasible. Callers
 should use checked constructors and accessors instead of fabricating durable

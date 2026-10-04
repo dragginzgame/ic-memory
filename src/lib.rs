@@ -54,8 +54,9 @@
 //!
 //! [`MemoryRuntime`] is the canonical owner for one backing memory instance. It
 //! owns that memory's manager, ledger persistence, bootstrap lifecycle, committed
-//! capability, opens, and diagnostics. Each bootstrap attempt opens a temporary
-//! ledger cell after preflight. Linked code contributes declarations to
+//! capability, opens, and diagnostics. Each bootstrap attempt fallibly decodes
+//! its ledger record and uses a temporary cell for capacity-checked writes.
+//! Linked code contributes declarations to
 //! one immutable [`SealedDeclarationSnapshot`], which is supplied to each
 //! runtime independently.
 //!
@@ -202,14 +203,13 @@ pub use runtime::{
 };
 pub use schema::{SchemaMetadata, SchemaMetadataError};
 pub use slot::{
-    AllocationSlot, AllocationSlotDescriptor, IC_MEMORY_AUTHORITY_OWNER,
-    IC_MEMORY_AUTHORITY_PURPOSE, IC_MEMORY_LEDGER_LABEL, IC_MEMORY_LEDGER_STABLE_KEY,
-    IC_MEMORY_STABLE_KEY_PREFIX, MEMORY_MANAGER_GOVERNANCE_MAX_ID, MEMORY_MANAGER_INVALID_ID,
-    MEMORY_MANAGER_LEDGER_ID, MEMORY_MANAGER_MAX_ID, MEMORY_MANAGER_MIN_ID,
-    MemoryManagerAuthorityRecord, MemoryManagerIdRange, MemoryManagerRangeAuthority,
-    MemoryManagerRangeAuthorityError, MemoryManagerRangeError, MemoryManagerRangeMode,
-    MemoryManagerSlotError, is_ic_memory_stable_key, memory_manager_governance_range,
-    validate_memory_manager_id,
+    IC_MEMORY_AUTHORITY_OWNER, IC_MEMORY_AUTHORITY_PURPOSE, IC_MEMORY_LEDGER_LABEL,
+    IC_MEMORY_LEDGER_STABLE_KEY, IC_MEMORY_STABLE_KEY_PREFIX, MEMORY_MANAGER_GOVERNANCE_MAX_ID,
+    MEMORY_MANAGER_INVALID_ID, MEMORY_MANAGER_LEDGER_ID, MEMORY_MANAGER_MAX_ID,
+    MEMORY_MANAGER_MIN_ID, MemoryManagerAuthorityRecord, MemoryManagerIdRange,
+    MemoryManagerRangeAuthority, MemoryManagerRangeAuthorityError, MemoryManagerRangeError,
+    MemoryManagerRangeMode, MemoryManagerSlot, MemoryManagerSlotError, is_ic_memory_stable_key,
+    memory_manager_governance_range, validate_memory_manager_id,
 };
 pub use stable_cell::{
     STABLE_CELL_HEADER_SIZE, STABLE_CELL_LAYOUT_VERSION, STABLE_CELL_MAGIC,

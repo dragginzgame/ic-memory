@@ -1,7 +1,7 @@
 use super::{AllocationLedger, AllocationRecord, AllocationState};
 use crate::declaration::AllocationDeclaration;
 use crate::key::StableKey;
-use crate::slot::AllocationSlotDescriptor;
+use crate::slot::MemoryManagerSlot;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ClaimOutcome {
@@ -99,7 +99,7 @@ fn find_by_key_index(ledger: &AllocationLedger, stable_key: &StableKey) -> Optio
 
 fn find_by_slot<'ledger>(
     ledger: &'ledger AllocationLedger,
-    slot: &AllocationSlotDescriptor,
+    slot: &MemoryManagerSlot,
 ) -> Option<&'ledger AllocationRecord> {
     ledger
         .allocation_history

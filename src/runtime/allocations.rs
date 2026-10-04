@@ -174,11 +174,6 @@ impl<M: Memory> MemoryRuntime<M> {
     /// Reads at most 34,848 backing bytes. Never initializes stores, decodes the ledger, writes,
     /// grows memory, or advances a generation. Available before bootstrap;
     /// current declaration/range bindings are then unavailable.
-    ///
-    /// # Panics
-    ///
-    /// Panics if an internal sealed declaration violates the usable-slot
-    /// invariant established during bootstrap.
     pub fn memory_allocations(&self) -> Result<MemoryAllocations, RuntimeDiagnosticError> {
         let (measured, summary) = self.measure_allocations()?;
         let mut memories = Vec::with_capacity(layout::IDS);
@@ -202,10 +197,7 @@ impl<M: Memory> MemoryRuntime<M> {
         if let Some(snapshot) = self.allocation_declarations() {
             for registration in snapshot.registered_declarations() {
                 let declaration = registration.declaration();
-                let id = declaration
-                    .slot()
-                    .memory_manager_id()
-                    .expect("sealed declaration slot");
+                let id = declaration.slot().id();
                 memories[usize::from(id)].binding = AllocationBinding::Current {
                     stable_key: declaration.stable_key().as_str().to_string(),
                     owner: registration.authority().to_string(),
@@ -288,11 +280,7 @@ impl<M: Memory> MemoryRuntime<M> {
         let mut current = [false; layout::IDS];
         if let Some(snapshot) = declarations {
             for registration in snapshot.registered_declarations() {
-                let id = registration
-                    .declaration()
-                    .slot()
-                    .memory_manager_id()
-                    .expect("sealed declaration slot");
+                let id = registration.declaration().slot().id();
                 current[usize::from(id)] = true;
             }
         }

@@ -1,6 +1,6 @@
 use super::{RuntimeBootstrapError, RuntimePolicyError};
 use crate::{
-    AllocationPolicy, AllocationSlotDescriptor, PolicyIdentity, PolicyIdentityError,
+    AllocationPolicy, MemoryManagerSlot, PolicyIdentity, PolicyIdentityError,
     RuntimeBootstrapPolicy, StableKey,
     registry::SealedDeclarationSnapshot,
     slot::{
@@ -37,11 +37,7 @@ impl<P: AllocationPolicy> AllocationPolicy for RuntimeMemoryManagerPolicy<'_, P>
             .map_err(RuntimePolicyError::Custom)
     }
 
-    fn validate_slot(
-        &self,
-        key: &StableKey,
-        slot: &AllocationSlotDescriptor,
-    ) -> Result<(), Self::Error> {
+    fn validate_slot(&self, key: &StableKey, slot: &MemoryManagerSlot) -> Result<(), Self::Error> {
         let authority = self.declaration_authority(key);
         self.validate_runtime_range(authority, slot)?;
         if authority == IC_MEMORY_AUTHORITY_OWNER {
@@ -55,7 +51,7 @@ impl<P: AllocationPolicy> AllocationPolicy for RuntimeMemoryManagerPolicy<'_, P>
     fn validate_reserved_slot(
         &self,
         key: &StableKey,
-        slot: &AllocationSlotDescriptor,
+        slot: &MemoryManagerSlot,
     ) -> Result<(), Self::Error> {
         let authority = self.declaration_authority(key);
         self.validate_runtime_range(authority, slot)?;
@@ -84,7 +80,7 @@ impl<P: AllocationPolicy> RuntimeMemoryManagerPolicy<'_, P> {
     fn validate_runtime_range(
         &self,
         authority: &str,
-        slot: &AllocationSlotDescriptor,
+        slot: &MemoryManagerSlot,
     ) -> Result<(), RuntimePolicyError<P::Error>> {
         match self
             .declarations
@@ -128,7 +124,7 @@ impl AllocationPolicy for GenericRangePolicy {
     fn validate_slot(
         &self,
         _key: &StableKey,
-        _slot: &AllocationSlotDescriptor,
+        _slot: &MemoryManagerSlot,
     ) -> Result<(), Self::Error> {
         Ok(())
     }
@@ -136,7 +132,7 @@ impl AllocationPolicy for GenericRangePolicy {
     fn validate_reserved_slot(
         &self,
         _key: &StableKey,
-        _slot: &AllocationSlotDescriptor,
+        _slot: &MemoryManagerSlot,
     ) -> Result<(), Self::Error> {
         Ok(())
     }

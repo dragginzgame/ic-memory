@@ -1,7 +1,7 @@
 use super::request_tests::snapshot;
 use super::*;
 use crate::{
-    AllocationPolicy, AllocationSlotDescriptor, BootstrapAdmissionError as AdmissionError,
+    AllocationPolicy, BootstrapAdmissionError as AdmissionError, MemoryManagerSlot, StableKey,
 };
 use ic_stable_structures::VectorMemory;
 use std::cell::Cell as Counter;
@@ -24,17 +24,13 @@ impl AllocationPolicy for AdmissionPolicy {
             Ok(())
         }
     }
-    fn validate_slot(
-        &self,
-        _: &StableKey,
-        _: &AllocationSlotDescriptor,
-    ) -> Result<(), Self::Error> {
+    fn validate_slot(&self, _: &StableKey, _: &MemoryManagerSlot) -> Result<(), Self::Error> {
         Ok(())
     }
     fn validate_reserved_slot(
         &self,
         _: &StableKey,
-        _: &AllocationSlotDescriptor,
+        _: &MemoryManagerSlot,
     ) -> Result<(), Self::Error> {
         Ok(())
     }
@@ -76,6 +72,50 @@ impl RuntimeBootstrapPolicy for AdmissionPolicy {
 
 const CONTROL: &str = "app.main.control.v1";
 const JOURNAL: &str = "app.old.journal.v1";
+
+#[test]
+fn declared_membership_covers_original_inputs_and_retains_poisoned_selections() {
+    let runtime = MemoryRuntime::new(seeded()).unwrap();
+    let recovered = runtime
+        .ledger_record_from_memory()
+        .unwrap()
+        .store()
+        .recover()
+        .unwrap();
+    // Neither fixed registrations nor requests arrive in canonical key order.
+    let original = snapshot(
+        &["app.z.v1", "app.a.v1"],
+        "app",
+        100,
+        110,
+        &[("zoo.fixed.v1", 105), ("app.fixed.v1", 104)],
+    );
+    let mut admission = BootstrapAdmission::new(recovered.ledger(), &original);
+    for name in [
+        crate::IC_MEMORY_LEDGER_STABLE_KEY,
+        "app.a.v1",
+        "app.z.v1",
+        "app.fixed.v1",
+        "zoo.fixed.v1",
+    ] {
+        assert!(admission.is_declared(&StableKey::parse(name).unwrap()));
+    }
+    for name in [CONTROL, JOURNAL, "ic_memory.other.v1", "app.unknown.v1"] {
+        assert!(!admission.is_declared(&StableKey::parse(name).unwrap()));
+    }
+    // Selection order is deliberately descending; it is independent of sealing.
+    admission.include_historical("app", JOURNAL).unwrap();
+    admission.include_historical("app", CONTROL).unwrap();
+    let failure = admission
+        .include_historical("app", "app.unknown.v1")
+        .unwrap_err();
+    assert!(matches!(failure, AdmissionError::Unknown(_)));
+    for name in [JOURNAL, CONTROL] {
+        assert!(admission.is_declared(&StableKey::parse(name).unwrap()));
+    }
+    assert!(!admission.is_declared(&StableKey::parse("app.unknown.v1").unwrap()));
+    assert_eq!(admission.complete().unwrap_err(), failure);
+}
 
 pub(super) fn seeded() -> VectorMemory {
     let backing = VectorMemory::default();
@@ -123,8 +163,7 @@ fn discovers_omitted_journal_before_one_commit_and_skips_warm_admission() {
             .unwrap()
             .slot_for(&StableKey::parse(JOURNAL).unwrap())
             .unwrap()
-            .memory_manager_id()
-            .unwrap(),
+            .id(),
         101
     );
     let before = backing.borrow().clone();
@@ -240,11 +279,8 @@ fn current_policy_revoked_grants_and_retirement_still_reject() {
     let mut record = runtime.ledger_record_from_memory().unwrap();
     AllocationBootstrap::new(record.store_mut())
         .retire_and_commit(
-            &crate::AllocationRetirement::new(
-                JOURNAL,
-                AllocationSlotDescriptor::memory_manager(101).unwrap(),
-            )
-            .unwrap(),
+            &crate::AllocationRetirement::new(JOURNAL, MemoryManagerSlot::new(101).unwrap())
+                .unwrap(),
             None,
         )
         .unwrap();
@@ -364,7 +400,8 @@ fn failed_persistence_retries_admission_without_partial_publication() {
 
 #[test]
 fn fresh_rejection_can_acquire_root_but_cannot_commit_genesis() {
-    let mut runtime = MemoryRuntime::new(VectorMemory::default()).unwrap();
+    let backing = VectorMemory::default();
+    let mut runtime = MemoryRuntime::new(backing.clone()).unwrap();
     let current = snapshot(&[CONTROL], "app", 100, 110, &[]);
     let policy = AdmissionPolicy {
         reject: true,
@@ -375,6 +412,9 @@ fn fresh_rejection_can_acquire_root_but_cannot_commit_genesis() {
         Err(RuntimeBootstrapError::AdmissionPolicy(_))
     ));
     assert!(!runtime.is_bootstrapped());
+    // A fresh rejection still initializes a readable cell, without committing
+    // genesis. Retrying the rejection must leave that initialized root unchanged.
+    assert_eq!(runtime.memory(MEMORY_MANAGER_LEDGER_ID).size(), 1);
     assert!(
         runtime
             .ledger_record_from_memory()
@@ -383,6 +423,13 @@ fn fresh_rejection_can_acquire_root_but_cannot_commit_genesis() {
             .physical()
             .is_uninitialized()
     );
+    let before = backing.borrow().clone();
+    assert!(matches!(
+        runtime.bootstrap(&current, &policy),
+        Err(RuntimeBootstrapError::AdmissionPolicy(_))
+    ));
+    assert_eq!(*backing.borrow(), before);
+    assert!(!runtime.is_bootstrapped());
     let policy = AdmissionPolicy::default();
     assert_eq!(
         runtime.bootstrap(&current, &policy).unwrap().generation(),
@@ -443,5 +490,5 @@ fn completion_bound_and_reservation_activation_preserve_evidence() {
         declaration.schema(),
         &crate::SchemaMetadata::new(Some(5)).unwrap()
     );
-    assert_eq!(declaration.slot().memory_manager_id().unwrap(), 102);
+    assert_eq!(declaration.slot().id(), 102);
 }

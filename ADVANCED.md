@@ -4,8 +4,6 @@
 
 # Advanced ic-memory
 
-*Documentation reviewed against ic-memory 0.24.12.*
-
 This document covers the lower-level pieces behind the macro runtime. Most
 applications should start with the README.
 
@@ -66,10 +64,12 @@ to one runtime. A cold bootstrap then:
 
 The important rule: validate layout before touching stable data.
 
-The default runtime also preflights the ledger stable-cell before opening it
-through `ic-stable-structures::Cell`. Corrupt cell envelopes or ledger-record
-bytes are reported as bootstrap errors instead of relying on panic behavior
-inside `Cell::init`.
+The runtime fallibly decodes the ledger stable-cell once per cold bootstrap
+attempt and reuses that record for recovery and staging. Corrupt cell envelopes
+or ledger-record bytes are reported as bootstrap errors before admission.
+`ic-stable-structures::Cell` performs capacity-checked writes. Fresh bootstrap
+initializes a readable cell with empty protected slots before admission;
+the staged generation is persisted only after validation succeeds.
 
 ## Runtime Ownership
 
@@ -79,10 +79,9 @@ committed allocation capability, memory opens, recovery diagnostics, and live
 memory-size inspection. The runtime and its opened handles share the backing
 memory and growth accounting; the manager owns bucket metadata.
 
-The ledger cell belongs to a single bootstrap attempt. Every retry preflights
-and opens the persisted cell again before recovery and admission; no decoded
-cell value remains cached after success or failure. Diagnostics read persisted
-memory directly.
+The decoded ledger record belongs to a single bootstrap attempt. Every retry
+decodes persisted memory again before recovery and admission; no record remains
+cached after success or failure. Diagnostics read persisted memory directly.
 
 Linked crates compose declarations into one immutable
 `SealedDeclarationSnapshot`. That process-global snapshot is declaration
@@ -559,10 +558,12 @@ authority
 
 ## Current MemoryManager Rules
 
-For the built-in `ic-stable-structures::MemoryManager` slot descriptor:
+For the checked `MemoryManagerSlot` allocation identity:
 
 - IDs `0..=254` are usable stable-memory slots.
 - ID `255` is rejected because it is the unallocated sentinel.
+- `MemoryManagerSlot::new(id)` and deserialization check this bound;
+  `.id()` returns a usable ID without another validation step.
 - IDs `0..=9` are reserved for `ic-memory` governance.
 - ID `0` is assigned to the allocation ledger.
 - Stable keys under `ic_memory.*` are reserved for `ic-memory` governance and

@@ -5,7 +5,7 @@ use crate::{
     physical::CommitStoreDiagnostic,
     policy::PolicyIdentity,
     registry::SealedDeclarationFingerprint,
-    slot::{AllocationSlotDescriptor, MemoryManagerAuthorityRecord, MemoryManagerRangeAuthority},
+    slot::{MemoryManagerAuthorityRecord, MemoryManagerRangeAuthority, MemoryManagerSlot},
 };
 use serde::{Deserialize, Serialize};
 
@@ -18,8 +18,8 @@ use serde::{Deserialize, Serialize};
 pub struct DiagnosticExport {
     /// Current committed generation.
     pub current_generation: u64,
-    /// Ledger anchor descriptor.
-    pub ledger_anchor: AllocationSlotDescriptor,
+    /// Checked ledger anchor slot.
+    pub ledger_anchor: MemoryManagerSlot,
     /// Allocation records.
     pub records: Vec<DiagnosticRecord>,
     /// Generation records.
@@ -85,8 +85,8 @@ pub struct MemoryRuntimeDoctorReport {
     /// Whether the tested identity and declarations match the established
     /// bootstrap binding.
     pub bootstrap_binding: DiagnosticCheck,
-    /// Ledger anchor descriptor used by this runtime.
-    pub ledger_anchor: AllocationSlotDescriptor,
+    /// Checked ledger anchor slot used by this runtime.
+    pub ledger_anchor: MemoryManagerSlot,
     /// Stable-cell ledger storage status.
     pub stable_cell: DiagnosticStableCell,
     /// Protected commit recovery status when a ledger record was readable.
@@ -323,21 +323,45 @@ impl DiagnosticExport {
     /// exporter can fill those public fields from its own backing and recovery
     /// evidence; this DTO constructor neither recovers nor measures memory.
     #[must_use]
-    pub fn from_ledger(ledger: &AllocationLedger, ledger_anchor: AllocationSlotDescriptor) -> Self {
-        Self {
-            current_generation: ledger.current_generation,
+    pub fn from_ledger(ledger: &AllocationLedger, ledger_anchor: MemoryManagerSlot) -> Self {
+        Self::from_records(
+            ledger.current_generation,
             ledger_anchor,
-            records: ledger
-                .allocation_history()
-                .records()
-                .iter()
-                .cloned()
+            ledger.allocation_history.records.iter().cloned(),
+            ledger.allocation_history.generations.clone(),
+        )
+    }
+
+    // Normal exports consume their decoded history. Borrowed exports copy
+    // records directly into the same projection without an intermediate ledger.
+    pub(crate) fn from_owned_ledger(
+        ledger: AllocationLedger,
+        ledger_anchor: MemoryManagerSlot,
+    ) -> Self {
+        Self::from_records(
+            ledger.current_generation,
+            ledger_anchor,
+            ledger.allocation_history.records.into_iter(),
+            ledger.allocation_history.generations,
+        )
+    }
+
+    fn from_records(
+        current_generation: u64,
+        ledger_anchor: MemoryManagerSlot,
+        records: impl Iterator<Item = AllocationRecord>,
+        generations: Vec<GenerationRecord>,
+    ) -> Self {
+        Self {
+            current_generation,
+            ledger_anchor,
+            records: records
                 .map(|allocation| DiagnosticRecord {
                     allocation,
                     memory_size: None,
                 })
                 .collect(),
-            generations: ledger.allocation_history().generations().to_vec(),
+            generations,
             commit_recovery: None,
         }
     }
@@ -400,7 +424,7 @@ mod tests {
     fn diagnostic_export_copies_ledger_records() {
         let declaration = AllocationDeclaration::new(
             "app.users.v1",
-            AllocationSlotDescriptor::memory_manager(100).expect("usable slot"),
+            MemoryManagerSlot::new(100).expect("usable slot"),
             None,
             SchemaMetadata::default(),
         )
@@ -419,10 +443,8 @@ mod tests {
             ),
         };
 
-        let export = DiagnosticExport::from_ledger(
-            &ledger,
-            AllocationSlotDescriptor::memory_manager(0).expect("usable slot"),
-        );
+        let export =
+            DiagnosticExport::from_ledger(&ledger, MemoryManagerSlot::new(0).expect("usable slot"));
 
         assert_eq!(export.current_generation, 3);
         assert_eq!(export.records.len(), 1);
@@ -430,12 +452,16 @@ mod tests {
         assert_eq!(export.generations.len(), 1);
         assert_eq!(
             export.ledger_anchor,
-            AllocationSlotDescriptor::memory_manager(0).expect("usable slot")
+            MemoryManagerSlot::new(0).expect("usable slot")
         );
         assert_eq!(export.commit_recovery, None);
         assert_eq!(
             export.generations,
             ledger.allocation_history().generations()
+        );
+        assert_eq!(
+            export,
+            DiagnosticExport::from_owned_ledger(ledger, export.ledger_anchor.clone())
         );
         let wire = serde_json::to_value(&export).expect("diagnostic JSON");
         assert_eq!(
@@ -458,7 +484,7 @@ mod tests {
 
         let export = DiagnosticExport {
             current_generation: 0,
-            ledger_anchor: AllocationSlotDescriptor::memory_manager(0).expect("usable slot"),
+            ledger_anchor: MemoryManagerSlot::new(0).expect("usable slot"),
             records: Vec::new(),
             generations: Vec::new(),
             commit_recovery: None,
@@ -546,10 +572,8 @@ mod tests {
             recovery: Ok(3),
         };
 
-        let mut export = DiagnosticExport::from_ledger(
-            &ledger,
-            AllocationSlotDescriptor::memory_manager(0).expect("usable slot"),
-        );
+        let mut export =
+            DiagnosticExport::from_ledger(&ledger, MemoryManagerSlot::new(0).expect("usable slot"));
         export.commit_recovery = Some(commit_recovery);
 
         assert_eq!(export.commit_recovery, Some(commit_recovery));
@@ -559,7 +583,7 @@ mod tests {
     fn diagnostic_export_can_include_memory_sizes() {
         let declaration = AllocationDeclaration::new(
             "app.users.v1",
-            AllocationSlotDescriptor::memory_manager(100).expect("usable slot"),
+            MemoryManagerSlot::new(100).expect("usable slot"),
             None,
             SchemaMetadata::default(),
         )
@@ -572,10 +596,8 @@ mod tests {
             ),
         };
 
-        let mut export = DiagnosticExport::from_ledger(
-            &ledger,
-            AllocationSlotDescriptor::memory_manager(0).expect("usable slot"),
-        );
+        let mut export =
+            DiagnosticExport::from_ledger(&ledger, MemoryManagerSlot::new(0).expect("usable slot"));
         export.records[0].memory_size = Some(DiagnosticMemorySize::from_wasm_pages(2));
 
         assert_eq!(
@@ -604,10 +626,8 @@ mod tests {
             recovery: Err(CommitRecoveryError::NoValidGeneration),
         };
 
-        let mut export = DiagnosticExport::from_ledger(
-            &ledger,
-            AllocationSlotDescriptor::memory_manager(0).expect("usable slot"),
-        );
+        let mut export =
+            DiagnosticExport::from_ledger(&ledger, MemoryManagerSlot::new(0).expect("usable slot"));
         export.commit_recovery = Some(commit_recovery);
 
         assert_eq!(

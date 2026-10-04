@@ -318,7 +318,7 @@ mod tests {
         declaration::AllocationDeclaration,
         ledger::{AllocationHistory, AllocationLedger, AllocationState},
         schema::SchemaMetadata,
-        slot::AllocationSlotDescriptor,
+        slot::MemoryManagerSlot,
     };
 
     #[derive(Debug, Eq, PartialEq)]
@@ -334,7 +334,7 @@ mod tests {
         fn validate_slot(
             &self,
             _key: &crate::StableKey,
-            _slot: &AllocationSlotDescriptor,
+            _slot: &MemoryManagerSlot,
         ) -> Result<(), Self::Error> {
             Ok(())
         }
@@ -342,7 +342,7 @@ mod tests {
         fn validate_reserved_slot(
             &self,
             _key: &crate::StableKey,
-            _slot: &AllocationSlotDescriptor,
+            _slot: &MemoryManagerSlot,
         ) -> Result<(), Self::Error> {
             Ok(())
         }
@@ -361,7 +361,7 @@ mod tests {
         fn validate_slot(
             &self,
             _key: &crate::StableKey,
-            _slot: &AllocationSlotDescriptor,
+            _slot: &MemoryManagerSlot,
         ) -> Result<(), Self::Error> {
             Ok(())
         }
@@ -369,7 +369,7 @@ mod tests {
         fn validate_reserved_slot(
             &self,
             _key: &crate::StableKey,
-            _slot: &AllocationSlotDescriptor,
+            _slot: &MemoryManagerSlot,
         ) -> Result<(), Self::Error> {
             Err("reserved slot rejected")
         }
@@ -388,7 +388,7 @@ mod tests {
         fn validate_slot(
             &self,
             _key: &crate::StableKey,
-            _slot: &AllocationSlotDescriptor,
+            _slot: &MemoryManagerSlot,
         ) -> Result<(), Self::Error> {
             Err("active slot rejected")
         }
@@ -396,7 +396,7 @@ mod tests {
         fn validate_reserved_slot(
             &self,
             _key: &crate::StableKey,
-            _slot: &AllocationSlotDescriptor,
+            _slot: &MemoryManagerSlot,
         ) -> Result<(), Self::Error> {
             Ok(())
         }
@@ -414,7 +414,7 @@ mod tests {
         fn validate_slot(
             &self,
             _key: &crate::StableKey,
-            _slot: &AllocationSlotDescriptor,
+            _slot: &MemoryManagerSlot,
         ) -> Result<(), Self::Error> {
             panic!("policy received an invalid reservation")
         }
@@ -422,7 +422,7 @@ mod tests {
         fn validate_reserved_slot(
             &self,
             _key: &crate::StableKey,
-            _slot: &AllocationSlotDescriptor,
+            _slot: &MemoryManagerSlot,
         ) -> Result<(), Self::Error> {
             panic!("policy received an invalid reservation")
         }
@@ -438,7 +438,7 @@ mod tests {
     fn declaration() -> AllocationDeclaration {
         AllocationDeclaration::new(
             "app.users.v1",
-            AllocationSlotDescriptor::memory_manager(100).expect("usable slot"),
+            MemoryManagerSlot::new(100).expect("usable slot"),
             None,
             SchemaMetadata::default(),
         )
@@ -569,8 +569,7 @@ mod tests {
         let mut store = LedgerCommitStore::default();
         store.commit(&ledger()).expect("initial ledger");
         let mut reservation = declaration();
-        reservation.slot =
-            AllocationSlotDescriptor::memory_manager_unchecked(crate::MEMORY_MANAGER_INVALID_ID);
+        reservation.label = Some(String::new());
 
         let err = AllocationBootstrap::new(&mut store)
             .reserve_and_commit(&[reservation], &PolicyMustNotRun, Some(42))
@@ -649,8 +648,7 @@ mod tests {
     #[test]
     fn oversized_initial_reservations_preserve_genesis_and_precede_invalid_declarations() {
         let mut reservations = vec![declaration(); 256];
-        reservations[0].slot =
-            AllocationSlotDescriptor::memory_manager_unchecked(crate::MEMORY_MANAGER_INVALID_ID);
+        reservations[0].label = Some(String::new());
         let mut store = LedgerCommitStore::default();
         let mut expected = LedgerCommitStore::default();
         expected.commit(&ledger()).expect("expected genesis");
@@ -703,7 +701,7 @@ mod tests {
             .expect("active commit");
         let retirement = AllocationRetirement::new(
             "app.users.v1",
-            AllocationSlotDescriptor::memory_manager(100).expect("usable slot"),
+            MemoryManagerSlot::new(100).expect("usable slot"),
         )
         .expect("retirement");
 
@@ -725,7 +723,7 @@ mod tests {
         store.commit(&ledger()).expect("initial ledger");
         let retirement = AllocationRetirement::new(
             "app.users.v1",
-            AllocationSlotDescriptor::memory_manager(100).expect("usable slot"),
+            MemoryManagerSlot::new(100).expect("usable slot"),
         )
         .expect("retirement");
 

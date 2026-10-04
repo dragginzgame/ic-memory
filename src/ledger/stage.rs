@@ -89,7 +89,7 @@ pub fn stage_validated_generation(
         record_declaration(&mut next, next_generation, declaration)?;
     }
 
-    next.allocation_history.push_generation(GenerationRecord {
+    next.allocation_history.generations.push(GenerationRecord {
         generation: next_generation,
         parent_generation,
         runtime_fingerprint: validated.runtime_fingerprint().map(str::to_string),
@@ -119,7 +119,7 @@ pub fn stage_reservation_generation(
         record_reservation(&mut next, next_generation, reservation)?;
     }
 
-    next.allocation_history.push_generation(GenerationRecord {
+    next.allocation_history.generations.push(GenerationRecord {
         generation: next_generation,
         parent_generation,
         runtime_fingerprint: None,
@@ -166,11 +166,11 @@ pub fn stage_retirement_generation(
     }
 
     let mut next = ledger.into_owned();
-    next.allocation_history.records_mut()[record_index].state = AllocationState::Retired {
+    next.allocation_history.records[record_index].state = AllocationState::Retired {
         generation: next_generation,
     };
     next.current_generation = next_generation;
-    next.allocation_history.push_generation(GenerationRecord {
+    next.allocation_history.generations.push(GenerationRecord {
         generation: next_generation,
         parent_generation,
         runtime_fingerprint: None,
@@ -192,14 +192,14 @@ fn record_declaration(
         Ok(ClaimOutcome::Existing { record_index }) => {
             // Claim validation rejected retired identities. Both an existing
             // active claim and a matching reservation become active here.
-            let record = &mut ledger.allocation_history.records_mut()[record_index];
+            let record = &mut ledger.allocation_history.records[record_index];
             record.state = AllocationState::Active;
             record.observe_schema(generation, &declaration.schema);
             Ok(())
         }
         Ok(ClaimOutcome::New) => {
             let record = AllocationRecord::active(generation, declaration);
-            ledger.allocation_history.push_record(record);
+            ledger.allocation_history.records.push(record);
             Ok(())
         }
         Err(conflict) => Err(map_declaration_stage_conflict(declaration, conflict)),
@@ -213,13 +213,13 @@ fn record_reservation(
 ) -> Result<(), AllocationReservationError> {
     match validate_reservation_claim(ledger, reservation) {
         Ok(ClaimOutcome::Existing { record_index }) => {
-            ledger.allocation_history.records_mut()[record_index]
+            ledger.allocation_history.records[record_index]
                 .observe_schema(generation, &reservation.schema);
             Ok(())
         }
         Ok(ClaimOutcome::New) => {
             let record = AllocationRecord::reserved(generation, reservation);
-            ledger.allocation_history.push_record(record);
+            ledger.allocation_history.records.push(record);
             Ok(())
         }
         Err(conflict) => Err(map_reservation_stage_conflict(reservation, conflict)),

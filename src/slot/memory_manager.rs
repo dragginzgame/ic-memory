@@ -1,5 +1,74 @@
-use super::descriptor::{AllocationSlot, AllocationSlotDescriptor};
 use super::range_authority::MemoryManagerIdRange;
+use serde::{Deserialize, Serialize};
+
+///
+/// MemoryManagerSlot
+///
+/// A usable physical `ic-stable-structures::MemoryManager` allocation ID.
+///
+/// Construction and deserialization reject the unallocated-bucket sentinel
+/// (255), so reading the ID is infallible. A slot is an identity, not authority
+/// to open memory; that still requires committed allocation validation.
+///
+/// The private serde representation describes the current durable slot encoding.
+/// It preserves that encoding independently of this checked in-memory type.
+///
+
+#[derive(Clone, Debug, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
+#[serde(try_from = "SlotEncoding", into = "SlotEncoding")]
+pub struct MemoryManagerSlot(u8);
+
+impl MemoryManagerSlot {
+    /// Construct a slot, rejecting ID 255.
+    pub const fn new(id: u8) -> Result<Self, MemoryManagerSlotError> {
+        match validate_memory_manager_id(id) {
+            Ok(()) => Ok(Self(id)),
+            Err(error) => Err(error),
+        }
+    }
+
+    /// Return the usable virtual memory ID.
+    #[must_use]
+    pub const fn id(&self) -> u8 {
+        self.0
+    }
+}
+
+// Passive codec fields only: the current format nests the MemoryManagerId tag
+// inside a slot field. These values never enter allocation policy or execution.
+#[derive(Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+struct SlotEncoding {
+    slot: SlotIdEncoding,
+}
+
+#[derive(Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+enum SlotIdEncoding {
+    MemoryManagerId(u8),
+}
+
+impl From<MemoryManagerSlot> for SlotEncoding {
+    fn from(slot: MemoryManagerSlot) -> Self {
+        Self {
+            slot: SlotIdEncoding::MemoryManagerId(slot.id()),
+        }
+    }
+}
+
+impl TryFrom<SlotEncoding> for MemoryManagerSlot {
+    type Error = MemoryManagerSlotError;
+
+    fn try_from(encoded: SlotEncoding) -> Result<Self, Self::Error> {
+        let SlotIdEncoding::MemoryManagerId(id) = encoded.slot;
+        Self::new(id)
+    }
+}
+
+pub const LEDGER_SLOT: MemoryManagerSlot = match MemoryManagerSlot::new(MEMORY_MANAGER_LEDGER_ID) {
+    Ok(slot) => slot,
+    Err(_) => panic!("the ledger ID must be usable"),
+};
 
 /// First usable `MemoryManager` virtual memory ID.
 pub const MEMORY_MANAGER_MIN_ID: u8 = 0;
@@ -46,38 +115,12 @@ pub const fn memory_manager_governance_range() -> MemoryManagerIdRange {
     }
 }
 
-impl AllocationSlotDescriptor {
-    /// Construct a descriptor for a usable `MemoryManager` virtual memory ID.
-    ///
-    /// ID 255 is the `ic-stable-structures` unallocated-bucket sentinel and is
-    /// rejected.
-    pub fn memory_manager(id: u8) -> Result<Self, MemoryManagerSlotError> {
-        validate_memory_manager_id(id)?;
-        Ok(Self::memory_manager_unchecked(id))
-    }
-
-    /// Construct a descriptor for a `MemoryManager` virtual memory ID without validating it.
-    #[must_use]
-    pub(crate) const fn memory_manager_unchecked(id: u8) -> Self {
-        Self {
-            slot: AllocationSlot::MemoryManagerId(id),
-        }
-    }
-
-    /// Return the usable `MemoryManager` virtual memory ID represented by this descriptor.
-    ///
-    /// This validates sentinel ID rules before returning the numeric ID.
-    pub fn memory_manager_id(&self) -> Result<u8, MemoryManagerSlotError> {
-        let AllocationSlot::MemoryManagerId(id) = self.slot;
-        validate_memory_manager_id(id)?;
-        Ok(id)
-    }
-}
-
 ///
 /// MemoryManagerSlotError
 ///
-/// Invalid `MemoryManager` allocation slot descriptor.
+/// Invalid `MemoryManager` allocation ID.
+///
+
 #[non_exhaustive]
 #[derive(Clone, Debug, Eq, thiserror::Error, PartialEq)]
 pub enum MemoryManagerSlotError {

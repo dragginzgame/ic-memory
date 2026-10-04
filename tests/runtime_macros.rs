@@ -59,8 +59,7 @@ fn bootstrap_and_require_thread_local_ledger() {
         validated
             .slot_for(&ic_memory::StableKey::parse("macro.logical.rows.v1").unwrap())
             .unwrap()
-            .memory_manager_id()
-            .unwrap(),
+            .id(),
         140
     );
     MACRO_MEMORY.with(|memory| assert!(memory.borrow().is_some()));

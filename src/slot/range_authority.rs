@@ -1,6 +1,5 @@
-use super::descriptor::AllocationSlotDescriptor;
 use super::memory_manager::{
-    MEMORY_MANAGER_INVALID_ID, MEMORY_MANAGER_MAX_ID, MEMORY_MANAGER_MIN_ID,
+    MEMORY_MANAGER_INVALID_ID, MEMORY_MANAGER_MAX_ID, MEMORY_MANAGER_MIN_ID, MemoryManagerSlot,
     MemoryManagerSlotError, validate_memory_manager_id,
 };
 use crate::text::validate_diagnostic_text;
@@ -227,21 +226,22 @@ impl MemoryManagerRangeAuthority {
 
     /// Build a range authority from diagnostic records.
     ///
-    /// Each record is validated before insertion, overlaps are rejected, and
-    /// accepted records are stored in ascending range order. Decoded records
-    /// pass the same checks as records built with their checked constructor.
+    /// Each record is validated in input order and overlaps are rejected.
+    /// Accepted records use ascending range order in the supplied buffer. Decoded
+    /// records pass the same checks as records built with their checked constructor.
     pub fn from_records(
-        records: Vec<MemoryManagerAuthorityRecord>,
+        mut records: Vec<MemoryManagerAuthorityRecord>,
     ) -> Result<Self, MemoryManagerRangeAuthorityError> {
-        let mut authorities: Vec<MemoryManagerAuthorityRecord> = Vec::new();
-        for record in records {
-            validate_authority_record(&record)?;
-            let insertion = authorities
-                .partition_point(|existing| existing.range.start() < record.range.start());
+        for index in 0..records.len() {
+            let record = &records[index];
+            validate_authority_record(record)?;
+            let accepted = &records[..index];
+            let insertion =
+                accepted.partition_point(|existing| existing.range.start() < record.range.start());
             // Accepted ranges are ordered and disjoint. Only the predecessor
             // and successor can be the first overlap; check them in range order.
-            let neighbours = insertion.saturating_sub(1)..(insertion + 1).min(authorities.len());
-            for existing in &authorities[neighbours] {
+            let neighbours = insertion.saturating_sub(1)..(insertion + 1).min(accepted.len());
+            for existing in &accepted[neighbours] {
                 if ranges_overlap(existing.range, record.range) {
                     return Err(MemoryManagerRangeAuthorityError::OverlappingRanges {
                         existing_start: existing.range.start(),
@@ -251,33 +251,33 @@ impl MemoryManagerRangeAuthority {
                     });
                 }
             }
-            authorities.insert(insertion, record);
+            // Move the checked candidate into the ordered prefix without
+            // changing the unprocessed tail or allocating a second vector.
+            records[insertion..=index].rotate_right(1);
         }
-        Ok(Self { authorities })
+        Ok(Self {
+            authorities: records,
+        })
     }
 
     /// Validate that `slot` belongs to `expected_authority`.
     pub fn validate_slot_authority(
         &self,
-        slot: &AllocationSlotDescriptor,
+        slot: &MemoryManagerSlot,
         expected_authority: &str,
     ) -> Result<&MemoryManagerAuthorityRecord, MemoryManagerRangeAuthorityError> {
-        let id = slot
-            .memory_manager_id()
-            .map_err(MemoryManagerRangeAuthorityError::Slot)?;
+        let id = slot.id();
         self.validate_id_authority(id, expected_authority)
     }
 
     /// Validate that `slot` belongs to `expected_authority` with `expected_mode`.
     pub fn validate_slot_authority_mode(
         &self,
-        slot: &AllocationSlotDescriptor,
+        slot: &MemoryManagerSlot,
         expected_authority: &str,
         expected_mode: MemoryManagerRangeMode,
     ) -> Result<&MemoryManagerAuthorityRecord, MemoryManagerRangeAuthorityError> {
-        let id = slot
-            .memory_manager_id()
-            .map_err(MemoryManagerRangeAuthorityError::Slot)?;
+        let id = slot.id();
         self.validate_id_authority_mode(id, expected_authority, expected_mode)
     }
 
@@ -424,7 +424,7 @@ pub enum MemoryManagerRangeAuthorityError {
     /// Authority range bounds are invalid.
     #[error(transparent)]
     Range(#[from] MemoryManagerRangeError),
-    /// Slot descriptor is not a usable `MemoryManager` ID slot.
+    /// A raw numeric ID is not a usable `MemoryManager` slot.
     #[error("{0}")]
     Slot(#[from] MemoryManagerSlotError),
     /// Authority range overlaps an existing range.

@@ -1,8 +1,8 @@
 use super::*;
 use crate::{
     AllocationDeclaration, AllocationHistory, AllocationPolicy, AllocationRetirement,
-    AllocationSlotDescriptor, MemoryManagerAuthorityRecord, MemoryManagerIdRange,
-    MemoryManagerRangeMode, MemoryRequest, SchemaMetadata, StaticMemoryDeclaration,
+    MemoryManagerAuthorityRecord, MemoryManagerIdRange, MemoryManagerRangeMode, MemoryManagerSlot,
+    MemoryRequest, SchemaMetadata, StableKey, StaticMemoryDeclaration,
     StaticMemoryRangeDeclaration,
 };
 use ic_stable_structures::VectorMemory;
@@ -47,8 +47,7 @@ fn id(runtime: &MemoryRuntime<VectorMemory>, key: &str) -> u8 {
         .unwrap()
         .slot_for(&StableKey::parse(key).unwrap())
         .unwrap()
-        .memory_manager_id()
-        .unwrap()
+        .id()
 }
 
 #[test]
@@ -295,11 +294,7 @@ fn reservation_activation_and_retirement_use_existing_claim_rules() {
     let mut record = runtime.ledger_record_from_memory().unwrap();
     AllocationBootstrap::new(record.store_mut())
         .retire_and_commit(
-            &AllocationRetirement::new(
-                "app.b.v1",
-                AllocationSlotDescriptor::memory_manager(101).unwrap(),
-            )
-            .unwrap(),
+            &AllocationRetirement::new("app.b.v1", MemoryManagerSlot::new(101).unwrap()).unwrap(),
             None,
         )
         .unwrap();
@@ -394,8 +389,7 @@ fn failed_persistence_publishes_no_mapping_and_retries_deterministically() {
             .unwrap()
             .slot_for(&StableKey::parse(&keys[0]).unwrap())
             .unwrap()
-            .memory_manager_id()
-            .unwrap(),
+            .id(),
         16
     );
 }
@@ -408,17 +402,13 @@ fn current_custom_policy_can_reject_a_recovered_logical_key() {
         fn validate_key(&self, _: &StableKey) -> Result<(), Self::Error> {
             Err("revoked")
         }
-        fn validate_slot(
-            &self,
-            _: &StableKey,
-            _: &AllocationSlotDescriptor,
-        ) -> Result<(), Self::Error> {
+        fn validate_slot(&self, _: &StableKey, _: &MemoryManagerSlot) -> Result<(), Self::Error> {
             Ok(())
         }
         fn validate_reserved_slot(
             &self,
             _: &StableKey,
-            _: &AllocationSlotDescriptor,
+            _: &MemoryManagerSlot,
         ) -> Result<(), Self::Error> {
             Ok(())
         }

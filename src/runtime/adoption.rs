@@ -116,14 +116,8 @@ fn verify_requirement(
     {
         return Err(RuntimeOpenError::MemoryIdMismatch {
             stable_key: key.to_string(),
-            committed_id: committed
-                .slot()
-                .memory_manager_id()
-                .expect("sealed host declaration slot"),
-            requested_id: expected
-                .slot()
-                .memory_manager_id()
-                .expect("sealed requirement slot"),
+            committed_id: committed.slot().id(),
+            requested_id: expected.slot().id(),
         }
         .into());
     }

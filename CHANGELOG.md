@@ -1,5 +1,157 @@
 # Changelog
 
+## 0.25.2
+
+- Reuse the owned range-authority input vector when validating and ordering
+  records. Remove the second growing vector while preserving input-order
+  metadata validation, inclusive overlap boundaries and the first conflicting
+  range reported. Process only the accepted prefix so later input keeps its
+  original refusal order.
+- Exercise ascending, reversed and interleaved inputs across all 255 usable
+  IDs, retaining authority names, modes, purposes and canonical CBOR output.
+  The new behavioral regression also passes against 0.25.1.
+- Public APIs, durable formats, declaration fingerprints and range policy
+  behavior are unchanged; consumers need no source adoption for this cleanup.
+- Validation: 67 focused slot/range, registry, logical placement, admission and
+  adoption tests, strict library/test Clippy, Rust 1.88.0 library compilation,
+  Wasm library compilation, warning-denied Rustdoc, formatting, whitespace checks
+  and all five raw Wasm size gates pass. No runtime speedup is claimed.
+
+## 0.25.1
+
+- Hash sealed declarations' canonical CBOR directly into the existing FNV-1a
+  state. Remove the temporary encoded fingerprint buffer and subsequent scan;
+  retain the same fingerprint material, algorithm version and values.
+- Resolve committed memory IDs from validated borrowed key text, removing the
+  temporary owned `StableKey` from ID resolution and memory opens. Typed
+  capability callers share the same lookup. Preserve grammar and reserved-key
+  refusal before bootstrap checks, committed authority and missing-key errors.
+  The refusal-order and memory-conservation regression also passes against
+  the preceding implementation.
+- Remove per-guide release review stamps and their manual release-checklist
+  maintenance. Current guides describe the maintained implementation; package
+  metadata owns the release version. Historical qualification and measurement
+  records retain their exact versions and scope.
+- Correct the safety guide's runtime owner to `MemoryManager<Rc<M>>`.
+- Record published 0.25.0 Canic qualification: 32 focused Core tests, strict
+  library/test Clippy and default-feature Wasm compilation. Separately record
+  the published blob dependency alignment, strict adapter/consumer library
+  Clippy, managed Fast-profile consumer build and embedded fixture regeneration
+  and verification. Installed behavior and deployments remain unqualified.
+- Public APIs, durable formats and diagnostic fingerprint values are unchanged.
+  Validation: 59 focused tests across fingerprinting, key validation, capability,
+  adoption, placement, admission, default/public runtime and doctor behavior;
+  strict library/test Clippy, Rust 1.88.0 library compilation, Wasm library
+  compilation, warning-denied Rustdoc, formatting, local documentation links
+  and heading anchors, and whitespace checks pass. Core raw Wasm is 242,402
+  bytes against 260,000; runtime integration is 251,440 against 270,000.
+  Both focused size gates pass.
+
+## 0.25.0
+
+- Replace `AllocationSlot` and `AllocationSlotDescriptor` with one checked
+  `MemoryManagerSlot`. Construct it with `MemoryManagerSlot::new(id)`; `.id()`
+  returns a usable MemoryManager ID directly. Construction and deserialization
+  reject sentinel ID 255 before the value reaches allocation execution.
+- Remove the descriptor module, unchecked slot constructor, repeated slot
+  validation and extraction assertions, and the unreachable invalid-slot
+  integrity/retirement errors. Keep raw numeric-ID validation, ownership,
+  authorization, duplicate claims, history validation and persistence ordering.
+- Preserve the current nested slot encoding through private serde-only fields.
+  Valid durable and diagnostic slot encodings, current format identifiers,
+  checksums and declaration fingerprints are unchanged. Invalid slots now fail
+  decoding rather than subsequent ledger integrity or retirement validation.
+- Exercise construction and JSON/CBOR decoding across all 255 usable IDs and
+  reject sentinel, out-of-range and malformed encoded slots. Update declaration,
+  retirement and persisted-corruption regressions for the owning decode boundary;
+  retain rejection conservation, doctor classification and retry checks.
+- Update public callers, examples, current fixture naming and safety guidance.
+  This is a source API hard cut: consumers must update their policy signatures,
+  slot constructors and accessors. No aliases or superseded execution path remain.
+- Validation: the complete Rust suite passes, including 272 library tests,
+  public integrations, two composed-host regressions and six active doctests;
+  all eight compile-fail cases pass, including the new checked-slot privacy
+  boundary. Strict all-target Clippy, Rust 1.88.0 all-target compilation,
+  warning-denied Rustdoc, formatting, whitespace checks, Wasm test compilation
+  and all five raw Wasm size gates pass. Canic's isolated source candidate passes
+  32 focused memory/ABI/metrics tests and strict Core Clippy. Published dependency
+  adoption, the independent blob adapter and live deployments remain unqualified.
+
+## 0.24.15
+
+- Reuse the sealed snapshot's canonical fixed-key lookup and binary-search its
+  original logical requests during admission membership checks. Remove the
+  separate scan of copied fixed-declaration DTOs without adding another index,
+  cache or source of truth.
+- Keep governance membership explicit and scan earlier historical selections in
+  callback order. Preserve accepted selections after a later latched failure,
+  rejection precedence and the final resolve/validate/commit boundary.
+- Add a behavioral regression covering unsorted fixed and logical inputs,
+  descending selection order, unknown and reserved-namespace keys, and membership
+  after failure. The regression also passes against the previous implementation.
+- Update the recovered-admission guide. Public signatures, error payloads,
+  durable and diagnostic formats, and declaration fingerprints are unchanged.
+  No Canic source patch is required.
+- Validation: the complete Rust test suite passes, including 273 library tests,
+  compile-fail boundaries, public integrations, two composed-host regressions
+  and six active doctests. Strict all-target Clippy, Rust 1.88.0 all-target
+  compilation, warning-denied Rustdoc, formatting, whitespace checks, Wasm test
+  compilation and all five raw Wasm size gates pass. Package/release workflows,
+  consumer builds and live deployments were not rerun. Runtime performance was
+  not measured.
+
+## 0.24.14
+
+- Make zero-page runtime growth return the current virtual extent after the
+  shared reentrancy check. Skip capacity planning, backing IO and the upstream
+  manager's redundant header write when no growth was requested. Positive growth
+  retains its existing capacity reservation, refusal and persistence behavior.
+- Extend existing growth regressions to cover zero-page calls through both the
+  typed method and substrate `Memory` adapter, empty and grown memories, detached
+  handles, backing refusal and reentry. The no-write assertion fails against the
+  previous implementation and passes after the cleanup.
+- Release decoded physical commit-slot records immediately after diagnostic
+  recovery, before projecting normal exports or running doctor policy callbacks.
+  Keep the independently recovered ledger and diagnostic evidence, read-only
+  behavior, recovery errors and memory-measurement ordering unchanged.
+- Remove four crate-private allocation-history mutation forwarders. Staging and
+  corruption fixtures use the already crate-visible vectors directly; public
+  read-only accessors, validation, lifecycle transitions and commit ordering
+  remain unchanged.
+- Document zero-page growth in the runtime API, operations guide and safety
+  invariants. Public signatures, error payloads, durable and diagnostic formats,
+  and declaration fingerprints are unchanged. No Canic source patch is required.
+- Validation: all 272 library tests and two composed-host regressions pass.
+  Strict all-target Clippy, Rust 1.88.0 all-target compilation, warning-denied
+  Rustdoc, formatting, whitespace checks and all five raw Wasm size gates pass.
+  Integration tests, doctests, package/release workflows, consumer builds and
+  live deployments were not rerun for this candidate. Runtime performance was
+  not measured.
+
+## 0.24.13
+
+- Decode the ledger stable-cell record once per cold bootstrap attempt and reuse
+  it for recovery and staging. Remove the private cell-opening wrapper, the
+  second panic-based decode and the complete record clone. Use capacity-checked
+  `Cell` writes and publish committed authority only after persistence succeeds.
+- Preserve fresh-cell acquisition before admission without committing genesis
+  on rejection. Extend the existing regression to check that a second rejected
+  attempt leaves the initialized root unchanged and a successful retry commits
+  generation one. Existing-cell retries still decode persisted memory afresh.
+- Move recovered allocation records and generation history into normal
+  diagnostic exports instead of cloning them. Share the projection with the
+  public borrowed constructor and doctor reports; retain doctor recovery evidence
+  for validation and preserve memory-measurement and policy-callback ordering.
+- Update runtime ownership and safety documentation. Public APIs, error payloads,
+  durable and diagnostic formats, and declaration fingerprints are unchanged.
+  No Canic source patch is required.
+- Validation: the complete Rust test suite passes, including 272 library tests,
+  compile-fail boundaries, public integrations, composed-host regressions and
+  doctests. Strict all-target Clippy, Rust 1.88.0 all-target compilation,
+  warning-denied Rustdoc, formatting, whitespace checks, Wasm test compilation
+  and all five raw Wasm size gates pass. Package/release workflows, consumer builds
+  and live deployments were not rerun. Runtime performance was not measured.
+
 ## 0.24.12
 
 - Make the ledger cell local to each bootstrap attempt. Remove the runtime's

@@ -2,8 +2,6 @@
   <img src="https://raw.githubusercontent.com/dragginzgame/ic-memory/main/images/ic-memory-readme-header.svg" alt="IC Memory — Internet Computer helper library" width="100%">
 </p>
 
-*Documentation reviewed against ic-memory 0.24.12.*
-
 **Jump to:** [What it does](#what-it-does) ·
 [Why it matters](#why-this-matters) ·
 [Is it useful?](#is-it-useful-for-my-application) ·
@@ -160,7 +158,7 @@ Add the crate:
 
 ```toml
 [dependencies]
-ic-memory = "0.24.12"
+ic-memory = "0.25.2"
 ```
 
 `ic-memory` re-exports its exact `ic-stable-structures` dependency through

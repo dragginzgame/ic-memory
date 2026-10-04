@@ -4,8 +4,6 @@
 
 # Operations and diagnostics
 
-*Documentation reviewed against ic-memory 0.24.12.*
-
 This guide is for application owners who need to inspect storage allocation,
 choose a `MemoryManager` bucket size, or diagnose a bootstrap failure. Start
 with the [README](../README.md) if you first need the purpose and basic setup of
@@ -144,6 +142,10 @@ assignment, preserving virtual extents and manager metadata for retry.
 The upstream `ic_stable_structures::Memory` trait requires an `i64` result, so
 only that adapter maps a growth failure to `-1`. Applications calling the
 runtime handle directly should use `?`, `match`, or an explicit error handler.
+
+A zero-page growth request returns the current virtual extent without backing
+reads, writes or growth. It still rejects reentrant growth while another handle
+holds the runtime's capacity reservation.
 
 ## Security and access control
 

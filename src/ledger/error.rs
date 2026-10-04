@@ -4,7 +4,7 @@ use crate::{
     ledger::LedgerPayloadEnvelopeError,
     physical::CommitRecoveryError,
     schema::SchemaMetadataError,
-    slot::{AllocationSlotDescriptor, MemoryManagerSlotError},
+    slot::MemoryManagerSlot,
 };
 
 ///
@@ -25,9 +25,6 @@ pub enum LedgerIntegrityError {
     /// Stable-key grammar was invalid after durable decode.
     #[error(transparent)]
     InvalidStableKey(StableKeyError),
-    /// Allocation slot descriptor was invalid after durable decode.
-    #[error(transparent)]
-    InvalidSlotDescriptor(MemoryManagerSlotError),
     /// Stable key appears in more than one allocation record.
     #[error("stable key '{stable_key}' appears in more than one allocation record")]
     DuplicateStableKey {
@@ -38,7 +35,7 @@ pub enum LedgerIntegrityError {
     #[error("allocation slot '{slot:?}' appears in more than one allocation record")]
     DuplicateSlot {
         /// Duplicate allocation slot.
-        slot: AllocationSlotDescriptor,
+        slot: MemoryManagerSlot,
     },
     /// Allocation record generation ordering is invalid.
     #[error("stable key '{stable_key}' has first_generation after last_seen_generation")]
@@ -251,15 +248,15 @@ pub enum AllocationStageError {
         /// Stable key being declared.
         stable_key: StableKey,
         /// Historical slot for the stable key.
-        historical_slot: AllocationSlotDescriptor,
+        historical_slot: MemoryManagerSlot,
         /// Slot claimed by the declaration.
-        declared_slot: AllocationSlotDescriptor,
+        declared_slot: MemoryManagerSlot,
     },
     /// Slot was historically bound to a different stable key.
     #[error("allocation slot '{slot:?}' was historically bound to stable key '{historical_key}'")]
     SlotStableKeyConflict {
         /// Slot being declared.
-        slot: AllocationSlotDescriptor,
+        slot: MemoryManagerSlot,
         /// Historical stable key for the slot.
         historical_key: StableKey,
         /// Stable key claimed by the declaration.
@@ -271,7 +268,7 @@ pub enum AllocationStageError {
         /// Retired stable key.
         stable_key: StableKey,
         /// Retired allocation slot.
-        slot: AllocationSlotDescriptor,
+        slot: MemoryManagerSlot,
     },
 }
 
@@ -313,15 +310,15 @@ pub enum AllocationReservationError {
         /// Stable key being reserved.
         stable_key: StableKey,
         /// Historical slot for the stable key.
-        historical_slot: AllocationSlotDescriptor,
+        historical_slot: MemoryManagerSlot,
         /// Slot claimed by the reservation.
-        reserved_slot: AllocationSlotDescriptor,
+        reserved_slot: MemoryManagerSlot,
     },
     /// Slot was historically bound to a different stable key.
     #[error("allocation slot '{slot:?}' was historically bound to stable key '{historical_key}'")]
     SlotStableKeyConflict {
         /// Slot being reserved.
-        slot: AllocationSlotDescriptor,
+        slot: MemoryManagerSlot,
         /// Historical stable key for the slot.
         historical_key: StableKey,
         /// Stable key claimed by the reservation.
@@ -333,7 +330,7 @@ pub enum AllocationReservationError {
         /// Active stable key.
         stable_key: StableKey,
         /// Active allocation slot.
-        slot: AllocationSlotDescriptor,
+        slot: MemoryManagerSlot,
     },
     /// Allocation was already retired and cannot be reserved.
     #[error("stable key '{stable_key}' was explicitly retired and cannot be reserved")]
@@ -341,7 +338,7 @@ pub enum AllocationReservationError {
         /// Retired stable key.
         stable_key: StableKey,
         /// Retired allocation slot.
-        slot: AllocationSlotDescriptor,
+        slot: MemoryManagerSlot,
     },
 }
 
@@ -357,9 +354,6 @@ pub enum AllocationRetirementError {
     /// Stable-key grammar failure.
     #[error(transparent)]
     Key(StableKeyError),
-    /// Allocation slot validation failure.
-    #[error(transparent)]
-    MemoryManagerSlot(MemoryManagerSlotError),
     /// Ledger generation cannot be advanced without overflow.
     #[error("ledger generation {generation} cannot be advanced without overflow")]
     GenerationOverflow {
@@ -375,9 +369,9 @@ pub enum AllocationRetirementError {
         /// Stable key being retired.
         stable_key: StableKey,
         /// Historical slot for the stable key.
-        historical_slot: AllocationSlotDescriptor,
+        historical_slot: MemoryManagerSlot,
         /// Slot named by the retirement request.
-        retired_slot: AllocationSlotDescriptor,
+        retired_slot: MemoryManagerSlot,
     },
     /// Allocation was already retired.
     #[error("stable key '{stable_key}' was already retired")]
@@ -385,6 +379,6 @@ pub enum AllocationRetirementError {
         /// Retired stable key.
         stable_key: StableKey,
         /// Retired allocation slot.
-        slot: AllocationSlotDescriptor,
+        slot: MemoryManagerSlot,
     },
 }

@@ -1,4 +1,4 @@
-use crate::{declaration::AllocationDeclaration, key::StableKey, slot::AllocationSlotDescriptor};
+use crate::{declaration::AllocationDeclaration, key::StableKey, slot::MemoryManagerSlot};
 use std::sync::Arc;
 
 ///
@@ -68,11 +68,8 @@ impl ValidatedAllocations {
 
     /// Find a validated slot by stable key.
     #[must_use]
-    pub fn slot_for(&self, key: &StableKey) -> Option<&AllocationSlotDescriptor> {
-        self.declarations()
-            .iter()
-            .find(|declaration| &declaration.stable_key == key)
-            .map(|declaration| &declaration.slot)
+    pub fn slot_for(&self, key: &StableKey) -> Option<&MemoryManagerSlot> {
+        slot_for_key(self.declarations(), key.as_str())
     }
 
     pub(crate) const fn confirm_persisted(self, generation: u64) -> CommittedAllocations {
@@ -81,6 +78,18 @@ impl ValidatedAllocations {
             generation,
         }
     }
+}
+
+// Typed capability callers and the runtime's validated borrowed input share
+// one lookup. Comparing text needs no temporary owned StableKey or second index.
+pub fn slot_for_key<'a>(
+    declarations: &'a [AllocationDeclaration],
+    key: &str,
+) -> Option<&'a MemoryManagerSlot> {
+    declarations
+        .iter()
+        .find(|declaration| declaration.stable_key.as_str() == key)
+        .map(|declaration| &declaration.slot)
 }
 
 ///
@@ -128,7 +137,7 @@ impl CommittedAllocations {
 
     /// Find a committed slot by stable key.
     #[must_use]
-    pub fn slot_for(&self, key: &StableKey) -> Option<&AllocationSlotDescriptor> {
+    pub fn slot_for(&self, key: &StableKey) -> Option<&MemoryManagerSlot> {
         self.validated.slot_for(key)
     }
 

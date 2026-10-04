@@ -1,7 +1,7 @@
 use crate::{
     constants::DIAGNOSTIC_STRING_MAX_BYTES,
     key::StableKey,
-    slot::AllocationSlotDescriptor,
+    slot::MemoryManagerSlot,
     text::{DiagnosticTextError, validate_diagnostic_text},
 };
 use serde::{Deserialize, Deserializer, Serialize, de::Error as _};
@@ -159,17 +159,15 @@ pub trait AllocationPolicy {
     fn validate_key(&self, key: &StableKey) -> Result<(), Self::Error>;
 
     /// Validate a stable-key to allocation-slot claim.
-    fn validate_slot(
-        &self,
-        key: &StableKey,
-        slot: &AllocationSlotDescriptor,
-    ) -> Result<(), Self::Error>;
+    /// The slot already contains a usable ID; policy checks ownership and scope.
+    fn validate_slot(&self, key: &StableKey, slot: &MemoryManagerSlot) -> Result<(), Self::Error>;
 
     /// Validate a reserved stable-key to allocation-slot claim.
+    /// The checked slot does not establish permission to reserve that ID.
     fn validate_reserved_slot(
         &self,
         key: &StableKey,
-        slot: &AllocationSlotDescriptor,
+        slot: &MemoryManagerSlot,
     ) -> Result<(), Self::Error>;
 }
 
