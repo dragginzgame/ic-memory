@@ -373,39 +373,22 @@ impl MemoryManagerRangeAuthority {
             }
         }
 
-        let mut next_uncovered = u16::from(target.start());
-        let target_end = u16::from(target.end());
+        let mut next_uncovered = target.start();
         for record in &self.authorities {
-            let record_start = u16::from(record.range.start());
-            let record_end = u16::from(record.range.end());
-
-            if record_start > next_uncovered {
-                let start = u8::try_from(next_uncovered).map_err(|_| {
-                    MemoryManagerRangeAuthorityError::MissingCoverage {
-                        start: target.start(),
-                        end: target.end(),
-                    }
-                })?;
+            if record.range.start() > next_uncovered {
                 return Err(MemoryManagerRangeAuthorityError::MissingCoverage {
-                    start,
+                    start: next_uncovered,
                     end: record.range.start() - 1,
                 });
             }
-
-            if record_end >= next_uncovered {
-                next_uncovered = record_end + 1;
-            }
+            // Ranges are ordered and disjoint, with usable ends at most 254.
+            // The next position therefore advances and fits through 255.
+            next_uncovered = record.range.end() + 1;
         }
 
-        if next_uncovered <= target_end {
-            let start = u8::try_from(next_uncovered).map_err(|_| {
-                MemoryManagerRangeAuthorityError::MissingCoverage {
-                    start: target.start(),
-                    end: target.end(),
-                }
-            })?;
+        if next_uncovered <= target.end() {
             return Err(MemoryManagerRangeAuthorityError::MissingCoverage {
-                start,
+                start: next_uncovered,
                 end: target.end(),
             });
         }

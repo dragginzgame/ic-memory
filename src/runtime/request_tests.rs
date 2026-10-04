@@ -52,6 +52,60 @@ fn id(runtime: &MemoryRuntime<VectorMemory>, key: &str) -> u8 {
 }
 
 #[test]
+fn fragmented_grants_place_in_order_and_exhaust_without_reusing_history() {
+    let ranges = [
+        ("app", 200, 201, MemoryManagerRangeMode::Allowed),
+        ("app", 10, 19, MemoryManagerRangeMode::Reserved),
+        ("foreign", 20, 29, MemoryManagerRangeMode::Allowed),
+        ("app", 100, 101, MemoryManagerRangeMode::Allowed),
+    ]
+    .map(|(authority, start, end, mode)| {
+        StaticMemoryRangeDeclaration::new(
+            MemoryManagerAuthorityRecord::new(
+                MemoryManagerIdRange::new(start, end).unwrap(),
+                authority,
+                mode,
+                None,
+            )
+            .unwrap(),
+        )
+        .unwrap()
+    });
+    let fixed = [StaticMemoryDeclaration::new(
+        "app",
+        AllocationDeclaration::memory_manager_unlabeled("app.fixed.v1", 100).unwrap(),
+    )
+    .unwrap()];
+    let requests = ["app.c.v1", "app.a.v1", "app.b.v1"]
+        .map(|key| MemoryRequest::new("app", key, SchemaMetadata::default()).unwrap());
+    let declarations = SealedDeclarationSnapshot::new(&fixed, &ranges, &requests).unwrap();
+    let backing = VectorMemory::default();
+    let mut runtime = MemoryRuntime::new(backing.clone()).unwrap();
+    runtime
+        .bootstrap(&declarations, &GenericRangePolicy)
+        .unwrap();
+    for (key, expected) in [("app.a.v1", 101), ("app.b.v1", 200), ("app.c.v1", 201)] {
+        assert_eq!(runtime.memory_id(key).unwrap(), expected);
+    }
+    drop(runtime);
+
+    // Omitted keys still occupy every remaining Allowed slot. Free Reserved
+    // slots and another authority's grants cannot supply a new placement.
+    let requests = [MemoryRequest::new("app", "app.d.v1", SchemaMetadata::default()).unwrap()];
+    let declarations = SealedDeclarationSnapshot::new(&fixed, &ranges, &requests).unwrap();
+    let before = backing.borrow().clone();
+    let mut runtime = MemoryRuntime::new(backing.clone()).unwrap();
+    assert!(matches!(
+        runtime.bootstrap(&declarations, &GenericRangePolicy),
+        Err(RuntimeBootstrapError::Resolution(
+            MemoryResolutionError::Exhausted { .. }
+        ))
+    ));
+    assert!(!runtime.is_bootstrapped());
+    assert_eq!(*backing.borrow(), before);
+}
+
+#[test]
 fn doctor_resolves_logical_requests_without_writes() {
     let declarations = snapshot(&["app.a.v1"], "app", 100, 103, &[("app.fixed.v1", 100)]);
     let backing = VectorMemory::default();

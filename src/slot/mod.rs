@@ -515,6 +515,53 @@ mod tests {
     }
 
     #[test]
+    fn coverage_preserves_last_usable_id_and_outside_before_gap() {
+        for (ranges, target, expected) in [
+            (
+                vec![(0, 253)],
+                (0, 254),
+                Err(MemoryManagerRangeAuthorityError::MissingCoverage {
+                    start: 254,
+                    end: 254,
+                }),
+            ),
+            (vec![(254, 254)], (254, 254), Ok(())),
+            (
+                vec![(10, 19), (250, 254)],
+                (0, 100),
+                Err(
+                    MemoryManagerRangeAuthorityError::RangeOutsideCoverageTarget {
+                        start: 250,
+                        end: 254,
+                        target_start: 0,
+                        target_end: 100,
+                    },
+                ),
+            ),
+        ] {
+            let records = ranges
+                .into_iter()
+                .map(|(start, end)| {
+                    MemoryManagerAuthorityRecord::new(
+                        MemoryManagerIdRange::new(start, end).unwrap(),
+                        "applications",
+                        MemoryManagerRangeMode::Allowed,
+                        None,
+                    )
+                    .unwrap()
+                })
+                .collect();
+            let authority = MemoryManagerRangeAuthority::from_records(records).unwrap();
+            assert_eq!(
+                authority.validate_complete_coverage(
+                    MemoryManagerIdRange::new(target.0, target.1).unwrap()
+                ),
+                expected
+            );
+        }
+    }
+
+    #[test]
     fn memory_manager_range_authority_rejects_complete_coverage_gaps() {
         let authority = MemoryManagerRangeAuthority::from_records(vec![
             MemoryManagerAuthorityRecord::new(

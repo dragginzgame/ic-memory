@@ -86,27 +86,21 @@ impl<P: AllocationPolicy> RuntimeMemoryManagerPolicy<'_, P> {
         authority: &str,
         slot: &AllocationSlotDescriptor,
     ) -> Result<(), RuntimePolicyError<P::Error>> {
-        if authority == IC_MEMORY_AUTHORITY_OWNER || self.declarations.user_ranges_registered() {
-            self.declarations
-                .range_authority()
-                .validate_slot_authority(slot, authority)?;
-            return Ok(());
-        }
-
-        let id = slot
-            .memory_manager_id()
-            .map_err(MemoryManagerRangeAuthorityError::Slot)?;
-        if self
+        match self
             .declarations
             .range_authority()
-            .authority_for_id(id)?
-            .is_some()
+            .validate_slot_authority(slot, authority)
         {
-            self.declarations
-                .range_authority()
-                .validate_slot_authority(slot, authority)?;
+            // Fixed external claims can defer unclaimed IDs to custom policy
+            // only when no user ranges exist. Claimed IDs always check ownership.
+            Err(MemoryManagerRangeAuthorityError::UnclaimedId { .. })
+                if authority != IC_MEMORY_AUTHORITY_OWNER
+                    && !self.declarations.user_ranges_registered() =>
+            {
+                Ok(())
+            }
+            result => result.map(|_| ()).map_err(RuntimePolicyError::Range),
         }
-        Ok(())
     }
 }
 

@@ -1,5 +1,26 @@
 # Changelog
 
+## 0.24.1
+
+- Resolve fresh logical requests by walking the declaring authority's ordered
+  `Allowed` grants directly. Remove repeated per-ID grant searches; preserve
+  lowest-free-ID placement, fixed claims, historical occupancy and exhaustion.
+- Use one range-authority validator in runtime policy. Remove the preliminary
+  lookup and second validation path; retain the exception for unclaimed fixed
+  external slots when no user ranges exist. Governance ownership, strict grants
+  and custom-policy callback ordering remain enforced.
+- Simplify complete-coverage checking to one `u8` cursor. Remove widened state,
+  impossible conversion errors and the redundant advancement condition;
+  preserve precise gaps, ID 254 coverage and out-of-target error precedence.
+- Public APIs, durable and diagnostic formats, and declaration fingerprints are
+  unchanged. No Canic source patch is required for these local changes.
+- Validation: 269 library tests, eight public integration tests, seven
+  compile-fail cases, two composed-host regressions and five doctests pass;
+  five existing sketches remain ignored. Strict all-target Clippy, Rust 1.88
+  all-target checking, warning-denied Rustdoc and Wasm test compilation pass.
+  All five raw Wasm probes pass their existing budgets. Downstream builds and
+  live deployments were not requalified.
+
 ## 0.24.0
 
 - Fix `StableKey::parse` to validate and store the same borrowed string. A

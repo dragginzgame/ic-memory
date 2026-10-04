@@ -94,6 +94,74 @@ impl RuntimeBootstrapPolicy for CountingPolicy {
     }
 }
 
+#[test]
+fn fixed_range_checks_preserve_custom_policy_admission_and_rejection_order() {
+    use crate::{
+        AllocationValidationError, MemoryManagerAuthorityRecord, MemoryManagerIdRange,
+        MemoryManagerRangeAuthorityError, MemoryManagerRangeMode, RuntimeBootstrapError,
+        RuntimePolicyError, StaticMemoryDeclaration, StaticMemoryRangeDeclaration,
+    };
+
+    let mismatch = |id, actual: &str| MemoryManagerRangeAuthorityError::AuthorityMismatch {
+        id,
+        expected_authority: "app".to_string(),
+        actual_authority: actual.to_string(),
+    };
+    for (authority, id, expected) in [
+        (None, 100, None),
+        (Some("app"), 100, None),
+        (None, 1, Some(mismatch(1, crate::IC_MEMORY_AUTHORITY_OWNER))),
+        (Some("foreign"), 100, Some(mismatch(100, "foreign"))),
+        (
+            Some("app"),
+            101,
+            Some(MemoryManagerRangeAuthorityError::UnclaimedId { id: 101 }),
+        ),
+    ] {
+        let ranges: Vec<_> = authority
+            .map(|authority| {
+                StaticMemoryRangeDeclaration::new(
+                    MemoryManagerAuthorityRecord::new(
+                        MemoryManagerIdRange::new(100, 100).unwrap(),
+                        authority,
+                        MemoryManagerRangeMode::Allowed,
+                        None,
+                    )
+                    .unwrap(),
+                )
+                .unwrap()
+            })
+            .into_iter()
+            .collect();
+        let registration = StaticMemoryDeclaration::new(
+            "app",
+            crate::AllocationDeclaration::memory_manager_unlabeled("app.rows.v1", id).unwrap(),
+        )
+        .unwrap();
+        let declarations = SealedDeclarationSnapshot::new(&[registration], &ranges, &[]).unwrap();
+        let policy = CountingPolicy(std::cell::Cell::new(0));
+        let mut runtime = empty_runtime();
+        match (expected, runtime.bootstrap(&declarations, &policy)) {
+            (None, Ok(_)) => {
+                assert_eq!(runtime.memory_id("app.rows.v1").unwrap(), id);
+                assert_eq!(policy.0.get(), 2);
+            }
+            (
+                Some(expected),
+                Err(RuntimeBootstrapError::Validation(AllocationValidationError::Policy(
+                    RuntimePolicyError::Range(actual),
+                ))),
+            ) => {
+                assert_eq!(actual, expected);
+                assert!(!runtime.is_bootstrapped());
+                // Key policy runs first; the range failure precedes slot policy.
+                assert_eq!(policy.0.get(), 1);
+            }
+            outcome => panic!("unexpected range-policy outcome: {outcome:?}"),
+        }
+    }
+}
+
 struct IdentityPolicy {
     name: &'static str,
     version: u32,

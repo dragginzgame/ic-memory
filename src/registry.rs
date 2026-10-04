@@ -357,15 +357,17 @@ impl SealedDeclarationSnapshot {
                     .memory_manager_id()
                     .expect("validated ledger slot")
             } else {
-                (0..255_u8)
-                    .find(|id| {
-                        !occupied[usize::from(*id)]
-                            && self.range_authority().authorities().iter().any(|range| {
-                                range.authority() == request.authority
-                                    && range.mode() == MemoryManagerRangeMode::Allowed
-                                    && range.range().contains(*id)
-                            })
+                // Validated ranges are disjoint and ascending, so walking only
+                // this authority's Allowed grants preserves lowest-ID placement.
+                self.range_authority()
+                    .authorities()
+                    .iter()
+                    .filter(|range| {
+                        range.authority() == request.authority
+                            && range.mode() == MemoryManagerRangeMode::Allowed
                     })
+                    .flat_map(|range| range.range().start()..=range.range().end())
+                    .find(|id| !occupied[usize::from(*id)])
                     .ok_or_else(|| crate::MemoryResolutionError::Exhausted {
                         stable_key: request.stable_key.clone(),
                         authority: request.authority.clone(),
