@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.25.2
+
+- Reuse the owned range-authority input vector when validating and ordering
+  records. Remove the second growing vector while preserving input-order
+  metadata validation, inclusive overlap boundaries and the first conflicting
+  range reported. Process only the accepted prefix so later input keeps its
+  original refusal order.
+- Exercise ascending, reversed and interleaved inputs across all 255 usable
+  IDs, retaining authority names, modes, purposes and canonical CBOR output.
+  The new behavioral regression also passes against 0.25.1.
+- Public APIs, durable formats, declaration fingerprints and range policy
+  behavior are unchanged; consumers need no source adoption for this cleanup.
+- Validation: 67 focused slot/range, registry, logical placement, admission and
+  adoption tests, strict library/test Clippy, Rust 1.88.0 library compilation,
+  Wasm library compilation, warning-denied Rustdoc, formatting, whitespace checks
+  and all five raw Wasm size gates pass. No runtime speedup is claimed.
+
 ## 0.25.1
 
 - Hash sealed declarations' canonical CBOR directly into the existing FNV-1a

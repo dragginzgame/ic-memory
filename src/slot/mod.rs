@@ -785,6 +785,41 @@ mod tests {
     }
 
     #[test]
+    fn full_domain_range_permutations_preserve_order_and_metadata() {
+        let records: Vec<_> = (0..MEMORY_MANAGER_INVALID_ID)
+            .map(|id| {
+                MemoryManagerAuthorityRecord::new(
+                    MemoryManagerIdRange::new(id, id).unwrap(),
+                    format!("owner{id}"),
+                    if id % 2 == 0 {
+                        MemoryManagerRangeMode::Allowed
+                    } else {
+                        MemoryManagerRangeMode::Reserved
+                    },
+                    Some(format!("purpose{id}")),
+                )
+                .unwrap()
+            })
+            .collect();
+        let expected = MemoryManagerRangeAuthority::from_records(records.clone()).unwrap();
+        let reversed: Vec<_> = records.iter().rev().cloned().collect();
+        let interleaved: Vec<_> = records
+            .iter()
+            .skip(1)
+            .step_by(2)
+            .chain(records.iter().step_by(2))
+            .cloned()
+            .collect();
+        for input in [records, reversed, interleaved] {
+            let value = serde_json::json!({ "authorities": input });
+            let decoded: MemoryManagerRangeAuthority = serde_json::from_value(value).unwrap();
+            assert_eq!(decoded, expected);
+            let encoded = crate::test_cbor::to_vec(&decoded).unwrap();
+            assert_eq!(encoded, crate::test_cbor::to_vec(&expected).unwrap());
+        }
+    }
+
+    #[test]
     fn memory_manager_range_authority_from_records_rejects_first_overlap_in_range_order() {
         let err = MemoryManagerRangeAuthority::from_records(vec![
             MemoryManagerAuthorityRecord {
