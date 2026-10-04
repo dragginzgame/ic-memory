@@ -101,12 +101,10 @@ impl AllocationRetirement {
         stable_key: impl AsRef<str>,
         slot: AllocationSlotDescriptor,
     ) -> Result<Self, AllocationRetirementError> {
-        let retirement = Self {
-            stable_key: StableKey::parse(stable_key).map_err(AllocationRetirementError::Key)?,
-            slot,
-        };
-        retirement.validate()?;
-        Ok(retirement)
+        let stable_key = StableKey::parse(stable_key).map_err(AllocationRetirementError::Key)?;
+        slot.validate()
+            .map_err(AllocationRetirementError::MemoryManagerSlot)?;
+        Ok(Self { stable_key, slot })
     }
 
     /// Return the stable key being retired.

@@ -616,7 +616,6 @@ pub fn register_static_memory_manager_range(
 pub fn register_static_memory_range_declaration(
     declaration: StaticMemoryRangeDeclaration,
 ) -> Result<(), StaticMemoryDeclarationError> {
-    validate_external_authority(declaration.authority())?;
     with_unsealed_registry(|registry| {
         registry.ranges.push(declaration);
     })

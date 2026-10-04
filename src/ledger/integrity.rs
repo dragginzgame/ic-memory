@@ -1,5 +1,5 @@
 use super::{AllocationLedger, AllocationRecord, AllocationState, LedgerIntegrityError};
-use crate::declaration::validate_runtime_fingerprint;
+use crate::{declaration::validate_runtime_fingerprint, slot::AllocationSlot};
 use std::collections::BTreeSet;
 
 impl AllocationLedger {
@@ -47,7 +47,8 @@ impl AllocationLedger {
     pub fn validate_integrity(&self) -> Result<(), LedgerIntegrityError> {
         self.validate_bounds()?;
         let mut stable_keys = BTreeSet::new();
-        let mut slots = BTreeSet::new();
+        // Track the full decoded byte domain; sentinel rejection remains below.
+        let mut slots = [false; 256];
 
         for record in self.allocation_history.records() {
             if !stable_keys.insert(&record.stable_key) {
@@ -55,11 +56,14 @@ impl AllocationLedger {
                     stable_key: record.stable_key.clone(),
                 });
             }
-            if !slots.insert(&record.slot) {
+            let AllocationSlot::MemoryManagerId(id) = record.slot.slot();
+            let occupied = &mut slots[usize::from(*id)];
+            if *occupied {
                 return Err(LedgerIntegrityError::DuplicateSlot {
                     slot: record.slot.clone(),
                 });
             }
+            *occupied = true;
             validate_record_integrity(self.current_generation, record)?;
         }
 

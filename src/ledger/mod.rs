@@ -1263,6 +1263,13 @@ mod tests {
                 MemoryManagerSlotError::InvalidMemoryManagerId { id }
             ) if id == MEMORY_MANAGER_INVALID_ID
         ));
+
+        let err = AllocationRetirement::new(
+            "App.users.v1",
+            AllocationSlotDescriptor::memory_manager_unchecked(MEMORY_MANAGER_INVALID_ID),
+        )
+        .expect_err("invalid key precedes invalid slot");
+        assert!(matches!(err, AllocationRetirementError::Key(_)));
     }
 
     #[test]
@@ -1605,19 +1612,23 @@ mod tests {
     #[test]
     fn validate_integrity_rejects_duplicate_stable_keys() {
         let mut ledger = ledger();
-        *ledger.allocation_history.records_mut() = vec![
-            active_record("app.users.v1", 100),
-            active_record("app.users.v1", 101),
-        ];
+        for second_id in [101, 100] {
+            *ledger.allocation_history.records_mut() = vec![
+                active_record("app.users.v1", 100),
+                active_record("app.users.v1", second_id),
+            ];
 
-        let err = ledger.validate_integrity().expect_err("duplicate key");
+            let err = ledger
+                .validate_integrity()
+                .expect_err("duplicate key precedes duplicate slot");
 
-        assert_eq!(
-            err,
-            LedgerIntegrityError::DuplicateStableKey {
-                stable_key: StableKey::parse("app.users.v1").unwrap(),
-            }
-        );
+            assert_eq!(
+                err,
+                LedgerIntegrityError::DuplicateStableKey {
+                    stable_key: StableKey::parse("app.users.v1").unwrap(),
+                }
+            );
+        }
     }
 
     #[test]
@@ -1635,6 +1646,16 @@ mod tests {
             LedgerIntegrityError::DuplicateSlot {
                 slot: AllocationSlotDescriptor::memory_manager(100).unwrap(),
             }
+        );
+
+        ledger.allocation_history.records_mut()[1].stable_key =
+            serde_json::from_str("\"App.orders.v1\"").expect("decoded unvalidated key");
+        assert_eq!(
+            ledger.validate_integrity().unwrap_err(),
+            LedgerIntegrityError::DuplicateSlot {
+                slot: AllocationSlotDescriptor::memory_manager(100).unwrap(),
+            },
+            "duplicate slot precedes the second record's key validation"
         );
     }
 

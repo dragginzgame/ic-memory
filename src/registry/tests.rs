@@ -77,6 +77,12 @@ fn registers_static_memory_ranges() {
     assert_eq!(ranges[0].authority(), "crate_a");
     assert_eq!(ranges[0].record().range().start(), 100);
     assert_eq!(ranges[0].record().range().end(), 109);
+
+    let late = StaticMemoryRangeDeclaration::new(ranges[0].record().clone()).unwrap();
+    assert_eq!(
+        register_static_memory_range_declaration(late).unwrap_err(),
+        StaticMemoryDeclarationError::RegistrySealed
+    );
 }
 
 #[test]

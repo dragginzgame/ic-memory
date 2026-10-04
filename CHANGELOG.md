@@ -1,5 +1,26 @@
 # Changelog
 
+## 0.24.2
+
+- Track duplicate allocation slots with fixed occupancy arrays instead of
+  general-purpose trees in declaration and ledger validation. Retain key and
+  generation sets, decoded sentinel rejection and existing error precedence.
+- Let `StaticMemoryRangeDeclaration::new` own external authority validation.
+  Remove the registration-time recheck of its immutable checked input;
+  reserved-authority, decoded-record and registry lifecycle checks remain.
+- Validate retirement constructor keys once through `StableKey::parse`, then
+  validate the supplied slot directly. Retain full retirement validation at
+  decoded-input and staging boundaries, including key-before-slot errors.
+- Public APIs, durable and diagnostic formats, and declaration fingerprints are
+  unchanged. No Canic source patch is required for these local changes.
+- Validation: 269 library tests, eight public integration tests, seven
+  compile-fail cases, two composed-host regressions and five doctests pass;
+  five existing sketches remain ignored. Extended existing tests cover
+  duplicate-error precedence, malformed inputs and late range registration.
+  Strict all-target Clippy, Rust 1.88 all-target checking, warning-denied
+  Rustdoc, Wasm test compilation and all five raw Wasm size gates pass.
+  Downstream builds and live deployments were not requalified.
+
 ## 0.24.1
 
 - Resolve fresh logical requests by walking the declaring authority's ordered

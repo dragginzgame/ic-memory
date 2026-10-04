@@ -1,7 +1,7 @@
 use crate::{
     key::{StableKey, StableKeyError},
     schema::{SchemaMetadata, SchemaMetadataError},
-    slot::{AllocationSlotDescriptor, MemoryManagerSlotError},
+    slot::{AllocationSlot, AllocationSlotDescriptor, MemoryManagerSlotError},
     text::{DiagnosticTextError, validate_diagnostic_text},
 };
 use serde::{Deserialize, Serialize};
@@ -306,14 +306,17 @@ fn reject_duplicates(
     declarations: &[AllocationDeclaration],
 ) -> Result<(), DeclarationSnapshotError> {
     let mut keys = BTreeSet::new();
-    let mut slots = BTreeSet::new();
+    let mut slots = [false; 256];
 
     for declaration in declarations {
-        if !slots.insert(&declaration.slot) {
+        let AllocationSlot::MemoryManagerId(id) = declaration.slot.slot();
+        let occupied = &mut slots[usize::from(*id)];
+        if *occupied {
             return Err(DeclarationSnapshotError::DuplicateSlot(
                 declaration.slot.clone(),
             ));
         }
+        *occupied = true;
         if !keys.insert(&declaration.stable_key) {
             return Err(DeclarationSnapshotError::DuplicateStableKey(
                 declaration.stable_key.clone(),
@@ -383,7 +386,8 @@ mod tests {
         declaration.slot =
             AllocationSlotDescriptor::memory_manager_unchecked(crate::MEMORY_MANAGER_INVALID_ID);
 
-        let err = DeclarationSnapshot::new(vec![declaration]).expect_err("snapshot must fail");
+        let err = DeclarationSnapshot::new(vec![declaration.clone(), declaration])
+            .expect_err("invalid slot must precede duplicate errors");
 
         assert!(matches!(
             err,
@@ -421,17 +425,19 @@ mod tests {
 
     #[test]
     fn rejects_duplicate_slots() {
-        let err = DeclarationSnapshot::new(vec![
-            declaration("app.users.v1", 100),
-            declaration("app.orders.v1", 100),
-        ])
-        .expect_err("duplicate slot");
+        for second_key in ["app.orders.v1", "app.users.v1"] {
+            let err = DeclarationSnapshot::new(vec![
+                declaration("app.users.v1", 100),
+                declaration(second_key, 100),
+            ])
+            .expect_err("duplicate slot precedes duplicate key");
 
-        assert_eq!(
-            err,
-            DeclarationSnapshotError::DuplicateSlot(
-                AllocationSlotDescriptor::memory_manager(100).unwrap()
-            )
-        );
+            assert_eq!(
+                err,
+                DeclarationSnapshotError::DuplicateSlot(
+                    AllocationSlotDescriptor::memory_manager(100).unwrap()
+                )
+            );
+        }
     }
 }
