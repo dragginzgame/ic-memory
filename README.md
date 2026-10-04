@@ -4,6 +4,17 @@
 
 *Documentation reviewed against ic-memory 0.24.12.*
 
+**Jump to:** [What it does](#what-it-does) ·
+[Why it matters](#why-this-matters) ·
+[Is it useful?](#is-it-useful-for-my-application) ·
+[How it works](#how-it-works) ·
+[Choose an integration style](#choose-an-integration-style) ·
+[Quick start](#quick-start-for-developers) ·
+[Troubleshooting](docs/troubleshooting.md) ·
+[Advanced integration](#operations-and-advanced-integration)
+
+## What it does
+
 `ic-memory` is a safety system for an Internet Computer application's persistent
 data.
 
@@ -20,19 +31,6 @@ opening the wrong data.
 > `ic-memory` protects the connection between a store and its storage location.
 > It is not a backup system, a database schema migrator, or a data validator.
 
-**Jump to:** [Why it matters](#why-this-matters) ·
-[Is it useful?](#is-it-useful-for-my-application) ·
-[How it works](#how-it-works) ·
-[Choose an integration style](#choose-an-integration-style) ·
-[Quick start](#quick-start-for-developers) ·
-[Troubleshooting](docs/troubleshooting.md) ·
-[Advanced integration](#operations-and-advanced-integration)
-
-<p align="center">
-  <img src="https://raw.githubusercontent.com/dragginzgame/ic-memory/main/images/ic-memory-upgrade-blocked.svg" alt="Before an upgrade, Users uses storage 100 and Orders uses storage 101. A mistaken upgrade swaps those assignments, so ic-memory blocks the upgrade before either store opens." width="900">
-</p>
-<p align="center"><em>A changed store-to-location mapping is rejected before application data opens.</em></p>
-
 ## Why this matters
 
 Imagine that version 1 of an application stores users and orders separately:
@@ -48,6 +46,14 @@ A later version accidentally reverses those locations:
 Users  -> storage location 101
 Orders -> storage location 100
 ```
+
+The diagram below shows the same mistake and the point where `ic-memory`
+intervenes:
+
+<p align="center">
+  <img src="https://raw.githubusercontent.com/dragginzgame/ic-memory/main/images/ic-memory-upgrade-blocked.svg" alt="Before an upgrade, Users uses storage 100 and Orders uses storage 101. A mistaken upgrade swaps those assignments, so ic-memory blocks the upgrade before either store opens." width="900">
+</p>
+<p align="center"><em>A changed store-to-location mapping is rejected before application data opens.</em></p>
 
 The program can still compile, and the upgrade can still install. Without an
 allocation check, it may then read order records as users and user records as
