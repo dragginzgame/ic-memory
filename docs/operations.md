@@ -1,5 +1,7 @@
 # Operations and diagnostics
 
+*Documentation reviewed against ic-memory 0.24.12.*
+
 This guide is for application owners who need to inspect storage allocation,
 choose a `MemoryManager` bucket size, or diagnose a bootstrap failure. Start
 with the [README](../README.md) if you first need the purpose and basic setup of

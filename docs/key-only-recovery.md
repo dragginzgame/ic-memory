@@ -1,5 +1,7 @@
 # Key-only allocation and bounded recovery
 
+*Documentation reviewed against ic-memory 0.24.12.*
+
 This is the current contract for completed issues #2–#4. Fixed declarations
 remain useful for host composition. Logical requests add no fields to the
 durable ledger and create no second allocation map.

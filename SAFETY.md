@@ -1,5 +1,7 @@
 # Safety Invariants
 
+*Documentation reviewed against ic-memory 0.24.12.*
+
 `ic-memory` is stable-memory allocation-governance infrastructure. Future
 changes must preserve these invariants on every recovery, validation, staging,
 commit, and allocation-opening path.

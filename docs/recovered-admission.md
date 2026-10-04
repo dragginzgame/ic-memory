@@ -1,5 +1,7 @@
 # Recovered-metadata admission
 
+*Documentation reviewed against ic-memory 0.24.12.*
+
 Current admission contract, introduced in 0.14.1 for completed issue #5 and
 simplified in 0.14.2. The design review and measurements below retain their
 original 0.14.0/0.14.1 scope; current downstream acceptance is recorded in the

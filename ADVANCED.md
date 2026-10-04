@@ -1,7 +1,24 @@
 # Advanced ic-memory
 
+*Documentation reviewed against ic-memory 0.24.12.*
+
 This document covers the lower-level pieces behind the macro runtime. Most
 applications should start with the README.
+
+## Contents
+
+- [How it fits](#how-it-fits)
+- [Runtime ownership](#runtime-ownership)
+- [Policy authority](#policy-authority)
+- [Declaration-only hooks](#declaration-only-hooks)
+- [Default runtime diagnostics](#default-runtime-diagnostics)
+- [Explicit `MemoryRuntime<M>`](#explicit-memoryruntimem)
+- [Manual bootstrap](#manual-bootstrap)
+- [Stable key rules](#stable-key-rules)
+- [Range authority](#range-authority)
+- [Current MemoryManager rules](#current-memorymanager-rules)
+- [What it does not do](#what-it-does-not-do)
+- [Status](#status)
 
 ## How It Fits
 
