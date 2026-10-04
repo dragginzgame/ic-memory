@@ -1,8 +1,9 @@
 # CANIC-162: bounded physical allocation attribution
 
 Original qualification: 2026-09-10, prepared against 0.12.3.
-The API guidance is current through 0.15.4; the fixture measurements and original
-validation counts retain their 2026-09-10 scope. A read-only sibling review on
+The API signatures and guidance were reviewed against ic-memory 0.24.10. The
+fixture measurements and original validation counts retain their 2026-09-10
+scope. A read-only sibling review on
 2026-10-03 confirms Canic selects 0.15.3, uses the detailed report and numeric
 summary, exposes the full allocation DTO, and configures 16-page buckets at its
 bootstrap owner. This is source-adoption evidence, not a live Toko measurement
@@ -22,7 +23,7 @@ impl<M: ic_memory::ic_stable_structures::Memory> MemoryRuntime<M> {
     pub fn new(memory: M) -> Result<Self, RuntimeConstructionError>;
     pub fn new_with_config(memory: M, config: MemoryManagerConfig)
         -> Result<Self, RuntimeConstructionError>;
-    pub const fn memory_manager_config(&self) -> MemoryManagerConfig;
+    pub fn memory_manager_config(&self) -> MemoryManagerConfig;
     pub fn open_memory(&self, stable_key: &str, expected_id: u8)
         -> Result<RuntimeMemory<M>, RuntimeOpenError>;
     pub fn memory_id(&self, stable_key: &str) -> Result<u8, RuntimeOpenError>;

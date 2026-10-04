@@ -1,0 +1,32 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="730" viewBox="0 0 1200 730" role="img" aria-labelledby="title desc">
+  <title id="title">When is ic-memory useful?</title>
+  <desc id="desc">One small store whose location never changes: probably unnecessary. Several persistent stores: yes. Libraries or plugins contribute their own stores: especially useful. Storage layout changes across upgrades: especially useful. You need backups or schema migration: no, use another mechanism.</desc>
+  <rect width="1200" height="730" fill="#F7FAFD"/>
+  <g font-family="Inter, Arial, sans-serif" fill="#102B50">
+    <text x="56" y="57" font-size="14" font-weight="700" letter-spacing="2" fill="#53718F">IC MEMORY · DECISION GUIDE</text>
+    <text x="56" y="107" font-size="34" font-weight="700">When is ic-memory useful?</text>
+    <text x="56" y="143" font-size="19" fill="#53718F">A quick guide for choosing the right tool.</text>
+    <rect x="56" y="182" width="1088" height="464" rx="18" fill="white" stroke="#D7E3EF" stroke-width="1.5"/>
+    <path d="M74 182H1126Q1144 182 1144 200V252H56V200Q56 182 74 182Z" fill="#102B50"/>
+    <text x="82" y="226" font-size="19" font-weight="700" fill="white">Situation</text>
+    <text x="772" y="226" font-size="19" font-weight="700" fill="white">Is ic-memory useful?</text>
+    <path d="M56 334H1144M56 412H1144M56 490H1144M56 568H1144" stroke="#E3EBF3" stroke-width="1.5"/>
+    <path d="M744 252V646" stroke="#E3EBF3" stroke-width="1.5"/>
+    <text x="82" y="301" font-size="20">One small store whose location never changes</text>
+    <rect x="772" y="275" width="290" height="37" rx="18.5" fill="#EDF1F5"/>
+    <text x="792" y="300" font-size="18" font-weight="600" fill="#52677D">Probably unnecessary</text>
+    <text x="82" y="379" font-size="20">Several persistent stores</text>
+    <rect x="772" y="353" width="84" height="37" rx="18.5" fill="#E1F3EC"/>
+    <text x="797" y="378" font-size="18" font-weight="700" fill="#20765E">Yes</text>
+    <text x="82" y="457" font-size="20">Libraries or plugins contribute their own stores</text>
+    <rect x="772" y="431" width="224" height="37" rx="18.5" fill="#DDF6FA"/>
+    <text x="792" y="456" font-size="18" font-weight="700" fill="#087C94">Especially useful</text>
+    <text x="82" y="535" font-size="20">Storage layout changes across upgrades</text>
+    <rect x="772" y="509" width="224" height="37" rx="18.5" fill="#DDF6FA"/>
+    <text x="792" y="534" font-size="18" font-weight="700" fill="#087C94">Especially useful</text>
+    <text x="82" y="613" font-size="20">You need backups or schema migration</text>
+    <text x="772" y="605" font-size="18" font-weight="700" fill="#A23B2F">No</text>
+    <text x="772" y="631" font-size="17" fill="#53718F">Use another mechanism</text>
+    <text x="56" y="689" font-size="16" fill="#53718F">Use ic-memory to check storage assignments before stores are opened.</text>
+  </g>
+</svg>

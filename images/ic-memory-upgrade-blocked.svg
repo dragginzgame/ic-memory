@@ -1,0 +1,62 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1400" height="820" viewBox="0 0 1400 820" role="img" aria-labelledby="title desc">
+<title id="title">ic-memory blocks an upgrade that swaps storage assignments</title>
+<desc id="desc">Before an upgrade, Users uses Storage 100 and Orders uses Storage 101. A mistaken upgrade assigns Users to Storage 101 and Orders to Storage 100. ic-memory detects both mismatches and blocks the upgrade before either store is opened.</desc>
+<defs>
+ <marker id="arrow-cyan" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0 0 10 5 0 10Z" fill="#009DBD"/></marker>
+ <marker id="arrow-violet" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0 0 10 5 0 10Z" fill="#7354C6"/></marker>
+ <g id="users-folder"><path d="M0 16Q0 8 8 8H52L65 22H136Q144 22 144 30V98Q144 106 136 106H8Q0 106 0 98Z" fill="#DDF6FA" stroke="#009DBD" stroke-width="2.5"/><path d="M1 36H143" stroke="#009DBD" stroke-width="2.5"/><circle cx="61" cy="58" r="9" fill="#009DBD"/><path d="M43 86V81Q43 69 61 69Q79 69 79 81V86Z" fill="#009DBD"/><circle cx="88" cy="62" r="7" fill="#009DBD" opacity=".6"/><path d="M84 73Q101 72 101 85H85" fill="#009DBD" opacity=".6"/></g>
+ <g id="orders-folder"><path d="M0 16Q0 8 8 8H52L65 22H136Q144 22 144 30V98Q144 106 136 106H8Q0 106 0 98Z" fill="#EEE8FB" stroke="#7354C6" stroke-width="2.5"/><path d="M1 36H143" stroke="#7354C6" stroke-width="2.5"/><rect x="49" y="48" width="47" height="45" rx="5" fill="#7354C6"/><path d="M60 59H85M60 70H85M60 81H76" stroke="white" stroke-width="3" stroke-linecap="round"/></g>
+ <g id="cross"><circle r="16" fill="#FFF4F1" stroke="#C64535" stroke-width="2"/><path d="m-5-5 10 10m0-10-10 10" stroke="#C64535" stroke-width="3" stroke-linecap="round"/></g>
+</defs>
+<rect width="1400" height="820" fill="#F7FAFD"/>
+<g font-family="Inter, Arial, sans-serif" fill="#102B50">
+ <text x="64" y="66" font-size="16" font-weight="700" letter-spacing="2" fill="#53718F">IC MEMORY · STORAGE SAFETY</text>
+ <text x="64" y="116" font-size="36" font-weight="700">A mistaken mapping. A blocked upgrade.</text>
+ <text x="64" y="153" font-size="19" fill="#53718F">ic-memory checks storage identities before either store is opened.</text>
+ <rect x="64" y="194" width="612" height="376" rx="20" fill="white" stroke="#D7E3EF" stroke-width="1.5"/>
+ <rect x="700" y="194" width="636" height="376" rx="20" fill="white" stroke="#D7E3EF" stroke-width="1.5"/>
+ <circle cx="95" cy="230" r="6" fill="#218B70"/>
+ <text x="112" y="238" font-size="22" font-weight="700">Before an upgrade</text>
+ <text x="728" y="238" font-size="22" font-weight="700">After a mistaken upgrade</text>
+ <text x="92" y="278" font-size="13" font-weight="700" letter-spacing="1.5" fill="#71859A">STORE</text>
+ <text x="455" y="278" font-size="13" font-weight="700" letter-spacing="1.5" fill="#71859A">STORAGE ID</text>
+ <text x="728" y="278" font-size="13" font-weight="700" letter-spacing="1.5" fill="#71859A">STORE</text>
+ <text x="1114" y="278" font-size="13" font-weight="700" letter-spacing="1.5" fill="#71859A">STORAGE ID</text>
+ <use href="#users-folder" x="94" y="291"/><text x="166" y="424" font-size="19" font-weight="700" text-anchor="middle">Users</text>
+ <use href="#orders-folder" x="94" y="435"/><text x="166" y="558" font-size="19" font-weight="700" text-anchor="middle">Orders</text>
+ <use href="#users-folder" x="730" y="291"/><text x="802" y="424" font-size="19" font-weight="700" text-anchor="middle">Users</text>
+ <use href="#orders-folder" x="730" y="435"/><text x="802" y="558" font-size="19" font-weight="700" text-anchor="middle">Orders</text>
+ <g stroke-width="3" fill="none">
+  <path d="M260 348H433" stroke="#009DBD" marker-end="url(#arrow-cyan)"/>
+  <path d="M260 491H433" stroke="#7354C6" marker-end="url(#arrow-violet)"/>
+  <path d="M896 348C998 348 1008 491 1093 491" stroke="#009DBD" stroke-dasharray="8 6" marker-end="url(#arrow-cyan)"/>
+  <path d="M896 491C998 491 1008 348 1093 348" stroke="#7354C6" stroke-dasharray="8 6" marker-end="url(#arrow-violet)"/>
+ </g>
+ <g>
+  <rect x="455" y="308" width="182" height="82" rx="11" fill="#F0FBFD" stroke="#009DBD" stroke-width="2"/>
+  <path d="M455 331H637" stroke="#009DBD" stroke-width="1.5"/>
+  <circle cx="471" cy="320" r="3" fill="#009DBD"/><circle cx="482" cy="320" r="3" fill="#009DBD"/>
+  <text x="546" y="366" font-size="20" font-weight="700" text-anchor="middle">Storage 100</text>
+  <rect x="455" y="451" width="182" height="82" rx="11" fill="#F5F1FD" stroke="#7354C6" stroke-width="2"/>
+  <path d="M455 474H637" stroke="#7354C6" stroke-width="1.5"/>
+  <circle cx="471" cy="463" r="3" fill="#7354C6"/><circle cx="482" cy="463" r="3" fill="#7354C6"/>
+  <text x="546" y="509" font-size="20" font-weight="700" text-anchor="middle">Storage 101</text>
+  <rect x="1114" y="308" width="182" height="82" rx="11" fill="#F0FBFD" stroke="#009DBD" stroke-width="2"/>
+  <path d="M1114 331H1296" stroke="#009DBD" stroke-width="1.5"/>
+  <circle cx="1130" cy="320" r="3" fill="#009DBD"/><circle cx="1141" cy="320" r="3" fill="#009DBD"/>
+  <text x="1205" y="366" font-size="20" font-weight="700" text-anchor="middle">Storage 100</text>
+  <rect x="1114" y="451" width="182" height="82" rx="11" fill="#F5F1FD" stroke="#7354C6" stroke-width="2"/>
+  <path d="M1114 474H1296" stroke="#7354C6" stroke-width="1.5"/>
+  <circle cx="1130" cy="463" r="3" fill="#7354C6"/><circle cx="1141" cy="463" r="3" fill="#7354C6"/>
+  <text x="1205" y="509" font-size="20" font-weight="700" text-anchor="middle">Storage 101</text>
+ </g>
+ <use href="#cross" x="1080" y="348"/><use href="#cross" x="1080" y="491"/>
+ <path d="M1018 572V604" stroke="#C64535" stroke-width="2" stroke-dasharray="5 5"/>
+ <rect x="64" y="604" width="1272" height="146" rx="18" fill="#FFF4F1" stroke="#EDB6AD" stroke-width="1.5"/>
+ <g transform="translate(95 639)"><path d="M35 0 62 11V34C62 53 49 67 35 74C21 67 8 53 8 34V11Z" fill="#C64535"/><path d="M21 37H49" stroke="white" stroke-width="6" stroke-linecap="round"/></g>
+ <text x="183" y="653" font-size="13" letter-spacing="1.5" font-weight="700" fill="#A23B2F">IC-MEMORY DETECTS THE SWAP</text>
+ <text x="183" y="692" font-size="31" font-weight="700" fill="#A23B2F">Upgrade blocked</text>
+ <text x="183" y="724" font-size="19" fill="#6B4C48">Neither store is opened with the wrong storage assignment.</text>
+ <text x="1336" y="790" font-size="13" text-anchor="end" fill="#71859A">Users → 100 · Orders → 101</text>
+</g>
+</svg>
