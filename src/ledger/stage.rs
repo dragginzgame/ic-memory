@@ -163,7 +163,7 @@ fn record_declaration(
             Ok(())
         }
         Ok(ClaimOutcome::New) => {
-            let record = AllocationRecord::active(generation, declaration.clone());
+            let record = AllocationRecord::active(generation, declaration);
             ledger.allocation_history.push_record(record);
             Ok(())
         }
@@ -187,7 +187,7 @@ fn record_reservation(
             Ok(())
         }
         Ok(ClaimOutcome::New) => {
-            let record = AllocationRecord::reserved(generation, reservation.clone());
+            let record = AllocationRecord::reserved(generation, reservation);
             ledger.allocation_history.push_record(record);
             Ok(())
         }
@@ -221,7 +221,7 @@ const fn checked_next_generation(current_generation: u64) -> Result<u64, u64> {
 }
 
 pub fn checked_reservation_count(count: usize) -> Result<u32, AllocationReservationError> {
-    if count > 255 {
+    if count > crate::constants::MAX_ALLOCATIONS {
         return Err(AllocationReservationError::TooManyReservations { count });
     }
     Ok(u32::try_from(count).expect("bounded reservation count"))

@@ -216,7 +216,7 @@ mod tests {
     }
 
     fn active_record(key: &str, id: u8) -> AllocationRecord {
-        AllocationRecord::active(1, declaration(key, id))
+        AllocationRecord::active(1, &declaration(key, id))
     }
 
     fn recovered(records: Vec<AllocationRecord>) -> RecoveredLedger {

@@ -1,5 +1,37 @@
 # Changelog
 
+## 0.24.6
+
+- Remove staged-ledger clones and recovery-proof round trips from declaration,
+  reservation and retirement bootstrap commits. Share the checked commit
+  operation while retaining caller-owned staged ledgers, predecessor validation,
+  and capability publication only after persistence confirmation.
+- Create new active and reserved records from borrowed declarations, copying
+  only persisted key, slot and schema fields instead of cloning discarded labels.
+- Remove the doctor's duplicate empty-cell success path. Use the maintained
+  decoder's empty-memory behavior while preserving empty, readable and corrupt
+  classifications and read-only diagnostics.
+- Remove redundant authority, mode and purpose tie breakers from range
+  canonicalization and delete the private range-mode ordering helper. Retain
+  bound ordering, overlap-error precedence and declaration fingerprints.
+- Remove the redundant range-start sentinel check. Ordered bounds and the
+  existing end check still reject ID 255, including the singleton sentinel;
+  reversed-bound errors retain precedence.
+- Share one private allocation-count limit across declaration validation,
+  record decoding, ledger integrity and reservation staging. Derive it from
+  the usable ID domain; keep the 255-item ceiling and existing error ordering.
+- Validate committed generation chains with one parent cursor starting at
+  genesis. Remove the optional predecessor state and repeated defaulting;
+  retain contiguous history, strict parent links and error precedence.
+- Public APIs, durable and diagnostic formats, and declaration fingerprints are
+  unchanged. No Canic source patch is required for these local changes.
+- Validation: 272 library tests, six selected public runtime/configuration/macro
+  integration tests and two composed-host regressions pass. Current byte
+  fixtures, the pinned fingerprint, overlap diagnostics and sentinel boundary
+  checks pass. Strict all-target Clippy, formatting, whitespace checks and all
+  five raw Wasm size gates pass. Consumer builds, complete package verification
+  and live deployments were not rerun for this candidate.
+
 ## 0.24.5
 
 - Delete the four archived 0.12 runtime, construction and policy design

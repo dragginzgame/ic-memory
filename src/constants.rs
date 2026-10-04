@@ -4,6 +4,9 @@ pub const DIAGNOSTIC_STRING_MAX_BYTES: usize = 256;
 /// WebAssembly page size used by `ic-stable-structures` memory implementations.
 pub const WASM_PAGE_SIZE_BYTES: u64 = 65_536;
 
+/// Maximum allocation identities in the usable ID domain, including governance.
+pub const MAX_ALLOCATIONS: usize = crate::slot::MEMORY_MANAGER_INVALID_ID as usize;
+
 /// Maximum encoded logical ledger size (16 MiB).
 pub const MAX_LEDGER_BYTES: usize = 16 * 1024 * 1024;
 /// Family magic, format marker, version and encoded logical length.

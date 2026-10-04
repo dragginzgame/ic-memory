@@ -364,31 +364,32 @@ impl GenerationRecord {
 impl AllocationRecord {
     // Staging supplies checked schema metadata: active declarations come from
     // ValidatedAllocations, and raw reservations are validated before mutation.
+    // Copy only persisted fields; declaration labels are not ledger history.
     fn from_declaration(
         generation: u64,
-        declaration: AllocationDeclaration,
+        declaration: &AllocationDeclaration,
         state: AllocationState,
     ) -> Self {
         Self {
-            stable_key: declaration.stable_key,
-            slot: declaration.slot,
+            stable_key: declaration.stable_key.clone(),
+            slot: declaration.slot.clone(),
             state,
             first_generation: generation,
             last_seen_generation: generation,
             schema_history: vec![SchemaMetadataRecord {
                 generation,
-                schema: declaration.schema,
+                schema: declaration.schema.clone(),
             }],
         }
     }
 
     /// Create an active record from a declaration with validated schema metadata.
-    pub(crate) fn active(generation: u64, declaration: AllocationDeclaration) -> Self {
+    pub(crate) fn active(generation: u64, declaration: &AllocationDeclaration) -> Self {
         Self::from_declaration(generation, declaration, AllocationState::Active)
     }
 
     /// Create a reserved record from a declaration with validated schema metadata.
-    pub(crate) fn reserved(generation: u64, declaration: AllocationDeclaration) -> Self {
+    pub(crate) fn reserved(generation: u64, declaration: &AllocationDeclaration) -> Self {
         Self::from_declaration(generation, declaration, AllocationState::Reserved)
     }
 

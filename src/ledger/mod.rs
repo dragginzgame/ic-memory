@@ -129,6 +129,19 @@ impl LedgerCommitStore {
         &mut self,
         ledger: &AllocationLedger,
     ) -> Result<RecoveredLedger, LedgerCommitError> {
+        self.commit_generation(ledger)?;
+        // The current writer encoded this integrity-checked ledger, and the
+        // physical commit checked its predecessor and established this generation.
+        // Existing persisted bytes still cross the full recovery boundary.
+        Ok(RecoveredLedger::from_trusted_ledger(ledger.clone()))
+    }
+
+    // Bootstrap already owns its staged ledger. Share the checked mutation
+    // without cloning that ledger into a proof only to unwrap it immediately.
+    pub(crate) fn commit_generation(
+        &mut self,
+        ledger: &AllocationLedger,
+    ) -> Result<(), LedgerCommitError> {
         ledger
             .validate_committed_integrity()
             .map_err(LedgerCommitError::Integrity)?;
@@ -136,11 +149,8 @@ impl LedgerCommitStore {
             LedgerPayloadEnvelope::encode_ledger(ledger).map_err(LedgerCommitError::Integrity)?;
         self.physical
             .commit_payload_at_generation(ledger.current_generation, payload)
-            .map_err(LedgerCommitError::Recovery)?;
-        // The current writer encoded this integrity-checked ledger, and the
-        // physical commit checked its predecessor and established this generation.
-        // Existing persisted bytes still cross the full recovery boundary.
-        Ok(RecoveredLedger::from_trusted_ledger(ledger.clone()))
+            .map(|_| ())
+            .map_err(LedgerCommitError::Recovery)
     }
 
     /// Simulate corruption of a logical ledger payload in the inactive slot.
@@ -216,7 +226,7 @@ mod tests {
     }
 
     fn active_record(key: &str, id: u8) -> AllocationRecord {
-        AllocationRecord::active(1, declaration(key, id, None))
+        AllocationRecord::active(1, &declaration(key, id, None))
     }
 
     fn validated(
@@ -1014,7 +1024,7 @@ mod tests {
         let mut ledger = ledger();
         *ledger.allocation_history.records_mut() = vec![AllocationRecord::reserved(
             3,
-            declaration("app.future_store.v1", 100, None),
+            &declaration("app.future_store.v1", 100, None),
         )];
         let reservations = vec![declaration("app.future_store.v1", 101, None)];
 
@@ -1033,7 +1043,7 @@ mod tests {
         let mut ledger = ledger();
         *ledger.allocation_history.records_mut() = vec![AllocationRecord::reserved(
             3,
-            declaration("app.future_store.v1", 100, None),
+            &declaration("app.future_store.v1", 100, None),
         )];
         let reservations = vec![declaration("app.other_future_store.v1", 100, None)];
 
@@ -1822,7 +1832,7 @@ mod tests {
     fn committed_integrity_rejects_allocation_references_to_genesis() {
         for generation in [0, 1, 2] {
             let mut ledger = committed_ledger(generation);
-            let mut record = AllocationRecord::active(0, declaration("app.genesis.v1", 100, None));
+            let mut record = AllocationRecord::active(0, &declaration("app.genesis.v1", 100, None));
             if generation == 2 {
                 record.last_seen_generation = 1;
                 record
@@ -1850,7 +1860,7 @@ mod tests {
             .allocation_history
             .push_record(AllocationRecord::active(
                 0,
-                declaration("app.genesis.v1", 100, None),
+                &declaration("app.genesis.v1", 100, None),
             ));
 
         let err = ledger
@@ -1861,6 +1871,24 @@ mod tests {
             err,
             LedgerIntegrityError::NonIncreasingGenerationRecords { .. }
         ));
+    }
+
+    #[test]
+    fn committed_integrity_rejects_a_skipped_parent_in_contiguous_history() {
+        let mut ledger = committed_ledger(3);
+        ledger.allocation_history.generations_mut()[2].parent_generation = 1;
+        ledger
+            .validate_integrity()
+            .expect("structurally valid history");
+
+        assert_eq!(
+            ledger.validate_committed_integrity(),
+            Err(LedgerIntegrityError::BrokenGenerationChain {
+                generation: 3,
+                expected_parent: 2,
+                actual_parent: 1,
+            })
+        );
     }
 
     #[test]

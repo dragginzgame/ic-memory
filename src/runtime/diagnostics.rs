@@ -147,20 +147,14 @@ impl<M: Memory> MemoryRuntime<M> {
     fn stable_cell_diagnostic(&self) -> StableCellDiagnostic {
         let memory = self.memory(MEMORY_MANAGER_LEDGER_ID);
         let memory_size = DiagnosticMemorySize::from_wasm_pages(memory.size());
-        if memory.size() == 0 {
-            return StableCellDiagnostic {
-                diagnostic: DiagnosticStableCell::new(
-                    DiagnosticStableCellStatus::Empty,
-                    memory_size,
-                ),
-                record: Some(StableCellLedgerRecord::default()),
-            };
-        }
-
         match decode_stable_cell_ledger_record_from_memory(&memory) {
             Ok(record) => StableCellDiagnostic {
                 diagnostic: DiagnosticStableCell::new(
-                    DiagnosticStableCellStatus::Readable,
+                    if memory_size.wasm_pages == 0 {
+                        DiagnosticStableCellStatus::Empty
+                    } else {
+                        DiagnosticStableCellStatus::Readable
+                    },
                     memory_size,
                 ),
                 record: Some(record),

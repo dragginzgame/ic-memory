@@ -277,7 +277,7 @@ fn validate_label(label: Option<&str>) -> Result<(), DeclarationSnapshotError> {
 fn validate_declarations(
     declarations: &[AllocationDeclaration],
 ) -> Result<(), DeclarationSnapshotError> {
-    if declarations.len() > 255 {
+    if declarations.len() > crate::constants::MAX_ALLOCATIONS {
         return Err(DeclarationSnapshotError::TooManyDeclarations);
     }
     for declaration in declarations {

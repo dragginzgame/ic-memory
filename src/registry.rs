@@ -792,6 +792,8 @@ fn build_snapshot(
     });
 
     let mut registered_ranges = ranges.to_vec();
+    // Equal bounds reject as overlaps, so metadata cannot distinguish accepted
+    // ranges. Keep bound ordering for deterministic overlap diagnostics.
     registered_ranges.sort_by(|left, right| {
         let left = left.record();
         let right = right.record();
@@ -799,9 +801,6 @@ fn build_snapshot(
             .start()
             .cmp(&right.range().start())
             .then_with(|| left.range().end().cmp(&right.range().end()))
-            .then_with(|| left.authority().cmp(right.authority()))
-            .then_with(|| range_mode_order(left.mode()).cmp(&range_mode_order(right.mode())))
-            .then_with(|| left.purpose().cmp(&right.purpose()))
     });
 
     let mut allocation_declarations = Vec::with_capacity(registered_declarations.len() + 1);
@@ -874,12 +873,6 @@ fn sealed_declaration_fingerprint(
 }
 
 const SEALED_DECLARATION_FINGERPRINT_VERSION: u8 = 1;
-const fn range_mode_order(mode: MemoryManagerRangeMode) -> u8 {
-    match mode {
-        MemoryManagerRangeMode::Reserved => 0,
-        MemoryManagerRangeMode::Allowed => 1,
-    }
-}
 
 fn internal_ledger_declaration() -> AllocationDeclaration {
     AllocationDeclaration::memory_manager(

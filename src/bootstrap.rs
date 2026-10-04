@@ -174,9 +174,9 @@ impl<'store> AllocationBootstrap<'store> {
             .stage_reservation_generation(reservations, committed_at)
             .map_err(BootstrapReservationError::Reservation)?;
         self.store
-            .commit(&staged)
-            .map(crate::RecoveredLedger::into_ledger)
-            .map_err(BootstrapReservationError::Ledger)
+            .commit_generation(&staged)
+            .map_err(BootstrapReservationError::Ledger)?;
+        Ok(staged)
     }
 
     fn retire_against(
@@ -189,9 +189,9 @@ impl<'store> AllocationBootstrap<'store> {
             .stage_retirement_generation(retirement, committed_at)
             .map_err(BootstrapRetirementError::Retirement)?;
         self.store
-            .commit(&staged)
-            .map(crate::RecoveredLedger::into_ledger)
-            .map_err(BootstrapRetirementError::Ledger)
+            .commit_generation(&staged)
+            .map_err(BootstrapRetirementError::Ledger)?;
+        Ok(staged)
     }
 
     pub(crate) fn validate_against<P>(
@@ -210,11 +210,13 @@ impl<'store> AllocationBootstrap<'store> {
         let staged = prior_ledger
             .stage_validated_generation(&validated, committed_at)
             .map_err(BootstrapError::Staging)?;
-        let committed = self.store.commit(&staged).map_err(BootstrapError::Ledger)?;
+        self.store
+            .commit_generation(&staged)
+            .map_err(BootstrapError::Ledger)?;
 
         Ok(PendingBootstrapCommit {
             validated,
-            ledger: committed.into_ledger(),
+            ledger: staged,
         })
     }
 }
@@ -232,7 +234,7 @@ impl<'store> AllocationBootstrap<'store> {
 
 #[derive(Debug, Eq, PartialEq)]
 pub struct PendingBootstrapCommit {
-    /// Ledger recovered after the protected generation commit.
+    /// Staged ledger accepted by the protected generation commit.
     ledger: AllocationLedger,
     /// Validated allocation declarations awaiting persistence confirmation.
     validated: ValidatedAllocations,
@@ -465,6 +467,7 @@ mod tests {
         assert_eq!(commit.ledger().current_generation, 1);
         assert_eq!(commit.ledger().allocation_history.records().len(), 1);
         assert_eq!(commit.ledger().allocation_history.generations().len(), 1);
+        assert_eq!(store.recover().unwrap().ledger(), commit.ledger());
         assert_eq!(commit.confirm_persisted().generation(), 1);
     }
 
@@ -513,6 +516,7 @@ mod tests {
             committed.allocation_history.records()[0].state(),
             AllocationState::Reserved
         );
+        assert_eq!(store.recover().unwrap().ledger(), &committed);
     }
 
     #[test]
@@ -699,6 +703,7 @@ mod tests {
             committed.allocation_history.records()[0].state(),
             AllocationState::Retired { generation: 2 }
         );
+        assert_eq!(store.recover().unwrap().ledger(), &committed);
     }
 
     #[test]

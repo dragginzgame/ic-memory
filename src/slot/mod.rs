@@ -95,25 +95,24 @@ mod tests {
 
     #[test]
     fn memory_manager_range_rejects_reversed_bounds() {
-        let err = MemoryManagerIdRange::new(10, 9).expect_err("reversed range");
-
-        assert_eq!(
-            err,
-            MemoryManagerRangeError::InvalidRange { start: 10, end: 9 }
-        );
+        for (start, end) in [(10, 9), (MEMORY_MANAGER_INVALID_ID, MEMORY_MANAGER_MAX_ID)] {
+            assert_eq!(
+                MemoryManagerIdRange::new(start, end).unwrap_err(),
+                MemoryManagerRangeError::InvalidRange { start, end }
+            );
+        }
     }
 
     #[test]
     fn memory_manager_range_rejects_sentinel_bounds() {
-        let err =
-            MemoryManagerIdRange::new(240, MEMORY_MANAGER_INVALID_ID).expect_err("sentinel range");
-
-        assert_eq!(
-            err,
-            MemoryManagerRangeError::InvalidMemoryManagerId {
-                id: MEMORY_MANAGER_INVALID_ID
-            }
-        );
+        for start in [240, MEMORY_MANAGER_INVALID_ID] {
+            assert_eq!(
+                MemoryManagerIdRange::new(start, MEMORY_MANAGER_INVALID_ID).unwrap_err(),
+                MemoryManagerRangeError::InvalidMemoryManagerId {
+                    id: MEMORY_MANAGER_INVALID_ID
+                }
+            );
+        }
     }
 
     #[test]

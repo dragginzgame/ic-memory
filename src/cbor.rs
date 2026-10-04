@@ -110,7 +110,7 @@ where
     D: Deserializer<'de>,
     T: Deserialize<'de>,
 {
-    deserialize_bounded_vec::<D, T, 255>(deserializer)
+    deserialize_bounded_vec::<D, T, { crate::constants::MAX_ALLOCATIONS }>(deserializer)
 }
 
 pub fn deserialize_history<'de, D, T>(deserializer: D) -> Result<Vec<T>, D::Error>

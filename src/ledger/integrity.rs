@@ -8,7 +8,7 @@ impl AllocationLedger {
             (
                 "allocation records",
                 self.allocation_history.records().len(),
-                255,
+                crate::constants::MAX_ALLOCATIONS,
             ),
             (
                 "generation history",
@@ -110,19 +110,17 @@ impl AllocationLedger {
             });
         }
 
-        let mut previous = None;
+        let mut expected_parent = 0;
         for generation in self.allocation_history.generations() {
             validate_runtime_fingerprint(generation.runtime_fingerprint.as_deref())
                 .map_err(LedgerIntegrityError::DiagnosticMetadata)?;
 
-            let expected_generation = previous.map_or(1, |previous| previous + 1);
-            if generation.generation != expected_generation {
+            if generation.generation != expected_parent + 1 {
                 return Err(LedgerIntegrityError::NonIncreasingGenerationRecords {
                     generation: generation.generation,
                 });
             }
 
-            let expected_parent = previous.unwrap_or(0);
             if generation.parent_generation != expected_parent {
                 return Err(LedgerIntegrityError::BrokenGenerationChain {
                     generation: generation.generation,
@@ -131,7 +129,7 @@ impl AllocationLedger {
                 });
             }
 
-            previous = Some(generation.generation);
+            expected_parent = generation.generation;
         }
 
         // The checked chain contains exactly generations 1..=current_generation.

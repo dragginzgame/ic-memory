@@ -408,7 +408,7 @@ mod tests {
         let ledger = AllocationLedger {
             current_generation: 3,
             allocation_history: AllocationHistory::from_parts(
-                vec![AllocationRecord::active(3, declaration)],
+                vec![AllocationRecord::active(3, &declaration)],
                 vec![GenerationRecord {
                     generation: 3,
                     parent_generation: 2,
@@ -567,7 +567,7 @@ mod tests {
         let ledger = AllocationLedger {
             current_generation: 3,
             allocation_history: AllocationHistory::from_parts(
-                vec![AllocationRecord::active(3, declaration)],
+                vec![AllocationRecord::active(3, &declaration)],
                 Vec::new(),
             ),
         };

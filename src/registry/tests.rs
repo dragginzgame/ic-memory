@@ -311,6 +311,49 @@ fn snapshot_order_is_independent_of_registration_order() {
 }
 
 #[test]
+fn snapshot_overlap_errors_preserve_bound_order_despite_differing_metadata() {
+    for first_end in [100, 109] {
+        let first = StaticMemoryRangeDeclaration::new(
+            MemoryManagerAuthorityRecord::new(
+                MemoryManagerIdRange::new(100, first_end).unwrap(),
+                "z",
+                MemoryManagerRangeMode::Reserved,
+                Some("z purpose".to_string()),
+            )
+            .unwrap(),
+        )
+        .unwrap();
+        let second = StaticMemoryRangeDeclaration::new(
+            MemoryManagerAuthorityRecord::new(
+                MemoryManagerIdRange::new(100, 109).unwrap(),
+                "a",
+                MemoryManagerRangeMode::Allowed,
+                Some("a purpose".to_string()),
+            )
+            .unwrap(),
+        )
+        .unwrap();
+
+        for ranges in [
+            [first.clone(), second.clone()],
+            [second.clone(), first.clone()],
+        ] {
+            assert_eq!(
+                SealedDeclarationSnapshot::new(&[], &ranges, &[]).unwrap_err(),
+                StaticMemoryDeclarationError::Range(
+                    MemoryManagerRangeAuthorityError::OverlappingRanges {
+                        existing_start: 100,
+                        existing_end: first_end,
+                        candidate_start: 100,
+                        candidate_end: 109,
+                    }
+                )
+            );
+        }
+    }
+}
+
+#[test]
 fn snapshot_fingerprint_covers_linked_declaration_authority() {
     let _guard = TEST_REGISTRY_LOCK.lock().expect("test lock poisoned");
     reset_static_memory_declarations_for_tests();

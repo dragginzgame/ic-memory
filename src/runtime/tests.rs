@@ -872,6 +872,14 @@ fn doctor_uses_genesis_only_for_empty_commit_storage() {
         let before = backing.borrow().clone();
         let report = runtime.doctor_report(&declarations, &GenericRangePolicy);
         assert!(!report.bootstrapped);
+        assert_eq!(
+            report.stable_cell.status,
+            if initialized {
+                crate::DiagnosticStableCellStatus::Readable
+            } else {
+                crate::DiagnosticStableCellStatus::Empty
+            }
+        );
         assert!(matches!(report.validation, DiagnosticCheck::Passed));
         assert!(report.ledger.is_none());
         assert_eq!(*backing.borrow(), before);

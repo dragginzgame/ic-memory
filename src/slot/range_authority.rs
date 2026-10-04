@@ -23,9 +23,7 @@ impl MemoryManagerIdRange {
         if start > end {
             return Err(MemoryManagerRangeError::InvalidRange { start, end });
         }
-        if start == MEMORY_MANAGER_INVALID_ID {
-            return Err(MemoryManagerRangeError::InvalidMemoryManagerId { id: start });
-        }
+        // Ordered bounds make a usable end sufficient to exclude the sentinel.
         if end == MEMORY_MANAGER_INVALID_ID {
             return Err(MemoryManagerRangeError::InvalidMemoryManagerId { id: end });
         }
