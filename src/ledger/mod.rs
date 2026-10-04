@@ -2264,6 +2264,41 @@ mod tests {
     }
     #[test]
     fn history_boundary_round_trips_and_rejects_next_generation_without_mutation() {
+        let mut source = committed_ledger(crate::constants::MAX_LEDGER_GENERATIONS as u64 - 1);
+        source
+            .allocation_history
+            .push_record(active_record("app.users.v1", 100));
+        let retirement = AllocationRetirement::new(
+            "app.users.v1",
+            AllocationSlotDescriptor::memory_manager(100).unwrap(),
+        )
+        .unwrap();
+        let retired = source
+            .stage_retirement_generation(&retirement, None)
+            .unwrap();
+        retired.validate_committed_integrity().unwrap();
+        assert_eq!(
+            retired.allocation_history.generations().len(),
+            crate::constants::MAX_LEDGER_GENERATIONS
+        );
+        assert_eq!(
+            retired.allocation_history.records()[0].schema_history,
+            source.allocation_history.records()[0].schema_history
+        );
+        assert_eq!(
+            source.allocation_history.records()[0].state,
+            AllocationState::Active
+        );
+        assert!(matches!(
+            retired.stage_retirement_generation(&retirement, None),
+            Err(AllocationRetirementError::Integrity(
+                LedgerIntegrityError::LimitExceeded {
+                    resource: "generation history",
+                    ..
+                }
+            ))
+        ));
+
         let ledger = committed_ledger(crate::constants::MAX_LEDGER_GENERATIONS as u64);
         let mut store = LedgerCommitStore::default();
         let recovered = store.commit(&ledger).expect("boundary is admissible");

@@ -352,10 +352,17 @@ impl SealedDeclarationSnapshot {
                 .iter()
                 .find(|record| record.stable_key() == &request.stable_key);
             let id = if let Some(record) = historical {
-                record
+                let id = record
                     .slot()
                     .memory_manager_id()
-                    .expect("validated ledger slot")
+                    .expect("validated ledger slot");
+                // Historical assignment is not current authorization. Fresh
+                // placement below obtains its authorization from the grant
+                // that supplies the ID.
+                self.range_authority()
+                    .validate_id_authority(id, &request.authority)
+                    .map_err(crate::MemoryResolutionError::Range)?;
+                id
             } else {
                 // Validated ranges are disjoint and ascending, so walking only
                 // this authority's Allowed grants preserves lowest-ID placement.
@@ -374,10 +381,6 @@ impl SealedDeclarationSnapshot {
                     })?
             };
             let slot = crate::AllocationSlotDescriptor::memory_manager(id).expect("usable id");
-            // Logical requests always need an explicit current grant, including recovered keys.
-            self.range_authority()
-                .validate_slot_authority(&slot, &request.authority)
-                .map_err(crate::MemoryResolutionError::Range)?;
             occupied[usize::from(id)] = true;
             // Request construction checked authority/key/schema, and recovery
             // checked historical schemas. Reuse those fields and the checked
@@ -773,15 +776,6 @@ fn build_snapshot(
     let mut requests = requests.to_vec();
     // Accepted keys are unique; equal keys reject below, so stability adds no meaning.
     requests.sort_unstable_by(|a, b| a.stable_key.cmp(&b.stable_key));
-    let mut keys = std::collections::BTreeSet::new();
-    keys.extend(declarations.iter().map(|d| d.declaration().stable_key()));
-    for key in requests.iter().map(|r| &r.stable_key) {
-        if !keys.insert(key) {
-            return Err(StaticMemoryDeclarationError::DuplicateRequest {
-                stable_key: key.clone(),
-            });
-        }
-    }
     let mut registered_declarations = declarations.to_vec();
     registered_declarations.sort_by(|left, right| {
         left.declaration()
@@ -790,6 +784,21 @@ fn build_snapshot(
             .then_with(|| left.declaration().slot().cmp(right.declaration().slot()))
             .then_with(|| left.authority().cmp(right.authority()))
     });
+
+    // Canonical vectors already supply both membership and adjacency. Check
+    // each request in key order so fixed/request and request/request conflicts
+    // preserve their shared duplicate-error precedence.
+    for (index, request) in requests.iter().enumerate() {
+        if (index > 0 && requests[index - 1].stable_key == request.stable_key)
+            || registered_declarations
+                .binary_search_by(|d| d.declaration().stable_key().cmp(&request.stable_key))
+                .is_ok()
+        {
+            return Err(StaticMemoryDeclarationError::DuplicateRequest {
+                stable_key: request.stable_key.clone(),
+            });
+        }
+    }
 
     let mut registered_ranges = ranges.to_vec();
     // Equal bounds reject as overlaps, so metadata cannot distinguish accepted

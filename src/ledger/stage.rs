@@ -146,7 +146,8 @@ impl AllocationLedger {
             committed_at,
         });
 
-        next.validate_bounds()?;
+        // Staging checked every bound and reserved one generation entry.
+        // Retirement changes neither allocation count nor schema history.
         Ok(next)
     }
 }

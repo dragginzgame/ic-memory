@@ -488,9 +488,41 @@ fn request_permutations_are_canonical_and_duplicate_keys_reject() {
     )
     .unwrap();
     assert!(matches!(
-        SealedDeclarationSnapshot::new(&[fixed], &[], &requests),
+        SealedDeclarationSnapshot::new(std::slice::from_ref(&fixed), &[], &requests),
         Err(StaticMemoryDeclarationError::DuplicateRequest { .. })
     ));
+    // A later request/request conflict must not hide the earlier fixed/request
+    // conflict, and an earlier request/request conflict still takes precedence.
+    for (duplicates, expected) in [
+        (
+            vec![
+                requests[2].clone(),
+                requests[1].clone(),
+                requests[2].clone(),
+            ],
+            "app.m.v1",
+        ),
+        (
+            vec![
+                requests[1].clone(),
+                requests[0].clone(),
+                requests[0].clone(),
+            ],
+            "app.a.v1",
+        ),
+    ] {
+        for reversed in [false, true] {
+            let mut duplicates = duplicates.clone();
+            if reversed {
+                duplicates.reverse();
+            }
+            assert!(matches!(
+                SealedDeclarationSnapshot::new(std::slice::from_ref(&fixed), &[], &duplicates),
+                Err(StaticMemoryDeclarationError::DuplicateRequest { stable_key })
+                    if stable_key.as_str() == expected
+            ));
+        }
+    }
 }
 
 #[test]

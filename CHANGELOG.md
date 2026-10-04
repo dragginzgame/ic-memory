@@ -1,5 +1,39 @@
 # Changelog
 
+## 0.24.7
+
+- Remove the second grant lookup during fresh logical allocation. Placement
+  already selects the lowest free ID from the declaring authority's current
+  `Allowed` grants. Recovered assignments still require current authorization;
+  final policy checks, historical occupancy and exhaustion behavior remain.
+- Remove retirement staging's final bounds rescan. Its initial check already
+  bounds records and schema history and reserves room for one generation;
+  retirement preserves record and schema counts. Input checks, generation
+  overflow handling and protected commit validation remain enforced.
+- Use `Arc::make_mut` for application-only capability publication. Remove the
+  manual unwrap-or-clone and unconditional replacement allocation. Retain
+  isolation from shared validated and committed capabilities and preserve
+  publication timing.
+- Inline retirement bootstrap's single-caller staging/commit helper. Keep the
+  public operation as the sequencing owner, with unchanged recovery, retirement
+  error projection and protected commit checks.
+- Remove snapshot sealing's temporary stable-key tree. Use canonical request
+  adjacency and fixed-declaration binary search for duplicate detection;
+  preserve mixed-conflict precedence, accepted ordering and fingerprints.
+- Record focused qualification of the Canic 0.110.52 release source against
+  published ic-memory 0.24.6: 14 native memory regressions and default-feature
+  core Wasm compilation pass. Only ic-memory changed in the isolated dependency
+  graph; the active Canic checkout and live deployment remain outside this proof.
+- Public APIs, durable and diagnostic formats, and declaration fingerprints are
+  unchanged. No Canic source patch is required for these local changes.
+- Validation: 272 library tests, six selected public runtime/configuration/macro
+  integration tests and two composed-host regressions pass. Shared-capability
+  isolation, mixed duplicate-error precedence and retirement history bounds pass.
+  Strict all-target Clippy, formatting, whitespace checks and all five raw Wasm
+  size gates pass.
+  Consumer builds, complete package verification and live deployments were not
+  rerun for this candidate.
+
 ## 0.24.6
 
 - Remove staged-ledger clones and recovery-proof round trips from declaration,

@@ -135,11 +135,9 @@ impl CommittedAllocations {
     // Runtime publication exposes application allocations only. Manual commit
     // owners retain the complete capability returned by persistence confirmation.
     pub(crate) fn into_application_allocations(mut self) -> Self {
-        let mut state = Arc::unwrap_or_clone(self.validated.inner);
-        state
+        Arc::make_mut(&mut self.validated.inner)
             .declarations
             .retain(|declaration| !crate::is_ic_memory_stable_key(declaration.stable_key.as_str()));
-        self.validated.inner = Arc::new(state);
         self
     }
 }

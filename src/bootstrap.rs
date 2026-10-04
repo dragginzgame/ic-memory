@@ -144,7 +144,14 @@ impl<'store> AllocationBootstrap<'store> {
             .store
             .recover()
             .map_err(BootstrapRetirementError::Ledger)?;
-        self.retire_against(prior.into_ledger(), retirement, committed_at)
+        let staged = prior
+            .ledger()
+            .stage_retirement_generation(retirement, committed_at)
+            .map_err(BootstrapRetirementError::Retirement)?;
+        self.store
+            .commit_generation(&staged)
+            .map_err(BootstrapRetirementError::Ledger)?;
+        Ok(staged)
     }
 
     fn reserve_against<P>(
@@ -176,21 +183,6 @@ impl<'store> AllocationBootstrap<'store> {
         self.store
             .commit_generation(&staged)
             .map_err(BootstrapReservationError::Ledger)?;
-        Ok(staged)
-    }
-
-    fn retire_against(
-        &mut self,
-        prior: AllocationLedger,
-        retirement: &AllocationRetirement,
-        committed_at: Option<u64>,
-    ) -> Result<AllocationLedger, BootstrapRetirementError> {
-        let staged = prior
-            .stage_retirement_generation(retirement, committed_at)
-            .map_err(BootstrapRetirementError::Retirement)?;
-        self.store
-            .commit_generation(&staged)
-            .map_err(BootstrapRetirementError::Ledger)?;
         Ok(staged)
     }
 

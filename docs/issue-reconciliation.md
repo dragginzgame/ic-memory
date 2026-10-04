@@ -159,3 +159,17 @@ The active IcyDB checkout advanced independently during qualification and was
 not edited by these checks. Its newer commit and graph are outside this receipt.
 Canic remains unqualified on its current graph. No GitHub issue disposition or
 comment was updated.
+
+## Released 0.24.6 Canic memory recheck
+
+The [2026-10-04 Canic receipt](consumer-qualification-0.24.6-canic.md) records
+14 passing native memory regressions and default-feature core Wasm compilation
+against published ic-memory **0.24.6**. The consumer is an isolated snapshot of
+the Canic **0.110.52** release commit; only ic-memory changed from its original
+0.24.2 graph. Configured bootstrap, diagnostic projection, growth refusal/retry
+and bucket-exhaustion conservation pass without a Canic source patch.
+
+These results cover the specified release source and graph, not the active
+Canic worktree, the open ic-memory 0.24.7 candidate, complete Canic CI, installed
+lifecycle behavior or live deployment health. No GitHub issue or comment was
+updated; historical dispositions and earlier qualification limits remain intact.
