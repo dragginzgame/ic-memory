@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="200" viewBox="0 0 1280 200" role="img" aria-labelledby="title desc">
+  <title id="title">IC Memory — Canic Helpers</title>
+  <desc id="desc">IC Memory, an Internet Computer helper library. A navy and cyan banner in the shared Canic Helpers style.</desc>
+  <rect width="1280" height="200" rx="14" fill="#0B2244"/>
+  <path d="M1010 0V52H1090V110H1170V166H1280M1130 0V35H1210V94H1280M963 200V147H1043V89H1123V0" fill="none" stroke="#294768" stroke-width="1.5"/>
+  <g fill="#5CD7EA">
+    <circle cx="1090" cy="52" r="4"/><circle cx="1170" cy="110" r="4"/>
+    <circle cx="1043" cy="147" r="4"/><circle cx="1210" cy="35" r="4"/>
+  </g>
+  <rect x="40" y="42" width="116" height="116" rx="24" fill="#102D52" stroke="#294768"/>
+  <g transform="translate(50 52)" fill="none" stroke="#5CD7EA" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round">
+    <rect x="20" y="20" width="56" height="56" rx="10"/><path d="M32 10V20M48 10V20M64 10V20M32 76V86M48 76V86M64 76V86M10 32H20M10 48H20M10 64H20M76 32H86M76 48H86M76 64H86"/><rect x="34" y="34" width="28" height="28" rx="4"/>
+  </g>
+  <g font-family="Inter, Arial, sans-serif">
+    <text x="190" y="60" fill="#5CD7EA" font-size="13" font-weight="700" letter-spacing="2.5">CANIC HELPERS</text>
+    <text x="188" y="117" fill="#FFFFFF" font-size="46" font-weight="700">IC Memory</text>
+    <text x="190" y="153" fill="#B5C8DD" font-size="18">Internet Computer helper library</text>
+  </g>
+</svg>
