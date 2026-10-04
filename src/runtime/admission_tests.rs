@@ -77,6 +77,50 @@ impl RuntimeBootstrapPolicy for AdmissionPolicy {
 const CONTROL: &str = "app.main.control.v1";
 const JOURNAL: &str = "app.old.journal.v1";
 
+#[test]
+fn declared_membership_covers_original_inputs_and_retains_poisoned_selections() {
+    let runtime = MemoryRuntime::new(seeded()).unwrap();
+    let recovered = runtime
+        .ledger_record_from_memory()
+        .unwrap()
+        .store()
+        .recover()
+        .unwrap();
+    // Neither fixed registrations nor requests arrive in canonical key order.
+    let original = snapshot(
+        &["app.z.v1", "app.a.v1"],
+        "app",
+        100,
+        110,
+        &[("zoo.fixed.v1", 105), ("app.fixed.v1", 104)],
+    );
+    let mut admission = BootstrapAdmission::new(recovered.ledger(), &original);
+    for name in [
+        crate::IC_MEMORY_LEDGER_STABLE_KEY,
+        "app.a.v1",
+        "app.z.v1",
+        "app.fixed.v1",
+        "zoo.fixed.v1",
+    ] {
+        assert!(admission.is_declared(&StableKey::parse(name).unwrap()));
+    }
+    for name in [CONTROL, JOURNAL, "ic_memory.other.v1", "app.unknown.v1"] {
+        assert!(!admission.is_declared(&StableKey::parse(name).unwrap()));
+    }
+    // Selection order is deliberately descending; it is independent of sealing.
+    admission.include_historical("app", JOURNAL).unwrap();
+    admission.include_historical("app", CONTROL).unwrap();
+    let failure = admission
+        .include_historical("app", "app.unknown.v1")
+        .unwrap_err();
+    assert!(matches!(failure, AdmissionError::Unknown(_)));
+    for name in [JOURNAL, CONTROL] {
+        assert!(admission.is_declared(&StableKey::parse(name).unwrap()));
+    }
+    assert!(!admission.is_declared(&StableKey::parse("app.unknown.v1").unwrap()));
+    assert_eq!(admission.complete().unwrap_err(), failure);
+}
+
 pub(super) fn seeded() -> VectorMemory {
     let backing = VectorMemory::default();
     let mut runtime =

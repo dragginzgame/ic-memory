@@ -114,17 +114,19 @@ impl<'a> BootstrapAdmission<'a> {
     /// Whether the original input or an earlier selection already names this key.
     #[must_use]
     pub fn is_declared(&self, key: &StableKey) -> bool {
-        self.declarations
-            .allocation_snapshot()
-            .declarations()
-            .iter()
-            .any(|d| d.stable_key() == key)
+        // Sealing owns canonical fixed/request keys. Selections retain callback
+        // order, so only that unsealed tail needs a scan.
+        key.as_str() == crate::IC_MEMORY_LEDGER_STABLE_KEY
+            || self.declarations.registered_declaration(key).is_some()
             || self
                 .declarations
                 .requests()
+                .binary_search_by(|request| request.stable_key().cmp(key))
+                .is_ok()
+            || self
+                .selected
                 .iter()
-                .chain(&self.selected)
-                .any(|r| r.stable_key() == key)
+                .any(|request| request.stable_key() == key)
     }
 
     /// Include a known, nonretired key under an explicit current host grant.

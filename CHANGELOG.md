@@ -1,5 +1,28 @@
 # Changelog
 
+## 0.24.15
+
+- Reuse the sealed snapshot's canonical fixed-key lookup and binary-search its
+  original logical requests during admission membership checks. Remove the
+  separate scan of copied fixed-declaration DTOs without adding another index,
+  cache or source of truth.
+- Keep governance membership explicit and scan earlier historical selections in
+  callback order. Preserve accepted selections after a later latched failure,
+  rejection precedence and the final resolve/validate/commit boundary.
+- Add a behavioral regression covering unsorted fixed and logical inputs,
+  descending selection order, unknown and reserved-namespace keys, and membership
+  after failure. The regression also passes against the previous implementation.
+- Update the recovered-admission guide. Public signatures, error payloads,
+  durable and diagnostic formats, and declaration fingerprints are unchanged.
+  No Canic source patch is required.
+- Validation: the complete Rust test suite passes, including 273 library tests,
+  compile-fail boundaries, public integrations, two composed-host regressions
+  and six active doctests. Strict all-target Clippy, Rust 1.88.0 all-target
+  compilation, warning-denied Rustdoc, formatting, whitespace checks, Wasm test
+  compilation and all five raw Wasm size gates pass. Package/release workflows,
+  consumer builds and live deployments were not rerun. Runtime performance was
+  not measured.
+
 ## 0.24.14
 
 - Make zero-page runtime growth return the current virtual extent after the
