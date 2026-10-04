@@ -248,7 +248,7 @@ fn current_policy_revoked_grants_and_retirement_still_reject() {
             None,
         )
         .unwrap();
-    runtime.persist_ledger_record::<&str>(record).unwrap();
+    let _cell = Cell::new(runtime.memory(MEMORY_MANAGER_LEDGER_ID), record);
     drop(runtime);
     let before = backing.borrow().clone();
     let mut runtime = MemoryRuntime::new(backing.clone()).unwrap();
@@ -278,16 +278,19 @@ fn corruption_precedes_admission_and_exhaustion_follows_it_without_commit() {
     assert_eq!(policy.calls.get(), 1);
     assert_eq!(*backing.borrow(), before);
     runtime.memory(0).write(STABLE_CELL_VALUE_OFFSET, &[0xff]);
-    drop(runtime);
     let before = backing.borrow().clone();
-    let mut runtime = MemoryRuntime::new(backing.clone()).unwrap();
-    assert!(matches!(
-        runtime.bootstrap(&current, &policy),
-        Err(RuntimeBootstrapError::StableCellLedger(_))
-    ));
-    assert_eq!(policy.calls.get(), 1);
-    assert_eq!(*backing.borrow(), before);
-    assert!(!runtime.is_bootstrapped());
+    for reopen in [false, true] {
+        if reopen {
+            runtime = MemoryRuntime::new(backing.clone()).unwrap();
+        }
+        assert!(matches!(
+            runtime.bootstrap(&current, &policy),
+            Err(RuntimeBootstrapError::StableCellLedger(_))
+        ));
+        assert_eq!(policy.calls.get(), 1);
+        assert_eq!(*backing.borrow(), before);
+        assert!(!runtime.is_bootstrapped());
+    }
 }
 
 #[test]
@@ -420,7 +423,7 @@ fn completion_bound_and_reservation_activation_preserve_evidence() {
             None,
         )
         .unwrap();
-    runtime.persist_ledger_record::<&str>(record).unwrap();
+    let _cell = Cell::new(runtime.memory(MEMORY_MANAGER_LEDGER_ID), record);
     drop(runtime);
     let mut runtime = MemoryRuntime::new(backing).unwrap();
     let policy = AdmissionPolicy {

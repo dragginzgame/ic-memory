@@ -53,8 +53,9 @@
 //! setting without migration. The default remains 128 pages.
 //!
 //! [`MemoryRuntime`] is the canonical owner for one backing memory instance. It
-//! contains that memory's manager, ledger cell, bootstrap lifecycle, committed
-//! capability, opens, and diagnostics. Linked code contributes declarations to
+//! owns that memory's manager, ledger persistence, bootstrap lifecycle, committed
+//! capability, opens, and diagnostics. Each bootstrap attempt opens a temporary
+//! ledger cell after preflight. Linked code contributes declarations to
 //! one immutable [`SealedDeclarationSnapshot`], which is supplied to each
 //! runtime independently.
 //!

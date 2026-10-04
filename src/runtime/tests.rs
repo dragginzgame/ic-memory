@@ -15,7 +15,7 @@ use crate::{
         sealed_declaration_snapshot,
     },
 };
-use ic_stable_structures::{Memory, VectorMemory};
+use ic_stable_structures::{Cell, Memory, VectorMemory};
 use std::convert::Infallible;
 
 pub(super) fn declarations() -> SealedDeclarationSnapshot {
@@ -784,9 +784,10 @@ fn diagnostics_reject_invalid_persisted_slots_before_measuring_sizes() {
         },
     }))
     .unwrap();
-    runtime
-        .persist_ledger_record::<Infallible>(crate::StableCellLedgerRecord::new(store))
-        .unwrap();
+    let _cell = Cell::new(
+        runtime.memory(crate::MEMORY_MANAGER_LEDGER_ID),
+        crate::StableCellLedgerRecord::new(store),
+    );
     let before = backing.borrow().clone();
 
     assert!(matches!(
@@ -868,10 +869,10 @@ fn doctor_preserves_distinct_record_decode_causes_without_writes() {
 fn doctor_uses_genesis_only_for_empty_commit_storage() {
     let declarations = SealedDeclarationSnapshot::new(&[], &[], &[]).unwrap();
     let backing = VectorMemory::default();
-    let mut runtime = MemoryRuntime::new(backing.clone()).unwrap();
+    let runtime = MemoryRuntime::new(backing.clone()).unwrap();
     for initialized in [false, true] {
         if initialized {
-            runtime.initialize_ledger_cell::<Infallible>().unwrap();
+            let _cell = runtime.open_ledger_cell::<Infallible>().unwrap();
         }
         let before = backing.borrow().clone();
         let report = runtime.doctor_report(&declarations, &GenericRangePolicy);
@@ -897,7 +898,7 @@ fn doctor_uses_genesis_only_for_empty_commit_storage() {
         .store_mut()
         .write_corrupt_inactive_ledger(&genesis)
         .unwrap();
-    runtime.persist_ledger_record::<Infallible>(record).unwrap();
+    let _cell = Cell::new(runtime.memory(crate::MEMORY_MANAGER_LEDGER_ID), record);
     let before = backing.borrow().clone();
     let report = runtime.doctor_report(&declarations, &GenericRangePolicy);
     assert!(matches!(

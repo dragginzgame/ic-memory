@@ -1,5 +1,31 @@
 # Changelog
 
+## 0.24.12
+
+- Make the ledger cell local to each bootstrap attempt. Remove the runtime's
+  cached cell, initialization guard and private persistence wrapper. Every retry
+  now preflights persisted memory before recovery and admission; retain capacity
+  checks and publish committed authority only after persistence succeeds.
+- Extend the existing corruption regression to cover retrying the same runtime
+  as well as reopening it. The same-runtime case fails with the old cache and
+  passes with attempt-local cells, without rerunning admission or writing memory.
+- Carry borrowed historical records in internal claim failures. Remove record
+  index lookups and redundant ledger arguments from validation and staging error
+  conversion. Preserve distinct declaration/reservation error precedence and
+  the indexes needed for successful staging mutations.
+- Keep declaration activation in staging after historical claim validation.
+  Remove the single-caller record observation wrapper and redundant lifecycle
+  branch. Reservations still activate only through declarations; retired claims
+  remain rejected before mutation, and schema/last-seen observations are unchanged.
+- Update runtime ownership and safety documentation. Public APIs, error payloads,
+  durable and diagnostic formats, and declaration fingerprints are unchanged.
+  No Canic source patch is required.
+- Validation: all 272 library tests pass, including runtime retry, lifecycle,
+  claim-conflict, current-format fixture and fingerprint regressions. Strict
+  all-target Clippy, Rust 1.88.0 all-target compilation, formatting, whitespace
+  checks and all five raw Wasm size gates pass. Integration tests, consumer builds
+  and live deployments were not rerun.
+
 ## 0.24.11
 
 - Keep doctor recovery results and physical diagnostics together until report

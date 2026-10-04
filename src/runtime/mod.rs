@@ -68,8 +68,6 @@ use ic_stable_structures::{
 
 use std::rc::Rc;
 
-type LedgerCell<M> = Cell<StableCellLedgerRecord, RuntimeMemory<M>>;
-
 enum RuntimeLifecycle {
     Unbootstrapped,
     Bootstrapped {
@@ -89,10 +87,13 @@ struct RuntimeBootstrapBinding {
 ///
 /// Canonical owner of allocation bootstrap state for one backing memory.
 ///
-/// The runtime owns its `MemoryManager`, allocation-ledger cell, bootstrap
+/// The runtime owns its `MemoryManager`, allocation-ledger persistence, bootstrap
 /// lifecycle, committed allocation capability, opens, and diagnostics. Static
 /// linked-program declarations are supplied separately as one immutable
 /// [`SealedDeclarationSnapshot`].
+///
+/// Each bootstrap attempt opens its own ledger cell after fallible preflight;
+/// diagnostics read persisted memory directly.
 ///
 /// `M` needs only [`Memory`]. The runtime does not require the backing memory
 /// to be `Send`, `Sync`, `Clone`, or `'static`.
@@ -103,7 +104,6 @@ pub struct MemoryRuntime<M: Memory> {
     // Shared backing, immutable geometry and live accounting belong to growth.
     // Handles reserve physical capacity; the manager owns bucket metadata.
     growth: Rc<backing::GrowthState<M>>,
-    ledger_cell: Option<LedgerCell<M>>,
     lifecycle: RuntimeLifecycle,
 }
 
@@ -184,7 +184,6 @@ impl<M: Memory> MemoryRuntime<M> {
                 bucket_size_pages,
             ),
             growth,
-            ledger_cell: None,
             lifecycle: RuntimeLifecycle::Unbootstrapped,
         })
     }
@@ -249,13 +248,8 @@ impl<M: Memory> MemoryRuntime<M> {
         policy: &P,
         policy_identity: PolicyIdentity,
     ) -> Result<(), RuntimeBootstrapError<P::Error>> {
-        self.initialize_ledger_cell()?;
-        let mut record = self
-            .ledger_cell
-            .as_ref()
-            .expect("successful ledger initialization establishes the cell")
-            .get()
-            .clone();
+        let mut cell = self.open_ledger_cell()?;
+        let mut record = cell.get().clone();
         let genesis = AllocationLedger::empty_genesis();
         let recovered = record.store_mut().recover_or_initialize(&genesis)?;
         let mut admission = BootstrapAdmission::new(recovered.ledger(), declarations);
@@ -275,7 +269,8 @@ impl<M: Memory> MemoryRuntime<M> {
                 None,
             )
             .map_err(runtime_bootstrap_error_from_bootstrap)?;
-        self.persist_ledger_record(record)?;
+        ensure_ledger_cell_capacity(&self.memory(MEMORY_MANAGER_LEDGER_ID), &record)?;
+        let _previous = cell.set(record);
         let committed = commit.confirm_persisted().into_application_allocations();
         self.lifecycle = RuntimeLifecycle::Bootstrapped {
             committed_allocations: committed,
@@ -344,29 +339,13 @@ impl<M: Memory> MemoryRuntime<M> {
         Ok(slot.memory_manager_id().expect("committed allocation slot"))
     }
 
-    fn initialize_ledger_cell<P>(&mut self) -> Result<(), RuntimeBootstrapError<P>> {
-        if self.ledger_cell.is_some() {
-            return Ok(());
-        }
+    fn open_ledger_cell<P>(
+        &self,
+    ) -> Result<Cell<StableCellLedgerRecord, RuntimeMemory<M>>, RuntimeBootstrapError<P>> {
         let memory = self.memory(MEMORY_MANAGER_LEDGER_ID);
         crate::validate_stable_cell_ledger_memory(&memory)?;
         ensure_ledger_cell_capacity(&memory, &StableCellLedgerRecord::default())?;
-        self.ledger_cell = Some(Cell::init(memory, StableCellLedgerRecord::default()));
-        Ok(())
-    }
-
-    fn persist_ledger_record<P>(
-        &mut self,
-        record: StableCellLedgerRecord,
-    ) -> Result<(), RuntimeBootstrapError<P>> {
-        let memory = self.memory(MEMORY_MANAGER_LEDGER_ID);
-        ensure_ledger_cell_capacity(&memory, &record)?;
-        let cell = self
-            .ledger_cell
-            .as_mut()
-            .expect("ledger persistence follows successful initialization");
-        let _previous = cell.set(record);
-        Ok(())
+        Ok(Cell::init(memory, StableCellLedgerRecord::default()))
     }
 
     fn memory(&self, id: u8) -> RuntimeMemory<M> {

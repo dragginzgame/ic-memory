@@ -2,10 +2,7 @@ use crate::{
     capability::ValidatedAllocations,
     declaration::{DeclarationSnapshot, DeclarationSnapshotError},
     key::StableKey,
-    ledger::{
-        AllocationLedger, ClaimConflict, RecoveredLedger, claim_conflict_record,
-        validate_declaration_claim,
-    },
+    ledger::{AllocationLedger, ClaimConflict, RecoveredLedger, validate_declaration_claim},
     policy::AllocationPolicy,
     slot::AllocationSlotDescriptor,
 };
@@ -111,27 +108,27 @@ fn validate_declaration_history<P>(
 ) -> Result<(), AllocationValidationError<P>> {
     validate_declaration_claim(ledger, declaration)
         .map(|_| ())
-        .map_err(|conflict| map_validation_claim_conflict(ledger, declaration, conflict))
+        .map_err(|conflict| map_validation_claim_conflict(declaration, conflict))
 }
 
 fn map_validation_claim_conflict<P>(
-    ledger: &AllocationLedger,
     declaration: &crate::declaration::AllocationDeclaration,
-    conflict: ClaimConflict,
+    conflict: ClaimConflict<'_>,
 ) -> AllocationValidationError<P> {
-    let record = claim_conflict_record(ledger, conflict);
     match conflict {
-        ClaimConflict::StableKeyMoved { .. } => AllocationValidationError::StableKeySlotConflict {
-            stable_key: declaration.stable_key.clone(),
-            historical_slot: record.slot.clone(),
-            declared_slot: declaration.slot.clone(),
-        },
-        ClaimConflict::SlotReused { .. } => AllocationValidationError::SlotStableKeyConflict {
+        ClaimConflict::StableKeyMoved { record } => {
+            AllocationValidationError::StableKeySlotConflict {
+                stable_key: declaration.stable_key.clone(),
+                historical_slot: record.slot.clone(),
+                declared_slot: declaration.slot.clone(),
+            }
+        }
+        ClaimConflict::SlotReused { record } => AllocationValidationError::SlotStableKeyConflict {
             slot: declaration.slot.clone(),
             historical_key: record.stable_key.clone(),
             declared_key: declaration.stable_key.clone(),
         },
-        ClaimConflict::Tombstoned { .. } => AllocationValidationError::RetiredAllocation {
+        ClaimConflict::Tombstoned { record } => AllocationValidationError::RetiredAllocation {
             stable_key: declaration.stable_key.clone(),
             slot: record.slot.clone(),
         },

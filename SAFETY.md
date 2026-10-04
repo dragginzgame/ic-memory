@@ -129,12 +129,16 @@ and `ValidatedAllocations` are not open authority.
 
 Every fact derived from a backing memory belongs to one `MemoryRuntime<M>`:
 
-- `MemoryManager<M>` and ledger cell;
+- `MemoryManager<M>` and ledger persistence;
 - bootstrap lifecycle and recovery result;
 - committed allocation capability;
 - memory-open authority;
 - diagnostic ledger and commit-recovery view; and
 - live virtual-memory sizes.
+
+Each bootstrap attempt preflights and opens its ledger cell from persisted
+memory. A failed attempt must not retain a cached cell value that could bypass
+preflight on retry. Capability publication follows successful persistence.
 
 One runtime must never use another runtime's lifecycle or committed capability.
 The only process-global authority is the immutable canonical snapshot of linked

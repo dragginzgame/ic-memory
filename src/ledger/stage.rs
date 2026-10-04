@@ -1,7 +1,7 @@
 use super::{
     AllocationLedger, AllocationRecord, AllocationReservationError, AllocationRetirement,
     AllocationRetirementError, AllocationStageError, AllocationState, ClaimConflict, ClaimOutcome,
-    GenerationRecord, ReservationClaimConflict, claim_conflict_record, validate_declaration_claim,
+    GenerationRecord, ReservationClaimConflict, validate_declaration_claim,
     validate_reservation_claim,
 };
 use crate::{
@@ -190,8 +190,11 @@ fn record_declaration(
 ) -> Result<(), AllocationStageError> {
     match validate_declaration_claim(ledger, declaration) {
         Ok(ClaimOutcome::Existing { record_index }) => {
-            ledger.allocation_history.records_mut()[record_index]
-                .observe_declaration(generation, declaration);
+            // Claim validation rejected retired identities. Both an existing
+            // active claim and a matching reservation become active here.
+            let record = &mut ledger.allocation_history.records_mut()[record_index];
+            record.state = AllocationState::Active;
+            record.observe_schema(generation, &declaration.schema);
             Ok(())
         }
         Ok(ClaimOutcome::New) => {
@@ -199,11 +202,7 @@ fn record_declaration(
             ledger.allocation_history.push_record(record);
             Ok(())
         }
-        Err(conflict) => Err(map_declaration_stage_conflict(
-            ledger,
-            declaration,
-            conflict,
-        )),
+        Err(conflict) => Err(map_declaration_stage_conflict(declaration, conflict)),
     }
 }
 
@@ -223,11 +222,7 @@ fn record_reservation(
             ledger.allocation_history.push_record(record);
             Ok(())
         }
-        Err(conflict) => Err(map_reservation_stage_conflict(
-            ledger,
-            reservation,
-            conflict,
-        )),
+        Err(conflict) => Err(map_reservation_stage_conflict(reservation, conflict)),
     }
 }
 
@@ -260,23 +255,21 @@ pub fn checked_reservation_count(count: usize) -> Result<u32, AllocationReservat
 }
 
 fn map_declaration_stage_conflict(
-    ledger: &AllocationLedger,
     declaration: &AllocationDeclaration,
-    conflict: ClaimConflict,
+    conflict: ClaimConflict<'_>,
 ) -> AllocationStageError {
-    let record = claim_conflict_record(ledger, conflict);
     match conflict {
-        ClaimConflict::StableKeyMoved { .. } => AllocationStageError::StableKeySlotConflict {
+        ClaimConflict::StableKeyMoved { record } => AllocationStageError::StableKeySlotConflict {
             stable_key: declaration.stable_key.clone(),
             historical_slot: record.slot.clone(),
             declared_slot: declaration.slot.clone(),
         },
-        ClaimConflict::SlotReused { .. } => AllocationStageError::SlotStableKeyConflict {
+        ClaimConflict::SlotReused { record } => AllocationStageError::SlotStableKeyConflict {
             slot: declaration.slot.clone(),
             historical_key: record.stable_key.clone(),
             declared_key: declaration.stable_key.clone(),
         },
-        ClaimConflict::Tombstoned { .. } => AllocationStageError::RetiredAllocation {
+        ClaimConflict::Tombstoned { record } => AllocationStageError::RetiredAllocation {
             stable_key: declaration.stable_key.clone(),
             slot: record.slot.clone(),
         },
@@ -284,34 +277,32 @@ fn map_declaration_stage_conflict(
 }
 
 fn map_reservation_stage_conflict(
-    ledger: &AllocationLedger,
     reservation: &AllocationDeclaration,
-    conflict: ReservationClaimConflict,
+    conflict: ReservationClaimConflict<'_>,
 ) -> AllocationReservationError {
     let conflict = match conflict {
-        ReservationClaimConflict::ActiveAllocation { record_index } => {
+        ReservationClaimConflict::ActiveAllocation { record } => {
             return AllocationReservationError::ActiveAllocation {
                 stable_key: reservation.stable_key.clone(),
-                slot: ledger.allocation_history.records()[record_index]
-                    .slot
-                    .clone(),
+                slot: record.slot.clone(),
             };
         }
         ReservationClaimConflict::Claim(conflict) => conflict,
     };
-    let record = claim_conflict_record(ledger, conflict);
     match conflict {
-        ClaimConflict::StableKeyMoved { .. } => AllocationReservationError::StableKeySlotConflict {
-            stable_key: reservation.stable_key.clone(),
-            historical_slot: record.slot.clone(),
-            reserved_slot: reservation.slot.clone(),
-        },
-        ClaimConflict::SlotReused { .. } => AllocationReservationError::SlotStableKeyConflict {
+        ClaimConflict::StableKeyMoved { record } => {
+            AllocationReservationError::StableKeySlotConflict {
+                stable_key: reservation.stable_key.clone(),
+                historical_slot: record.slot.clone(),
+                reserved_slot: reservation.slot.clone(),
+            }
+        }
+        ClaimConflict::SlotReused { record } => AllocationReservationError::SlotStableKeyConflict {
             slot: reservation.slot.clone(),
             historical_key: record.stable_key.clone(),
             reserved_key: reservation.stable_key.clone(),
         },
-        ClaimConflict::Tombstoned { .. } => AllocationReservationError::RetiredAllocation {
+        ClaimConflict::Tombstoned { record } => AllocationReservationError::RetiredAllocation {
             stable_key: reservation.stable_key.clone(),
             slot: record.slot.clone(),
         },

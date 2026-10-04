@@ -9,86 +9,80 @@ pub enum ClaimOutcome {
     New,
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum ClaimConflict {
-    StableKeyMoved { record_index: usize },
-    SlotReused { record_index: usize },
-    Tombstoned { record_index: usize },
-}
-
-impl ClaimConflict {
-    pub const fn record_index(self) -> usize {
-        match self {
-            Self::StableKeyMoved { record_index }
-            | Self::SlotReused { record_index }
-            | Self::Tombstoned { record_index } => record_index,
-        }
-    }
-}
+///
+/// ClaimConflict
+///
+/// Internal claim failure carrying the historical record needed for error
+/// projection. Successful claims retain indexes for subsequent ledger mutation.
+///
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum ReservationClaimConflict {
-    Claim(ClaimConflict),
-    ActiveAllocation { record_index: usize },
+pub enum ClaimConflict<'ledger> {
+    StableKeyMoved { record: &'ledger AllocationRecord },
+    SlotReused { record: &'ledger AllocationRecord },
+    Tombstoned { record: &'ledger AllocationRecord },
 }
 
-pub fn claim_conflict_record(
-    ledger: &AllocationLedger,
-    conflict: ClaimConflict,
-) -> &AllocationRecord {
-    &ledger.allocation_history.records()[conflict.record_index()]
+///
+/// ReservationClaimConflict
+///
+/// Internal reservation failure, including refusal to reserve an active record.
+///
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ReservationClaimConflict<'ledger> {
+    Claim(ClaimConflict<'ledger>),
+    ActiveAllocation { record: &'ledger AllocationRecord },
 }
 
-pub fn validate_declaration_claim(
-    ledger: &AllocationLedger,
+pub fn validate_declaration_claim<'ledger>(
+    ledger: &'ledger AllocationLedger,
     declaration: &AllocationDeclaration,
-) -> Result<ClaimOutcome, ClaimConflict> {
+) -> Result<ClaimOutcome, ClaimConflict<'ledger>> {
     if let Some(record_index) = find_by_key_index(ledger, &declaration.stable_key) {
         let record = &ledger.allocation_history.records()[record_index];
         if matches!(record.state, AllocationState::Retired { .. }) {
-            return Err(ClaimConflict::Tombstoned { record_index });
+            return Err(ClaimConflict::Tombstoned { record });
         }
         if record.slot != declaration.slot {
-            return Err(ClaimConflict::StableKeyMoved { record_index });
+            return Err(ClaimConflict::StableKeyMoved { record });
         }
         return Ok(ClaimOutcome::Existing { record_index });
     }
 
-    if let Some(record_index) = find_by_slot_index(ledger, &declaration.slot) {
-        return Err(ClaimConflict::SlotReused { record_index });
+    if let Some(record) = find_by_slot(ledger, &declaration.slot) {
+        return Err(ClaimConflict::SlotReused { record });
     }
 
     Ok(ClaimOutcome::New)
 }
 
-pub fn validate_reservation_claim(
-    ledger: &AllocationLedger,
+pub fn validate_reservation_claim<'ledger>(
+    ledger: &'ledger AllocationLedger,
     reservation: &AllocationDeclaration,
-) -> Result<ClaimOutcome, ReservationClaimConflict> {
+) -> Result<ClaimOutcome, ReservationClaimConflict<'ledger>> {
     if let Some(record_index) = find_by_key_index(ledger, &reservation.stable_key) {
         let record = &ledger.allocation_history.records()[record_index];
         if record.slot != reservation.slot {
             return Err(ReservationClaimConflict::Claim(
-                ClaimConflict::StableKeyMoved { record_index },
+                ClaimConflict::StableKeyMoved { record },
             ));
         }
 
         return match record.state {
             AllocationState::Reserved => Ok(ClaimOutcome::Existing { record_index }),
-            AllocationState::Active => {
-                Err(ReservationClaimConflict::ActiveAllocation { record_index })
-            }
+            AllocationState::Active => Err(ReservationClaimConflict::ActiveAllocation { record }),
             AllocationState::Retired { .. } => {
                 Err(ReservationClaimConflict::Claim(ClaimConflict::Tombstoned {
-                    record_index,
+                    record,
                 }))
             }
         };
     }
 
-    if let Some(record_index) = find_by_slot_index(ledger, &reservation.slot) {
+    if let Some(record) = find_by_slot(ledger, &reservation.slot) {
         return Err(ReservationClaimConflict::Claim(ClaimConflict::SlotReused {
-            record_index,
+            record,
         }));
     }
 
@@ -103,10 +97,13 @@ fn find_by_key_index(ledger: &AllocationLedger, stable_key: &StableKey) -> Optio
         .position(|record| &record.stable_key == stable_key)
 }
 
-fn find_by_slot_index(ledger: &AllocationLedger, slot: &AllocationSlotDescriptor) -> Option<usize> {
+fn find_by_slot<'ledger>(
+    ledger: &'ledger AllocationLedger,
+    slot: &AllocationSlotDescriptor,
+) -> Option<&'ledger AllocationRecord> {
     ledger
         .allocation_history
         .records()
         .iter()
-        .position(|record| &record.slot == slot)
+        .find(|record| &record.slot == slot)
 }
