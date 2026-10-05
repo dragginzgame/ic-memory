@@ -702,22 +702,7 @@ mod tests {
     }
 
     #[test]
-    fn memory_manager_range_authority_from_records_sorts_and_validates() {
-        let err = MemoryManagerRangeAuthority::from_records(vec![MemoryManagerAuthorityRecord {
-            range: MemoryManagerIdRange::new(10, 99).expect("framework range"),
-            authority: String::new(),
-            mode: MemoryManagerRangeMode::Reserved,
-            purpose: None,
-        }])
-        .expect_err("empty authority must fail");
-        assert_eq!(
-            err,
-            MemoryManagerRangeAuthorityError::InvalidDiagnosticString {
-                field: "authority",
-                reason: "must not be empty",
-            }
-        );
-
+    fn memory_manager_range_authority_from_records_sorts_checked_records() {
         let authority = MemoryManagerRangeAuthority::from_records(vec![
             MemoryManagerAuthorityRecord {
                 range: MemoryManagerIdRange::new(100, MEMORY_MANAGER_MAX_ID).expect("app range"),
@@ -842,10 +827,10 @@ mod tests {
                 mode: MemoryManagerRangeMode::Allowed,
                 purpose: None,
             },
-            // The earlier overlap must be reported before this invalid metadata.
+            // A later disjoint candidate cannot change the first overlap.
             MemoryManagerAuthorityRecord {
                 range: MemoryManagerIdRange::new(100, 120).expect("later range"),
-                authority: String::new(),
+                authority: "later".to_string(),
                 mode: MemoryManagerRangeMode::Allowed,
                 purpose: None,
             },

@@ -1,5 +1,30 @@
 # Changelog
 
+## 0.25.7
+
+- Decode `MemoryManagerAuthorityRecord` through its checked constructor. JSON
+  and CBOR now reject invalid authority/purpose text before records reach
+  registration or range-table assembly. Preserve field-specific constructor
+  errors, required explicit purpose nulls, unknown-field rejection and current
+  encodings; no durable format or declaration fingerprint changes.
+- Hard-cut `MemoryManagerAuthorityRecord::validate` and remove repeated metadata
+  scans from static range registration and range-table construction. The record
+  owns text validity; registration retains its independent governance namespace
+  restriction, and the table retains input-order overlap refusal and canonical
+  range ordering. Checks on raw caller-supplied expected authorities remain.
+- Consolidate malformed-record tests at the public decoding boundary. Extend
+  printable-ASCII/256-byte round trips and pin the current CBOR shape. Verify
+  decoded governance records cannot bypass external registration. The malformed
+  metadata regression fails against 0.25.6 for both JSON and CBOR; valid metadata
+  and shape assertions pass against both implementations.
+- Validation: 272 library tests, public integration/composed-host tests, all
+  eight compile-fail cases and six active doctests pass. Strict all-target
+  Clippy, Rust 1.88.0 all-target compilation, warning-denied Rustdoc, formatting,
+  whitespace checks and all five raw Wasm size gates pass. Inspected Canic,
+  IcyDB and blob-service callers use constructors/accessors and need no source
+  changes for the removed method; downstream builds and deployments were not
+  qualified.
+
 ## 0.25.6
 
 - Check optional declaration labels during JSON/CBOR decoding with the existing

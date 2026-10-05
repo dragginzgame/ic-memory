@@ -101,33 +101,6 @@ fn static_range_declaration_uses_record_authority() {
 }
 
 #[test]
-fn static_range_declaration_rejects_invalid_decoded_record() {
-    let record = MemoryManagerAuthorityRecord::new(
-        MemoryManagerIdRange::new(100, 109).expect("range"),
-        "app",
-        MemoryManagerRangeMode::Reserved,
-        None,
-    )
-    .expect("record");
-    let mut value = serde_json::to_value(record).unwrap();
-    value["purpose"] = serde_json::json!("");
-    let record = serde_json::from_value(value).expect("decoded range metadata");
-
-    let err = StaticMemoryRangeDeclaration::new(record)
-        .expect_err("decoded invalid range record must fail at the registry boundary");
-
-    assert!(matches!(
-        err,
-        StaticMemoryDeclarationError::Range(
-            MemoryManagerRangeAuthorityError::InvalidDiagnosticString {
-                field: "purpose",
-                ..
-            }
-        )
-    ));
-}
-
-#[test]
 fn snapshot_rejects_duplicate_static_memory_declarations() {
     let _guard = TEST_REGISTRY_LOCK.lock().expect("test lock poisoned");
     reset_static_memory_declarations_for_tests();
@@ -197,6 +170,19 @@ fn external_registration_rejects_internal_authority_identity() {
     assert!(matches!(
         range_err,
         StaticMemoryDeclarationError::ReservedAuthority { .. }
+    ));
+    // Record decoding accepts the governance owner's valid text, but cannot
+    // bypass the independent external-registration namespace restriction.
+    let record = serde_json::from_value(serde_json::json!({
+        "range": { "start": 100, "end": 109 },
+        "authority": IC_MEMORY_AUTHORITY_OWNER,
+        "mode": "Reserved",
+        "purpose": null,
+    }))
+    .unwrap();
+    assert!(matches!(
+        StaticMemoryRangeDeclaration::new(record),
+        Err(StaticMemoryDeclarationError::ReservedAuthority { .. })
     ));
 }
 

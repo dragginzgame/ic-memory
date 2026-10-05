@@ -159,8 +159,8 @@ pub struct StaticMemoryRangeDeclaration {
 impl StaticMemoryRangeDeclaration {
     /// Build one static range declaration from a validated authority record.
     pub fn new(record: MemoryManagerAuthorityRecord) -> Result<Self, StaticMemoryDeclarationError> {
-        validate_external_authority(record.authority())?;
-        record.validate()?;
+        // The record owns text validity; linked registration owns governance.
+        reject_internal_authority(record.authority())?;
         Ok(Self { record })
     }
 
@@ -619,16 +619,21 @@ pub fn register_static_memory_range_declaration(
 }
 
 fn validate_external_authority(value: &str) -> Result<(), StaticMemoryDeclarationError> {
-    if value == IC_MEMORY_AUTHORITY_OWNER {
-        return Err(StaticMemoryDeclarationError::ReservedAuthority {
-            authority: value.to_string(),
-        });
-    }
+    reject_internal_authority(value)?;
     validate_diagnostic_text(value).map_err(|error| {
         StaticMemoryDeclarationError::InvalidAuthority {
             reason: error.reason(),
         }
     })
+}
+
+fn reject_internal_authority(value: &str) -> Result<(), StaticMemoryDeclarationError> {
+    if value == IC_MEMORY_AUTHORITY_OWNER {
+        return Err(StaticMemoryDeclarationError::ReservedAuthority {
+            authority: value.to_string(),
+        });
+    }
+    Ok(())
 }
 
 /// Register one `MemoryManager` declaration before bootstrap seals the snapshot.

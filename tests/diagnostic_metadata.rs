@@ -1,8 +1,8 @@
 use ic_memory::{
     AllocationDeclaration, DeclarationSnapshot, DeclarationSnapshotError,
-    MemoryManagerAuthorityRecord, MemoryManagerIdRange, MemoryManagerRangeAuthorityError,
-    MemoryManagerRangeMode, MemoryRequest, PolicyIdentity, PolicyIdentityError, SchemaMetadata,
-    StaticMemoryDeclarationError,
+    MemoryManagerAuthorityRecord, MemoryManagerIdRange, MemoryManagerRangeAuthority,
+    MemoryManagerRangeAuthorityError, MemoryManagerRangeMode, MemoryRequest, PolicyIdentity,
+    PolicyIdentityError, SchemaMetadata, StaticMemoryDeclarationError,
 };
 
 #[test]
@@ -37,13 +37,30 @@ fn diagnostic_metadata_accepts_printable_ascii_through_the_byte_limit() {
             .unwrap();
         PolicyIdentity::new(value.as_str(), 1).unwrap();
         MemoryRequest::new(value.as_str(), "app.rows.v1", SchemaMetadata::default()).unwrap();
-        MemoryManagerAuthorityRecord::new(
+        let record = MemoryManagerAuthorityRecord::new(
             MemoryManagerIdRange::new(100, 100).unwrap(),
             value.as_str(),
             MemoryManagerRangeMode::Allowed,
             Some(value.clone()),
         )
         .unwrap();
+        let json = serde_json::json!({
+            "range": { "start": 100, "end": 100 },
+            "authority": value,
+            "mode": "Allowed",
+            "purpose": value,
+        });
+        assert_eq!(serde_json::to_value(&record).unwrap(), json);
+        assert_eq!(
+            serde_json::from_value::<MemoryManagerAuthorityRecord>(json).unwrap(),
+            record
+        );
+        let mut bytes = Vec::new();
+        ciborium::into_writer(&record, &mut bytes).unwrap();
+        assert_eq!(
+            ciborium::from_reader::<MemoryManagerAuthorityRecord, _>(bytes.as_slice()).unwrap(),
+            record
+        );
     }
     let unlabeled = AllocationDeclaration::memory_manager_unlabeled("app.rows.v1", 100).unwrap();
     assert_eq!(unlabeled.label(), None);
@@ -187,4 +204,84 @@ fn declaration_decode_requires_an_explicit_label_field() {
         ciborium::into_writer(&malformed, &mut bytes).unwrap();
         assert!(ciborium::from_reader::<AllocationDeclaration, _>(bytes.as_slice()).is_err());
     }
+}
+
+#[test]
+fn range_record_decode_rejects_invalid_metadata_before_table_assembly() {
+    let source = serde_json::json!({
+        "range": { "start": 100, "end": 100 },
+        "authority": "owner",
+        "mode": "Allowed",
+        "purpose": null,
+    });
+    for field in ["authority", "purpose"] {
+        for (value, reason) in [
+            (String::new(), "must not be empty"),
+            (
+                format!("{}\0", "x".repeat(256)),
+                "must be at most 256 bytes",
+            ),
+            ("é\0".to_string(), "must be ASCII"),
+            (
+                "printable\u{7f}".to_string(),
+                "must not contain ASCII control characters",
+            ),
+        ] {
+            let mut value_to_decode = source.clone();
+            value_to_decode[field] = value.into();
+            let json =
+                serde_json::from_value::<MemoryManagerAuthorityRecord>(value_to_decode.clone());
+            let mut bytes = Vec::new();
+            ciborium::into_writer(&value_to_decode, &mut bytes).unwrap();
+            let cbor = ciborium::from_reader::<MemoryManagerAuthorityRecord, _>(bytes.as_slice());
+            assert_eq!(
+                [json.is_err(), cbor.is_err()],
+                [true, true],
+                "{field}: {reason}"
+            );
+            let expected =
+                MemoryManagerRangeAuthorityError::InvalidDiagnosticString { field, reason }
+                    .to_string();
+            assert!(json.unwrap_err().to_string().contains(&expected));
+            assert!(cbor.unwrap_err().to_string().contains(&expected));
+            let table = serde_json::json!({ "authorities": [value_to_decode] });
+            assert!(serde_json::from_value::<MemoryManagerRangeAuthority>(table).is_err());
+        }
+    }
+}
+
+#[test]
+fn range_record_decode_preserves_current_shape_and_explicit_null() {
+    let record = MemoryManagerAuthorityRecord::new(
+        MemoryManagerIdRange::new(100, 100).unwrap(),
+        "owner",
+        MemoryManagerRangeMode::Allowed,
+        None,
+    )
+    .unwrap();
+    let expected = b"\xa4\x65range\xa2\x65start\x18\x64\x63end\x18\x64\x69authority\x65owner\x64mode\x67Allowed\x67purpose\xf6";
+    let mut bytes = Vec::new();
+    ciborium::into_writer(&record, &mut bytes).unwrap();
+    assert_eq!(bytes, expected);
+    assert_eq!(
+        ciborium::from_reader::<MemoryManagerAuthorityRecord, _>(bytes.as_slice()).unwrap(),
+        record
+    );
+    let source = serde_json::to_value(record).unwrap();
+    for field in ["range", "authority", "mode", "purpose"] {
+        let mut value = source.clone();
+        value.as_object_mut().unwrap().remove(field);
+        assert!(serde_json::from_value::<MemoryManagerAuthorityRecord>(value.clone()).is_err());
+        let mut bytes = Vec::new();
+        ciborium::into_writer(&value, &mut bytes).unwrap();
+        assert!(
+            ciborium::from_reader::<MemoryManagerAuthorityRecord, _>(bytes.as_slice()).is_err()
+        );
+    }
+    let mut value = source;
+    value["extra"] = true.into();
+    assert!(serde_json::from_value::<MemoryManagerAuthorityRecord>(value.clone()).is_err());
+    let mut bytes = Vec::new();
+    ciborium::into_writer(&value, &mut bytes).unwrap();
+    assert!(ciborium::from_reader::<MemoryManagerAuthorityRecord, _>(bytes.as_slice()).is_err());
 }

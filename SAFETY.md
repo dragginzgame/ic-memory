@@ -219,9 +219,11 @@ usable bounds during construction and decoding. Keys remain canonical, slot IDs
 exclude sentinel 255, and ranges remain ordered with usable ends. `SchemaMetadata`
 contains an absent or nonzero schema version, established by construction and
 decoding. `AllocationDeclaration` checks optional printable ASCII labels at
-construction and decoding, including their 256-byte bound. Fingerprints, range
-metadata, duplicate claims, policy and ledger history still require their
-validation boundaries before influencing authority.
+construction and decoding, including their 256-byte bound.
+`MemoryManagerAuthorityRecord` checks its printable ASCII authority and optional
+purpose through its constructor, including on decode. Fingerprints, duplicate
+claims, range overlaps, namespace ownership, policy and ledger history still
+require their validation boundaries before influencing authority.
 
 Invariant-bearing DTO fields are intentionally private where feasible. Callers
 should use checked constructors and accessors instead of fabricating durable
