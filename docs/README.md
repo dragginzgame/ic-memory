@@ -48,6 +48,7 @@ test results. They are evidence for the versions named in each document, not a
 promise that a later consumer graph or deployment was requalified.
 
 - [Issue reconciliation](issue-reconciliation.md)
+- [Runtime IO and maintainer improvements qualification](runtime-io-qualification.md)
 - [Canic checked-slot qualification for 0.25.0](consumer-qualification-0.25.0-canic.md)
 - [Canic memory qualification for 0.24.6](consumer-qualification-0.24.6-canic.md)
 - [IcyDB qualification for 0.24.4](consumer-qualification-0.24.4.md)
@@ -70,6 +71,7 @@ link to them.
 
 ## Maintainers
 
+- [Detailed 0.25 release notes](changelog/0.25.md)
 - [Release guide](../RELEASING.md)
 - [Current wire fixtures](../fixtures/current/README.md)
 

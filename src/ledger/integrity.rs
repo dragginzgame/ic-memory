@@ -1,6 +1,62 @@
 use super::{AllocationLedger, AllocationRecord, AllocationState, LedgerIntegrityError};
 use std::collections::BTreeSet;
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{AllocationHistory, GenerationRecord};
+
+    fn reference(records: &[GenerationRecord], current: u64) -> Result<(), LedgerIntegrityError> {
+        let mut seen = Vec::new();
+        for record in records {
+            let generation = record.generation();
+            if seen.contains(&generation) {
+                return Err(LedgerIntegrityError::DuplicateGeneration { generation });
+            }
+            seen.push(generation);
+            if generation > current {
+                return Err(LedgerIntegrityError::FutureGeneration {
+                    generation,
+                    current_generation: current,
+                });
+            }
+            if record.parent_generation() >= generation {
+                return Err(LedgerIntegrityError::InvalidParentGeneration {
+                    generation,
+                    parent_generation: record.parent_generation(),
+                });
+            }
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn generation_validation_matches_reference_for_orderings_and_overlapping_failures() {
+        for len in 0..=4 {
+            for mut code in 0..12_usize.pow(len) {
+                let mut records = Vec::new();
+                for _ in 0..len {
+                    let choice = u8::try_from(code % 12).unwrap();
+                    code /= 12;
+                    let generation = u64::from(choice / 2);
+                    let parent = if choice % 2 == 0 {
+                        generation.saturating_sub(1)
+                    } else {
+                        generation
+                    };
+                    records.push(GenerationRecord::new(generation, parent, None, 0, None).unwrap());
+                }
+                let expected = reference(&records, 4);
+                let ledger = AllocationLedger {
+                    current_generation: 4,
+                    allocation_history: AllocationHistory::from_parts(Vec::new(), records),
+                };
+                assert_eq!(ledger.validate_integrity(), expected);
+            }
+        }
+    }
+}
+
 impl AllocationLedger {
     pub(crate) fn validate_bounds(&self) -> Result<(), LedgerIntegrityError> {
         for (resource, count, limit) in [
@@ -68,9 +124,16 @@ impl AllocationLedger {
             validate_record_integrity(self.current_generation, record)?;
         }
 
+        // Increasing generation numbers are already unique. Retain the general
+        // set path for unordered DTOs, including its existing refusal order.
+        let ordered = self
+            .allocation_history
+            .generations()
+            .windows(2)
+            .all(|pair| pair[0].generation < pair[1].generation);
         let mut generations = BTreeSet::new();
         for generation in self.allocation_history.generations() {
-            if !generations.insert(generation.generation) {
+            if !ordered && !generations.insert(generation.generation) {
                 return Err(LedgerIntegrityError::DuplicateGeneration {
                     generation: generation.generation,
                 });

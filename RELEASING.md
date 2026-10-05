@@ -12,7 +12,8 @@ documentation and focused validation in the working tree, leaving changes
 unstaged and uncommitted. See [AGENTS.md](AGENTS.md). The release helper is the
 Rust development example `repo-tool`; it is not canister runtime code.
 
-Prerequisites and native qualification are declared in
+Prerequisites, pinned formatter setup, hook activation and native qualification
+are declared in
 [docs/host-support.md](docs/host-support.md). Development and CI use Rust 1.99.0;
 the crate's MSRV remains Rust 1.88.0. The workflow requires Git, GNU Make and
 `shasum`. Python is no longer a tooling dependency.
@@ -25,11 +26,33 @@ APIs and formats directly; they do not justify an incompatible patch.
 Previously published releases and tags are historical records and are not
 rewritten. Inspect affected downstream callers before choosing a release kind.
 
-Keep one current changelog draft at the top: `## [Draft]` while the release kind
-is undecided, or a numbered heading when the maintainer has explicitly selected
-it. `make patch` or `make minor` resolves a committed `[Draft]` to the selected
-version during preparation. It accepts an already selected matching heading.
-Changelog checks apply to release preparation, not downstream deployments.
+Keep one numbered, undated pending entry at the top: `## [X.Y.Z]`. Development
+selects that candidate from the latest actual release and the complete pending
+batch, respecting compatible maintainer overrides. Notes alone do not authorize
+package or lockfile version changes. Keep root summaries concise and link extended
+notes in `docs/changelog/<major>.<minor>.md` and their existing evidence owners.
+Preparation requires the pending heading to match its computed candidate;
+it refuses a conflicting selection rather than renumbering the notes. Historical
+entries remain unchanged. Changelog checks apply to release preparation, not
+downstream deployments.
+
+The current local [common release contract](../shared-tooling/docs/releases.md)
+applies at the maintainer's direction, including uncommitted changes. Read it
+before changing release tooling. Applying that policy and preparing its local
+implementation do not require an upstream commit or snapshot refresh.
+
+The workflow below still needs implementation alignment with that contract:
+the current targets lack `release-major`, a shared release lock and an exact
+saved-plan recovery path through the same normal target. The latest local
+contract selects unfinished intent before any fresh increment, reconciles the
+saved version, commit and destination automatically, and stops on conflicts.
+Explicit `release-resume VERSION=X.Y.Z` is optional selection under that contract;
+it must not be a required step after interruption. The current ic-memory helper
+does not yet provide those common-runner guarantees. These are implementation
+gaps, independent of the
+shared rules' commit state. Snapshot integrity alone does not qualify release
+adapters or their behavior. Agents must not execute the maintainer-owned release
+commands to prove adoption.
 
 The maintainer commits the implementation and changelog before preparation;
 source must then be clean. Check for active builds before compiling or editing.
@@ -78,10 +101,12 @@ make release-push
 ```
 
 Preparation changes only the root package version, README dependency example
-and, if needed, the current draft heading. It refreshes only the root package
+and the matching pending changelog heading. It refreshes only the root package
 version in `Cargo.lock`; any other dependency-selection change is rejected.
 Failed preparation restores these files and preserves existing receipts and
-build artifacts. Release commits must contain exactly the expected edits and
+build artifacts. A non-mutating `make fmt-check` after metadata preparation
+must pass before packaging or staging; the hook must not repair a saved release
+payload. Release commits must contain exactly the expected edits and
 identify the validated source in their commit message.
 
 A rejected push can be retried with `make release-push`; do not bump again.
@@ -93,6 +118,10 @@ Its prepared package HEAD must identify the validated source, and the retained
 prepared archive must still match its recorded digest. Missing or corrupted
 prepared artifacts stop qualification before repackaging; Cargo's working
 archive may differ after a failed final package without preventing a retry.
+These are the current helper's phase-specific retries. Rerunning `release-patch`
+or `release-minor` after an interrupted preparation is not yet automatic saved-plan
+recovery; the common workflow must replace that orchestration before those
+normal targets can be used for the new recovery contract.
 
 ## Evidence and publication
 

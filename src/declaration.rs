@@ -140,6 +140,7 @@ impl<'de> Deserialize<'de> for DeclarationSnapshot {
         #[derive(Deserialize)]
         #[serde(rename = "DeclarationSnapshot", deny_unknown_fields)]
         struct Snapshot {
+            #[serde(deserialize_with = "crate::cbor::deserialize_records")]
             declarations: Vec<AllocationDeclaration>,
             #[serde(deserialize_with = "crate::cbor::deserialize_present_option")]
             runtime_fingerprint: Option<String>,

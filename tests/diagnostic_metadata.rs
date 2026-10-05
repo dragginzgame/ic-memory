@@ -361,7 +361,34 @@ fn snapshot_decode_checks_collection_invariants_before_fingerprint() {
         serde_json::to_value(DeclarationSnapshot::new(vec![declaration]).unwrap()).unwrap();
     value["declarations"] = serde_json::Value::Array(vec![value["declarations"][0].clone(); 256]);
     value["runtime_fingerprint"] = "".into();
-    snapshot_decode_error(&value, &DeclarationSnapshotError::TooManyDeclarations);
+    assert!(serde_json::from_value::<DeclarationSnapshot>(value.clone()).is_err());
+    let mut bytes = Vec::new();
+    ciborium::into_writer(&value, &mut bytes).unwrap();
+    assert!(ciborium::from_reader::<DeclarationSnapshot, _>(bytes.as_slice()).is_err());
+}
+
+#[test]
+fn snapshot_decode_rejects_excess_before_decoding_the_extra_declaration() {
+    let declarations = (0..=254)
+        .map(|id| {
+            AllocationDeclaration::memory_manager_unlabeled(format!("app.store{id}.v1"), id)
+                .unwrap()
+        })
+        .collect();
+    let value = serde_json::to_value(DeclarationSnapshot::new(declarations).unwrap()).unwrap();
+    let mut sequence = serde_json::to_string(&value["declarations"]).unwrap();
+    sequence.pop(); // Replace the end with an extra element that cannot be parsed.
+    let input = format!("{{\"declarations\":{sequence},!");
+    let error = serde_json::from_str::<DeclarationSnapshot>(&input).unwrap_err();
+    // A count refusal is a data error; decoding the malformed extra element
+    // would instead produce a syntax error. No error prose is a contract.
+    assert_eq!(error.classify(), serde_json::error::Category::Data);
+
+    // Advertise 256 entries, without providing even the first declaration.
+    // A semantic refusal proves the size hint was checked before an EOF read.
+    let bytes = b"\xa2\x6cdeclarations\x99\x01\x00";
+    let error = ciborium::from_reader::<DeclarationSnapshot, _>(bytes.as_slice()).unwrap_err();
+    assert!(matches!(error, ciborium::de::Error::Semantic(..)));
 }
 
 #[test]

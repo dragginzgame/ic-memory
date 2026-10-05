@@ -1,13 +1,22 @@
 # Repository Instructions
 
-## Shared baseline and local overlay
+## Active shared rules and local overlay
 
-Read [DRAGGINZGAME.md](DRAGGINZGAME.md) first. This repository adopts Shared
-Tooling revision `41e1fd0ba41460bd2127cbf98ac8a4b2b2020d3e`; the exact reviewed
-files, hashes and executable modes are recorded in
-[.shared-tooling.snapshot](.shared-tooling.snapshot). These instructions are
-the local overlay. Refresh shared files through the documented snapshot helper;
-never edit vendored files in place.
+At the maintainer's explicit direction, read and follow the current local
+[Shared Tooling baseline](../shared-tooling/DRAGGINZGAME.md) and its linked rules
+and guides. This includes uncommitted working-tree changes in `../shared-tooling`.
+Read the applicable rules again when they change; no upstream commit, clean tree
+or snapshot refresh is required for them to apply. This is the maintainer-approved
+exception to revision-bound policy adoption while the shared rules are being
+developed locally. The sibling remains read-only to agents.
+
+The existing tooling snapshot at revision
+`c0206f1943238e21bd00fbe01658e6a0864c24fa` is recorded in
+[.shared-tooling.snapshot](.shared-tooling.snapshot). It identifies the vendored
+files, hashes and executable modes; it does not freeze the active local policy.
+Keep its provenance accurate and never edit vendored files in place. Do not
+attribute uncommitted shared files to that recorded revision. These instructions
+are the repository's local overlay.
 
 The user-provided ownership rule below is the approved local exception to shared
 tag/push authority: commits, tags and pushes always belong to the maintainer,
@@ -21,7 +30,8 @@ and prerequisites are declared in [docs/host-support.md](docs/host-support.md).
 
 - Before editing or compiling, check for active Cargo, rustc and rustdoc builds.
 - Focused checks: `make verify-shared-tooling`, `make test-tooling`,
-  `make fmt-check`, `make lint-tooling`, or an appropriately selected Rust test.
+  `make test-hooks`, `make fmt-check`, `make lint-tooling`, or an appropriately
+  selected Rust test.
 - Full gates: `make validate`, `make validate-toolchain`, `make wasm-size` and
   package/release qualification. Run these only on explicit request or in CI.
 - Dependency preparation: `make fetch-dependencies` is a separate network step.
@@ -29,6 +39,38 @@ and prerequisites are declared in [docs/host-support.md](docs/host-support.md).
   cache, and run offline without changing dependency selection.
 - Do not run maintainer release commands or tests that create commits/tags/pushes,
   including in disposable repositories. Tooling tests substitute command effects.
+
+## Formatting and Git hooks
+
+Follow the current local [Git hook rules](../shared-tooling/rules/git-hooks.md).
+The reviewed hook and installer are vendored unchanged. `make fmt` and
+`make fmt-check` cover both the library and `testing/runtime-qualification`,
+using exactly cargo-sort 2.1.4 before the pinned Rust formatter. Setup is explicit
+in [docs/host-support.md](docs/host-support.md); formatting never installs tools,
+builds, fetches dependencies or changes selected lockfiles.
+
+`make install-hooks` changes only local `core.hooksPath`. The pre-commit hook
+refreshes selected index entries, so agents must not run it on this repository's
+real index. Exercise it only in disposable fixtures without commits or tags.
+Source adoption, local activation and native host qualification are distinct.
+The setup target resolves physical paths before invoking the recorded installer,
+so logical checkout aliases work without patching a vendored file.
+
+## Release recovery policy
+
+Read the current local [release contract](../shared-tooling/docs/releases.md).
+The latest local rule requires a repeated normal release target to select saved
+unfinished intent before computing any new increment, reconcile exact effects,
+and stop on identity, payload, destination or concurrency conflicts. Explicit
+`release-resume` is an optional selection command, not a required recovery step.
+Preflight/validation failures repeat fresh gates while preserving earlier evidence.
+
+These rules apply immediately, including while shared changes are uncommitted.
+The current local workflow does not yet implement the common runner or that
+automatic recovery contract; [RELEASING.md](RELEASING.md) distinguishes its actual
+commands from those requirements. Do not claim that upstream stub tests qualify
+ic-memory's adapters, or invoke a release command to prove adoption. Preserve
+the recorded snapshot's actual bytes and provenance while applying live policy.
 
 ## User-Owned Commits and Pushes
 
@@ -39,8 +81,9 @@ agent to perform these user-owned actions.
 
 - Leave edits unstaged and uncommitted for the user to review.
 - Do not create, move, or delete release tags.
-- Do not run `make release-commit`, `make release-push`, `make release-minor`, or
-  `make release-patch`; these commands commit, tag, or push.
+- Do not run `make release-commit`, `make release-push`, `make release-minor`,
+  `make release-patch`, `make release-major` or `make release-resume`; these
+  commands commit, tag, or push.
 - Prepare source, documentation, and validation within the working tree, then
   report the result and any commands the user needs to run.
 - If a workflow requires committed source or a clean working tree, stop before
@@ -66,8 +109,44 @@ not preserve backward compatibility with an earlier pre-1.0 release.
   in the same change; they do not permit incompatible patch releases.
 - Compile-fail tests enforce maintained capability and trust boundaries. Do not
   add tests whose only purpose is prohibiting a retired name.
-- Keep one current changelog draft. Use `## [Draft]` until a release version is
-  explicitly selected; do not assign a new patch for each cleanup slice.
+
+## Changelog maintenance
+
+Before editing release notes, read the current local
+[changelog rules](../shared-tooling/rules/changelogs.md). They own automatic
+candidate selection, content, issue links, detail structure and history
+preservation, including while those rules are uncommitted.
+
+- Automatically maintain one numbered, undated pending entry, `## [X.Y.Z]`,
+  after each meaningful completed batch. Derive it from the latest actual release
+  and the complete pending scope; a prepared manifest is not another released base.
+- Before 1.0, choose patch for compatible work and minor for breaking consumer
+  contracts. Honour a compatible maintainer-selected version. Reuse the same
+  pending entry until release; do not assign a version to every cleanup slice.
+- Selecting notes does not authorize changing manifests or lockfiles, committing,
+  tagging, pushing or publishing. Final release dates belong to release preparation.
+- Keep the root changelog concise and focused on practical effects. Put extended
+  implementation notes in `docs/changelog/<major>.<minor>.md`; link existing
+  qualification evidence rather than copying routine validation logs into root.
+- Link actual resolved GitHub issues, mark breaking changes and required consumer
+  actions, align root/detail identities and links, and preserve published history.
+
+## Cargo dependency ownership
+
+Keep direct dependency versions, sources and default-feature selections in
+the root `[workspace.dependencies]`; package dependency tables inherit them.
+Centralization must preserve selected dependency versions and effective features.
+Apply the current local
+[Cargo dependency rules](../shared-tooling/rules/cargo-dependencies.md).
+
+The maintainer-accepted 0.25.14 qualification design is the local exception for
+`testing/runtime-qualification`: it remains an unpublished independent workspace,
+whose authoritative dependency root is its own `Cargo.toml`. Its package tables
+inherit its own workspace catalog. This keeps PocketIC's host-only graph and
+separate selected lockfile outside the library's normal gates and dependencies.
+This exception does not permit other nested workspaces or drifting duplicate
+declarations. It preserves the accepted qualification scope rather than silently
+merging or upgrading the two measured dependency graphs.
 
 ## Rust Item Documentation Style
 

@@ -30,7 +30,7 @@ impl Fixture {
             ),
             (
                 "CHANGELOG.md".to_owned(),
-                "# Changelog\n\n## [Draft]\n\nFixture changes.\n\n## 0.12.3\n\nHistory.\n"
+                "# Changelog\n\n## [0.13.0]\n\nFixture changes.\n\n## 0.12.3\n\nHistory.\n"
                     .to_owned(),
             ),
             ("source.rs".to_owned(), "// committed source\n".to_owned()),
@@ -208,6 +208,19 @@ impl Execute for Substitute {
                 }
                 if state.fail.as_deref() == Some("validation-lock") {
                     fs::write(root.join("Cargo.lock"), "unexpected dependency selection")?;
+                }
+                Ok(String::new())
+            }
+            "make"
+                if args
+                    == [
+                        "--no-print-directory",
+                        "fmt-check",
+                        "VALIDATION_TOOLCHAIN=1.99.0",
+                    ] =>
+            {
+                if state.fail.as_deref() == Some("formatting") {
+                    return Err("fixture formatting failure".into());
                 }
                 Ok(String::new())
             }
@@ -537,13 +550,14 @@ fn release_versions_and_drafts_preserve_dependency_versions_and_history() {
     }
     let updated = replace_package_version(MANIFEST, "0.12.3", "0.13.0").unwrap();
     assert!(updated.contains("other = \"0.12.3\""));
-    let current = "# Changelog\n\n## [Draft]\n\nChanges.\n\n## 0.12.3\n\nHistory.\n";
-    assert_eq!(
-        release_changelog(current, "0.13.0").unwrap(),
-        current.replacen("[Draft]", "0.13.0", 1)
-    );
-    assert!(release_changelog("## [Draft]\n\n## 0.12.3\nHistory", "0.13.0").is_err());
-    assert!(release_changelog("## 0.12.4\nChanges", "0.13.0").is_err());
+    let current = "# Changelog\n\n## [0.13.0]\n\nChanges.\n\n## 0.12.3\n\nHistory.\n";
+    assert_eq!(release_changelog(current, "0.13.0").unwrap(), current);
+    assert!(release_changelog(current, "0.12.4").is_err());
+    assert!(release_changelog("## [0.13.0]\n\n## 0.12.3\nHistory", "0.13.0").is_err());
+    for historical in ["0.13.0", "[0.13.0]", "[0.13.0] - 2026-10-05"] {
+        let duplicate = format!("{current}\n## {historical}\n\nAlready released.\n");
+        assert!(release_changelog(&duplicate, "0.13.0").is_err());
+    }
 }
 
 #[test]
@@ -612,7 +626,7 @@ fn preparation_stage_commit_qualification_and_publish_preserve_exact_evidence() 
 
 #[test]
 fn version_preparation_failures_restore_files_and_preserve_evidence_and_artifacts() {
-    for failure in ["validate", "package", "dependency-update"] {
+    for failure in ["validate", "formatting", "package", "dependency-update"] {
         let fixture = Fixture::new();
         let receipt = fixture.repo.receipt_path("0.13.0", true).unwrap();
         fs::create_dir_all(receipt.parent().unwrap()).unwrap();
@@ -624,6 +638,18 @@ fn version_preparation_failures_restore_files_and_preserve_evidence_and_artifact
         fixture.assert_original();
         assert_eq!(fs::read_to_string(receipt).unwrap(), "previous evidence");
         assert_eq!(fs::read_to_string(sentinel).unwrap(), "keep");
+        if failure == "formatting" {
+            assert!(
+                !fixture
+                    .repo
+                    .exec
+                    .state
+                    .borrow()
+                    .calls
+                    .iter()
+                    .any(|call| { call.get(2).is_some_and(|arg| arg == "package") })
+            );
+        }
     }
 }
 
@@ -846,6 +872,16 @@ fn wasm_metadata_and_budgets_use_only_the_selected_artifact_directory() {
 #[test]
 fn patch_preparation_keeps_head_and_rejects_unvalidated_source_or_staging() {
     let fixture = Fixture::new();
+    let path = "CHANGELOG.md";
+    let notes = fixture.repo.exec.state.borrow().source[path].replace("[0.13.0]", "[0.12.4]");
+    fs::write(fixture.repo.root.join(path), &notes).unwrap();
+    fixture
+        .repo
+        .exec
+        .state
+        .borrow_mut()
+        .source
+        .insert(path.to_owned(), notes);
     fixture.repo.prepare("patch").unwrap();
     assert!(fixture.repo.exec.state.borrow().release.is_none());
     assert_eq!(fixture.repo.version(None).unwrap(), "0.12.4");

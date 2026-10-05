@@ -204,7 +204,7 @@ pub fn decode_stable_cell_ledger_record_from_memory<M: Memory>(
 }
 
 fn serialize_record(record: &StableCellLedgerRecord) -> Vec<u8> {
-    let mut bytes = Vec::new();
+    let mut bytes = Vec::with_capacity(record.encoded_size());
     encode_record(record, &mut bytes);
     bytes
 }
@@ -261,6 +261,8 @@ mod tests {
         let record = decode_stable_cell_ledger_record(&bytes).expect("stable-cell fixture");
 
         assert_eq!(record.encoded_size(), bytes.len());
+        assert_eq!(record.to_bytes().as_ref(), bytes.as_slice());
+        assert_eq!(record.clone().into_bytes(), bytes);
         assert_eq!(
             bytes,
             crate::test_cbor::to_vec(&record).expect("re-encoded stable-cell fixture")

@@ -1,0 +1,16 @@
+[package]
+name = "ic-memory-runtime-qualification"
+version = "0.0.0"
+edition = "2024"
+rust-version = "1.88.0"
+publish = false
+license = "MIT"
+
+# Keep PocketIC's host-only dependency graph out of the library's normal gates.
+[workspace]
+
+[workspace.dependencies]
+pocket-ic = "=16.0.0"
+
+[dependencies]
+pocket-ic.workspace = true

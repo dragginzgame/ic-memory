@@ -1,0 +1,5 @@
+probe,baseline_bytes,candidate_bytes,delta_bytes,budget_bytes
+core,241274,241603,329,260000
+diagnostics,280305,280652,347,315000
+runtime_integration,250012,250341,329,270000
+io_qualification,263032,263422,390,

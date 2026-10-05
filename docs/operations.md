@@ -132,6 +132,18 @@ presence, validity, authoritative generation, and corruption or ambiguity are
 needed. `default_memory_manager_diagnostic_export()` additionally requires a
 completed bootstrap.
 
+## Read and write bounds
+
+Runtime handles check every read, raw read and write against their current
+virtual extent before translating buckets. Allocated bucket slack is not
+addressable memory. A span beyond the extent, including an overflowing
+offset/length pair, panics on native hosts or traps in Wasm before backing IO.
+
+Empty IO is allowed at the end of memory, but not beyond it. Grow the handle
+before writing newly addressable bytes. Valid IO still delegates directly to
+the underlying memory implementation; raw reads retain its optimized support
+for uninitialized destinations.
+
 ## Growth failures
 
 `RuntimeMemory::grow` returns `Result<u64, RuntimeGrowError>` to direct callers.

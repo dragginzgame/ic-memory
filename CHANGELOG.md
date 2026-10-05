@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.25.14]
+
+- Fix runtime memory bounds checks that could corrupt a neighboring allocation
+  through cached or overflowing accesses.
+- Reduce ledger encoding and generation-validation allocations, reject oversized
+  declaration snapshots earlier, and warn when a pending bootstrap commit is
+  discarded before persistence and confirmation.
+- Add installed IO and upgrade rollback qualification. Durable formats and valid
+  IO remain unchanged; bounds enforcement has a measured instruction cost.
+- Require release preparation to match the numbered pending changelog entry.
+- Add selected-file formatting hooks and matching manifest/Rust checks for both
+  workspaces. Developer setup pins the formatter and activates the local hook,
+  including through aliased checkout paths.
+
+[Detailed notes](docs/changelog/0.25.md) ·
+[Qualification and measurements](docs/runtime-io-qualification.md)
+
 ## 0.25.13
 
 - Reject Cargo compiler and wrapper replacements during release qualification.

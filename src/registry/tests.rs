@@ -626,7 +626,7 @@ fn resolved_history_permutations_match_fully_sealed_declarations_and_fingerprint
     let request = |key| MemoryRequest::new("app", key, SchemaMetadata::default()).unwrap();
     let mut store = crate::LedgerCommitStore::default();
     let genesis = crate::AllocationLedger::new(0, crate::AllocationHistory::default()).unwrap();
-    crate::AllocationBootstrap::new(&mut store)
+    let _pending = crate::AllocationBootstrap::new(&mut store)
         .initialize_validate_and_commit(
             &genesis,
             DeclarationSnapshot::new(vec![

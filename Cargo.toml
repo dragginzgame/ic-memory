@@ -4,7 +4,7 @@
 name = "ic-memory"
 edition = "2024"
 rust-version = "1.88.0"
-version = "0.25.13"
+version = "0.25.14"
 license = "MIT"
 authors = ["borovan <84897664+borovan@users.noreply.github.com>"]
 description = "Durable stable-memory allocation governance for Internet Computer canisters"
@@ -16,6 +16,36 @@ keywords = ["ic-stable-structures", "memory-id", "registry", "canister", "icp"]
 categories = ["wasm", "data-structures"]
 publish = true
 exclude = ["images/dont-overwrite.png"]
+
+[workspace]
+resolver = "3"
+exclude = ["testing/runtime-qualification"]
+
+[workspace.dependencies]
+ciborium = "0.2.2"
+# Constructors register hooks; the registry owns their execution phases.
+ctor = { version = "1.0", default-features = false, features = ["std", "proc_macro"] }
+ic-stable-structures = "=0.7.2"
+serde = { version = "1.0", default-features = false, features = [
+    "alloc",
+    "derive",
+] }
+serde_json = "1.0"
+thiserror = "2.0"
+toml = "1.1.6"
+trybuild = "1.0.121"
+
+[dependencies]
+ciborium.workspace = true
+ctor.workspace = true
+ic-stable-structures.workspace = true
+serde.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+serde_json.workspace = true
+toml.workspace = true
+trybuild.workspace = true
 
 [[example]]
 name = "composed_host"
@@ -52,21 +82,10 @@ name = "wasm-runtime-integration-size-probe"
 path = "examples/wasm_runtime_integration_size_probe.rs"
 crate-type = ["cdylib"]
 
-[dependencies]
-ciborium = "0.2.2"
-# Constructors register hooks; the registry owns their execution phases.
-ctor = { version = "1.0", default-features = false, features = ["std", "proc_macro"] }
-ic-stable-structures = "=0.7.2"
-serde = { version = "1.0", default-features = false, features = [
-    "alloc",
-    "derive",
-] }
-thiserror = "2.0"
-
-[dev-dependencies]
-serde_json = "1.0"
-toml = "1.1.6"
-trybuild = "1.0.121"
+[[example]]
+name = "wasm-io-qualification"
+path = "examples/wasm_io_qualification.rs"
+crate-type = ["cdylib"]
 
 [profile.wasm-size]
 inherits = "release"

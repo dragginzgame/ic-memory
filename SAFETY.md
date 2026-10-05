@@ -35,6 +35,18 @@ authorization, or endpoint safety.
   history contains only absent or nonzero versions, checked at construction
   and decoding. This metadata does not validate application schemas.
 
+## Runtime IO Bounds
+
+- Every runtime read, raw read and write must fit its current virtual extent,
+  independently of bucket slack, cache state or build profile.
+- Offset/length arithmetic must not wrap. Invalid spans panic on native hosts
+  or trap in Wasm before accessing the backing memory.
+- Empty IO is valid at offset zero in empty memory and at the end of grown
+  memory. An empty span beyond the extent is still invalid.
+- Raw reads retain the caller's pointer-safety obligations and initialize the
+  destination on success. Backing failures may leave a partial destination;
+  the wrapper must not add a zero-fill or intermediate buffer.
+
 ## Generation Invariants
 
 - Validated capabilities are bound to exactly one committed ledger generation.

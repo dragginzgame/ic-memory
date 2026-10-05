@@ -16,7 +16,8 @@ pub(super) struct GrowthState<M: Memory> {
 /// Cloneable virtual memory opened through a runtime's committed authority.
 /// Implements [`Memory`] for stable structures without exposing the backing
 /// memory or an alternate manager. Cloning does not require `M: Clone`.
-/// Reads delegate to the upstream memory implementation, including its
+/// IO checks the virtual extent before upstream bucket translation. Empty IO
+/// is valid at the end of memory, but not beyond it. Reads preserve the upstream
 /// optimized support for uninitialized destinations through `Memory::read_unsafe`.
 /// Growth reserves physical capacity before assigning manager buckets. Ordinary
 /// backing refusal, arithmetic overflow and bucket exhaustion return typed errors
@@ -40,6 +41,23 @@ impl<M: Memory> Clone for RuntimeMemory<M> {
 }
 
 impl<M: Memory> RuntimeMemory<M> {
+    // The manager bounds page counts by 32768 buckets of at most u16::MAX
+    // pages, so converting its virtual extent to bytes cannot overflow u64.
+    // Check before the upstream cache: its buckets can include virtual slack,
+    // and its span/translation arithmetic is unchecked in release builds.
+    #[expect(
+        clippy::inline_always,
+        reason = "matched PocketIC measurements reduce IO instructions with bounded Wasm growth"
+    )]
+    #[inline(always)]
+    fn check_io_bounds(&self, offset: u64, count: usize) {
+        let extent = self.memory.size() * crate::constants::WASM_PAGE_SIZE_BYTES;
+        assert!(
+            offset <= extent && count as u64 <= extent - offset,
+            "virtual memory access out of bounds",
+        );
+    }
+
     /// Grow by the requested pages, returning the previous virtual page count.
     ///
     /// Capacity is reserved before assigning manager buckets. Ordinary refusal
@@ -115,6 +133,7 @@ impl<M: Memory> Memory for RuntimeMemory<M> {
         Self::grow(self, pages).map_or(-1, u64::cast_signed)
     }
     fn read(&self, offset: u64, dst: &mut [u8]) {
+        self.check_io_bounds(offset, dst.len());
         self.memory.read(offset, dst);
     }
     #[expect(
@@ -122,6 +141,7 @@ impl<M: Memory> Memory for RuntimeMemory<M> {
         reason = "delegate the upstream raw-read contract unchanged"
     )]
     unsafe fn read_unsafe(&self, offset: u64, dst: *mut u8, count: usize) {
+        self.check_io_bounds(offset, count);
         // SAFETY: The caller supplies a valid destination disjoint from this
         // memory and its backing. Forwarding preserves the pointer and count;
         // VirtualMemory owns bucket translation and initializes the destination
@@ -129,6 +149,7 @@ impl<M: Memory> Memory for RuntimeMemory<M> {
         unsafe { self.memory.read_unsafe(offset, dst, count) }
     }
     fn write(&self, offset: u64, src: &[u8]) {
+        self.check_io_bounds(offset, src.len());
         self.memory.write(offset, src);
     }
 }

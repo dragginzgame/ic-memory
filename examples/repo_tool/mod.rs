@@ -213,8 +213,8 @@ fn release_changelog(text: &str, version: &str) -> Result<String> {
         .collect();
     let first = headings.first().ok_or("missing changelog entry")?;
     require(
-        *first == version || *first == "[Draft]",
-        "top changelog entry must be [Draft] or the selected version",
+        *first == format!("[{version}]"),
+        "top numbered pending entry must match the selected version",
     )?;
     require(
         headings
@@ -224,8 +224,14 @@ fn release_changelog(text: &str, version: &str) -> Result<String> {
             == 1,
         "duplicate current changelog entry",
     )?;
+    // Historical headings can retain their original bare or dated style.
+    // Detect the same release identity without rewriting any of their bytes.
     require(
-        *first == version || !headings.contains(&version),
+        !headings.iter().skip(1).any(|heading| {
+            *heading == version
+                || *heading == format!("[{version}]")
+                || heading.starts_with(&format!("[{version}] - "))
+        }),
         "selected version already exists",
     )?;
     let heading = format!("## {first}\n");
@@ -237,7 +243,7 @@ fn release_changelog(text: &str, version: &str) -> Result<String> {
         .next()
         .unwrap_or_default();
     require(!entry.trim().is_empty(), "empty changelog entry")?;
-    Ok(text.replacen(&heading, &format!("## {version}\n"), 1))
+    Ok(text.to_owned())
 }
 
 fn check_lock_update(before: &[u8], after: &str, previous: &str, version: &str) -> Result<()> {
@@ -721,6 +727,12 @@ impl<E: Execute> Repository<E> {
                 "--offline".to_owned(),
             ],
             vec![
+                "make".to_owned(),
+                "--no-print-directory".to_owned(),
+                "fmt-check".to_owned(),
+                format!("VALIDATION_TOOLCHAIN={}", self.toolchain()?),
+            ],
+            vec![
                 "cargo".to_owned(),
                 format!("+{}", self.toolchain()?),
                 "package".to_owned(),
@@ -807,7 +819,17 @@ impl<E: Execute> Repository<E> {
                 &previous,
                 &version,
             )?;
-            let package = &commands[2];
+            // Prepared metadata must already match the saved commit payload;
+            // a pre-commit hook is not allowed to repair release identity.
+            let formatting = &commands[2];
+            self.run(
+                &formatting[0],
+                &formatting[1..]
+                    .iter()
+                    .map(String::as_str)
+                    .collect::<Vec<_>>(),
+            )?;
+            let package = &commands[3];
             self.run(
                 &package[0],
                 &package[1..].iter().map(String::as_str).collect::<Vec<_>>(),

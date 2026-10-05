@@ -9,4 +9,5 @@ fn capability_and_dto_boundaries_are_compile_time_enforced() {
     tests.compile_fail("tests/ui/open_with_precommit_allocations.rs");
     tests.compile_fail("tests/ui/fabricate_validated_allocations.rs");
     tests.compile_fail("tests/ui/sentinel_runtime_growth.rs");
+    tests.compile_fail("tests/ui/discard_pending_commit.rs");
 }

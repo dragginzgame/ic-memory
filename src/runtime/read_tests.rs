@@ -1,10 +1,9 @@
 use super::{MemoryManagerConfig, MemoryRuntime, RuntimeMemory};
-use ic_stable_structures::{Memory, VectorMemory, memory_manager::MemoryId};
+use ic_stable_structures::{Memory, VectorMemory};
 use std::{
     cell::{Cell, RefCell},
     mem::MaybeUninit,
     panic::{AssertUnwindSafe, catch_unwind},
-    ptr::NonNull,
 };
 
 const PAGE: u64 = 65_536;
@@ -188,50 +187,147 @@ fn default_read_unsafe_and_clones_support_borrowed_nonclone_backing() {
 }
 
 #[test]
-fn empty_reads_and_source_bounds_match_upstream_for_cold_and_warm_handles() {
+fn io_bounds_are_independent_of_bucket_cache_and_reject_before_backing_access() {
     let runtime = runtime(8);
     let memory = handle(&runtime, 1);
-    let empty = NonNull::<u8>::dangling().as_ptr();
-    // SAFETY: Non-null aligned pointers are valid for these zero-byte reads.
-    unsafe { memory.read_unsafe(0, empty, 0) };
-    memory.grow(1).unwrap();
-    unsafe { memory.read_unsafe(PAGE, empty, 0) };
-    assert_eq!(read_uninitialized::<1>(&memory, PAGE - 1), [0]);
-
-    for offset in [PAGE, PAGE + 1, 8 * PAGE, u64::MAX] {
+    for pages in [0, 1] {
+        memory.grow(pages).unwrap();
+        let extent = pages * PAGE;
+        let mut spans = vec![(0, 0, true), (extent, 0, true)];
+        if extent != 0 {
+            spans.extend([(extent - 1, 1, true), (extent - 1, 2, false)]);
+        }
+        spans.extend([
+            (extent, 1, false),
+            (extent + 1, 0, false),
+            (8 * PAGE, 1, false),
+            (u64::MAX, 0, false),
+            (u64::MAX, 1, false),
+            (u64::MAX - 1, 2, false),
+        ]);
         for warm in [false, true] {
-            for count in [0, 1] {
-                let wrapped = handle(&runtime, 1);
-                let direct = runtime.memory_manager.get(MemoryId::new(1));
-                if warm {
-                    assert_eq!(read_uninitialized::<1>(&wrapped, 0), [0]);
-                    assert_eq!(read_uninitialized::<1>(&direct, 0), [0]);
-                }
-                // Initialized destinations remain readable even after failure.
-                // Compare success/failure and successful bytes, not panic text
-                // or unspecified destination contents after a failed read.
-                let mut wrapped_dst = [0xA5];
-                let mut direct_dst = [0xA5];
-                let wrapped_result = catch_unwind(AssertUnwindSafe(|| {
-                    // SAFETY: count is at most this separate buffer's length.
-                    unsafe { wrapped.read_unsafe(offset, wrapped_dst.as_mut_ptr(), count) }
-                }));
-                let direct_result = catch_unwind(AssertUnwindSafe(|| {
-                    // SAFETY: count is at most this separate buffer's length.
-                    unsafe { direct.read_unsafe(offset, direct_dst.as_mut_ptr(), count) }
-                }));
-                assert_eq!(wrapped_result.is_ok(), direct_result.is_ok());
-                if wrapped_result.is_ok() {
-                    assert_eq!(wrapped_dst, direct_dst);
+            for &(offset, count, valid) in &spans {
+                for operation in 0..3 {
+                    let memory = handle(&runtime, 1);
+                    if warm && extent != 0 {
+                        memory.read(0, &mut [0]);
+                    }
+                    let backing = &runtime.growth.backing;
+                    let reads = backing.safe_reads.get();
+                    let raw_reads = backing.unsafe_reads.borrow().len();
+                    let writes = backing.writes.get();
+                    let result = catch_unwind(AssertUnwindSafe(|| {
+                        let mut dst = [0xA5; 2];
+                        match operation {
+                            0 => memory.read(offset, &mut dst[..count]),
+                            // SAFETY: count fits in this separate writable buffer.
+                            1 => unsafe { memory.read_unsafe(offset, dst.as_mut_ptr(), count) },
+                            _ => memory.write(offset, &[0xA5; 2][..count]),
+                        }
+                    }));
+                    assert_eq!(
+                        result.is_ok(),
+                        valid,
+                        "pages={pages}, warm={warm}, operation={operation}, offset={offset}, count={count}",
+                    );
+                    if !valid {
+                        assert_eq!(backing.safe_reads.get(), reads);
+                        assert_eq!(backing.unsafe_reads.borrow().len(), raw_reads);
+                        assert_eq!(backing.writes.get(), writes);
+                    }
                 }
             }
         }
     }
-    // Outside every allocated bucket, both cold and warm paths must reject.
-    assert!(
-        catch_unwind(AssertUnwindSafe(|| {
-            read_uninitialized::<1>(&memory, 8 * PAGE)
-        }))
-        .is_err()
-    );
+}
+
+#[test]
+fn overflowing_writes_preserve_neighbor_and_growth_zeroes() {
+    let runtime = runtime(8);
+    let neighbor = handle(&runtime, 1);
+    neighbor.grow(8).unwrap();
+    neighbor.write(8 * PAGE - 1, &[0x6D]);
+    let memory = handle(&runtime, 2);
+    memory.grow(1).unwrap();
+    memory.write(0, &[0x42]); // Warm virtual bucket zero, after the neighbor.
+    let before = runtime.growth.backing.memory.borrow().clone();
+    for (offset, src) in [(u64::MAX, &[0xFF][..]), (PAGE, &[0xEE][..])] {
+        let result = catch_unwind(AssertUnwindSafe(|| memory.write(offset, src)));
+        assert_eq!(read_uninitialized::<1>(&neighbor, 8 * PAGE - 1), [0x6D]);
+        assert!(result.is_err());
+        assert_eq!(*runtime.growth.backing.memory.borrow(), before);
+    }
+    assert_eq!(read_uninitialized::<1>(&neighbor, 8 * PAGE - 1), [0x6D]);
+    memory.grow(1).unwrap();
+    assert_eq!(read_uninitialized::<1>(&memory, PAGE), [0]);
+}
+
+#[test]
+fn byte_io_crosses_four_gib_with_discontiguous_buckets() {
+    // Keep real bytes for manager metadata and touched payload only. This
+    // exercises u64 byte addresses, unlike metadata-only capacity fixtures.
+    struct Sparse {
+        pages: Cell<u64>,
+        header: VectorMemory,
+        bytes: RefCell<std::collections::BTreeMap<u64, u8>>,
+    }
+    impl Memory for Sparse {
+        fn size(&self) -> u64 {
+            self.pages.get()
+        }
+        fn grow(&self, pages: u64) -> i64 {
+            let old = self.pages.get();
+            self.pages.set(old.checked_add(pages).unwrap());
+            i64::try_from(old).unwrap()
+        }
+        fn read(&self, offset: u64, dst: &mut [u8]) {
+            assert!(offset.checked_add(dst.len() as u64).unwrap() <= self.size() * PAGE);
+            if offset < PAGE {
+                self.header.read(offset, dst);
+            } else {
+                let bytes = self.bytes.borrow();
+                for (index, byte) in dst.iter_mut().enumerate() {
+                    *byte = bytes.get(&(offset + index as u64)).copied().unwrap_or(0);
+                }
+            }
+        }
+        fn write(&self, offset: u64, src: &[u8]) {
+            assert!(offset.checked_add(src.len() as u64).unwrap() <= self.size() * PAGE);
+            if offset < PAGE {
+                self.header.write(offset, src);
+            } else {
+                let mut bytes = self.bytes.borrow_mut();
+                for (index, byte) in src.iter().enumerate() {
+                    bytes.insert(offset + index as u64, *byte);
+                }
+            }
+        }
+    }
+    let header = VectorMemory::default();
+    header.grow(1);
+    let runtime = MemoryRuntime::new_with_config(
+        Sparse {
+            pages: Cell::new(0),
+            header,
+            bytes: RefCell::default(),
+        },
+        MemoryManagerConfig::new(128).unwrap(),
+    )
+    .unwrap();
+    let memory = handle(&runtime, 1);
+    memory.grow(65_536).unwrap();
+    let neighbor = handle(&runtime, 2);
+    neighbor.grow(1).unwrap();
+    neighbor.write(0, &[0x6D]);
+    memory.grow(1).unwrap();
+    let offset = (1_u64 << 32) - 1;
+    memory.write(offset, &[1, 2, 3]);
+    let cold = handle(&runtime, 1);
+    assert_eq!(read_uninitialized::<3>(&cold, offset), [1, 2, 3]);
+    assert_eq!(read_uninitialized::<3>(&cold.clone(), offset), [1, 2, 3]);
+    let mut dst = [0; 3];
+    memory.read(offset, &mut dst);
+    assert_eq!(dst, [1, 2, 3]);
+    assert_eq!(read_uninitialized::<1>(&neighbor, 0), [0x6D]);
+    assert_eq!(read_uninitialized::<1>(&memory, offset + 3), [0]);
 }

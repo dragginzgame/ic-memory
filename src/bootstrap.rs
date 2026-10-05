@@ -222,6 +222,7 @@ impl<'store> AllocationBootstrap<'store> {
 ///
 
 #[derive(Debug, Eq, PartialEq)]
+#[must_use = "persist the owning ledger record, then confirm_persisted before opening allocations"]
 pub struct PendingBootstrapCommit {
     /// Staged ledger accepted by the protected generation commit.
     ledger: AllocationLedger,
@@ -674,7 +675,7 @@ mod tests {
         let mut store = LedgerCommitStore::default();
         store.commit(&ledger()).expect("initial ledger");
         let snapshot = DeclarationSnapshot::new(vec![declaration()]).expect("snapshot");
-        AllocationBootstrap::new(&mut store)
+        let _pending = AllocationBootstrap::new(&mut store)
             .validate_and_commit(snapshot, &TestPolicy, Some(42))
             .expect("active commit");
         let retirement = AllocationRetirement::new(

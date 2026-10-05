@@ -49,9 +49,45 @@ when recording release qualification; retain failed runs and their limitations.
 - Crates.io credentials are needed only for maintainer publication. Tests use
   deterministic command substitutes and never need credentials or network.
 
+## Developer setup and formatting
+
+Install the exact manifest formatter separately from validation, then activate
+the reviewed hook once per clone (also run the installer after setup updates):
+
+```sh
+source ci-tool-versions.env
+cargo +1.99.0 install cargo-sort --version "$IC_MEMORY_CARGO_SORT_VERSION" --locked
+make install-hooks
+git config --get core.hooksPath # .githooks
+make fmt-check
+```
+
+CI installs the same cargo-sort 2.1.4 explicitly. `make fmt` sorts manifests and
+formats Rust in both the root workspace and `testing/runtime-qualification`.
+`make fmt-check` checks the same inputs without changing them. Neither command
+builds, installs tools, fetches dependencies or changes selected lockfiles.
+Bare `make` prints available commands rather than preparing dependencies.
+
+The pre-commit hook formats an export of the exact index and refreshes only the
+selected files. It refuses partial staging and preserves unrelated working
+edits; a formatter failure leaves the real index and files unchanged. The
+installer refuses conflicting hook settings or executable private hooks rather
+than silently replacing them. Reconcile those obligations before activating it.
+The setup target resolves the physical checkout path before invoking the recorded
+installer, including when entered through a logical alias such as macOS temporary
+paths. The snapshot remains unchanged; this setup adjustment is consumer-owned.
+CI and release preparation check formatting independently of hook activation.
+`make test-hooks` exercises selected-file refresh, partial source/config staging,
+formatter failure isolation and preservation of unrelated edits in disposable
+repositories without creating commits or tags, including setup through a checkout
+path alias. It uses the actual consumer
+formatting targets and runs on every declared native CI host. Linux hook evidence
+does not qualify native macOS; record matching native runs separately from the
+historical runtime gates above.
+
 ## Native checks
 
-Focused tooling checks are `make verify-shared-tooling test-tooling fmt-check`
+Focused tooling checks are `make verify-shared-tooling test-tooling test-hooks fmt-check`
 and `make lint-tooling`. Compilation must wait for any existing build to finish.
 
 CI runs `make validate-toolchain` and the offline all-target MSRV check on each

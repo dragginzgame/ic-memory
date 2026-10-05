@@ -64,6 +64,17 @@ jobs:
           toolchain: ${{ steps.pin.outputs.channel }}
           components: clippy, rustfmt
           targets: wasm32-unknown-unknown
+      - name: Install exact manifest formatter
+        shell: bash
+        env:
+          RUSTUP_TOOLCHAIN: ${{ steps.pin.outputs.channel }}
+        run: |
+          source ci-tool-versions.env
+          cargo install cargo-sort --version "$IC_MEMORY_CARGO_SORT_VERSION" --locked
+      - name: Check both workspaces without changing files
+        run: make fmt-check
+      - name: Exercise hook isolation on the native host
+        run: make test-hooks
       - name: Select and prepare dependency inputs
         run: |
           cargo generate-lockfile
