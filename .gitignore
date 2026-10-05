@@ -3,6 +3,7 @@ target/
 
 # Library crates generally do not commit Cargo.lock.
 Cargo.lock
+.shared-tooling-refresh.*
 
 # Local editor and OS metadata
 .DS_Store

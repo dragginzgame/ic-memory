@@ -1,5 +1,35 @@
 # Repository Instructions
 
+## Shared baseline and local overlay
+
+Read [DRAGGINZGAME.md](DRAGGINZGAME.md) first. This repository adopts Shared
+Tooling revision `41e1fd0ba41460bd2127cbf98ac8a4b2b2020d3e`; the exact reviewed
+files, hashes and executable modes are recorded in
+[.shared-tooling.snapshot](.shared-tooling.snapshot). These instructions are
+the local overlay. Refresh shared files through the documented snapshot helper;
+never edit vendored files in place.
+
+The user-provided ownership rule below is the approved local exception to shared
+tag/push authority: commits, tags and pushes always belong to the maintainer,
+including when an agent is asked to prepare a release. This preserves the
+maintainer's review of source and release identity before external effects.
+
+Product contracts and numeric limits remain owned by this crate. Host support
+and prerequisites are declared in [docs/host-support.md](docs/host-support.md).
+
+## Development and qualification commands
+
+- Before editing or compiling, check for active Cargo, rustc and rustdoc builds.
+- Focused checks: `make verify-shared-tooling`, `make test-tooling`,
+  `make fmt-check`, `make lint-tooling`, or an appropriately selected Rust test.
+- Full gates: `make validate`, `make validate-toolchain`, `make wasm-size` and
+  package/release qualification. Run these only on explicit request or in CI.
+- Dependency preparation: `make fetch-dependencies` is a separate network step.
+  Validation and release preparation require the selected lockfile and populated
+  cache, and run offline without changing dependency selection.
+- Do not run maintainer release commands or tests that create commits/tags/pushes,
+  including in disposable repositories. Tooling tests substitute command effects.
+
 ## User-Owned Commits and Pushes
 
 The user exclusively owns committing and pushing. LLM agents must never create,
@@ -31,8 +61,13 @@ not preserve backward compatibility with an earlier pre-1.0 release.
   and update current fixtures, documentation, and downstream callers directly.
 - Historical changelogs and archived design documents may describe removed
   behavior, but executable code and current documentation must not retain it.
-- Negative compile-fail tests may reference removed forms only to prove that
-  they remain rejected.
+- Breaking public API or semantic changes require a minor release before 1.0.
+  Patch releases preserve the public contract. Hard cuts remove superseded paths
+  in the same change; they do not permit incompatible patch releases.
+- Compile-fail tests enforce maintained capability and trust boundaries. Do not
+  add tests whose only purpose is prohibiting a retired name.
+- Keep one current changelog draft. Use `## [Draft]` until a release version is
+  explicitly selected; do not assign a new patch for each cleanup slice.
 
 ## Rust Item Documentation Style
 

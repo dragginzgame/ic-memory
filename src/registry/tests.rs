@@ -331,6 +331,108 @@ fn snapshot_overlap_errors_preserve_bound_order_despite_differing_metadata() {
 }
 
 #[test]
+fn large_snapshot_permutations_preserve_all_metadata_and_fingerprints() {
+    let declarations: Vec<_> = (10..=254_u8)
+        .map(|id| {
+            StaticMemoryDeclaration::new(
+                "app",
+                AllocationDeclaration::memory_manager_with_schema(
+                    format!("app.store{id:03}.v1"),
+                    id,
+                    format!("Store {id}"),
+                    SchemaMetadata::new(Some(u32::from(id))).unwrap(),
+                )
+                .unwrap(),
+            )
+            .unwrap()
+        })
+        .collect();
+    let ranges: Vec<_> = (10..=254_u8)
+        .map(|id| {
+            StaticMemoryRangeDeclaration::new(
+                MemoryManagerAuthorityRecord::new(
+                    MemoryManagerIdRange::new(id, id).unwrap(),
+                    "app",
+                    if id % 2 == 0 {
+                        MemoryManagerRangeMode::Allowed
+                    } else {
+                        MemoryManagerRangeMode::Reserved
+                    },
+                    Some(format!("Store {id} range")),
+                )
+                .unwrap(),
+            )
+            .unwrap()
+        })
+        .collect();
+    let canonical = SealedDeclarationSnapshot::new(&declarations, &ranges, &[]).unwrap();
+    let order: Vec<_> = (0..declarations.len())
+        .step_by(2)
+        .chain((1..declarations.len()).step_by(2))
+        .collect();
+    for order in [(0..declarations.len()).rev().collect::<Vec<_>>(), order] {
+        let permuted_declarations: Vec<_> = order
+            .iter()
+            .map(|&index| declarations[index].clone())
+            .collect();
+        // Independent range order keeps both canonicalization owners exercised.
+        let permuted_ranges: Vec<_> = order
+            .iter()
+            .rev()
+            .map(|&index| ranges[index].clone())
+            .collect();
+        let permuted =
+            SealedDeclarationSnapshot::new(&permuted_declarations, &permuted_ranges, &[]).unwrap();
+        assert_eq!(permuted, canonical);
+        assert_eq!(permuted.fingerprint(), canonical.fingerprint());
+    }
+}
+
+#[test]
+fn equal_fixed_sort_keys_reject_independently_of_label_and_schema_order() {
+    let first = StaticMemoryDeclaration::new(
+        "app",
+        AllocationDeclaration::memory_manager("app.rows.v1", 100, "first").unwrap(),
+    )
+    .unwrap();
+    let second = StaticMemoryDeclaration::new(
+        "app",
+        AllocationDeclaration::memory_manager_with_schema(
+            "app.rows.v1",
+            100,
+            "second",
+            SchemaMetadata::new(Some(2)).unwrap(),
+        )
+        .unwrap(),
+    )
+    .unwrap();
+    for pair in [[first.clone(), second.clone()], [second, first]] {
+        let mut declarations: Vec<_> = (110..=173_u8)
+            .map(|id| {
+                StaticMemoryDeclaration::new(
+                    "app",
+                    AllocationDeclaration::memory_manager_unlabeled(
+                        format!("app.store{id}.v1"),
+                        id,
+                    )
+                    .unwrap(),
+                )
+                .unwrap()
+            })
+            .collect();
+        declarations.extend(pair);
+        assert_eq!(
+            SealedDeclarationSnapshot::new(&declarations, &[], &[]).unwrap_err(),
+            StaticMemoryDeclarationError::Declaration(
+                crate::DeclarationSnapshotError::DuplicateSlot(
+                    crate::MemoryManagerSlot::new(100).unwrap()
+                )
+            )
+        );
+    }
+}
+
+#[test]
 fn snapshot_fingerprint_covers_linked_declaration_authority() {
     let _guard = TEST_REGISTRY_LOCK.lock().expect("test lock poisoned");
     reset_static_memory_declarations_for_tests();

@@ -6,46 +6,99 @@ on:
     branches:
       - main
 
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  test:
-    runs-on: ubuntu-latest
+  tooling-lint:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # reviewed Shared Tooling pin
         with:
-          python-version: '3.12'
-      - run: make test-release-flow
-      - name: Read pinned Rust toolchain
+          persist-credentials: false
+      - run: make verify-shared-tooling
+      - name: Install exact validation tools
+        shell: bash
         run: |
-          python3 - <<'PYTHON' >> "$GITHUB_ENV"
-          import tomllib
-          from pathlib import Path
-          toolchain = tomllib.loads(Path("rust-toolchain.toml").read_text())["toolchain"]
-          print(f"RUSTUP_TOOLCHAIN={toolchain['channel']}")
-          PYTHON
-      - uses: dtolnay/rust-toolchain@master
+          source ci-tool-versions.env
+          tool_dir="$RUNNER_TEMP/ic-memory-tools"
+          actionlint_bin="$(bash scripts/ci/install-actionlint.sh \
+            --version "$IC_MEMORY_ACTIONLINT_VERSION" \
+            --sha256 "$IC_MEMORY_ACTIONLINT_SHA256_LINUX_AMD64" \
+            --install-dir "$tool_dir")"
+          shellcheck_bin="$(bash scripts/ci/install-shellcheck.sh \
+            --version "$IC_MEMORY_SHELLCHECK_VERSION" \
+            --sha256 "$IC_MEMORY_SHELLCHECK_SHA256_LINUX_X86_64" \
+            --install-dir "$tool_dir")"
+          {
+            echo "ACTIONLINT_BIN=$actionlint_bin"
+            echo "SHELLCHECK_BIN=$shellcheck_bin"
+          } >> "$GITHUB_ENV"
+      - run: make lint-tooling
+
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-15, macos-15-intel]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # reviewed Shared Tooling pin
         with:
-          toolchain: ${{ env.RUSTUP_TOOLCHAIN }}
+          persist-credentials: false
+      - name: Read pinned Rust toolchain
+        id: pin
+        shell: bash
+        run: |
+          channel="$(sed -n 's/^channel = "\([^"]*\)"$/\1/p' rust-toolchain.toml)"
+          [[ "$channel" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          echo "channel=$channel" >> "$GITHUB_OUTPUT"
+      - uses: dtolnay/rust-toolchain@e97e2d8cc328f1b50210efc529dca0028893a2d9 # reviewed master-history commit
+        with:
+          toolchain: ${{ steps.pin.outputs.channel }}
           components: clippy, rustfmt
           targets: wasm32-unknown-unknown
+      - name: Select and prepare dependency inputs
+        run: |
+          cargo generate-lockfile
+          make fetch-dependencies
+          shasum -a 256 Cargo.lock
+          rustc -Vv
+          uname -sm
       - run: make validate-toolchain
 
   msrv:
-    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-15, macos-15-intel]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # reviewed Shared Tooling pin
         with:
-          python-version: '3.12'
+          persist-credentials: false
       - name: Read declared MSRV
+        id: pin
+        shell: bash
         run: |
-          python3 - <<'PYTHON' >> "$GITHUB_ENV"
-          import tomllib
-          from pathlib import Path
-          package = tomllib.loads(Path("Cargo.toml").read_text())["package"]
-          print(f"RUSTUP_TOOLCHAIN={package['rust-version']}")
-          PYTHON
-      - uses: dtolnay/rust-toolchain@master
+          channel="$(sed -n 's/^rust-version = "\([^"]*\)"$/\1/p' Cargo.toml)"
+          [[ "$channel" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          echo "channel=$channel" >> "$GITHUB_OUTPUT"
+      - uses: dtolnay/rust-toolchain@e97e2d8cc328f1b50210efc529dca0028893a2d9 # reviewed master-history commit
         with:
-          toolchain: ${{ env.RUSTUP_TOOLCHAIN }}
-      - run: cargo check --all-targets
+          toolchain: ${{ steps.pin.outputs.channel }}
+      - name: Select and prepare dependency inputs
+        run: |
+          cargo generate-lockfile
+          cargo fetch --locked
+          shasum -a 256 Cargo.lock
+          rustc -Vv
+          uname -sm
+      - run: cargo check --locked --offline --all-targets

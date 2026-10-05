@@ -17,6 +17,8 @@ distinguish current integration guidance from historical engineering evidence.
   policies, range authority, recovery, and manual bootstrap.
 - [Safety invariants](../SAFETY.md) defines the properties that implementation
   changes must preserve.
+- [Host support and qualification](host-support.md) declares native prerequisites,
+  supported macOS hosts, and qualification gaps.
 
 ## Current focused guides
 

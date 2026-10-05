@@ -782,7 +782,8 @@ fn build_snapshot(
     // Accepted keys are unique; equal keys reject below, so stability adds no meaning.
     requests.sort_unstable_by(|a, b| a.stable_key.cmp(&b.stable_key));
     let mut registered_declarations = declarations.into_owned();
-    registered_declarations.sort_by(|left, right| {
+    // Comparator ties share key and slot, so snapshot uniqueness rejects them.
+    registered_declarations.sort_unstable_by(|left, right| {
         left.declaration()
             .stable_key()
             .cmp(right.declaration().stable_key())
@@ -808,7 +809,7 @@ fn build_snapshot(
     let mut registered_ranges = ranges.into_owned();
     // Equal bounds reject as overlaps, so metadata cannot distinguish accepted
     // ranges. Keep bound ordering for deterministic overlap diagnostics.
-    registered_ranges.sort_by(|left, right| {
+    registered_ranges.sort_unstable_by(|left, right| {
         let left = left.record();
         let right = right.record();
         left.range()

@@ -1,5 +1,59 @@
 # Changelog
 
+## 0.25.11
+
+- Adopt the reviewed Shared Tooling 0.1.0 snapshot at
+  `41e1fd0ba41460bd2127cbf98ac8a4b2b2020d3e`, with offline integrity verification
+  and the existing maintainer-owned commit/tag/push policy as the local overlay.
+  Require minor releases for future breaking pre-1.0 APIs or semantics; preserve
+  published history. Undecided release notes use one current `[Draft]` heading.
+- Replace Python release and Wasm tooling with the Rust `repo-tool` development
+  example. Replace `test-release-flow` and `test-wasm-size` with `test-tooling`;
+  tests substitute command effects and create no commits, tags, pushes or live
+  publications. Maintainer release commands retain their names and ownership.
+- Require a selected lockfile and explicitly prepared cache before offline
+  validation. Bind prepared/final release evidence to source and release Git
+  identities, dependency selection, compiler/build configuration, qualification
+  commands and SHA-256 package hashes. Qualify the final archive after the
+  release commit, preserving Cargo's embedded Git metadata. Publication refuses
+  missing or changed evidence and never regenerates a lockfile. Failed
+  preparation restores version surfaces and retains artifacts and old receipts.
+- Pin CI actions, restrict token permissions, disable checkout credentials, add
+  timeouts/concurrency control and checksum-verified workflow/shell lint tools.
+  Configure native macOS 15 ARM64/x86-64 jobs alongside Ubuntu 24.04 and document
+  host prerequisites. Native macOS execution, live release effects and downstream
+  adoption remain unqualified until separately observed.
+- Tooling qualification: eight deterministic workflow/artifact tests,
+  strict Clippy including test code, Rust 1.88.0 helper compilation, formatting,
+  workflow lint, ShellCheck and shared snapshot verification pass offline.
+  Full current-source release gates await the maintainer's committed clean source;
+  earlier sorting-only measurements and checks below retain their original scope.
+- Canonicalize fixed declarations and range registrations with in-place
+  unstable sorting, matching the existing request ordering. Remove stable-sort
+  scratch buffers while retaining the original comparators: accepted keys are
+  unique, equal fixed comparator keys reject as duplicate slots, and equal
+  range bounds reject as overlaps. Refusal order and canonical fingerprints
+  remain unchanged.
+- Exercise independently reordered 245-declaration/245-range snapshots with
+  distinct labels, schema versions, modes and purposes. Verify equal fixed sort
+  keys with different label/schema metadata still produce the same duplicate
+  error. These behavior-preservation tests pass against 0.25.10 as well; existing
+  overlap-order and pinned fingerprint tests remain unchanged.
+- Public APIs, durable encodings, recovery bounds and allocation policy are
+  unchanged. Consumers need no source adoption. IC instruction and cycle deltas
+  were not measured.
+- Before tooling adoption, matched Rust 1.99.0 builds of 0.25.10 source and the
+  sorting candidate, using the same
+  lockfile and size profile, reduce all five raw Wasm probes by 607–615 bytes.
+  Core decreases from 241,889 to 241,274 bytes; runtime integration decreases
+  from 250,627 to 250,012 bytes. All existing size ceilings remain unchanged.
+- Sorting-change validation before tooling adoption: 276 library tests,
+  public integration/composed-host tests, all
+  eight compile-fail cases and six active doctests pass. Strict all-target Clippy,
+  Rust 1.88.0 all-target compilation, warning-denied Rustdoc, formatting,
+  whitespace checks, Wasm test compilation, package verification and all five
+  raw Wasm size gates pass. Downstream builds and deployments were not qualified.
+
 ## 0.25.10
 
 - Check ledger allocation-record and generation-history counts before visiting
