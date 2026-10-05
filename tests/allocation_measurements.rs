@@ -72,8 +72,21 @@ unsafe impl GlobalAlloc for MeasuredAllocator {
 static ALLOCATOR: MeasuredAllocator = MeasuredAllocator;
 
 fn ledger(generations: u64) -> AllocationLedger {
+    ledger_with_fingerprint(generations, None)
+}
+
+fn ledger_with_fingerprint(generations: u64, fingerprint: Option<&str>) -> AllocationLedger {
     let records: Vec<_> = (1..=generations)
-        .map(|generation| GenerationRecord::new(generation, generation - 1, None, 0, None).unwrap())
+        .map(|generation| {
+            GenerationRecord::new(
+                generation,
+                generation - 1,
+                fingerprint.map(str::to_owned),
+                0,
+                None,
+            )
+            .unwrap()
+        })
         .collect();
     let history: AllocationHistory = serde_json::from_value(serde_json::json!({
         "records": [], "generations": records,
@@ -121,6 +134,27 @@ fn ledger_encoding_and_validation_allocations() {
         });
         measure("validate", generations, 10, || {
             black_box(ledger.validate_committed_integrity()).unwrap();
+        });
+        measure("recover", generations, 10, || {
+            drop(black_box(record.store().recover().unwrap()));
+        });
+        measure("commit", generations, 10, || {
+            let mut store = LedgerCommitStore::default();
+            drop(black_box(store.commit(&ledger).unwrap()));
+        });
+    }
+
+    // Histories with metadata exercise the byte ceiling separately from the
+    // generation-count ceiling. Fixtures and their strings are not measured.
+    for fingerprint_len in [128, 256] {
+        let fingerprint = "x".repeat(fingerprint_len);
+        let generations = 65_536;
+        let ledger = ledger_with_fingerprint(generations, Some(&fingerprint));
+        let phase = format!("commit_fingerprint_{fingerprint_len}");
+        measure(&phase, generations, 10, || {
+            let mut store = LedgerCommitStore::default();
+            let result = black_box(store.commit(&ledger));
+            assert_eq!(result.is_ok(), fingerprint_len == 128);
         });
     }
 }

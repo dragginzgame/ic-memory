@@ -146,10 +146,22 @@ where
             self,
             mut seq: A,
         ) -> Result<Self::Value, A::Error> {
-            if seq.size_hint().is_some_and(|n| n > LIMIT) {
+            let hint = seq.size_hint();
+            if hint.is_some_and(|n| n > LIMIT) {
                 return Err(serde::de::Error::custom("ledger collection limit exceeded"));
             }
-            let mut values = Vec::new();
+            // Definite CBOR arrays already carry their length. Reserve only
+            // after admission, with one spare entry for next-generation staging
+            // when the collection is non-empty and below its ceiling. Unhinted
+            // formats retain incremental growth and reject before excess decode.
+            let capacity = hint.map_or(0, |n| {
+                if n == 0 {
+                    0
+                } else {
+                    n.saturating_add(1).min(LIMIT)
+                }
+            });
+            let mut values = Vec::with_capacity(capacity);
             while values.len() < LIMIT {
                 match seq.next_element()? {
                     Some(value) => values.push(value),
@@ -168,6 +180,37 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn definite_collections_admit_the_boundary_and_reject_excess_before_decode() {
+        #[derive(Debug, Deserialize, Eq, PartialEq)]
+        struct Values(#[serde(deserialize_with = "deserialize_bounded_vec::<_, u16, 3>")] Vec<u16>);
+
+        #[derive(Debug)]
+        struct MustNotDecode;
+        impl<'de> Deserialize<'de> for MustNotDecode {
+            fn deserialize<D: Deserializer<'de>>(_: D) -> Result<Self, D::Error> {
+                panic!("collection bound must reject before decoding an element");
+            }
+        }
+
+        for count in 0..=4 {
+            let values: Vec<u16> = (0..count).collect();
+            let mut bytes = Vec::new();
+            ciborium::into_writer(&values, &mut bytes).unwrap();
+            let result = from_slice_exact::<Values>(&bytes);
+            if count <= 3 {
+                assert_eq!(result.unwrap(), Values(values));
+            } else {
+                assert!(result.is_err());
+            }
+        }
+
+        let input = serde::de::value::SeqDeserializer::<_, serde::de::value::Error>::new(
+            [0_u8; 4].into_iter(),
+        );
+        assert!(deserialize_bounded_vec::<_, MustNotDecode, 3>(input).is_err());
+    }
 
     #[test]
     fn unhinted_collection_rejects_before_decoding_excess_element() {

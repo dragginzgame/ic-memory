@@ -137,7 +137,7 @@ inputs. These did not establish a small history or pre-allocation bound.
 | Resource | Current ceiling | Earliest enforcement |
 | --- | ---: | --- |
 | Stable-cell ledger value | 33,558,528 bytes (32 MiB + 4 KiB) | Header check before payload allocation/read; direct record decode before CBOR |
-| Logical ledger CBOR | 16,777,216 bytes (16 MiB) | Envelope decode before payload copy/CBOR; direct ledger writer after serialization into the envelope buffer, before header finalization or commit mutation |
+| Logical ledger CBOR | 16,777,216 bytes (16 MiB) | Envelope decode before payload copy/CBOR; direct ledger writer before any write would cross the byte ceiling, before header finalization or commit mutation |
 | CBOR container depth | 32 nested edges | Allocation-free syntax walk before serde |
 | Advertised CBOR text length | Remaining input bytes | Syntax walk before serde allocation |
 | Opaque generation byte string | 16,777,240 bytes (16 MiB + 24-byte envelope) and remaining input bytes | Allocation-free syntax walk before serde; writer checks the same limit |
@@ -167,8 +167,12 @@ release; the format version remains 1. See
 validate structural bounds before encoding and byte bounds before mutating the
 commit store; runtimes also check outer bytes before memory growth/write.
 Staging rejects excessive prior history before cloning and checks the resulting
-record/schema counts. Encoding memory is bounded by admitted structural counts
-and diagnostic lengths; the encoded-byte check follows that bounded encoding.
+record/schema counts. The logical writer checks each serialized slice before
+appending it and caps capacity reservations at the 16 MiB payload plus its
+24-byte envelope. Oversized output is discarded without committing a partial
+payload. This remains one canonical CBOR serialization pass. Definite collection
+lengths are admitted before reserving their vectors; non-empty collections below
+their ceiling retain one spare entry for next-generation staging.
 Reader/writer tests round-trip the 65,536-generation boundary and 255-record
 boundary and verify rejection leaves the store unchanged.
 

@@ -49,6 +49,7 @@ promise that a later consumer graph or deployment was requalified.
 
 - [Issue reconciliation](issue-reconciliation.md)
 - [Runtime IO and maintainer improvements qualification](runtime-io-qualification.md)
+- [Bounded ledger codec qualification](ledger-codec-qualification.md)
 - [Shared release workflow qualification](release-workflow-qualification.md)
 - [Canic checked-slot qualification for 0.25.0](consumer-qualification-0.25.0-canic.md)
 - [Canic memory qualification for 0.24.6](consumer-qualification-0.24.6-canic.md)

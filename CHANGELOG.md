@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.26.1]
+
+- Bound ledger serialization while writing, so oversized commits return the
+  existing limit error without first growing an oversized output buffer.
+- Reduce recovery allocations by reserving admitted collection lengths, with
+  room for next-generation staging. APIs and persisted bytes are unchanged.
+
+[Detailed notes](docs/changelog/0.26.md) ·
+[Codec qualification](docs/ledger-codec-qualification.md)
+
 ## [0.26.0] - 2026-10-05
 
 - Use the shared maintainer release workflow for patch, minor and major releases.
