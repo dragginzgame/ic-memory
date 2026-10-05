@@ -95,10 +95,15 @@ jobs:
         with:
           toolchain: ${{ steps.pin.outputs.channel }}
       - name: Select and prepare dependency inputs
+        env:
+          RUSTUP_TOOLCHAIN: ${{ steps.pin.outputs.channel }}
         run: |
           cargo generate-lockfile
           cargo fetch --locked
           shasum -a 256 Cargo.lock
           rustc -Vv
           uname -sm
-      - run: cargo check --locked --offline --all-targets
+      - name: Check all targets with the declared MSRV
+        env:
+          RUSTUP_TOOLCHAIN: ${{ steps.pin.outputs.channel }}
+        run: cargo check --locked --offline --all-targets

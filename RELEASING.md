@@ -89,6 +89,10 @@ A failed final package or tag step can be retried with `make release-commit`
 without creating another commit. `make qualify-release` repeats final package
 qualification without committing, tagging or pushing. It requires the original
 prepared evidence and unchanged dependency/compiler identities.
+Its prepared package HEAD must identify the validated source, and the retained
+prepared archive must still match its recorded digest. Missing or corrupted
+prepared artifacts stop qualification before repackaging; Cargo's working
+archive may differ after a failed final package without preventing a retry.
 
 ## Evidence and publication
 

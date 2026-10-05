@@ -247,6 +247,24 @@ impl Execute for Substitute {
                 ["merge-base", ..] if state.fail.as_deref() == Some("remote-ahead") => {
                     Err("fixture remote is ahead".into())
                 }
+                ["fetch", ..] if state.fail.as_deref() == Some("remote-lock") => {
+                    if state
+                        .calls
+                        .iter()
+                        .filter(|call| call.get(1).is_some_and(|arg| arg == "fetch"))
+                        .count()
+                        == 2
+                    {
+                        fs::write(
+                            root.join("Cargo.lock"),
+                            LOCK.replace(
+                                "name = \"other\"\nversion = \"0.12.3\"",
+                                "name = \"other\"\nversion = \"0.12.4\"",
+                            ),
+                        )?;
+                    }
+                    Ok(String::new())
+                }
                 ["fetch" | "merge-base" | "ls-files" | "push", ..] => Ok(String::new()),
                 ["ls-remote", ..] => Ok(if state.remote_collision {
                     "other-tag refs/tags/v0.13.0"
@@ -430,6 +448,33 @@ fn dirty_sources_remote_collisions_and_changed_validation_inputs_prevent_version
 }
 
 #[test]
+fn lockfile_changes_during_post_validation_remote_inspection_stop_before_mutation() {
+    let fixture = Fixture::new();
+    fixture.fail("remote-lock");
+    assert!(fixture.repo.prepare("minor").is_err());
+    assert_eq!(fixture.repo.version(None).unwrap(), "0.12.3");
+    for (path, text) in &fixture.repo.exec.state.borrow().source {
+        assert_eq!(
+            fs::read_to_string(fixture.repo.root.join(path)).unwrap(),
+            *text
+        );
+    }
+    // Preserve the separately changed ignored file; it is not our version edit.
+    assert_eq!(
+        fs::read_to_string(fixture.repo.root.join("Cargo.lock")).unwrap(),
+        LOCK.replace(
+            "name = \"other\"\nversion = \"0.12.3\"",
+            "name = \"other\"\nversion = \"0.12.4\""
+        )
+    );
+    assert!(!fixture.repo.receipt_path("0.13.0", true).unwrap().exists());
+    assert!(!fixture.repo.exec.state.borrow().calls.iter().any(|call| {
+        call.get(2)
+            .is_some_and(|arg| matches!(arg.as_str(), "update" | "package"))
+    }));
+}
+
+#[test]
 fn changed_missing_and_wrong_source_receipts_never_dispatch_publication() {
     for changed in [
         "lock",
@@ -497,6 +542,53 @@ fn changed_missing_and_wrong_source_receipts_never_dispatch_publication() {
                 .calls
                 .iter()
                 .any(|call| call.get(2).is_some_and(|arg| arg == "publish"))
+        );
+    }
+}
+
+#[test]
+fn invalid_prepared_artifacts_stop_final_qualification_without_replacing_evidence() {
+    for changed in ["head", "missing", "corrupted"] {
+        let fixture = Fixture::new();
+        fixture.release();
+        let prepared_path = fixture.repo.receipt_path("0.13.0", true).unwrap();
+        let mut prepared: ReleaseEvidence =
+            serde_json::from_slice(&fs::read(&prepared_path).unwrap()).unwrap();
+        let retained = fixture
+            .repo
+            .retained_package(&prepared.package_sha256)
+            .unwrap();
+        match changed {
+            "head" => {
+                prepared.package_head = "unvalidated-head".to_owned();
+                fs::write(&prepared_path, serde_json::to_vec(&prepared).unwrap()).unwrap();
+            }
+            "missing" => fs::remove_file(&retained).unwrap(),
+            "corrupted" => fs::write(&retained, "corrupted prepared archive").unwrap(),
+            _ => unreachable!(),
+        }
+        let final_path = fixture.repo.receipt_path("0.13.0", false).unwrap();
+        let final_bytes = fs::read(&final_path).unwrap();
+        let final_evidence: ReleaseEvidence = serde_json::from_slice(&final_bytes).unwrap();
+        let final_archive = fixture
+            .repo
+            .retained_package(&final_evidence.package_sha256)
+            .unwrap();
+        let archive_bytes = fs::read(&final_archive).unwrap();
+        let working_archive = fixture.repo.package_path("0.13.0").unwrap();
+        let working_bytes = fs::read(&working_archive).unwrap();
+        let prepared_bytes = fs::read(&prepared_path).unwrap();
+        let call_start = fixture.repo.exec.state.borrow().calls.len();
+
+        assert!(fixture.repo.qualify_release().is_err(), "{changed}");
+        assert_eq!(fs::read(&final_path).unwrap(), final_bytes);
+        assert_eq!(fs::read(&final_archive).unwrap(), archive_bytes);
+        assert_eq!(fs::read(&working_archive).unwrap(), working_bytes);
+        assert_eq!(fs::read(&prepared_path).unwrap(), prepared_bytes);
+        assert!(
+            !fixture.repo.exec.state.borrow().calls[call_start..]
+                .iter()
+                .any(|call| call.get(2).is_some_and(|arg| arg == "package"))
         );
     }
 }

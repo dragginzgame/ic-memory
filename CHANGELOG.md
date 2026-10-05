@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.25.12
+
+- Select the declared Rust 1.88.0 toolchain explicitly for MSRV CI dependency
+  preparation and all-target compilation. The 0.25.11 jobs installed 1.88.0,
+  but the repository's `rust-toolchain.toml` selected 1.99.0 for the subsequent
+  commands; their successful status does not qualify MSRV support.
+- Refuse release preparation if the ignored lockfile changes during the second
+  remote inspection after validation. Compare the mutation/rollback snapshot
+  with the originally selected bytes before any version edit, dependency refresh
+  or packaging. Preserve the separately changed lockfile and existing evidence.
+  Add a regression that injects a valid changed dependency after validation.
+- Refuse final package qualification when the prepared receipt identifies a
+  different package HEAD or its retained archive is missing or corrupted. Check
+  that evidence before invoking Cargo, preserving existing final receipts and
+  artifacts on refusal. A failed final package remains retryable even after Cargo
+  replaces its working archive, provided the retained prepared archive is intact.
+
 ## 0.25.11
 
 - Adopt the reviewed Shared Tooling 0.1.0 snapshot at

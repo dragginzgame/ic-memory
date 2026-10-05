@@ -710,6 +710,7 @@ impl<E: Execute> Repository<E> {
         )?;
         // A cache/lockfile must already be selected. No implicit online retry.
         let lock = self.root.join("Cargo.lock");
+        let selected_lock_bytes = fs::read(&lock)?;
         let selected_lock = self.sha256(&lock)?;
         let [cargo, rustc, msrv_rustc] = self.identities()?;
         let configuration = self.configuration()?;
@@ -748,6 +749,12 @@ impl<E: Execute> Repository<E> {
             .chain(std::iter::once(&"Cargo.lock"))
             .map(|path| Ok((*path, fs::read(self.root.join(path))?)))
             .collect::<Result<_>>()?;
+        // Remote inspection can take time and Git status ignores Cargo.lock.
+        // The mutation/rollback snapshot must still be the validated selection.
+        require(
+            backups["Cargo.lock"] == selected_lock_bytes,
+            "dependency selection changed before version edits",
+        )?;
         let result = (|| -> Result<()> {
             for (path, text) in &expected {
                 fs::write(self.root.join(path), text)?;
@@ -864,6 +871,17 @@ impl<E: Execute> Repository<E> {
         require(
             evidence.commands == self.preparation_commands()?,
             "prepared evidence has unexpected commands",
+        )?;
+        require(
+            evidence.package_head == source,
+            "prepared package evidence identifies another Git HEAD",
+        )?;
+        // A failed final package may replace Cargo's working archive. The
+        // retained prepared archive must still prove the original qualification.
+        require(
+            self.sha256(&self.retained_package(&evidence.package_sha256)?)?
+                == evidence.package_sha256,
+            "retained prepared archive differs from release validation",
         )?;
         let command = self.final_package_command()?;
         self.run(

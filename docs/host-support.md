@@ -5,9 +5,21 @@ Its canister runtime target remains `wasm32-unknown-unknown`.
 
 | Host | Architecture | Native CI label | Qualification |
 | --- | --- | --- | --- |
-| Ubuntu 24.04 | x86-64 | `ubuntu-24.04` | Existing Linux coverage; changed tooling checked locally |
-| macOS 15 | ARM64 | `macos-15` | Required; awaiting this revision's native CI run |
-| macOS 15 | x86-64 | `macos-15-intel` | Required; awaiting this revision's native CI run |
+| Ubuntu 24.04 | x86-64 | `ubuntu-24.04` | 0.25.11 native development gate passed with Rust 1.99.0 |
+| macOS 15 | ARM64 | `macos-15` | 0.25.11 native development gate passed with Rust 1.99.0 |
+| macOS 15 | x86-64 | `macos-15-intel` | 0.25.11 native development gate passed with Rust 1.99.0 |
+
+The passing development gates are recorded in
+[CI run 37320179267](https://github.com/dragginzgame/ic-memory/actions/runs/37320179267)
+for source `9ac1472d4251d667cb332c8679b6ee367827511a`, with selected lockfile
+SHA-256 `d365679ad5f89f4312c7845c6def4c741f6e28e5d4a578f2cdf946c4ac0f7c48`.
+They cover the native tooling tests and full development gate described below.
+
+That run does **not** qualify Rust 1.88.0 on any host. The MSRV jobs installed
+1.88.0, but the repository toolchain pin selected 1.99.0 for the dependency and
+compilation commands, as recorded by `rustc -Vv` in their logs. The workflow now
+sets `RUSTUP_TOOLCHAIN` explicitly for those commands. Native MSRV qualification
+and qualification of the 0.25.12 changes require a subsequent CI run.
 
 The labels follow the [GitHub runner image matrix](https://github.com/actions/runner-images/blob/main/README.md).
 Configured jobs alone are not passing evidence. Linux and cross-compilation
