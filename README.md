@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="https://raw.githubusercontent.com/dragginzgame/ic-memory/main/images/ic-memory-readme-header.svg" alt="IC Memory — Internet Computer helper library" width="100%">
+  <img src="https://raw.githubusercontent.com/dragginzgame/shared-assets/main/ic-memory/ic-memory-readme-header.svg" alt="IC Memory — Internet Computer helper library" width="100%">
 </p>
 
 <!-- helper-navigation:start -->
@@ -69,7 +69,7 @@ The diagram below shows the same mistake and the point where `ic-memory`
 intervenes:
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/dragginzgame/ic-memory/main/images/ic-memory-upgrade-blocked.svg" alt="Before an upgrade, Users uses storage 100 and Orders uses storage 101. A mistaken upgrade swaps those assignments, so ic-memory blocks the upgrade before either store opens." width="900">
+  <img src="https://raw.githubusercontent.com/dragginzgame/shared-assets/main/ic-memory/ic-memory-upgrade-blocked.svg" alt="Before an upgrade, Users uses storage 100 and Orders uses storage 101. A mistaken upgrade swaps those assignments, so ic-memory blocks the upgrade before either store opens." width="900">
 </p>
 <p align="center"><em>A changed store-to-location mapping is rejected before application data opens.</em></p>
 
@@ -85,7 +85,7 @@ number in source code.
 ## Is it useful for my application?
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/dragginzgame/ic-memory/main/images/ic-memory-decision-guide.svg" alt="Decision guide: ic-memory is most useful for applications with several persistent stores, libraries or plugins that contribute stores, or storage layouts that change across upgrades. It is not a backup or schema-migration tool." width="800">
+  <img src="https://raw.githubusercontent.com/dragginzgame/shared-assets/main/ic-memory/ic-memory-decision-guide.svg" alt="Decision guide: ic-memory is most useful for applications with several persistent stores, libraries or plugins that contribute stores, or storage layouts that change across upgrades. It is not a backup or schema-migration tool." width="800">
 </p>
 <p align="center"><em>Use ic-memory for evolving multi-store layouts, not as a backup or migration system.</em></p>
 
@@ -105,7 +105,7 @@ The lifecycle has three parts:
    layout with the remembered one before any application store opens.
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/dragginzgame/ic-memory/main/images/ic-memory-lifecycle.svg" alt="The ic-memory lifecycle: name each store, remember its storage location, then compare the expected and remembered layouts before opening data. Matching layouts open safely; conflicts stop with an error." width="760">
+  <img src="https://raw.githubusercontent.com/dragginzgame/shared-assets/main/ic-memory/ic-memory-lifecycle.svg" alt="The ic-memory lifecycle: name each store, remember its storage location, then compare the expected and remembered layouts before opening data. Matching layouts open safely; conflicts stop with an error." width="760">
 </p>
 <p align="center"><em>Name stores, retain their locations, and check the complete layout before opening data.</em></p>
 
@@ -135,7 +135,7 @@ steps.
 ## What it protects
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/dragginzgame/ic-memory/main/images/ic-memory-scope-boundary.svg" alt="ic-memory protects store-to-location mappings, prevents slot reuse, validates upgrade layouts and component ownership, and checks layouts before opening. Applications still own backups, schema migrations, stored-data semantics, authorization, and disaster recovery." width="800">
+  <img src="https://raw.githubusercontent.com/dragginzgame/shared-assets/main/ic-memory/ic-memory-scope-boundary.svg" alt="ic-memory protects store-to-location mappings, prevents slot reuse, validates upgrade layouts and component ownership, and checks layouts before opening. Applications still own backups, schema migrations, stored-data semantics, authorization, and disaster recovery." width="800">
 </p>
 <p align="center"><em>Allocation safety complements backups, schema migration, authorization, and disaster recovery.</em></p>
 
@@ -163,7 +163,7 @@ intentional: reusing the location could make a rollback open unrelated data.
 Most integrations use one of these paths:
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/dragginzgame/ic-memory/main/images/ic-memory-allocation-styles.svg" alt="Integration styles: fixed allocation lets a component declare a specific memory ID; automatic allocation lets the host assign an ID from an Allowed range; host adoption lets a library use an ID already committed by the bootstrapped host." width="900">
+  <img src="https://raw.githubusercontent.com/dragginzgame/shared-assets/main/ic-memory/ic-memory-allocation-styles.svg" alt="Integration styles: fixed allocation lets a component declare a specific memory ID; automatic allocation lets the host assign an ID from an Allowed range; host adoption lets a library use an ID already committed by the bootstrapped host." width="900">
 </p>
 <p align="center"><em>Choose who assigns the memory ID without changing its durable ownership.</em></p>
 
@@ -300,7 +300,7 @@ application grants each component only its intended range and bootstraps the
 combined layout once.
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/dragginzgame/ic-memory/main/images/ic-memory-library-ownership.svg" alt="Library A owns storage locations 100 through 109 and Library B owns locations 110 through 119 inside one application. Both contribute declarations to one combined layout check." width="800">
+  <img src="https://raw.githubusercontent.com/dragginzgame/shared-assets/main/ic-memory/ic-memory-library-ownership.svg" alt="Library A owns storage locations 100 through 109 and Library B owns locations 110 through 119 inside one application. Both contribute declarations to one combined layout check." width="800">
 </p>
 <p align="center"><em>Libraries contribute requirements; the application owns one combined bootstrap.</em></p>
 
@@ -352,38 +352,38 @@ instead.
 
 ## Frequently asked questions
 
-<p><img src="https://raw.githubusercontent.com/dragginzgame/ic-memory/main/images/ic-faq-question.svg" alt="" width="22"> <strong>Does ic-memory move or migrate application data?</strong></p>
+<p><img src="https://raw.githubusercontent.com/dragginzgame/shared-assets/main/ic-memory/ic-faq-question.svg" alt="" width="22"> <strong>Does ic-memory move or migrate application data?</strong></p>
 
 No. It validates allocation identity. Schema and data migrations remain the
 application's responsibility.
 
-<p><img src="https://raw.githubusercontent.com/dragginzgame/ic-memory/main/images/ic-faq-question.svg" alt="" width="22"> <strong>Does it back up stable memory or recover corrupted application data?</strong></p>
+<p><img src="https://raw.githubusercontent.com/dragginzgame/shared-assets/main/ic-memory/ic-faq-question.svg" alt="" width="22"> <strong>Does it back up stable memory or recover corrupted application data?</strong></p>
 
 No. Keep a separate backup and disaster-recovery plan. `ic-memory` fails closed
 when its allocation metadata cannot be recovered safely.
 
-<p><img src="https://raw.githubusercontent.com/dragginzgame/ic-memory/main/images/ic-faq-question.svg" alt="" width="22"> <strong>What happens when validation fails?</strong></p>
+<p><img src="https://raw.githubusercontent.com/dragginzgame/shared-assets/main/ic-memory/ic-faq-question.svg" alt="" width="22"> <strong>What happens when validation fails?</strong></p>
 
 Bootstrap returns an error and publishes no open capability. Fix the proposed
 layout or policy; do not erase the ledger to bypass the conflict.
 
-<p><img src="https://raw.githubusercontent.com/dragginzgame/ic-memory/main/images/ic-faq-question.svg" alt="" width="22"> <strong>Can a retired memory location be reused?</strong></p>
+<p><img src="https://raw.githubusercontent.com/dragginzgame/shared-assets/main/ic-memory/ic-faq-question.svg" alt="" width="22"> <strong>Can a retired memory location be reused?</strong></p>
 
 No. Retirement is a permanent tombstone so a future version or rollback cannot
 mistake unrelated data for the retired store.
 
-<p><img src="https://raw.githubusercontent.com/dragginzgame/ic-memory/main/images/ic-faq-question.svg" alt="" width="22"> <strong>Does every library bootstrap separately?</strong></p>
+<p><img src="https://raw.githubusercontent.com/dragginzgame/shared-assets/main/ic-memory/ic-faq-question.svg" alt="" width="22"> <strong>Does every library bootstrap separately?</strong></p>
 
 No. One owner bootstraps each concrete runtime. Libraries verify their
 requirements against the host's committed layout and open only their keys.
 
-<p><img src="https://raw.githubusercontent.com/dragginzgame/ic-memory/main/images/ic-faq-question.svg" alt="" width="22"> <strong>When should I use fixed versus automatic allocation?</strong></p>
+<p><img src="https://raw.githubusercontent.com/dragginzgame/shared-assets/main/ic-memory/ic-faq-question.svg" alt="" width="22"> <strong>When should I use fixed versus automatic allocation?</strong></p>
 
 Use fixed IDs when the application deliberately manages its layout. Use
 automatic allocation when a host should place reusable components within
 explicitly granted ranges. Both preserve the assigned ID after commitment.
 
-<p><img src="https://raw.githubusercontent.com/dragginzgame/ic-memory/main/images/ic-faq-question.svg" alt="" width="22"> <strong>Can an upgrade add a new store safely?</strong></p>
+<p><img src="https://raw.githubusercontent.com/dragginzgame/shared-assets/main/ic-memory/ic-faq-question.svg" alt="" width="22"> <strong>Can an upgrade add a new store safely?</strong></p>
 
 Yes, provided its key is new, its fixed ID or automatic range is eligible, and
 the complete layout passes current policy and historical validation.
