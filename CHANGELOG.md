@@ -1,5 +1,26 @@
 # Changelog
 
+## 0.25.10
+
+- Check ledger allocation-record and generation-history counts before visiting
+  schema histories. Subtract each schema-history length from the remaining
+  aggregate capacity and stop at the first excess instead of eagerly summing
+  every history. Preserve the existing allocation/generation/schema limit
+  refusal order and exact `LimitExceeded` errors.
+- Verify the exact 65,536-entry aggregate schema-history boundary and rejection
+  of one additional entry in a separately bounded history. Exercise simultaneous
+  limit violations through structural and committed integrity, staging and
+  protected commit; rejected commits preserve both slots and recovered authority.
+  These behavior-preservation checks also pass against 0.25.9.
+- Public APIs, durable encodings, declaration fingerprints, recovery ceilings
+  and policy/history checks are unchanged. Consumers need no source adoption.
+  No runtime performance improvement is claimed.
+- Validation: 274 library tests, public integration/composed-host tests, all
+  eight compile-fail cases and six active doctests pass. Strict all-target Clippy,
+  Rust 1.88.0 all-target compilation, warning-denied Rustdoc, formatting,
+  whitespace checks, Wasm test compilation, package verification and all five
+  raw Wasm size gates pass. Downstream builds and deployments were not qualified.
+
 ## 0.25.9
 
 - Check `GenerationRecord` runtime fingerprints during JSON/CBOR decoding with

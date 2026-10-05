@@ -14,19 +14,22 @@ impl AllocationLedger {
                 self.allocation_history.generations().len(),
                 crate::constants::MAX_LEDGER_GENERATIONS,
             ),
-            (
-                "schema history",
-                self.allocation_history
-                    .records()
-                    .iter()
-                    .map(|r| r.schema_history.len())
-                    .sum(),
-                crate::constants::MAX_LEDGER_GENERATIONS,
-            ),
         ] {
             if count > limit {
                 return Err(LedgerIntegrityError::LimitExceeded { resource, limit });
             }
+        }
+        // Refuse oversized outer collections before walking their histories.
+        // Subtract each history from remaining capacity and stop at the first
+        // excess, without constructing an unbounded aggregate count.
+        let mut schema_headroom = crate::constants::MAX_LEDGER_GENERATIONS;
+        for record in self.allocation_history.records() {
+            schema_headroom = schema_headroom
+                .checked_sub(record.schema_history.len())
+                .ok_or(LedgerIntegrityError::LimitExceeded {
+                    resource: "schema history",
+                    limit: crate::constants::MAX_LEDGER_GENERATIONS,
+                })?;
         }
         Ok(())
     }

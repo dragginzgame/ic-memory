@@ -2332,6 +2332,89 @@ mod tests {
             ));
         }
     }
+
+    #[test]
+    fn ledger_collection_limits_preserve_refusal_order_and_committed_slots() {
+        let limit = crate::constants::MAX_LEDGER_GENERATIONS;
+        let mut oversized = committed_ledger(1);
+        let mut record = active_record("app.users.v1", 100);
+        record.schema_history =
+            vec![SchemaMetadataRecord::new(1, crate::SchemaMetadata::default()); limit + 1];
+        oversized.allocation_history.records =
+            vec![active_record("app.users.v1", 100); crate::constants::MAX_ALLOCATIONS + 1];
+        oversized.allocation_history.records[0] = record;
+        let generation = oversized.allocation_history.generations[0].clone();
+        oversized
+            .allocation_history
+            .generations
+            .resize(limit + 1, generation);
+
+        let mut store = LedgerCommitStore::default();
+        store.commit(&committed_ledger(0)).unwrap();
+        store.commit(&committed_ledger(1)).unwrap();
+        let before = store.clone();
+        // Later collection bounds and malformed duplicate histories cannot
+        // displace the first outer collection refusal.
+        for (resource, maximum) in [
+            ("allocation records", crate::constants::MAX_ALLOCATIONS),
+            ("generation history", limit),
+            ("schema history", limit),
+        ] {
+            let expected = LedgerIntegrityError::LimitExceeded {
+                resource,
+                limit: maximum,
+            };
+            assert_eq!(oversized.validate_integrity(), Err(expected.clone()));
+            assert_eq!(
+                oversized.validate_committed_integrity(),
+                Err(expected.clone())
+            );
+            assert_eq!(
+                store.commit(&oversized),
+                Err(LedgerCommitError::Integrity(expected.clone()))
+            );
+            assert_eq!(
+                oversized.stage_validated_generation(&validated(1, Vec::new()), None),
+                Err(AllocationStageError::Integrity(expected))
+            );
+            assert_eq!(store, before, "{resource} refusal preserves both slots");
+            match resource {
+                "allocation records" => oversized.allocation_history.records.truncate(1),
+                "generation history" => oversized.allocation_history.generations.truncate(1),
+                _ => (),
+            }
+        }
+        assert_eq!(store.recover(), before.recover());
+    }
+
+    #[test]
+    fn schema_collection_limit_accepts_exact_history_and_rejects_the_next_record() {
+        let limit = crate::constants::MAX_LEDGER_GENERATIONS;
+        let mut ledger = committed_ledger(limit as u64);
+        let mut record = active_record("app.users.v1", 100);
+        record.last_seen_generation = limit as u64;
+        record.schema_history = (1..=limit as u64)
+            .map(|generation| {
+                SchemaMetadataRecord::new(generation, crate::SchemaMetadata::default())
+            })
+            .collect();
+        ledger.allocation_history.records.push(record);
+        assert_eq!(ledger.validate_committed_integrity(), Ok(()));
+
+        // Overflow is aggregate: every individual history remains bounded.
+        ledger
+            .allocation_history
+            .records
+            .push(active_record("app.orders.v1", 101));
+        assert_eq!(
+            ledger.validate_committed_integrity(),
+            Err(LedgerIntegrityError::LimitExceeded {
+                resource: "schema history",
+                limit,
+            })
+        );
+    }
+
     #[test]
     fn encoded_byte_limit_rejects_before_commit_mutation() {
         let mut store = LedgerCommitStore::default();
