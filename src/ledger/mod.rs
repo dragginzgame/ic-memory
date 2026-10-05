@@ -1712,6 +1712,47 @@ mod tests {
     }
 
     #[test]
+    fn malformed_generation_fingerprints_reject_as_codec_errors_and_preserve_slots() {
+        for fingerprint in [
+            String::new(),
+            "x".repeat(257),
+            "é".to_string(),
+            "build\n".to_string(),
+        ] {
+            let mut value = serde_json::to_value(committed_ledger(1)).unwrap();
+            value["allocation_history"]["generations"][0]["runtime_fingerprint"] =
+                fingerprint.into();
+            let bytes = crate::test_cbor::to_vec(&value).unwrap();
+            let payload = LedgerPayloadEnvelope::current(bytes).encode();
+            let invalid = CommittedGenerationBytes::new(1, payload);
+            let genesis = committed_ledger(0);
+            let valid = CommittedGenerationBytes::new(0, enveloped_payload(&genesis));
+            for (slot0, slot1) in [
+                (valid.clone(), invalid.clone()),
+                (invalid.clone(), valid.clone()),
+            ] {
+                let mut store = LedgerCommitStore {
+                    physical: DualCommitStore {
+                        slot0: Some(slot0),
+                        slot1: Some(slot1),
+                    },
+                };
+                let before = store.clone();
+                let error = store.recover().unwrap_err();
+                assert!(matches!(error, LedgerCommitError::Codec(_)));
+                let (recovered, diagnostic) = store.recover_with_diagnostic();
+                assert_eq!(recovered, Err(error.clone()));
+                assert!(diagnostic.recovery.is_ok(), "physical slots remain valid");
+                assert_eq!(store.recover_or_initialize(&genesis), Err(error));
+                assert_eq!(
+                    store, before,
+                    "all rejected paths preserve both protected slots"
+                );
+            }
+        }
+    }
+
+    #[test]
     fn validate_committed_integrity_requires_current_generation_record() {
         let err = ledger()
             .validate_committed_integrity()

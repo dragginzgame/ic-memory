@@ -1,5 +1,4 @@
 use crate::{
-    declaration::DeclarationSnapshotError,
     key::{StableKey, StableKeyError},
     ledger::LedgerPayloadEnvelopeError,
     physical::CommitRecoveryError,
@@ -171,9 +170,6 @@ pub enum LedgerIntegrityError {
         /// Unknown generation.
         generation: u64,
     },
-    /// Generation diagnostic metadata is invalid.
-    #[error(transparent)]
-    DiagnosticMetadata(DeclarationSnapshotError),
 }
 
 ///

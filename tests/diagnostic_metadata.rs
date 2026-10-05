@@ -1,5 +1,5 @@
 use ic_memory::{
-    AllocationDeclaration, DeclarationSnapshot, DeclarationSnapshotError,
+    AllocationDeclaration, DeclarationSnapshot, DeclarationSnapshotError, GenerationRecord,
     MemoryManagerAuthorityRecord, MemoryManagerIdRange, MemoryManagerRangeAuthority,
     MemoryManagerRangeAuthorityError, MemoryManagerRangeMode, MemoryRequest, PolicyIdentity,
     PolicyIdentityError, SchemaMetadata, StaticMemoryDeclarationError,
@@ -427,5 +427,101 @@ fn snapshot_decode_preserves_current_shape_order_and_full_slot_domain() {
         let mut bytes = Vec::new();
         ciborium::into_writer(&value, &mut bytes).unwrap();
         assert!(ciborium::from_reader::<DeclarationSnapshot, _>(bytes.as_slice()).is_err());
+    }
+}
+
+#[test]
+fn generation_decode_checks_fingerprint_metadata() {
+    let source = serde_json::to_value(GenerationRecord::new(1, 0, None, 0, None).unwrap()).unwrap();
+    for (fingerprint, expected) in [
+        (
+            String::new(),
+            DeclarationSnapshotError::EmptyRuntimeFingerprint,
+        ),
+        (
+            format!("{}\0", "x".repeat(256)),
+            DeclarationSnapshotError::RuntimeFingerprintTooLong,
+        ),
+        (
+            "é\0".to_string(),
+            DeclarationSnapshotError::NonAsciiRuntimeFingerprint,
+        ),
+        (
+            "printable\u{7f}".to_string(),
+            DeclarationSnapshotError::ControlCharacterRuntimeFingerprint,
+        ),
+    ] {
+        assert_eq!(
+            GenerationRecord::new(1, 0, Some(fingerprint.clone()), 0, None).unwrap_err(),
+            expected
+        );
+        let mut value = source.clone();
+        value["runtime_fingerprint"] = fingerprint.into();
+        let json = serde_json::from_value::<GenerationRecord>(value.clone());
+        let mut bytes = Vec::new();
+        ciborium::into_writer(&value, &mut bytes).unwrap();
+        let cbor = ciborium::from_reader::<GenerationRecord, _>(bytes.as_slice());
+        assert_eq!([json.is_err(), cbor.is_err()], [true, true], "{expected}");
+        assert!(
+            json.unwrap_err()
+                .to_string()
+                .contains(&expected.to_string())
+        );
+        assert!(
+            cbor.unwrap_err()
+                .to_string()
+                .contains(&expected.to_string())
+        );
+    }
+}
+
+#[test]
+fn generation_decode_preserves_current_shape_and_metadata_bounds() {
+    let record = GenerationRecord::new(1, 0, None, 0, None).unwrap();
+    let expected = b"\xa5\x6ageneration\x01\x71parent_generation\x00\x73runtime_fingerprint\xf6\x71declaration_count\x00\x6ccommitted_at\xf6";
+    let mut bytes = Vec::new();
+    ciborium::into_writer(&record, &mut bytes).unwrap();
+    assert_eq!(bytes, expected);
+    for fingerprint in [
+        None,
+        Some(" ".to_string()),
+        Some((b' '..=b'~').map(char::from).collect()),
+        Some("x".repeat(256)),
+    ] {
+        for committed_at in [None, Some(u64::MAX)] {
+            let record =
+                GenerationRecord::new(1, 0, fingerprint.clone(), 255, committed_at).unwrap();
+            let json = serde_json::json!({
+                "generation": 1, "parent_generation": 0, "runtime_fingerprint": fingerprint,
+                "declaration_count": 255, "committed_at": committed_at,
+            });
+            assert_eq!(serde_json::to_value(&record).unwrap(), json);
+            assert_eq!(
+                serde_json::from_value::<GenerationRecord>(json).unwrap(),
+                record
+            );
+            let mut bytes = Vec::new();
+            ciborium::into_writer(&record, &mut bytes).unwrap();
+            assert_eq!(
+                ciborium::from_reader::<GenerationRecord, _>(bytes.as_slice()).unwrap(),
+                record
+            );
+        }
+    }
+    let source = serde_json::to_value(record).unwrap();
+    let mut missing = source.clone();
+    missing
+        .as_object_mut()
+        .unwrap()
+        .remove("runtime_fingerprint");
+    let mut extra = source.clone();
+    extra["extra"] = true.into();
+    let mut wrong_type = source;
+    wrong_type["runtime_fingerprint"] = 42.into();
+    for value in [missing, extra, wrong_type] {
+        assert!(serde_json::from_value::<GenerationRecord>(value.clone()).is_err());
+        let mut bytes = Vec::new();
+        ciborium::into_writer(&value, &mut bytes).unwrap();
+        assert!(ciborium::from_reader::<GenerationRecord, _>(bytes.as_slice()).is_err());
     }
 }

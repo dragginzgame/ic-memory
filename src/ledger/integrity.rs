@@ -1,5 +1,4 @@
 use super::{AllocationLedger, AllocationRecord, AllocationState, LedgerIntegrityError};
-use crate::declaration::validate_runtime_fingerprint;
 use std::collections::BTreeSet;
 
 impl AllocationLedger {
@@ -111,9 +110,6 @@ impl AllocationLedger {
 
         let mut expected_parent = 0;
         for generation in self.allocation_history.generations() {
-            validate_runtime_fingerprint(generation.runtime_fingerprint.as_deref())
-                .map_err(LedgerIntegrityError::DiagnosticMetadata)?;
-
             if generation.generation != expected_parent + 1 {
                 return Err(LedgerIntegrityError::NonIncreasingGenerationRecords {
                     generation: generation.generation,

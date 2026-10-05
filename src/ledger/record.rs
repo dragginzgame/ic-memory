@@ -5,7 +5,7 @@ use crate::{
     schema::SchemaMetadata,
     slot::MemoryManagerSlot,
 };
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize, de::Error as _};
 
 ///
 /// AllocationLedger
@@ -166,6 +166,9 @@ pub struct SchemaMetadataRecord {
 /// GenerationRecord
 ///
 /// Diagnostic metadata for one committed ledger generation.
+/// Construction and decoding require an absent or bounded printable ASCII
+/// runtime fingerprint. Generation ordering and chain integrity remain ledger
+/// validation responsibilities.
 ///
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -176,7 +179,7 @@ pub struct GenerationRecord {
     /// Parent generation.
     pub(crate) parent_generation: u64,
     /// Optional binary/runtime fingerprint.
-    #[serde(deserialize_with = "crate::cbor::deserialize_present_option")]
+    #[serde(deserialize_with = "deserialize_runtime_fingerprint")]
     pub(crate) runtime_fingerprint: Option<String>,
     /// Number of declarations in the generation.
     pub(crate) declaration_count: u32,
@@ -338,6 +341,16 @@ impl GenerationRecord {
     pub const fn committed_at(&self) -> Option<u64> {
         self.committed_at
     }
+}
+
+// Require explicit presence and the constructor's text rules while retaining
+// the decoded string without another owned representation.
+fn deserialize_runtime_fingerprint<'de, D: Deserializer<'de>>(
+    deserializer: D,
+) -> Result<Option<String>, D::Error> {
+    let fingerprint = Option::<String>::deserialize(deserializer)?;
+    validate_runtime_fingerprint(fingerprint.as_deref()).map_err(D::Error::custom)?;
+    Ok(fingerprint)
 }
 
 impl AllocationRecord {

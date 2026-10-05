@@ -1,5 +1,31 @@
 # Changelog
 
+## 0.25.9
+
+- Check `GenerationRecord` runtime fingerprints during JSON/CBOR decoding with
+  the existing constructor rule. Accept explicit null or printable ASCII through
+  256 bytes; reject missing fields, empty text, overlong text, non-ASCII text and
+  control characters before records reach ledger recovery. Valid encodings,
+  durable formats and sealed declaration fingerprints remain unchanged.
+- Hard-cut `LedgerIntegrityError::DiagnosticMetadata` and remove the repeated
+  fingerprint scan from committed ledger integrity validation. Generation
+  records own fingerprint text validity; ledger bounds, allocation claims,
+  generation ordering, chain links, staging and protected commit checks remain.
+  Malformed persisted fingerprints now report `LedgerCommitError::Codec`.
+- Add public constructor/decode error checks, printable-ASCII/256-byte round
+  trips and an independent current CBOR shape assertion. Verify recovery,
+  diagnostic recovery and explicit initialization refuse malformed fingerprints
+  in either protected slot order without modifying either slot. The malformed
+  decode and recovery-classification regressions fail against 0.25.8; the valid
+  shape and metadata-bound assertions pass against both implementations.
+- Validation: 272 library tests, public integration/composed-host tests, all
+  eight compile-fail cases and six active doctests pass. Strict all-target Clippy,
+  Rust 1.88.0 all-target compilation, warning-denied Rustdoc, formatting,
+  whitespace checks, Wasm test compilation, package verification and all five
+  raw Wasm size gates pass. No removed error-variant usage was found in inspected
+  Canic, IcyDB or blob-service source; downstream builds and deployments were not
+  qualified.
+
 ## 0.25.8
 
 - Decode `DeclarationSnapshot` through its checked constructor and fingerprint
