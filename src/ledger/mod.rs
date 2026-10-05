@@ -26,7 +26,6 @@ pub use record::{
     GenerationRecord, RecoveredLedger, SchemaMetadataRecord,
 };
 pub use stage::checked_reservation_count;
-pub use stage::validate_reservation_declaration;
 pub use stage::{
     stage_reservation_generation, stage_retirement_generation, stage_validated_generation,
 };
@@ -955,21 +954,6 @@ mod tests {
                 generation: u64::MAX
             }
         );
-    }
-
-    #[test]
-    fn stage_reservation_generation_rejects_invalid_decoded_label() {
-        let mut value = serde_json::to_value(declaration("app.future.v1", 100, Some(1))).unwrap();
-        value["label"] = "".into();
-        let reservation = serde_json::from_value(value).unwrap();
-        let source = ledger();
-        assert_eq!(
-            source.stage_reservation_generation(&[reservation], None),
-            Err(AllocationReservationError::InvalidDeclaration(
-                DeclarationSnapshotError::EmptyLabel,
-            ))
-        );
-        assert_eq!(source, ledger());
     }
 
     #[test]

@@ -279,9 +279,6 @@ pub enum AllocationReservationError {
         /// Number of reservations in the staged generation.
         count: usize,
     },
-    /// A staged reservation declaration violates declaration invariants.
-    #[error("reservation declaration is invalid")]
-    InvalidDeclaration(#[source] DeclarationSnapshotError),
     /// Stable key was historically bound to a different slot.
     #[error("stable key '{stable_key}' was historically bound to a different allocation slot")]
     StableKeySlotConflict {

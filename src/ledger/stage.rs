@@ -112,7 +112,6 @@ pub fn stage_reservation_generation(
     next.current_generation = next_generation;
 
     for reservation in reservations {
-        validate_reservation_declaration(reservation)?;
         record_reservation(&mut next, next_generation, reservation)?;
     }
 
@@ -220,14 +219,6 @@ fn record_reservation(
         }
         Err(conflict) => Err(map_reservation_stage_conflict(reservation, conflict)),
     }
-}
-
-pub fn validate_reservation_declaration(
-    reservation: &AllocationDeclaration,
-) -> Result<(), AllocationReservationError> {
-    reservation
-        .validate()
-        .map_err(AllocationReservationError::InvalidDeclaration)
 }
 
 const fn checked_next_generation(current_generation: u64) -> Result<u64, u64> {

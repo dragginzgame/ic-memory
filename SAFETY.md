@@ -32,7 +32,8 @@ authorization, or endpoint safety.
   active allocation. Refreshing a matching reservation is allowed; reserving an
   already active or retired allocation is rejected.
 - Schema metadata attached to declarations, reservations, and committed schema
-  history must pass `SchemaMetadata::validate()`.
+  history contains only absent or nonzero versions, checked at construction
+  and decoding. This metadata does not validate application schemas.
 
 ## Generation Invariants
 
@@ -217,8 +218,10 @@ Serde decoding alone does not grant allocation authority. `StableKey`,
 usable bounds during construction and decoding. Keys remain canonical, slot IDs
 exclude sentinel 255, and ranges remain ordered with usable ends. `SchemaMetadata`
 contains an absent or nonzero schema version, established by construction and
-decoding. Labels, fingerprints, range metadata, duplicate claims, policy and ledger
-history still require their validation boundaries before influencing authority.
+decoding. `AllocationDeclaration` checks optional printable ASCII labels at
+construction and decoding, including their 256-byte bound. Fingerprints, range
+metadata, duplicate claims, policy and ledger history still require their
+validation boundaries before influencing authority.
 
 Invariant-bearing DTO fields are intentionally private where feasible. Callers
 should use checked constructors and accessors instead of fabricating durable

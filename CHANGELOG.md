@@ -1,5 +1,32 @@
 # Changelog
 
+## 0.25.6
+
+- Check optional declaration labels during JSON/CBOR decoding with the existing
+  constructor rule. Accept explicit null or printable ASCII through 256 bytes;
+  reject missing fields, empty labels, overlong text, non-ASCII text and control
+  characters before declarations reach registration or reservation policy.
+  Valid encodings, declaration fingerprints and durable ledger formats remain
+  unchanged.
+- Hard-cut `AllocationDeclaration::validate` and
+  `AllocationReservationError::InvalidDeclaration`. Remove the forwarding
+  reservation validator and repeated label scans from static registration,
+  snapshot validation, reservation bootstrap and reservation staging. Keep
+  snapshot count/uniqueness checks, fingerprints, policy order, historical claim
+  checks, generation bounds, local staging and protected commit sequencing.
+- Consolidate decoded-label regressions at the public decoding boundary. Keep
+  constructor error classification, explicit-null and current CBOR encoding
+  assertions, reservation count-before-policy checks and genesis conservation.
+  The decode regression fails against 0.25.5, while the valid-label and current
+  encoding assertions pass against both implementations. Correct the safety
+  guide's stale reference to `SchemaMetadata::validate`.
+- Validation: 273 library tests, public integration/composed-host tests, all
+  eight compile-fail cases and six active doctests pass. Strict all-target
+  Clippy, Rust 1.88.0 all-target compilation, warning-denied Rustdoc, formatting,
+  whitespace checks and all five raw Wasm size gates pass. No relevant removed
+  API usage was found in inspected Canic/IcyDB source; downstream builds and
+  deployments were not qualified.
+
 ## 0.25.5
 
 - Store optional schema versions as checked nonzero values. Construction and

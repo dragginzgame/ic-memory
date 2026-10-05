@@ -6,7 +6,7 @@ use crate::{
         AllocationLedger, AllocationReservationError, AllocationRetirement,
         AllocationRetirementError, AllocationStageError, LedgerCommitError, LedgerCommitStore,
         checked_reservation_count, stage_reservation_generation, stage_retirement_generation,
-        stage_validated_generation, validate_reservation_declaration,
+        stage_validated_generation,
     },
     policy::AllocationPolicy,
     validation::{AllocationValidationError, validate_allocations},
@@ -94,8 +94,8 @@ impl<'store> AllocationBootstrap<'store> {
 
     /// Recover, policy-check, reserve, and commit one reservation generation.
     ///
-    /// After recovery, batches exceeding 255 items reject before declaration
-    /// validation or policy callbacks.
+    /// Declarations carry checked metadata. After recovery, batches exceeding
+    /// 255 items reject before policy callbacks or historical claim checks.
     pub fn reserve_and_commit<P>(
         &mut self,
         reservations: &[AllocationDeclaration],
@@ -118,7 +118,7 @@ impl<'store> AllocationBootstrap<'store> {
     /// non-empty `genesis` should only be supplied by the owner of migration or
     /// import for this ledger store.
     /// Recovery or initialization precedes batch validation. Batches exceeding
-    /// 255 items reject before declaration validation or policy callbacks.
+    /// 255 items reject before policy callbacks or historical claim checks.
     pub fn initialize_reserve_and_commit<P>(
         &mut self,
         genesis: &AllocationLedger,
@@ -168,8 +168,6 @@ impl<'store> AllocationBootstrap<'store> {
         checked_reservation_count(reservations.len())
             .map_err(BootstrapReservationError::Reservation)?;
         for reservation in reservations {
-            validate_reservation_declaration(reservation)
-                .map_err(BootstrapReservationError::Reservation)?;
             policy
                 .validate_key(&reservation.stable_key)
                 .map_err(BootstrapReservationError::Policy)?;
@@ -565,25 +563,6 @@ mod tests {
     }
 
     #[test]
-    fn reserve_and_commit_validates_reservation_before_policy() {
-        let mut store = LedgerCommitStore::default();
-        store.commit(&ledger()).expect("initial ledger");
-        let mut reservation = declaration();
-        reservation.label = Some(String::new());
-
-        let err = AllocationBootstrap::new(&mut store)
-            .reserve_and_commit(&[reservation], &PolicyMustNotRun, Some(42))
-            .expect_err("invalid reservation must fail before policy");
-
-        assert!(matches!(
-            err,
-            BootstrapReservationError::Reservation(AllocationReservationError::InvalidDeclaration(
-                _
-            ))
-        ));
-    }
-
-    #[test]
     fn reservation_pipeline_accepts_empty_and_full_slot_domain_batches() {
         for count in [0_u8, 255] {
             let reservations = (0..count)
@@ -646,16 +625,15 @@ mod tests {
     }
 
     #[test]
-    fn oversized_initial_reservations_preserve_genesis_and_precede_invalid_declarations() {
-        let mut reservations = vec![declaration(); 256];
-        reservations[0].label = Some(String::new());
+    fn oversized_initial_reservations_preserve_genesis_before_policy() {
+        let reservations = vec![declaration(); 256];
         let mut store = LedgerCommitStore::default();
         let mut expected = LedgerCommitStore::default();
         expected.commit(&ledger()).expect("expected genesis");
 
         let error = AllocationBootstrap::new(&mut store)
             .initialize_reserve_and_commit(&ledger(), &reservations, &PolicyMustNotRun, None)
-            .expect_err("size rejection precedes declaration and policy checks");
+            .expect_err("size rejection precedes policy checks");
 
         assert_eq!(
             error,

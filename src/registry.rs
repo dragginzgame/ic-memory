@@ -46,7 +46,6 @@ impl StaticMemoryDeclaration {
     ) -> Result<Self, StaticMemoryDeclarationError> {
         let authority = authority.into();
         validate_external_authority(&authority)?;
-        declaration.validate()?;
         if is_ic_memory_stable_key(declaration.stable_key().as_str()) {
             return Err(StaticMemoryDeclarationError::ReservedStableKey {
                 stable_key: declaration.stable_key().as_str().to_string(),

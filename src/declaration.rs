@@ -4,7 +4,7 @@ use crate::{
     slot::{MemoryManagerSlot, MemoryManagerSlotError},
     text::{DiagnosticTextError, validate_diagnostic_text},
 };
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize, de::Error as _};
 use std::collections::BTreeSet;
 
 ///
@@ -13,9 +13,9 @@ use std::collections::BTreeSet;
 /// Checked runtime claim that a stable key should own an allocation slot.
 ///
 /// Declarations are supplied by the current binary before opening storage.
-/// Constructors validate the stable key and label and accept already checked
-/// slots and schema metadata. A declaration becomes authoritative only after
-/// validation against the recovered ledger and commitment in a generation.
+/// Construction and decoding check the stable key, label, slot and schema
+/// metadata. A declaration becomes authoritative only after validation against
+/// the recovered ledger and commitment in a generation.
 ///
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -26,7 +26,7 @@ pub struct AllocationDeclaration {
     /// Claimed allocation slot.
     pub(crate) slot: MemoryManagerSlot,
     /// Optional diagnostic label.
-    #[serde(deserialize_with = "crate::cbor::deserialize_present_option")]
+    #[serde(deserialize_with = "deserialize_label")]
     pub(crate) label: Option<String>,
     /// Optional diagnostic schema metadata.
     pub(crate) schema: SchemaMetadata,
@@ -113,12 +113,6 @@ impl AllocationDeclaration {
     pub const fn schema(&self) -> &SchemaMetadata {
         &self.schema
     }
-
-    /// Validate the label after decode or manual assembly.
-    /// Key syntax, usable slot IDs and schema versions belong to checked types.
-    pub fn validate(&self) -> Result<(), DeclarationSnapshotError> {
-        validate_label(self.label.as_deref())
-    }
 }
 
 ///
@@ -144,8 +138,7 @@ pub struct DeclarationSnapshot {
 impl DeclarationSnapshot {
     /// Create and validate a declaration snapshot.
     pub fn new(declarations: Vec<AllocationDeclaration>) -> Result<Self, DeclarationSnapshotError> {
-        validate_declarations(&declarations)?;
-        reject_duplicates(&declarations)?;
+        validate_declaration_set(&declarations)?;
         Ok(Self {
             declarations,
             runtime_fingerprint: None,
@@ -189,8 +182,7 @@ impl DeclarationSnapshot {
 
     /// Validate decoded snapshot invariants before allocation validation.
     pub fn validate(&self) -> Result<(), DeclarationSnapshotError> {
-        validate_declarations(&self.declarations)?;
-        reject_duplicates(&self.declarations)?;
+        validate_declaration_set(&self.declarations)?;
         validate_runtime_fingerprint(self.runtime_fingerprint.as_deref())
     }
 
@@ -258,16 +250,14 @@ fn validate_label(label: Option<&str>) -> Result<(), DeclarationSnapshotError> {
     })
 }
 
-fn validate_declarations(
-    declarations: &[AllocationDeclaration],
-) -> Result<(), DeclarationSnapshotError> {
-    if declarations.len() > crate::constants::MAX_ALLOCATIONS {
-        return Err(DeclarationSnapshotError::TooManyDeclarations);
-    }
-    for declaration in declarations {
-        declaration.validate()?;
-    }
-    Ok(())
+// Decode explicitly present optional labels through the same constructor rule.
+// Retain the owned string; no intermediate label type or compatibility default.
+fn deserialize_label<'de, D: Deserializer<'de>>(
+    deserializer: D,
+) -> Result<Option<String>, D::Error> {
+    let label = Option::<String>::deserialize(deserializer)?;
+    validate_label(label.as_deref()).map_err(D::Error::custom)?;
+    Ok(label)
 }
 
 pub fn validate_runtime_fingerprint(
@@ -286,9 +276,12 @@ pub fn validate_runtime_fingerprint(
     })
 }
 
-fn reject_duplicates(
+fn validate_declaration_set(
     declarations: &[AllocationDeclaration],
 ) -> Result<(), DeclarationSnapshotError> {
+    if declarations.len() > crate::constants::MAX_ALLOCATIONS {
+        return Err(DeclarationSnapshotError::TooManyDeclarations);
+    }
     let mut keys = BTreeSet::new();
     let mut slots = [false; crate::constants::MAX_ALLOCATIONS];
 

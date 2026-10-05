@@ -101,23 +101,6 @@ fn static_range_declaration_uses_record_authority() {
 }
 
 #[test]
-fn static_declaration_rejects_invalid_decoded_declaration() {
-    let declaration =
-        AllocationDeclaration::memory_manager("app.users.v1", 100, "users").expect("declaration");
-    let mut value = serde_json::to_value(declaration).unwrap();
-    value["label"] = serde_json::json!("");
-    let declaration = serde_json::from_value(value).expect("decoded declaration metadata");
-
-    let err = StaticMemoryDeclaration::new("app", declaration)
-        .expect_err("decoded invalid declaration must fail at the registry boundary");
-
-    assert!(matches!(
-        err,
-        StaticMemoryDeclarationError::Declaration(crate::DeclarationSnapshotError::EmptyLabel)
-    ));
-}
-
-#[test]
 fn static_range_declaration_rejects_invalid_decoded_record() {
     let record = MemoryManagerAuthorityRecord::new(
         MemoryManagerIdRange::new(100, 109).expect("range"),
