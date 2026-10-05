@@ -10,6 +10,8 @@
   earlier releases with their original tooling before adopting it. Library APIs
   and stable-memory formats are unchanged.
 - Finalize root and detailed changelog entries with the same saved UTC date.
+- Fix hook-test setup that could incorrectly block release qualification after
+  tooling adoption was committed.
 
 [Detailed notes](docs/changelog/0.26.md) ·
 [Focused qualification](docs/release-workflow-qualification.md)

@@ -123,3 +123,54 @@ stable-memory or runtime performance reduction is claimed. Recovery avoids repea
 full gates and completed package work in substitute tests; no wall-time savings
 are measured. Finish outstanding earlier releases with their original tooling
 before this hard cut; preserve all earlier receipts and artifacts.
+
+
+## Committed-adoption hook fixture correction
+
+On 2026-10-05, the maintainer's full release gate at source
+`d1a914870ce4515c66296cdb08607a6fc5e329ca` passed snapshot, Rust helper, consumer
+Make adapter and canonical runner tests, then failed in `test-hooks`. This was
+before version preparation; the canonical manifest remains 0.25.14 and the
+pending candidate remains 0.26.0. This failed gate is not release qualification.
+Its original log is retained unchanged at
+`target/release-validation/attempts/verify.hx3N8v`, SHA-256
+`23838ff2284e91e94f2e62a296eea20fbc1526d3865389d66896a45e7d43aec6`.
+
+All 22 snapshot entries still match the current committed Shared Tooling revision
+`f52c0e2476aee094359ed21de91c468540d3969f`, including hook/installer/runner bytes.
+Local shared maintenance-policy edits remain dirty, active via AGENTS, and outside
+that recorded revision. No shared executable update is required for this failure.
+
+The consumer `new_fixture` function used global loop variables. It overwrote the
+outer partial-staging case's `path` with `scripts/dev/install-git-hooks.sh`, so
+those cases edited the installer instead of their intended source/configuration
+files. Once adoption was committed, that installer also no longer differed from
+HEAD, leaving it unselected. The hook correctly preserved the unrelated edit;
+the fixture incorrectly expected rejection. The earlier working-tree hook pass
+masked both faults and did not prove the four intended partial-staging cases.
+
+The correction keeps fixture loop variables local, explicitly adds a staged edit
+to each case and verifies its selection before adding the unstaged edit. Cases
+exercise `src/lib.rs`, `Cargo.toml`, `Makefile` and `ci-tool-versions.env`
+independently of whether consumer tooling already matches HEAD. An unexpected
+success reports its fixture directory and operation. No function/type was removed
+or renamed; the vendored hook and installer are unchanged.
+
+Corrected script SHA-256:
+`967b16da0202798accc080fd0d480809c02aa857a5ab70aa2527dcb0c4f783fd`.
+Focused Linux checks pass:
+
+- `make test-hooks`.
+- `make --no-print-directory test-hooks VALIDATION_TOOLCHAIN=1.99.0` with all
+  seven release selections passed as Make variables, matching the failed
+  release's kind/versions/source/date/remote/branch. This is only a focused hook
+  check, not a rerun of the full gate or maintainer release command.
+- Pinned ShellCheck 0.11.0 on the corrected script, `bash -n`, 22-file snapshot
+  verification and whitespace checks.
+
+Failure trace and passing focused logs are retained under
+`target/qualification/release-adapters/hook-repair-d1a9148/`. The root and isolated
+qualification lockfile digests remain those recorded above. All edits are
+unstaged; no release, publication, original-index staging, full gate or artifact
+cleanup was run by the agent. Native macOS and a successful maintainer release
+still require their own observations.

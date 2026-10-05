@@ -15,6 +15,7 @@ mkdir "$fixture/templates"
 export GIT_CONFIG_NOSYSTEM=1 GIT_CONFIG_GLOBAL=/dev/null GIT_TEMPLATE_DIR="$fixture/templates"
 
 new_fixture() {
+    local path workspace member
     mkdir "$fixture/$1"
     cd "$fixture/$1"
     git init --quiet
@@ -71,7 +72,7 @@ CARGO
 
 expect_failure() {
     if "$@" > output 2>&1; then
-        echo 'hook fixture unexpectedly accepted a failing operation' >&2
+        echo "hook fixture unexpectedly accepted a failing operation in $PWD: $*" >&2
         exit 1
     fi
 }
@@ -100,7 +101,15 @@ bash .githooks/pre-commit > output
 
 for path in src/lib.rs Cargo.toml Makefile ci-tool-versions.env; do
     new_fixture "partial-$(basename "$path")"
-    printf '\n# unstaged edit\n' >> "$path"
+    case "$path" in *.rs) comment='//' ;; *) comment='#' ;; esac
+    # Every case must select this file even when consumer tooling matches HEAD.
+    printf '\n%s staged fixture edit\n' "$comment" >> "$path"
+    git add -- "$path"
+    if git diff --cached --quiet -- "$path"; then
+        echo "hook fixture did not select $path" >&2
+        exit 1
+    fi
+    printf '\n%s unstaged fixture edit\n' "$comment" >> "$path"
     cp "$path" before
     tree="$(git write-tree)"
     expect_failure bash .githooks/pre-commit
