@@ -9,11 +9,27 @@ use serde::{Deserialize, Deserializer, Serialize, de::Error as _};
 /// MemoryManagerIdRange
 ///
 /// Inclusive range of usable `MemoryManager` virtual memory IDs.
-#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
-#[serde(deny_unknown_fields)]
+/// Construction and deserialization reject reversed bounds and sentinel ID 255.
+///
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
 pub struct MemoryManagerIdRange {
-    pub(crate) start: u8,
-    pub(crate) end: u8,
+    start: u8,
+    end: u8,
+}
+
+impl<'de> Deserialize<'de> for MemoryManagerIdRange {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        #[derive(Deserialize)]
+        #[serde(rename = "MemoryManagerIdRange", deny_unknown_fields)]
+        struct Bounds {
+            start: u8,
+            end: u8,
+        }
+
+        let bounds = Bounds::deserialize(deserializer)?;
+        Self::new(bounds.start, bounds.end).map_err(D::Error::custom)
+    }
 }
 
 impl MemoryManagerIdRange {
@@ -42,14 +58,6 @@ impl MemoryManagerIdRange {
     #[must_use]
     pub const fn contains(&self, id: u8) -> bool {
         id >= self.start && id <= self.end
-    }
-
-    /// Validate this range's decoded bounds.
-    pub const fn validate(&self) -> Result<(), MemoryManagerRangeError> {
-        match Self::new(self.start, self.end) {
-            Ok(_) => Ok(()),
-            Err(err) => Err(err),
-        }
     }
 
     /// First usable ID in the range.
@@ -114,11 +122,13 @@ pub enum MemoryManagerRangeMode {
 ///
 /// MemoryManagerAuthorityRecord
 ///
-/// Ordered diagnostic authority record for a `MemoryManager` ID range.
+/// Checked diagnostic authority record for a `MemoryManager` ID range.
+/// Construction and decoding enforce usable ordered bounds and bounded,
+/// printable ASCII authority/purpose metadata. This is a range policy claim,
+/// not durable allocation or permission to open memory.
 ///
 
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-#[serde(deny_unknown_fields)]
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 pub struct MemoryManagerAuthorityRecord {
     /// Inclusive range governed by this authority.
     pub(crate) range: MemoryManagerIdRange,
@@ -127,8 +137,25 @@ pub struct MemoryManagerAuthorityRecord {
     /// Policy mode for this authority range.
     pub(crate) mode: MemoryManagerRangeMode,
     /// Optional stable printable ASCII diagnostic purpose.
-    #[serde(deserialize_with = "crate::cbor::deserialize_present_option")]
     pub(crate) purpose: Option<String>,
+}
+
+impl<'de> Deserialize<'de> for MemoryManagerAuthorityRecord {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        #[derive(Deserialize)]
+        #[serde(rename = "MemoryManagerAuthorityRecord", deny_unknown_fields)]
+        struct Record {
+            range: MemoryManagerIdRange,
+            authority: String,
+            mode: MemoryManagerRangeMode,
+            #[serde(deserialize_with = "crate::cbor::deserialize_present_option")]
+            purpose: Option<String>,
+        }
+
+        let record = Record::deserialize(deserializer)?;
+        Self::new(record.range, record.authority, record.mode, record.purpose)
+            .map_err(D::Error::custom)
+    }
 }
 
 impl MemoryManagerAuthorityRecord {
@@ -139,14 +166,17 @@ impl MemoryManagerAuthorityRecord {
         mode: MemoryManagerRangeMode,
         purpose: Option<String>,
     ) -> Result<Self, MemoryManagerRangeAuthorityError> {
-        let record = Self {
+        let authority = authority.into();
+        validate_diagnostic_string("authority", &authority)?;
+        if let Some(purpose) = &purpose {
+            validate_diagnostic_string("purpose", purpose)?;
+        }
+        Ok(Self {
             range,
-            authority: authority.into(),
+            authority,
             mode,
             purpose,
-        };
-        validate_authority_record(&record)?;
-        Ok(record)
+        })
     }
 
     /// Return the inclusive range governed by this authority.
@@ -171,11 +201,6 @@ impl MemoryManagerAuthorityRecord {
     #[must_use]
     pub fn purpose(&self) -> Option<&str> {
         self.purpose.as_deref()
-    }
-
-    /// Validate constructor invariants after decode or manual assembly.
-    pub fn validate(&self) -> Result<(), MemoryManagerRangeAuthorityError> {
-        validate_authority_record(self)
     }
 }
 
@@ -226,15 +251,14 @@ impl MemoryManagerRangeAuthority {
 
     /// Build a range authority from diagnostic records.
     ///
-    /// Each record is validated in input order and overlaps are rejected.
-    /// Accepted records use ascending range order in the supplied buffer. Decoded
-    /// records pass the same checks as records built with their checked constructor.
+    /// Records already carry checked bounds and metadata. Reject overlaps in
+    /// input order and retain accepted records in ascending range order in the
+    /// supplied buffer.
     pub fn from_records(
         mut records: Vec<MemoryManagerAuthorityRecord>,
     ) -> Result<Self, MemoryManagerRangeAuthorityError> {
         for index in 0..records.len() {
             let record = &records[index];
-            validate_authority_record(record)?;
             let accepted = &records[..index];
             let insertion =
                 accepted.partition_point(|existing| existing.range.start() < record.range.start());
@@ -401,17 +425,6 @@ impl MemoryManagerRangeAuthority {
 
         Ok(())
     }
-}
-
-fn validate_authority_record(
-    record: &MemoryManagerAuthorityRecord,
-) -> Result<(), MemoryManagerRangeAuthorityError> {
-    record.range.validate()?;
-    validate_diagnostic_string("authority", &record.authority)?;
-    if let Some(purpose) = &record.purpose {
-        validate_diagnostic_string("purpose", purpose)?;
-    }
-    Ok(())
 }
 
 ///

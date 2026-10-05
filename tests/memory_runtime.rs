@@ -102,6 +102,14 @@ fn owned_report_and_cloned_handles_support_borrowed_nonclone_backing() {
     rows.write(0, &[7]);
     let clone = rows.clone();
     let report = runtime.memory_allocations().unwrap();
+    let before = memory.borrow().clone();
+    assert_eq!(runtime.diagnostic_export().unwrap().current_generation, 1);
+    assert!(
+        runtime
+            .doctor_report(&sealed_declaration_snapshot().unwrap(), &AllowAll)
+            .bootstrapped
+    );
+    assert_eq!(*memory.borrow(), before);
     drop(runtime);
     drop(rows);
     let mut value = [0];

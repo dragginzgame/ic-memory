@@ -26,7 +26,6 @@ pub use record::{
     GenerationRecord, RecoveredLedger, SchemaMetadataRecord,
 };
 pub use stage::checked_reservation_count;
-pub use stage::validate_reservation_declaration;
 pub use stage::{
     stage_reservation_generation, stage_retirement_generation, stage_validated_generation,
 };
@@ -178,7 +177,7 @@ mod tests {
         declaration::{AllocationDeclaration, DeclarationSnapshot, DeclarationSnapshotError},
         key::StableKey,
         physical::CommittedGenerationBytes,
-        schema::{SchemaMetadata, SchemaMetadataError},
+        schema::SchemaMetadata,
         slot::MemoryManagerSlot,
     };
     fn declaration(key: &str, id: u8, schema_version: Option<u32>) -> AllocationDeclaration {
@@ -186,21 +185,9 @@ mod tests {
             key,
             MemoryManagerSlot::new(id).expect("usable slot"),
             None,
-            SchemaMetadata { schema_version },
+            SchemaMetadata::new(schema_version).expect("schema metadata"),
         )
         .expect("declaration")
-    }
-
-    fn invalid_schema_metadata() -> SchemaMetadata {
-        SchemaMetadata {
-            schema_version: Some(0),
-        }
-    }
-
-    fn declaration_with_invalid_schema(key: &str, id: u8) -> AllocationDeclaration {
-        let mut declaration = declaration(key, id, Some(1));
-        declaration.schema = invalid_schema_metadata();
-        declaration
     }
 
     fn ledger() -> AllocationLedger {
@@ -386,11 +373,7 @@ mod tests {
     }
 
     #[test]
-    fn record_constructors_validate_metadata() {
-        let schema_err = SchemaMetadataRecord::new(1, invalid_schema_metadata())
-            .expect_err("invalid schema must fail");
-        assert_eq!(schema_err, SchemaMetadataError::InvalidVersion);
-
+    fn generation_record_constructor_rejects_empty_runtime_fingerprint() {
         let generation_err = GenerationRecord::new(1, 0, Some(String::new()), 0, None)
             .expect_err("empty fingerprint must fail");
         assert_eq!(
@@ -974,26 +957,6 @@ mod tests {
     }
 
     #[test]
-    fn stage_reservation_generation_rejects_invalid_schema_metadata() {
-        let reservations = vec![declaration_with_invalid_schema(
-            "ic_memory.generation_log.v1",
-            1,
-        )];
-
-        let err = ledger()
-            .stage_reservation_generation(&reservations, None)
-            .expect_err("invalid reservation schema metadata");
-
-        assert_eq!(
-            err,
-            AllocationReservationError::InvalidSchemaMetadata {
-                stable_key: StableKey::parse("ic_memory.generation_log.v1").expect("stable key"),
-                error: SchemaMetadataError::InvalidVersion,
-            }
-        );
-    }
-
-    #[test]
     fn stage_reservation_generation_rejects_same_key_different_slot() {
         let mut ledger = ledger();
         ledger.allocation_history.records = vec![AllocationRecord::reserved(
@@ -1233,9 +1196,7 @@ mod tests {
     }
 
     #[test]
-    fn stage_retirement_generation_rejects_invalid_decoded_stable_key() {
-        let mut ledger = ledger();
-        ledger.allocation_history.records = vec![active_record("app.users.v1", 100)];
+    fn retirement_decode_rejects_invalid_stable_key() {
         let retirement = AllocationRetirement::new(
             "app.users.v1",
             MemoryManagerSlot::new(100).expect("usable slot"),
@@ -1245,14 +1206,7 @@ mod tests {
         *map_field_mut(value_map_mut(&mut value), "stable_key") =
             crate::test_cbor::Value::Text("App.users.v1".to_string());
         let bytes = crate::test_cbor::to_vec(&value).expect("retirement bytes");
-        let retirement: AllocationRetirement =
-            crate::test_cbor::from_slice(&bytes).expect("decoded DTO");
-
-        let err = ledger
-            .stage_retirement_generation(&retirement, None)
-            .expect_err("decoded invalid stable key must fail at the boundary");
-
-        assert!(matches!(err, AllocationRetirementError::Key(_)));
+        assert!(crate::test_cbor::from_slice::<AllocationRetirement>(&bytes).is_err());
     }
 
     #[test]
@@ -1583,20 +1537,10 @@ mod tests {
                 slot: MemoryManagerSlot::new(100).unwrap(),
             }
         );
-
-        ledger.allocation_history.records[1].stable_key =
-            serde_json::from_str("\"App.orders.v1\"").expect("decoded unvalidated key");
-        assert_eq!(
-            ledger.validate_integrity().unwrap_err(),
-            LedgerIntegrityError::DuplicateSlot {
-                slot: MemoryManagerSlot::new(100).unwrap(),
-            },
-            "duplicate slot precedes the second record's key validation"
-        );
     }
 
     #[test]
-    fn validate_committed_integrity_rejects_decoded_invalid_stable_key() {
+    fn recovery_rejects_invalid_stable_key_during_ledger_decode() {
         let mut ledger = committed_ledger(1);
         ledger
             .allocation_history
@@ -1608,14 +1552,14 @@ mod tests {
             .position(|window| window == b"app.users.v1")
             .expect("encoded stable key");
         bytes[key_start] = b'A';
-        let decoded: AllocationLedger =
-            crate::test_cbor::from_slice(&bytes).expect("decode ledger");
-
-        let err = decoded
-            .validate_committed_integrity()
-            .expect_err("invalid decoded key must fail");
-
-        assert!(matches!(err, LedgerIntegrityError::InvalidStableKey(_)));
+        assert!(crate::test_cbor::from_slice::<AllocationLedger>(&bytes).is_err());
+        let payload = LedgerPayloadEnvelope::current(bytes).encode();
+        let mut physical = DualCommitStore::default();
+        physical.commit_payload_at_generation(1, payload).unwrap();
+        let store = LedgerCommitStore { physical };
+        let before = store.clone();
+        assert!(matches!(store.recover(), Err(LedgerCommitError::Codec(_))));
+        assert_eq!(store, before, "malformed-key recovery must preserve slots");
     }
 
     #[test]
@@ -1691,13 +1635,10 @@ mod tests {
             let mut ledger = committed_ledger(3);
             let mut record = active_record("app.users.v1", 100);
             record.last_seen_generation = 2;
-            record.schema_history.push(
-                SchemaMetadataRecord::new(
-                    generation,
-                    SchemaMetadata::new(Some(2)).expect("schema"),
-                )
-                .expect("schema record"),
-            );
+            record.schema_history.push(SchemaMetadataRecord::new(
+                generation,
+                SchemaMetadata::new(Some(2)).expect("schema"),
+            ));
             ledger.allocation_history.records = vec![record];
 
             let err = ledger
@@ -1744,23 +1685,29 @@ mod tests {
     }
 
     #[test]
-    fn validate_integrity_rejects_invalid_schema_metadata_history() {
+    fn recovery_rejects_zero_schema_version_during_ledger_decode() {
         let mut ledger = committed_ledger(1);
-        let mut record = active_record("app.users.v1", 100);
-        record.schema_history[0].schema = invalid_schema_metadata();
-        ledger.allocation_history.records = vec![record];
-
-        let err = ledger
-            .validate_committed_integrity()
-            .expect_err("invalid committed schema metadata");
-
+        ledger
+            .allocation_history
+            .records
+            .push(AllocationRecord::active(
+                1,
+                &declaration("app.users.v1", 100, Some(1)),
+            ));
+        let mut value = serde_json::to_value(&ledger).unwrap();
+        value["allocation_history"]["records"][0]["schema_history"][0]["schema"]["schema_version"] =
+            0.into();
+        let bytes = crate::test_cbor::to_vec(&value).unwrap();
+        assert!(crate::test_cbor::from_slice::<AllocationLedger>(&bytes).is_err());
+        let payload = LedgerPayloadEnvelope::current(bytes).encode();
+        let mut physical = DualCommitStore::default();
+        physical.commit_payload_at_generation(1, payload).unwrap();
+        let store = LedgerCommitStore { physical };
+        let before = store.clone();
+        assert!(matches!(store.recover(), Err(LedgerCommitError::Codec(_))));
         assert_eq!(
-            err,
-            LedgerIntegrityError::InvalidSchemaMetadata {
-                stable_key: StableKey::parse("app.users.v1").expect("stable key"),
-                generation: 1,
-                error: SchemaMetadataError::InvalidVersion,
-            }
+            store, before,
+            "malformed-schema recovery must preserve slots"
         );
     }
 
@@ -1787,7 +1734,7 @@ mod tests {
                 record.last_seen_generation = 1;
                 record
                     .schema_history
-                    .push(SchemaMetadataRecord::new(1, SchemaMetadata::default()).unwrap());
+                    .push(SchemaMetadataRecord::new(1, SchemaMetadata::default()));
                 record.state = AllocationState::Retired { generation: 2 };
             }
             ledger.allocation_history.records.push(record);

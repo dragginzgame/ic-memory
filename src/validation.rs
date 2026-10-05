@@ -308,33 +308,21 @@ mod tests {
     }
 
     #[test]
-    fn decoded_snapshot_rejects_invalid_schema_and_count_before_minting_authority() {
+    fn decoded_snapshot_rejects_excess_count_before_minting_authority() {
         let recovered = recovered(Vec::new());
-        let source = serde_json::to_value(
+        let mut value = serde_json::to_value(
             DeclarationSnapshot::new(vec![declaration("app.users.v1", 100)]).unwrap(),
         )
         .unwrap();
-        let mut invalid_schema = source.clone();
-        invalid_schema["declarations"][0]["schema"]["schema_version"] = 0.into();
-        let mut oversized = source;
-        oversized["declarations"] =
-            serde_json::Value::Array(vec![oversized["declarations"][0].clone(); 256]);
-
-        for (value, expected) in [
-            (
-                invalid_schema,
-                DeclarationSnapshotError::SchemaMetadata(
-                    crate::SchemaMetadataError::InvalidVersion,
-                ),
-            ),
-            (oversized, DeclarationSnapshotError::TooManyDeclarations),
-        ] {
-            let snapshot: DeclarationSnapshot = serde_json::from_value(value).unwrap();
-            assert_eq!(
-                validate_allocations(&recovered, snapshot, &TestPolicy),
-                Err(AllocationValidationError::Snapshot(expected))
-            );
-        }
+        value["declarations"] =
+            serde_json::Value::Array(vec![value["declarations"][0].clone(); 256]);
+        let snapshot: DeclarationSnapshot = serde_json::from_value(value).unwrap();
+        assert_eq!(
+            validate_allocations(&recovered, snapshot, &TestPolicy),
+            Err(AllocationValidationError::Snapshot(
+                DeclarationSnapshotError::TooManyDeclarations
+            ))
+        );
     }
 
     #[test]

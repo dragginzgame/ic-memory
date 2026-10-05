@@ -354,7 +354,12 @@ impl<M: Memory> MemoryRuntime<M> {
     }
 
     fn ledger_record_from_memory(&self) -> Result<StableCellLedgerRecord, StableCellLedgerError> {
-        decode_stable_cell_ledger_record_from_memory(&self.memory(MEMORY_MANAGER_LEDGER_ID))
+        // Decoding only reads; the manager handle retains backing lifetime
+        // without carrying the growth owner needed by writable runtime handles.
+        let memory = self
+            .memory_manager
+            .get(MemoryId::new(MEMORY_MANAGER_LEDGER_ID));
+        decode_stable_cell_ledger_record_from_memory(&memory)
     }
 }
 

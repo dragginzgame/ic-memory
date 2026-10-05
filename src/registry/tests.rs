@@ -101,44 +101,6 @@ fn static_range_declaration_uses_record_authority() {
 }
 
 #[test]
-fn static_declaration_rejects_invalid_decoded_declaration() {
-    let mut declaration =
-        AllocationDeclaration::memory_manager("app.users.v1", 100, "users").expect("declaration");
-    declaration.stable_key = serde_json::from_str("\"App.users.v1\"").unwrap();
-
-    let err = StaticMemoryDeclaration::new("app", declaration)
-        .expect_err("decoded invalid declaration must fail at the registry boundary");
-
-    assert!(matches!(
-        err,
-        StaticMemoryDeclarationError::Declaration(crate::DeclarationSnapshotError::Key(_))
-    ));
-}
-
-#[test]
-fn static_range_declaration_rejects_invalid_decoded_record() {
-    let mut record = MemoryManagerAuthorityRecord::new(
-        MemoryManagerIdRange::new(100, 109).expect("range"),
-        "app",
-        MemoryManagerRangeMode::Reserved,
-        None,
-    )
-    .expect("record");
-    record.range = MemoryManagerIdRange {
-        start: 109,
-        end: 100,
-    };
-
-    let err = StaticMemoryRangeDeclaration::new(record)
-        .expect_err("decoded invalid range record must fail at the registry boundary");
-
-    assert!(matches!(
-        err,
-        StaticMemoryDeclarationError::Range(MemoryManagerRangeAuthorityError::Range(_))
-    ));
-}
-
-#[test]
 fn snapshot_rejects_duplicate_static_memory_declarations() {
     let _guard = TEST_REGISTRY_LOCK.lock().expect("test lock poisoned");
     reset_static_memory_declarations_for_tests();
@@ -208,6 +170,19 @@ fn external_registration_rejects_internal_authority_identity() {
     assert!(matches!(
         range_err,
         StaticMemoryDeclarationError::ReservedAuthority { .. }
+    ));
+    // Record decoding accepts the governance owner's valid text, but cannot
+    // bypass the independent external-registration namespace restriction.
+    let record = serde_json::from_value(serde_json::json!({
+        "range": { "start": 100, "end": 109 },
+        "authority": IC_MEMORY_AUTHORITY_OWNER,
+        "mode": "Reserved",
+        "purpose": null,
+    }))
+    .unwrap();
+    assert!(matches!(
+        StaticMemoryRangeDeclaration::new(record),
+        Err(StaticMemoryDeclarationError::ReservedAuthority { .. })
     ));
 }
 

@@ -190,6 +190,8 @@ pub fn decode_stable_cell_ledger_record(
 /// Empty memory returns an uninitialized record without writing a cell. Nonempty
 /// memory must pass the current envelope, byte bounds and record decoding. The
 /// returned DTO still requires protected ledger recovery before it is authority.
+/// Keep this record for recovery rather than decoding again through the
+/// panic-based [`Storable::from_bytes`] used by `Cell::init`.
 pub fn decode_stable_cell_ledger_record_from_memory<M: Memory>(
     memory: &M,
 ) -> Result<StableCellLedgerRecord, StableCellLedgerError> {
@@ -199,22 +201,6 @@ pub fn decode_stable_cell_ledger_record_from_memory<M: Memory>(
 
     let payload = decode_stable_cell_payload(memory)?;
     decode_stable_cell_ledger_record(&payload).map_err(StableCellLedgerError::Record)
-}
-
-/// Validate an existing stable-cell ledger record before opening it with
-/// `ic-stable-structures::Cell`.
-///
-/// `Cell::init` decodes the existing value through [`Storable::from_bytes`].
-/// That trait is panic-based, so callers can preflight raw memory with this
-/// fallible helper first. Empty memory is treated as uninitialized and is safe
-/// for `Cell::init` to create. Callers retaining an existing record for recovery
-/// can use [`decode_stable_cell_payload`] followed by
-/// [`decode_stable_cell_ledger_record`].
-pub fn validate_stable_cell_ledger_memory<M: Memory>(
-    memory: &M,
-) -> Result<(), StableCellLedgerError> {
-    decode_stable_cell_ledger_record_from_memory(memory)?;
-    Ok(())
 }
 
 fn serialize_record(record: &StableCellLedgerRecord) -> Vec<u8> {
@@ -261,6 +247,10 @@ mod tests {
         let payload = decode_stable_cell_payload(&memory).expect("decode stable cell payload");
         let decoded = StableCellLedgerRecord::from_bytes(Cow::Owned(payload));
         assert_eq!(decoded, record);
+        assert_eq!(
+            crate::decode_stable_cell_ledger_record_from_memory(&memory).unwrap(),
+            record
+        );
     }
 
     #[test]
@@ -324,10 +314,6 @@ mod tests {
             for _ in 0..2 {
                 assert!(matches!(
                     decode_stable_cell_ledger_record_from_memory(&memory),
-                    Err(StableCellLedgerError::Record(_))
-                ));
-                assert!(matches!(
-                    validate_stable_cell_ledger_memory(&memory),
                     Err(StableCellLedgerError::Record(_))
                 ));
             }
@@ -402,10 +388,19 @@ mod tests {
             decode_stable_cell_payload(&memory),
             Err(StableCellPayloadError::NotStableCell)
         );
+        assert_eq!(
+            crate::decode_stable_cell_ledger_record_from_memory(&memory).unwrap(),
+            StableCellLedgerRecord::default()
+        );
+        assert_eq!(
+            memory.size(),
+            0,
+            "reading empty memory must not initialize it"
+        );
     }
 
     #[test]
-    fn stable_cell_ledger_preflight_classifies_bad_record_without_panic() {
+    fn stable_cell_ledger_memory_reader_classifies_bad_record_without_panic() {
         let memory = VectorMemory::default();
         memory.grow(1);
         memory.write(0, STABLE_CELL_MAGIC);
@@ -413,8 +408,8 @@ mod tests {
         memory.write(4, &1_u32.to_le_bytes());
         memory.write(STABLE_CELL_VALUE_OFFSET, &[0xff]);
 
-        let err =
-            validate_stable_cell_ledger_memory(&memory).expect_err("bad record must be classified");
+        let err = decode_stable_cell_ledger_record_from_memory(&memory)
+            .expect_err("bad record must be classified");
 
         assert!(matches!(err, StableCellLedgerError::Record(_)));
     }

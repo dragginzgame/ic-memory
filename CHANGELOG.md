@@ -1,5 +1,120 @@
 # Changelog
 
+## 0.25.7
+
+- Decode `MemoryManagerAuthorityRecord` through its checked constructor. JSON
+  and CBOR now reject invalid authority/purpose text before records reach
+  registration or range-table assembly. Preserve field-specific constructor
+  errors, required explicit purpose nulls, unknown-field rejection and current
+  encodings; no durable format or declaration fingerprint changes.
+- Hard-cut `MemoryManagerAuthorityRecord::validate` and remove repeated metadata
+  scans from static range registration and range-table construction. The record
+  owns text validity; registration retains its independent governance namespace
+  restriction, and the table retains input-order overlap refusal and canonical
+  range ordering. Checks on raw caller-supplied expected authorities remain.
+- Consolidate malformed-record tests at the public decoding boundary. Extend
+  printable-ASCII/256-byte round trips and pin the current CBOR shape. Verify
+  decoded governance records cannot bypass external registration. The malformed
+  metadata regression fails against 0.25.6 for both JSON and CBOR; valid metadata
+  and shape assertions pass against both implementations.
+- Validation: 272 library tests, public integration/composed-host tests, all
+  eight compile-fail cases and six active doctests pass. Strict all-target
+  Clippy, Rust 1.88.0 all-target compilation, warning-denied Rustdoc, formatting,
+  whitespace checks and all five raw Wasm size gates pass. Inspected Canic,
+  IcyDB and blob-service callers use constructors/accessors and need no source
+  changes for the removed method; downstream builds and deployments were not
+  qualified.
+
+## 0.25.6
+
+- Check optional declaration labels during JSON/CBOR decoding with the existing
+  constructor rule. Accept explicit null or printable ASCII through 256 bytes;
+  reject missing fields, empty labels, overlong text, non-ASCII text and control
+  characters before declarations reach registration or reservation policy.
+  Valid encodings, declaration fingerprints and durable ledger formats remain
+  unchanged.
+- Hard-cut `AllocationDeclaration::validate` and
+  `AllocationReservationError::InvalidDeclaration`. Remove the forwarding
+  reservation validator and repeated label scans from static registration,
+  snapshot validation, reservation bootstrap and reservation staging. Keep
+  snapshot count/uniqueness checks, fingerprints, policy order, historical claim
+  checks, generation bounds, local staging and protected commit sequencing.
+- Consolidate decoded-label regressions at the public decoding boundary. Keep
+  constructor error classification, explicit-null and current CBOR encoding
+  assertions, reservation count-before-policy checks and genesis conservation.
+  The decode regression fails against 0.25.5, while the valid-label and current
+  encoding assertions pass against both implementations. Correct the safety
+  guide's stale reference to `SchemaMetadata::validate`.
+- Validation: 273 library tests, public integration/composed-host tests, all
+  eight compile-fail cases and six active doctests pass. Strict all-target
+  Clippy, Rust 1.88.0 all-target compilation, warning-denied Rustdoc, formatting,
+  whitespace checks and all five raw Wasm size gates pass. No relevant removed
+  API usage was found in inspected Canic/IcyDB source; downstream builds and
+  deployments were not qualified.
+
+## 0.25.5
+
+- Store optional schema versions as checked nonzero values. Construction and
+  JSON/CBOR decoding reject version zero; valid encodings, required explicit
+  nulls, current wire fixtures and declaration fingerprints remain unchanged.
+- Hard-cut `SchemaMetadata::validate`,
+  `DeclarationSnapshotError::SchemaMetadata`,
+  `AllocationReservationError::InvalidSchemaMetadata` and
+  `LedgerIntegrityError::InvalidSchemaMetadata`. Remove repeated schema-version
+  checks from declarations, logical requests, reservations and ledger history.
+  `SchemaMetadataRecord::new` now returns the record directly. Schema constructor
+  errors, label checks, policy, history ordering and commit validation remain.
+- Malformed schema versions in persisted ledger history now reject as
+  `LedgerCommitError::Codec`. Verify protected recovery preserves both slots;
+  retain decoded-label refusal tests at registry, allocation-validation and
+  reservation boundaries. New schema-decode regressions fail against 0.25.4,
+  while valid wire-encoding assertions pass against both implementations.
+- Select Cargo's self-contained manifest schema to avoid Even Better TOML's
+  false rejection of valid lint settings. Cargo configuration is unchanged.
+- Hard-cut `validate_stable_cell_ledger_memory` and expose the existing
+  `decode_stable_cell_ledger_record_from_memory` reader. Manual owners can retain
+  its decoded record for recovery instead of validating, discarding it and
+  decoding again. Empty memory remains unwritten; envelope bounds, typed decode
+  failures and protected recovery requirements remain unchanged. Update manual
+  integration guidance and consolidate wrapper assertions into the reader tests.
+- Read ledger records for exports, commit diagnostics and doctor reports through
+  the owned manager's virtual memory directly. Remove unused growth-state handles
+  from these read-only paths; bootstrap persistence and application handles keep
+  guarded growth. Extend borrowed, nonclone backing coverage to exports and doctor
+  reports, preserving backing bytes.
+- Validation: 276 library tests, public integration/composed-host tests, all
+  eight compile-fail cases and six active doctests pass. Strict all-target
+  Clippy, Rust 1.88.0 all-target compilation, warning-denied Rustdoc, formatting,
+  whitespace checks and all five raw Wasm size gates pass. No removed API usage
+  was found in inspected Canic/IcyDB source; downstream builds and deployments
+  were not qualified.
+
+## 0.25.4
+
+- Establish stable-key grammar and usable range bounds during deserialization,
+  sharing their existing constructor rules. `StableKey` retains its decoded
+  string directly; `MemoryManagerIdRange` keeps private ordered bounds excluding
+  sentinel ID 255. Valid JSON/CBOR shapes and declaration fingerprints remain
+  unchanged.
+- Hard-cut `StableKey::validate`, `MemoryManagerIdRange::validate`,
+  `AllocationRetirement::validate` and `LedgerIntegrityError::InvalidStableKey`.
+  Remove repeated key/range checks from declaration, record and retirement
+  validation. Constructor key errors, diagnostic metadata, duplicate claims,
+  authorization, history, recovery and persistence checks remain.
+- Malformed keys and ranges now reject during decode. Invalid logical ledger
+  keys report `LedgerCommitError::Codec` instead of a later integrity error;
+  retirement and range records cannot carry invalid decoded identities into
+  staging or registry admission. No compatibility forwarders or fallback readers
+  are retained.
+- Consolidate malformed-range tests at the decoding boundary and retain registry
+  refusal tests for unchecked schema/purpose metadata. Pin current key/range
+  encodings and verify malformed-key recovery preserves protected slots. Both
+  new identity-decoding regressions fail against 0.25.3.
+- Validation: 274 library tests, public integration/composed-host tests, all eight
+  compile-fail cases and six doctests pass. Strict library/test Clippy, Rust
+  1.88.0 library/test compilation, Wasm library compilation, warning-denied
+  Rustdoc, formatting, whitespace checks and all five raw Wasm size gates pass.
+
 ## 0.25.3
 
 - Branch bootstrap directly on the authoritative runtime lifecycle. Remove

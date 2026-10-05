@@ -18,6 +18,6 @@ fn main() {
     };
 
     let _schema = SchemaMetadata {
-        schema_version: Some(0),
+        schema_version: None,
     };
 }

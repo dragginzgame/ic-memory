@@ -151,11 +151,6 @@ fn validate_record_integrity(
     current_generation: u64,
     record: &AllocationRecord,
 ) -> Result<(), LedgerIntegrityError> {
-    record
-        .stable_key
-        .validate()
-        .map_err(LedgerIntegrityError::InvalidStableKey)?;
-
     if record.first_generation > record.last_seen_generation {
         return Err(LedgerIntegrityError::InvalidRecordGenerationOrder {
             stable_key: record.stable_key.clone(),
@@ -224,14 +219,6 @@ fn validate_schema_history_integrity(
 
     let mut previous = None;
     for schema in &record.schema_history {
-        schema
-            .schema
-            .validate()
-            .map_err(|error| LedgerIntegrityError::InvalidSchemaMetadata {
-                stable_key: record.stable_key.clone(),
-                generation: schema.generation,
-                error,
-            })?;
         if previous.is_some_and(|generation| schema.generation <= generation) {
             return Err(LedgerIntegrityError::NonIncreasingSchemaHistory {
                 stable_key: record.stable_key.clone(),

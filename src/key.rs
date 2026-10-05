@@ -1,4 +1,4 @@
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize, de::Error as _};
 use std::{fmt, str::FromStr};
 
 ///
@@ -10,9 +10,25 @@ use std::{fmt, str::FromStr};
 /// `MemoryManager` ID. Once committed, the key is permanently bound to its
 /// physical allocation slot; changing the key declares a new logical store.
 ///
+/// Construction and deserialization enforce the same bounded canonical grammar.
+/// A checked key establishes identity syntax, not allocation or open authority.
+///
 
-#[derive(Clone, Debug, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
+#[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
 pub struct StableKey(String);
+
+impl<'de> Deserialize<'de> for StableKey {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        // Retain the serialized newtype shape before checking its owned text.
+        #[derive(Deserialize)]
+        #[serde(rename = "StableKey")]
+        struct Text(String);
+
+        let Text(value) = Text::deserialize(deserializer)?;
+        validate(&value).map_err(D::Error::custom)?;
+        Ok(Self(value))
+    }
+}
 
 impl StableKey {
     /// Parse and validate a canonical stable key string.
@@ -35,11 +51,6 @@ impl StableKey {
     #[must_use]
     pub fn into_string(self) -> String {
         self.0
-    }
-
-    /// Validate constructor invariants after decode.
-    pub fn validate(&self) -> Result<(), StableKeyError> {
-        validate(&self.0)
     }
 }
 
@@ -169,7 +180,6 @@ mod tests {
 
         let key = StableKey::parse(ChangingKey(std::cell::Cell::new(false))).unwrap();
         assert_eq!(key.as_str(), "app.rows.v1");
-        key.validate().unwrap();
     }
 
     #[test]
@@ -181,6 +191,32 @@ mod tests {
             "app.users.primary.v1"
         );
         assert!(StableKey::parse("framework.core.auth_state.v12").is_ok());
+    }
+
+    #[test]
+    fn key_decode_enforces_grammar_and_preserves_current_encoding() {
+        let key = StableKey::parse("app.users.v1").unwrap();
+        let json = serde_json::to_string(&key).unwrap();
+        assert_eq!(json, "\"app.users.v1\"");
+        assert_eq!(serde_json::from_str::<StableKey>(&json).unwrap(), key);
+        let bytes = crate::test_cbor::to_vec(&key).unwrap();
+        assert_eq!(bytes, b"\x6capp.users.v1");
+        assert_eq!(
+            crate::test_cbor::from_slice::<StableKey>(&bytes).unwrap(),
+            key
+        );
+
+        for invalid in [
+            "App.users.v1",
+            "app.users.v0",
+            "app..users.v1",
+            &"x".repeat(129),
+        ] {
+            let json = serde_json::to_string(invalid).unwrap();
+            assert!(serde_json::from_str::<StableKey>(&json).is_err());
+            let bytes = crate::test_cbor::to_vec(&invalid).unwrap();
+            assert!(crate::test_cbor::from_slice::<StableKey>(&bytes).is_err());
+        }
     }
 
     #[test]

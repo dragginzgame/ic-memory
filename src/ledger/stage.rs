@@ -4,10 +4,7 @@ use super::{
     GenerationRecord, ReservationClaimConflict, validate_declaration_claim,
     validate_reservation_claim,
 };
-use crate::{
-    capability::ValidatedAllocations,
-    declaration::{AllocationDeclaration, DeclarationSnapshotError},
-};
+use crate::{capability::ValidatedAllocations, declaration::AllocationDeclaration};
 use std::borrow::Cow;
 
 impl AllocationLedger {
@@ -115,7 +112,6 @@ pub fn stage_reservation_generation(
     next.current_generation = next_generation;
 
     for reservation in reservations {
-        validate_reservation_declaration(reservation)?;
         record_reservation(&mut next, next_generation, reservation)?;
     }
 
@@ -136,7 +132,6 @@ pub fn stage_retirement_generation(
     retirement: &AllocationRetirement,
     committed_at: Option<u64>,
 ) -> Result<AllocationLedger, AllocationRetirementError> {
-    retirement.validate()?;
     ledger.validate_staging_bounds()?;
     let parent_generation = ledger.current_generation;
     let next_generation = checked_next_generation(parent_generation)
@@ -224,20 +219,6 @@ fn record_reservation(
         }
         Err(conflict) => Err(map_reservation_stage_conflict(reservation, conflict)),
     }
-}
-
-pub fn validate_reservation_declaration(
-    reservation: &AllocationDeclaration,
-) -> Result<(), AllocationReservationError> {
-    reservation.validate().map_err(|err| match err {
-        DeclarationSnapshotError::SchemaMetadata(error) => {
-            AllocationReservationError::InvalidSchemaMetadata {
-                stable_key: reservation.stable_key.clone(),
-                error,
-            }
-        }
-        err => AllocationReservationError::InvalidDeclaration(err),
-    })
 }
 
 const fn checked_next_generation(current_generation: u64) -> Result<u64, u64> {

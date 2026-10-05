@@ -2,7 +2,7 @@ use super::{AllocationRetirementError, LedgerIntegrityError};
 use crate::{
     declaration::{AllocationDeclaration, DeclarationSnapshotError, validate_runtime_fingerprint},
     key::StableKey,
-    schema::{SchemaMetadata, SchemaMetadataError},
+    schema::SchemaMetadata,
     slot::MemoryManagerSlot,
 };
 use serde::{Deserialize, Serialize};
@@ -89,6 +89,10 @@ pub struct AllocationRecord {
 ///
 /// Retirement prevents a stable key from being redeclared. It does not make the
 /// physical slot safe for another active stable key.
+/// Its key and slot are checked during construction and decoding; staging still
+/// verifies the historical assignment and retirement eligibility.
+///
+
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct AllocationRetirement {
@@ -118,13 +122,6 @@ impl AllocationRetirement {
     #[must_use]
     pub const fn slot(&self) -> &MemoryManagerSlot {
         &self.slot
-    }
-
-    /// Validate constructor invariants after decode or manual assembly.
-    pub fn validate(&self) -> Result<(), AllocationRetirementError> {
-        self.stable_key
-            .validate()
-            .map_err(AllocationRetirementError::Key)
     }
 }
 
@@ -273,10 +270,11 @@ impl AllocationHistory {
 }
 
 impl SchemaMetadataRecord {
-    /// Build a schema metadata history record after validating the metadata.
-    pub fn new(generation: u64, schema: SchemaMetadata) -> Result<Self, SchemaMetadataError> {
-        schema.validate()?;
-        Ok(Self { generation, schema })
+    /// Build a history record from checked schema metadata.
+    /// Ledger integrity validation checks its generation against the history.
+    #[must_use]
+    pub const fn new(generation: u64, schema: SchemaMetadata) -> Self {
+        Self { generation, schema }
     }
 
     /// Return the generation that declared this schema metadata.
@@ -343,8 +341,7 @@ impl GenerationRecord {
 }
 
 impl AllocationRecord {
-    // Staging supplies checked schema metadata: active declarations come from
-    // ValidatedAllocations, and raw reservations are validated before mutation.
+    // SchemaMetadata establishes its own version invariant before staging.
     // Copy only persisted fields; declaration labels are not ledger history.
     fn from_declaration(
         generation: u64,

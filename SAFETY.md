@@ -32,7 +32,8 @@ authorization, or endpoint safety.
   active allocation. Refreshing a matching reservation is allowed; reserving an
   already active or retired allocation is rejected.
 - Schema metadata attached to declarations, reservations, and committed schema
-  history must pass `SchemaMetadata::validate()`.
+  history contains only absent or nonzero versions, checked at construction
+  and decoding. This metadata does not validate application schemas.
 
 ## Generation Invariants
 
@@ -212,10 +213,17 @@ Public durable structs are DTOs. Decoded, deserialized, and diagnostic values
 are untrusted until the relevant recovery, current-format, integrity,
 validation, or commit path has accepted them.
 
-Serde decoding alone does not grant allocation authority. `MemoryManagerSlot`
-rejects sentinel ID 255 during construction and decoding; its numeric ID is
-infallible. Other DTO invariants, including stable-key grammar and ledger history,
-must still be checked by the validation boundary before influencing authority.
+Serde decoding alone does not grant allocation authority. `StableKey`,
+`MemoryManagerSlot` and `MemoryManagerIdRange` enforce their identity syntax and
+usable bounds during construction and decoding. Keys remain canonical, slot IDs
+exclude sentinel 255, and ranges remain ordered with usable ends. `SchemaMetadata`
+contains an absent or nonzero schema version, established by construction and
+decoding. `AllocationDeclaration` checks optional printable ASCII labels at
+construction and decoding, including their 256-byte bound.
+`MemoryManagerAuthorityRecord` checks its printable ASCII authority and optional
+purpose through its constructor, including on decode. Fingerprints, duplicate
+claims, range overlaps, namespace ownership, policy and ledger history still
+require their validation boundaries before influencing authority.
 
 Invariant-bearing DTO fields are intentionally private where feasible. Callers
 should use checked constructors and accessors instead of fabricating durable

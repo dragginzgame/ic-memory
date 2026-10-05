@@ -10,7 +10,7 @@ use crate::{
     slot::MEMORY_MANAGER_LEDGER_ID,
     stable_cell::decode_stable_cell_ledger_record_from_memory,
 };
-use ic_stable_structures::Memory;
+use ic_stable_structures::{Memory, memory_manager::MemoryId};
 use std::{borrow::Cow, fmt::Display};
 
 impl<M: Memory> MemoryRuntime<M> {
@@ -151,7 +151,9 @@ impl<M: Memory> MemoryRuntime<M> {
     }
 
     fn stable_cell_diagnostic(&self) -> StableCellDiagnostic {
-        let memory = self.memory(MEMORY_MANAGER_LEDGER_ID);
+        let memory = self
+            .memory_manager
+            .get(MemoryId::new(MEMORY_MANAGER_LEDGER_ID));
         let memory_size = DiagnosticMemorySize::from_wasm_pages(memory.size());
         match decode_stable_cell_ledger_record_from_memory(&memory) {
             Ok(record) => StableCellDiagnostic {
