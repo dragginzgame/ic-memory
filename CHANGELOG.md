@@ -1,6 +1,6 @@
 # Changelog
 
-## [0.26.1]
+## [0.26.1] - 2026-10-05
 
 - Bound ledger serialization while writing, so oversized commits return the
   existing limit error without first growing an oversized output buffer.
