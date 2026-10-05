@@ -1,6 +1,6 @@
 # Changelog
 
-## [0.26.0]
+## [0.26.0] - 2026-10-05
 
 - Use the shared maintainer release workflow for patch, minor and major releases.
   Rerunning the same target reconciles interrupted preparation and Git effects at
