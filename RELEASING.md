@@ -100,7 +100,7 @@ Receipts live under Cargo's actual target directory, including configured paths
 and `CARGO_TARGET_DIR`, in `release-validation/`:
 
 - `<version>-prepared.json` binds the validated source, selected lockfile,
-  compiler identities, commands and package built during preparation.
+compiler identities, commands and package built during preparation.
 - `<version>.json` additionally binds the final archive to the release commit.
   Cargo embeds Git metadata, so this archive is qualified after the commit.
 - `artifacts/<sha256>.crate` retains each qualified archive independently of
@@ -110,8 +110,18 @@ Compiler identities include the pinned Cargo/rustc and the MSRV rustc. The
 receipts record SHA-256 digests for the lockfile, package and applicable Cargo
 configuration files, plus build flag/profile environment values. Release
 validation explicitly uses the repository pin even if a local Make override is
-set. Staging, committing,
-pushing and publishing refuse stale or missing required evidence. Publication
+set. Release qualification rejects `RUSTC`, `RUSTC_WRAPPER`,
+`RUSTC_WORKSPACE_WRAPPER`, `RUSTDOC` and their `CARGO_BUILD_*` aliases. Unset these
+variables, including empty assignments, before preparing or using release
+evidence. Remove `build.rustc`, `build.rustc-wrapper`,
+`build.rustc-workspace-wrapper` and `build.rustdoc` from discovered Cargo
+configuration files in the checkout, its ancestors and Cargo home. These checks
+keep qualification tied to the declared toolchains; compiler and wrapper
+replacements are unsupported in the release workflow. Recorded compiler flags
+and profile overrides remain supported.
+
+Staging, committing, pushing and publishing refuse stale or missing required
+evidence. Publication
 never generates a replacement lockfile. Keep the prepared and final evidence,
 selected lockfile and package archive for the maintainer workflow; a new
 checkout alone is not publication qualification.

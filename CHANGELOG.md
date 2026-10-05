@@ -1,5 +1,30 @@
 # Changelog
 
+## 0.25.13
+
+- Reject Cargo compiler and wrapper replacements during release qualification.
+  Refuse `RUSTC`, `RUSTC_WRAPPER`, `RUSTC_WORKSPACE_WRAPPER`, `RUSTDOC`, their
+  `CARGO_BUILD_*` aliases, and the corresponding `build` keys in discovered Cargo
+  configuration files, including explicitly empty settings. Receipts continue
+  to identify the declared toolchains; alternate compiler execution cannot pass
+  as that qualification. Existing flags and profile settings remain recorded.
+- Refuse preparation before validation or version mutation, and refuse final
+  qualification, push and publication before dispatch, while preserving existing
+  receipts and archives. Cover both Cargo configuration filenames, inherited
+  configuration and empty/nonempty environment overrides. Ordinary job/profile
+  configuration remains supported. Malformed Cargo configuration reports its
+  path without exposing file contents.
+- Public APIs, durable ledger bytes, dependency selection, toolchains and size
+  budgets are unchanged. Consumers need no source adoption. No runtime performance
+  or binary-size improvement is claimed.
+- Focused validation: all 13 tooling tests pass on Rust 1.99.0 and 1.88.0;
+  strict helper/test Clippy, formatting, workflow lint, ShellCheck, shared snapshot
+  verification and whitespace checks pass. The three new override regressions
+  fail against 0.25.12. Command effects are substituted; no live commits, tags,
+  pushes or publication are exercised. Current-source full release gates and
+  native CI qualification await the maintainer's committed source. The host
+  support record separately documents the successful published 0.25.12 CI run.
+
 ## 0.25.12
 
 - Select the declared Rust 1.88.0 toolchain explicitly for MSRV CI dependency

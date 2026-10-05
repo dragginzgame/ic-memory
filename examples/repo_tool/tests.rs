@@ -89,6 +89,7 @@ impl Drop for Fixture {
     }
 }
 
+#[derive(Deserialize, Serialize)]
 struct State {
     source: BTreeMap<String, String>,
     release: Option<BTreeMap<String, String>>,
@@ -324,6 +325,207 @@ impl Execute for Substitute {
             _ => Err(format!("unexpected fixture process: {program} {args:?}").into()),
         }
     }
+}
+
+#[test]
+fn compiler_environment_overrides_refuse_preparation_and_release_effects() {
+    const ROOT: &str = "IC_MEMORY_TEST_COMPILER_ROOT";
+    const STATE: &str = "IC_MEMORY_TEST_COMPILER_STATE";
+    const OVERRIDES: [&str; 8] = [
+        "RUSTC",
+        "RUSTC_WRAPPER",
+        "RUSTC_WORKSPACE_WRAPPER",
+        "RUSTDOC",
+        "CARGO_BUILD_RUSTC",
+        "CARGO_BUILD_RUSTC_WRAPPER",
+        "CARGO_BUILD_RUSTC_WORKSPACE_WRAPPER",
+        "CARGO_BUILD_RUSTDOC",
+    ];
+    if let Some(state) = env::var_os(STATE) {
+        // Separate processes exercise real inherited environment without
+        // unsafe mutation of the concurrent Rust test harness environment.
+        let fixture = Fixture::new();
+        let receipt = fixture.repo.receipt_path("0.13.0", true).unwrap();
+        fs::create_dir_all(receipt.parent().unwrap()).unwrap();
+        fs::write(&receipt, "previous evidence").unwrap();
+        assert!(fixture.repo.prepare("minor").is_err());
+        fixture.assert_original();
+        assert_eq!(fs::read(receipt).unwrap(), b"previous evidence");
+        assert!(!fixture.repo.exec.state.borrow().calls.iter().any(|call| {
+            call[0] == "make"
+                || call
+                    .get(2)
+                    .is_some_and(|arg| matches!(arg.as_str(), "update" | "package"))
+        }));
+
+        let repo = Repository {
+            root: PathBuf::from(env::var_os(ROOT).unwrap()),
+            exec: Substitute {
+                state: RefCell::new(
+                    serde_json::from_str::<State>(state.to_str().unwrap()).unwrap(),
+                ),
+            },
+        };
+        let call_start = repo.exec.state.borrow().calls.len();
+        assert!(repo.qualify_release().is_err());
+        assert!(repo.push().is_err());
+        assert!(repo.publish(true).is_err());
+        assert!(
+            !repo.exec.state.borrow().calls[call_start..]
+                .iter()
+                .any(|call| {
+                    call.get(1).is_some_and(|arg| arg == "push")
+                        || call
+                            .get(2)
+                            .is_some_and(|arg| matches!(arg.as_str(), "package" | "publish"))
+                })
+        );
+        return;
+    }
+
+    let fixture = Fixture::new();
+    fixture.release();
+    let state = serde_json::to_string(&*fixture.repo.exec.state.borrow()).unwrap();
+    let evidence = fixture
+        .repo
+        .verify_evidence("source", "0.13.0", "release", false)
+        .unwrap();
+    let paths = [
+        fixture.repo.receipt_path("0.13.0", true).unwrap(),
+        fixture.repo.receipt_path("0.13.0", false).unwrap(),
+        fixture.repo.package_path("0.13.0").unwrap(),
+        fixture
+            .repo
+            .retained_package(&evidence.package_sha256)
+            .unwrap(),
+    ];
+    let before: Vec<_> = paths.iter().map(|path| fs::read(path).unwrap()).collect();
+    for name in OVERRIDES {
+        for value in ["", "alternate-tool"] {
+            let mut child = Command::new(env::current_exe().unwrap());
+            child.args(["--exact", "repo_tool::tests::compiler_environment_overrides_refuse_preparation_and_release_effects"]);
+            for variable in OVERRIDES {
+                child.env_remove(variable);
+            }
+            let output = child
+                .env(ROOT, &fixture.repo.root)
+                .env(STATE, &state)
+                .env(name, value)
+                .output()
+                .unwrap();
+            assert!(
+                output.status.success(),
+                "{name}={value:?}: {}{}",
+                String::from_utf8_lossy(&output.stdout),
+                String::from_utf8_lossy(&output.stderr)
+            );
+            for (path, bytes) in paths.iter().zip(&before) {
+                assert_eq!(fs::read(path).unwrap(), *bytes);
+            }
+        }
+    }
+}
+
+#[test]
+fn compiler_configuration_overrides_refuse_preparation() {
+    for filename in ["config", "config.toml"] {
+        for field in [
+            "rustc",
+            "rustc-wrapper",
+            "rustc-workspace-wrapper",
+            "rustdoc",
+        ] {
+            for value in ["", "alternate-tool"] {
+                let fixture = Fixture::new();
+                let directory = fixture.repo.root.join(".cargo");
+                fs::create_dir(&directory).unwrap();
+                let path = directory.join(filename);
+                let text = format!("[build]\n{field} = {value:?}\n");
+                fs::write(&path, &text).unwrap();
+                assert!(fixture.repo.prepare("minor").is_err());
+                fixture.assert_original();
+                assert_eq!(fs::read_to_string(path).unwrap(), text);
+                assert!(
+                    !fixture
+                        .repo
+                        .exec
+                        .state
+                        .borrow()
+                        .calls
+                        .iter()
+                        .any(|call| call[0] == "make")
+                );
+            }
+        }
+    }
+    let fixture = Fixture::new();
+    let directory = fixture.repo.root.join(".cargo");
+    fs::create_dir(&directory).unwrap();
+    fs::write(
+        directory.join("config.toml"),
+        "[build]\njobs = 1\n[profile.dev]\nopt-level = 1\n",
+    )
+    .unwrap();
+    fixture.release();
+    fixture.repo.publish(true).unwrap();
+
+    let fixture = Fixture::new();
+    let directory = fixture.repo.root.join(".cargo");
+    fs::create_dir(&directory).unwrap();
+    fs::write(
+        directory.join("config.toml"),
+        "token = 'private-test-value' trailing\n",
+    )
+    .unwrap();
+    let error = fixture.repo.configuration().unwrap_err().to_string();
+    assert!(!error.contains("private-test-value"));
+}
+
+#[test]
+fn inherited_compiler_configuration_refuses_preparation() {
+    let fixture = Fixture::new();
+    let directory = fixture.repo.root.join(".cargo");
+    fs::create_dir(&directory).unwrap();
+    fs::write(
+        directory.join("config.toml"),
+        "[build]\nrustc-wrapper = 'alternate-tool'\n",
+    )
+    .unwrap();
+    let root = fixture.repo.root.join("nested");
+    fs::create_dir(&root).unwrap();
+    let source = fixture.repo.exec.state.borrow().source.clone();
+    for path in source
+        .keys()
+        .map(String::as_str)
+        .chain(["Cargo.lock", "rust-toolchain.toml"])
+    {
+        fs::copy(fixture.repo.root.join(path), root.join(path)).unwrap();
+    }
+    let repo = Repository {
+        root,
+        exec: Substitute {
+            state: RefCell::new(State {
+                source,
+                release: None,
+                staged: false,
+                calls: Vec::new(),
+                fail: None,
+                tag: false,
+                remote_collision: false,
+            }),
+        },
+    };
+    assert!(repo.prepare("minor").is_err());
+    assert_eq!(repo.version(None).unwrap(), "0.12.3");
+    assert!(
+        !repo
+            .exec
+            .state
+            .borrow()
+            .calls
+            .iter()
+            .any(|call| call[0] == "make")
+    );
 }
 
 #[test]

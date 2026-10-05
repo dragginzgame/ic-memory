@@ -448,6 +448,22 @@ impl<E: Execute> Repository<E> {
         let mut configuration = BTreeMap::new();
         for (name, value) in env::vars_os() {
             let name = name.to_str().ok_or("non-UTF-8 environment variable name")?;
+            // The receipts identify the declared toolchains. Cargo compiler
+            // replacements or wrappers would execute outside those identities.
+            require(
+                !matches!(
+                    name,
+                    "RUSTC"
+                        | "RUSTC_WRAPPER"
+                        | "RUSTC_WORKSPACE_WRAPPER"
+                        | "RUSTDOC"
+                        | "CARGO_BUILD_RUSTC"
+                        | "CARGO_BUILD_RUSTC_WRAPPER"
+                        | "CARGO_BUILD_RUSTC_WORKSPACE_WRAPPER"
+                        | "CARGO_BUILD_RUSTDOC"
+                ),
+                &format!("unset {name} before release qualification; use the declared toolchains"),
+            )?;
             if matches!(
                 name,
                 "RUSTFLAGS"
@@ -481,6 +497,27 @@ impl<E: Execute> Repository<E> {
             for name in ["config", "config.toml"] {
                 let path = directory.join(name);
                 if path.exists() {
+                    let value: toml::Value =
+                        toml::from_str(&fs::read_to_string(&path)?).map_err(|_| {
+                            format!("invalid TOML Cargo configuration: {}", path.display())
+                        })?;
+                    for field in [
+                        "rustc",
+                        "rustc-wrapper",
+                        "rustc-workspace-wrapper",
+                        "rustdoc",
+                    ] {
+                        require(
+                            value
+                                .get("build")
+                                .and_then(|build| build.get(field))
+                                .is_none(),
+                            &format!(
+                                "remove build.{field} from {} before release qualification; use the declared toolchains",
+                                path.display()
+                            ),
+                        )?;
+                    }
                     configuration.insert(format!("config:{}", path.display()), self.sha256(&path)?);
                 }
             }

@@ -5,21 +5,24 @@ Its canister runtime target remains `wasm32-unknown-unknown`.
 
 | Host | Architecture | Native CI label | Qualification |
 | --- | --- | --- | --- |
-| Ubuntu 24.04 | x86-64 | `ubuntu-24.04` | 0.25.11 native development gate passed with Rust 1.99.0 |
-| macOS 15 | ARM64 | `macos-15` | 0.25.11 native development gate passed with Rust 1.99.0 |
-| macOS 15 | x86-64 | `macos-15-intel` | 0.25.11 native development gate passed with Rust 1.99.0 |
+| Ubuntu 24.04 | x86-64 | `ubuntu-24.04` | 0.25.12 development gate and Rust 1.88.0 all-target check passed |
+| macOS 15 | ARM64 | `macos-15` | 0.25.12 development gate and Rust 1.88.0 all-target check passed |
+| macOS 15 | x86-64 | `macos-15-intel` | 0.25.12 development gate and Rust 1.88.0 all-target check passed |
 
-The passing development gates are recorded in
-[CI run 37320179267](https://github.com/dragginzgame/ic-memory/actions/runs/37320179267)
-for source `9ac1472d4251d667cb332c8679b6ee367827511a`, with selected lockfile
-SHA-256 `d365679ad5f89f4312c7845c6def4c741f6e28e5d4a578f2cdf946c4ac0f7c48`.
-They cover the native tooling tests and full development gate described below.
+The passing development gates and MSRV checks are recorded in
+[CI run 37323134668](https://github.com/dragginzgame/ic-memory/actions/runs/37323134668)
+for source `5481bc765b9c7bed4cfb928c9efa9d1aa6838a22`, with selected lockfile
+SHA-256 `b67be11d2a175dc0ab35cb1429548a7f5dfb1adc030d3693d9348bfd1a51e2d0`.
+The development jobs used Rust 1.99.0 for native tooling tests and the full gate
+described below. Separate MSRV jobs logged and used Rust 1.88.0 for all-target
+compilation. The 0.25.13 changes require their own subsequent native CI run.
 
-That run does **not** qualify Rust 1.88.0 on any host. The MSRV jobs installed
-1.88.0, but the repository toolchain pin selected 1.99.0 for the dependency and
-compilation commands, as recorded by `rustc -Vv` in their logs. The workflow now
-sets `RUSTUP_TOOLCHAIN` explicitly for those commands. Native MSRV qualification
-and qualification of the 0.25.12 changes require a subsequent CI run.
+The earlier
+[0.25.11 run](https://github.com/dragginzgame/ic-memory/actions/runs/37320179267)
+does **not** qualify Rust 1.88.0 on any host. Its MSRV jobs installed 1.88.0, but
+the repository toolchain pin selected 1.99.0 for the dependency and compilation
+commands, as recorded by `rustc -Vv` in their logs. The corrected 0.25.12 workflow
+sets `RUSTUP_TOOLCHAIN` explicitly for those commands.
 
 The labels follow the [GitHub runner image matrix](https://github.com/actions/runner-images/blob/main/README.md).
 Configured jobs alone are not passing evidence. Linux and cross-compilation
