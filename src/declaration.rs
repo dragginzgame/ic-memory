@@ -120,19 +120,42 @@ impl AllocationDeclaration {
 ///
 /// Immutable runtime declaration snapshot ready for policy and history validation.
 ///
-/// A snapshot is duplicate-free, but it is still not permission to open storage.
-/// Integrations should call [`crate::validate_allocations`], commit the staged
-/// generation, and only then expose committed allocation authority.
+/// Construction and decoding enforce the declaration count, unique keys and
+/// slots, and bounded printable ASCII runtime fingerprint. A snapshot is still
+/// not permission to open storage. Integrations should call
+/// [`crate::validate_allocations`], commit the staged generation, and only then
+/// expose committed allocation authority.
 ///
 
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-#[serde(deny_unknown_fields)]
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 pub struct DeclarationSnapshot {
     /// Runtime declarations.
     declarations: Vec<AllocationDeclaration>,
     /// Optional binary/runtime identity for generation diagnostics.
-    #[serde(deserialize_with = "crate::cbor::deserialize_present_option")]
     runtime_fingerprint: Option<String>,
+}
+
+impl<'de> Deserialize<'de> for DeclarationSnapshot {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        #[derive(Deserialize)]
+        #[serde(rename = "DeclarationSnapshot", deny_unknown_fields)]
+        struct Snapshot {
+            declarations: Vec<AllocationDeclaration>,
+            #[serde(deserialize_with = "crate::cbor::deserialize_present_option")]
+            runtime_fingerprint: Option<String>,
+        }
+
+        let snapshot = Snapshot::deserialize(deserializer)?;
+        // Keep constructor refusal order: count and uniqueness precede the
+        // optional fingerprint, without copying or reordering declarations.
+        let checked = Self::new(snapshot.declarations).map_err(D::Error::custom)?;
+        match snapshot.runtime_fingerprint {
+            Some(fingerprint) => checked
+                .with_runtime_fingerprint(fingerprint)
+                .map_err(D::Error::custom),
+            None => Ok(checked),
+        }
+    }
 }
 
 impl DeclarationSnapshot {
@@ -178,12 +201,6 @@ impl DeclarationSnapshot {
     #[must_use]
     pub fn runtime_fingerprint(&self) -> Option<&str> {
         self.runtime_fingerprint.as_deref()
-    }
-
-    /// Validate decoded snapshot invariants before allocation validation.
-    pub fn validate(&self) -> Result<(), DeclarationSnapshotError> {
-        validate_declaration_set(&self.declarations)?;
-        validate_runtime_fingerprint(self.runtime_fingerprint.as_deref())
     }
 
     pub(crate) fn into_parts(self) -> (Vec<AllocationDeclaration>, Option<String>) {

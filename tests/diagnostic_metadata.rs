@@ -285,3 +285,147 @@ fn range_record_decode_preserves_current_shape_and_explicit_null() {
     ciborium::into_writer(&value, &mut bytes).unwrap();
     assert!(ciborium::from_reader::<MemoryManagerAuthorityRecord, _>(bytes.as_slice()).is_err());
 }
+
+fn snapshot_decode_error(value: &serde_json::Value, expected: &DeclarationSnapshotError) {
+    let json = serde_json::from_value::<DeclarationSnapshot>(value.clone());
+    let mut bytes = Vec::new();
+    ciborium::into_writer(value, &mut bytes).unwrap();
+    let cbor = ciborium::from_reader::<DeclarationSnapshot, _>(bytes.as_slice());
+    assert_eq!([json.is_err(), cbor.is_err()], [true, true], "{expected}");
+    assert!(
+        json.unwrap_err()
+            .to_string()
+            .contains(&expected.to_string())
+    );
+    assert!(
+        cbor.unwrap_err()
+            .to_string()
+            .contains(&expected.to_string())
+    );
+}
+
+#[test]
+fn snapshot_decode_checks_fingerprint_invariants() {
+    let declaration = AllocationDeclaration::memory_manager_unlabeled("app.rows.v1", 100).unwrap();
+    let source =
+        serde_json::to_value(DeclarationSnapshot::new(vec![declaration]).unwrap()).unwrap();
+    for (fingerprint, expected) in [
+        (
+            String::new(),
+            DeclarationSnapshotError::EmptyRuntimeFingerprint,
+        ),
+        (
+            format!("{}\0", "x".repeat(256)),
+            DeclarationSnapshotError::RuntimeFingerprintTooLong,
+        ),
+        (
+            "é\0".to_string(),
+            DeclarationSnapshotError::NonAsciiRuntimeFingerprint,
+        ),
+        (
+            "printable\u{7f}".to_string(),
+            DeclarationSnapshotError::ControlCharacterRuntimeFingerprint,
+        ),
+    ] {
+        let mut value = source.clone();
+        value["runtime_fingerprint"] = fingerprint.into();
+        snapshot_decode_error(&value, &expected);
+    }
+}
+
+#[test]
+fn snapshot_decode_checks_collection_invariants_before_fingerprint() {
+    let declaration = AllocationDeclaration::memory_manager_unlabeled("app.rows.v1", 100).unwrap();
+    for (second, expected) in [
+        (
+            declaration.clone(),
+            DeclarationSnapshotError::DuplicateSlot(declaration.slot().clone()),
+        ),
+        (
+            AllocationDeclaration::memory_manager_unlabeled("app.other.v1", 100).unwrap(),
+            DeclarationSnapshotError::DuplicateSlot(declaration.slot().clone()),
+        ),
+        (
+            AllocationDeclaration::memory_manager_unlabeled("app.rows.v1", 101).unwrap(),
+            DeclarationSnapshotError::DuplicateStableKey(declaration.stable_key().clone()),
+        ),
+    ] {
+        let value = serde_json::json!({
+            "declarations": [declaration, second],
+            // Collection refusal precedes malformed fingerprint metadata.
+            "runtime_fingerprint": "",
+        });
+        snapshot_decode_error(&value, &expected);
+    }
+    let mut value =
+        serde_json::to_value(DeclarationSnapshot::new(vec![declaration]).unwrap()).unwrap();
+    value["declarations"] = serde_json::Value::Array(vec![value["declarations"][0].clone(); 256]);
+    value["runtime_fingerprint"] = "".into();
+    snapshot_decode_error(&value, &DeclarationSnapshotError::TooManyDeclarations);
+}
+
+#[test]
+fn snapshot_decode_preserves_current_shape_order_and_full_slot_domain() {
+    let empty = DeclarationSnapshot::new(Vec::new()).unwrap();
+    let expected = b"\xa2\x6cdeclarations\x80\x73runtime_fingerprint\xf6";
+    let mut bytes = Vec::new();
+    ciborium::into_writer(&empty, &mut bytes).unwrap();
+    assert_eq!(bytes, expected);
+    assert_eq!(
+        ciborium::from_reader::<DeclarationSnapshot, _>(bytes.as_slice()).unwrap(),
+        empty
+    );
+
+    let full = DeclarationSnapshot::new(
+        (0..=254)
+            .rev()
+            .map(|id| {
+                AllocationDeclaration::memory_manager_unlabeled(format!("app.store{id}.v1"), id)
+                    .unwrap()
+            })
+            .collect(),
+    )
+    .unwrap();
+    for snapshot in [empty, full] {
+        for fingerprint in [
+            None,
+            Some(" ".to_string()),
+            Some((b' '..=b'~').map(char::from).collect()),
+            Some("x".repeat(256)),
+        ] {
+            let snapshot = fingerprint.map_or_else(
+                || snapshot.clone(),
+                |value| snapshot.clone().with_runtime_fingerprint(value).unwrap(),
+            );
+            let value = serde_json::to_value(&snapshot).unwrap();
+            assert_eq!(
+                serde_json::from_value::<DeclarationSnapshot>(value).unwrap(),
+                snapshot
+            );
+            let mut bytes = Vec::new();
+            ciborium::into_writer(&snapshot, &mut bytes).unwrap();
+            assert_eq!(
+                ciborium::from_reader::<DeclarationSnapshot, _>(bytes.as_slice()).unwrap(),
+                snapshot
+            );
+        }
+    }
+    let source = serde_json::to_value(DeclarationSnapshot::new(Vec::new()).unwrap()).unwrap();
+    for field in ["declarations", "runtime_fingerprint"] {
+        let mut value = source.clone();
+        value.as_object_mut().unwrap().remove(field);
+        assert!(serde_json::from_value::<DeclarationSnapshot>(value.clone()).is_err());
+        let mut bytes = Vec::new();
+        ciborium::into_writer(&value, &mut bytes).unwrap();
+        assert!(ciborium::from_reader::<DeclarationSnapshot, _>(bytes.as_slice()).is_err());
+    }
+    for value in [
+        serde_json::json!({"declarations": [], "runtime_fingerprint": 42}),
+        serde_json::json!({"declarations": [], "runtime_fingerprint": null, "extra": true}),
+    ] {
+        assert!(serde_json::from_value::<DeclarationSnapshot>(value.clone()).is_err());
+        let mut bytes = Vec::new();
+        ciborium::into_writer(&value, &mut bytes).unwrap();
+        assert!(ciborium::from_reader::<DeclarationSnapshot, _>(bytes.as_slice()).is_err());
+    }
+}

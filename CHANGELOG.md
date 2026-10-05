@@ -1,5 +1,32 @@
 # Changelog
 
+## 0.25.8
+
+- Decode `DeclarationSnapshot` through its checked constructor and fingerprint
+  setter. JSON and CBOR now reject excess declarations, duplicate keys/slots and
+  malformed runtime fingerprints before snapshots reach policy or allocation
+  validation. Retain count-before-uniqueness and slot-before-key refusal order,
+  collection checks before fingerprint checks, required explicit fingerprint
+  nulls, unknown-field rejection and the original declaration order.
+- Hard-cut `DeclarationSnapshot::validate` and
+  `AllocationValidationError::Snapshot`. Remove the repeated snapshot scan from
+  allocation validation; construction and decoding own these invariants. Policy,
+  historical claims, retirement, generation bounds, staging and protected commit
+  checks remain. Valid encodings, durable ledger formats and sealed declaration
+  fingerprints are unchanged.
+- Consolidate malformed snapshot coverage at the public decoding boundary. Both
+  collection and fingerprint regressions fail against 0.25.7 for JSON and CBOR;
+  current shape, explicit-null, printable-ASCII/256-byte and full 255-slot
+  round-trip assertions pass against both implementations.
+- Validation: 271 library tests, public integration/composed-host tests, all
+  eight compile-fail cases and six active doctests pass. Strict all-target Clippy,
+  Rust 1.88.0 all-target compilation, warning-denied Rustdoc, formatting,
+  whitespace checks, Wasm test compilation and all five raw Wasm size gates pass.
+  Inspected IcyDB source has one diagnostic match on the removed error variant;
+  adoption requires deleting that arm in `crates/icydb/src/error/bootstrap.rs`.
+  No relevant removed API usage was found in inspected Canic/blob-service source.
+  Downstream builds and deployments were not qualified.
+
 ## 0.25.7
 
 - Decode `MemoryManagerAuthorityRecord` through its checked constructor. JSON

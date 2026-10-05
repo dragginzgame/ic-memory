@@ -221,9 +221,11 @@ contains an absent or nonzero schema version, established by construction and
 decoding. `AllocationDeclaration` checks optional printable ASCII labels at
 construction and decoding, including their 256-byte bound.
 `MemoryManagerAuthorityRecord` checks its printable ASCII authority and optional
-purpose through its constructor, including on decode. Fingerprints, duplicate
-claims, range overlaps, namespace ownership, policy and ledger history still
-require their validation boundaries before influencing authority.
+purpose through its constructor, including on decode. `DeclarationSnapshot`
+checks its declaration count, unique keys and slots, and bounded printable ASCII
+runtime fingerprint during construction and decoding. Ledger fingerprints,
+historical claims, range overlaps, namespace ownership, policy and ledger
+history still require their validation boundaries before influencing authority.
 
 Invariant-bearing DTO fields are intentionally private where feasible. Callers
 should use checked constructors and accessors instead of fabricating durable

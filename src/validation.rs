@@ -1,6 +1,6 @@
 use crate::{
     capability::ValidatedAllocations,
-    declaration::{DeclarationSnapshot, DeclarationSnapshotError},
+    declaration::DeclarationSnapshot,
     key::StableKey,
     ledger::{AllocationLedger, ClaimConflict, RecoveredLedger, validate_declaration_claim},
     policy::AllocationPolicy,
@@ -11,15 +11,13 @@ use crate::{
 /// AllocationValidationError
 ///
 /// Failure to validate declarations against policy and historical ledger facts.
-/// Recovered ledger integrity is established before this boundary.
+/// Construction and decoding establish snapshot invariants; recovery establishes
+/// ledger integrity before this boundary.
 ///
 
 #[non_exhaustive]
 #[derive(Clone, Debug, Eq, thiserror::Error, PartialEq)]
 pub enum AllocationValidationError<P> {
-    /// Declaration snapshot was decoded or assembled with invalid DTOs.
-    #[error(transparent)]
-    Snapshot(DeclarationSnapshotError),
     /// Policy adapter rejected the declaration.
     #[error("allocation policy rejected a declaration")]
     Policy(P),
@@ -83,10 +81,6 @@ pub fn check_allocations<P: AllocationPolicy>(
     policy: &P,
 ) -> Result<(), AllocationValidationError<P::Error>> {
     let ledger = recovered.ledger();
-
-    snapshot
-        .validate()
-        .map_err(AllocationValidationError::Snapshot)?;
 
     for declaration in snapshot.declarations() {
         policy
@@ -305,24 +299,6 @@ mod tests {
             .expect_err("policy failure");
 
         assert_eq!(err, AllocationValidationError::Policy("bad key"));
-    }
-
-    #[test]
-    fn decoded_snapshot_rejects_excess_count_before_minting_authority() {
-        let recovered = recovered(Vec::new());
-        let mut value = serde_json::to_value(
-            DeclarationSnapshot::new(vec![declaration("app.users.v1", 100)]).unwrap(),
-        )
-        .unwrap();
-        value["declarations"] =
-            serde_json::Value::Array(vec![value["declarations"][0].clone(); 256]);
-        let snapshot: DeclarationSnapshot = serde_json::from_value(value).unwrap();
-        assert_eq!(
-            validate_allocations(&recovered, snapshot, &TestPolicy),
-            Err(AllocationValidationError::Snapshot(
-                DeclarationSnapshotError::TooManyDeclarations
-            ))
-        );
     }
 
     #[test]
