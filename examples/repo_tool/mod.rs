@@ -10,15 +10,16 @@ use std::{
     env,
     error::Error,
     fs,
+    io::Write,
     path::{Path, PathBuf},
     process::{Command, Stdio},
+    time::{SystemTime, UNIX_EPOCH},
 };
 
 #[cfg(test)]
 mod tests;
 
 type Result<T> = std::result::Result<T, Box<dyn Error>>;
-const SURFACES: [&str; 3] = ["Cargo.toml", "README.md", "CHANGELOG.md"];
 const PROBES: [(&str, u64); 5] = [
     ("core", 260_000),
     ("diagnostics", 315_000),
@@ -28,26 +29,57 @@ const PROBES: [(&str, u64); 5] = [
 ];
 
 ///
-/// ReleaseEvidence
+/// ReleaseSelection
 ///
-/// The exact inputs and artifact verified during release preparation.
+/// Exact release intent supplied by the common runner.
 ///
-/// Receipts remain local under Cargo's configured target directory. Missing or
-/// changed evidence requires preparation again; no earlier receipt is accepted.
+/// Adapters consume this selection without choosing another increment or target.
+///
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+struct ReleaseSelection {
+    kind: String,
+    previous: String,
+    source: String,
+    version: String,
+    date: String,
+    remote: String,
+    branch: String,
+}
+
+///
+/// ValidationEvidence
+///
+/// Successful full-gate inputs, saved before release metadata may change.
+///
+/// The original selected lock bytes permit exact root-version refresh checks
+/// and recovery after an interrupted refresh without selecting dependencies.
 ///
 
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
-struct ReleaseEvidence {
-    source: String,
-    version: String,
+struct ValidationEvidence {
+    selection: ReleaseSelection,
+    lock: Vec<u8>,
+    identities: [String; 3],
+    configuration: BTreeMap<String, String>,
+    command: Vec<String>,
+}
+
+///
+/// PackageEvidence
+///
+/// Qualified package bound to the saved validation and current root lockfile.
+///
+
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+struct PackageEvidence {
+    validation: ValidationEvidence,
     package_head: String,
     lock_sha256: String,
     package_sha256: String,
-    cargo: String,
-    rustc: String,
-    msrv_rustc: String,
-    configuration: BTreeMap<String, String>,
     commands: Vec<Vec<String>>,
 }
 
@@ -121,6 +153,101 @@ fn require(condition: bool, message: &str) -> Result<()> {
     }
 }
 
+impl ReleaseSelection {
+    fn from_env() -> Result<Self> {
+        let selection = Self {
+            kind: env::var("RELEASE_KIND")?,
+            previous: env::var("RELEASE_PREVIOUS")?,
+            version: env::var("RELEASE_VERSION")?,
+            date: env::var("RELEASE_DATE")?,
+            source: env::var("RELEASE_SOURCE")?,
+            remote: env::var("RELEASE_REMOTE")?,
+            branch: env::var("RELEASE_BRANCH")?,
+        };
+        require(
+            matches!(selection.kind.as_str(), "patch" | "minor" | "major"),
+            "invalid release kind",
+        )?;
+        version_parts(&selection.previous)?;
+        version_parts(&selection.version)?;
+        require(valid_date(&selection.date), "invalid UTC release date")?;
+        require(
+            matches!(selection.source.len(), 40 | 64)
+                && selection
+                    .source
+                    .bytes()
+                    .all(|byte| byte.is_ascii_hexdigit() && !byte.is_ascii_uppercase()),
+            "invalid source commit identity",
+        )?;
+        require(
+            !selection.remote.is_empty()
+                && selection
+                    .remote
+                    .bytes()
+                    .all(|byte| byte.is_ascii_alphanumeric() || b"._-".contains(&byte)),
+            "invalid selected remote",
+        )?;
+        require(
+            !selection.branch.is_empty()
+                && !selection.branch.bytes().any(|byte| byte.is_ascii_control()),
+            "invalid selected branch",
+        )?;
+        Ok(selection)
+    }
+}
+
+fn valid_date(date: &str) -> bool {
+    let bytes = date.as_bytes();
+    if bytes.len() != 10
+        || bytes[4] != b'-'
+        || bytes[7] != b'-'
+        || bytes
+            .iter()
+            .enumerate()
+            .any(|(index, byte)| index != 4 && index != 7 && !byte.is_ascii_digit())
+    {
+        return false;
+    }
+    let year = date[..4].parse::<u32>().unwrap_or(0);
+    let month = date[5..7].parse::<u32>().unwrap_or(0);
+    let day = date[8..].parse::<u32>().unwrap_or(0);
+    let maximum = match month {
+        1 | 3 | 5 | 7 | 8 | 10 | 12 => 31,
+        4 | 6 | 9 | 11 => 30,
+        2 if year.is_multiple_of(400) || year.is_multiple_of(4) && !year.is_multiple_of(100) => 29,
+        2 => 28,
+        _ => 0,
+    };
+    year != 0 && day != 0 && day <= maximum
+}
+
+fn write_atomic(path: &Path, bytes: &[u8]) -> Result<()> {
+    let parent = path.parent().ok_or("metadata has no parent")?;
+    fs::create_dir_all(parent)?;
+    let nonce = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)?
+        .as_nanos();
+    let temporary = parent.join(format!(
+        ".ic-memory-release.{}.{nonce}.tmp",
+        std::process::id()
+    ));
+    let mut file = fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(&temporary)?;
+    let result = (|| -> Result<()> {
+        file.write_all(bytes)?;
+        file.sync_all()?;
+        drop(file);
+        fs::rename(&temporary, path)?;
+        Ok(())
+    })();
+    if result.is_err() {
+        fs::remove_file(temporary)?;
+    }
+    result
+}
+
 fn version_parts(version: &str) -> Result<[u64; 3]> {
     let parts: Vec<_> = version.split('.').collect();
     require(
@@ -138,21 +265,6 @@ fn version_parts(version: &str) -> Result<[u64; 3]> {
         *number = part.parse()?;
     }
     Ok(numbers)
-}
-
-fn next_version(version: &str, kind: &str) -> Result<String> {
-    let [major, minor, patch] = version_parts(version)?;
-    match kind {
-        "patch" => Ok(format!(
-            "{major}.{minor}.{}",
-            patch.checked_add(1).ok_or("patch overflow")?
-        )),
-        "minor" => Ok(format!(
-            "{major}.{}.0",
-            minor.checked_add(1).ok_or("minor overflow")?
-        )),
-        _ => Err("release kind must be patch or minor".into()),
-    }
 }
 
 fn toml_string(text: &str, section: &str, field: &str) -> Result<String> {
@@ -206,7 +318,8 @@ fn replace_package_version(text: &str, previous: &str, version: &str) -> Result<
     Ok(result)
 }
 
-fn release_changelog(text: &str, version: &str) -> Result<String> {
+fn release_changelog(text: &str, version: &str, date: &str) -> Result<String> {
+    require(valid_date(date), "invalid UTC release date")?;
     let headings: Vec<_> = text
         .lines()
         .filter_map(|line| line.strip_prefix("## "))
@@ -243,7 +356,7 @@ fn release_changelog(text: &str, version: &str) -> Result<String> {
         .next()
         .unwrap_or_default();
     require(!entry.trim().is_empty(), "empty changelog entry")?;
-    Ok(text.to_owned())
+    Ok(text.replacen(&heading, &format!("## [{version}] - {date}\n"), 1))
 }
 
 fn check_lock_update(before: &[u8], after: &str, previous: &str, version: &str) -> Result<()> {
@@ -531,60 +644,98 @@ impl<E: Execute> Repository<E> {
         Ok(configuration)
     }
 
-    fn surfaces(&self, source: &str, version: &str) -> Result<BTreeMap<String, String>> {
-        let previous = self.version(Some(source))?;
+    fn check_selection(&self, selection: &ReleaseSelection) -> Result<()> {
+        version_parts(&selection.previous)?;
+        version_parts(&selection.version)?;
+        require(
+            valid_date(&selection.date),
+            "invalid saved UTC release date",
+        )?;
+        require(
+            self.output(
+                "bash",
+                &[
+                    "scripts/ci/next-release-version.sh",
+                    &selection.previous,
+                    &selection.kind,
+                ],
+            )?
+            .trim()
+                == selection.version,
+            "candidate differs from the common version selection",
+        )?;
+        require(
+            self.version(Some(&selection.source))? == selection.previous,
+            "saved source version differs from the release selection",
+        )
+    }
+
+    fn surfaces(&self, selection: &ReleaseSelection) -> Result<BTreeMap<String, String>> {
+        self.check_selection(selection)?;
+        let source = &selection.source;
+        let previous = &selection.previous;
+        let version = &selection.version;
         let readme = self.text("README.md", Some(source))?;
         let old = format!("ic-memory = \"{previous}\"");
         require(
             readme.lines().filter(|line| *line == old).count() == 1,
             "README must contain exactly one current dependency example",
         )?;
-        let readme = readme
-            .split_inclusive('\n')
-            .map(|line| {
-                if line.trim_end_matches('\n') == old {
-                    format!("ic-memory = \"{version}\"\n")
-                } else {
-                    line.to_owned()
-                }
-            })
-            .collect();
+        let [major, minor, _] = version_parts(version)?;
+        let detail = format!("docs/changelog/{major}.{minor}.md");
         Ok(BTreeMap::from([
             (
                 "Cargo.toml".to_owned(),
                 replace_package_version(
                     &self.text("Cargo.toml", Some(source))?,
-                    &previous,
+                    previous,
                     version,
                 )?,
             ),
-            ("README.md".to_owned(), readme),
+            (
+                "README.md".to_owned(),
+                readme.replacen(&old, &format!("ic-memory = \"{version}\""), 1),
+            ),
             (
                 "CHANGELOG.md".to_owned(),
-                release_changelog(&self.text("CHANGELOG.md", Some(source))?, version)?,
+                release_changelog(
+                    &self.text("CHANGELOG.md", Some(source))?,
+                    version,
+                    &selection.date,
+                )?,
+            ),
+            (
+                detail.clone(),
+                release_changelog(&self.text(&detail, Some(source))?, version, &selection.date)?,
             ),
         ]))
     }
 
-    fn check_surfaces(&self, source: &str, version: &str, revision: Option<&str>) -> Result<()> {
+    fn check_surfaces(
+        &self,
+        selection: &ReleaseSelection,
+        revision: Option<&str>,
+        partial: bool,
+    ) -> Result<()> {
         let mut expected_changes = Vec::new();
-        for (path, expected) in self.surfaces(source, version)? {
+        for (path, expected) in self.surfaces(selection)? {
+            let original = self.text(&path, Some(&selection.source))?;
+            let actual = self.text(&path, revision)?;
             require(
-                self.text(&path, revision)? == expected,
-                &format!("{path} differs from the validated release edit"),
+                actual == expected || partial && actual == original,
+                &format!("{path} differs from the saved release edit"),
             )?;
-            if self.text(&path, Some(source))? != expected {
+            if actual != original {
                 expected_changes.push(path);
             }
         }
-        let mut args = vec!["diff", "--name-only", source];
+        let mut args = vec!["diff", "--name-only", &selection.source];
         if let Some(revision) = revision {
             args.push(revision);
         }
         args.push("--");
-        let changed = self.git(&args)?;
         require(
-            changed
+            self.git(&args)?
                 .lines()
                 .eq(expected_changes.iter().map(String::as_str)),
             "release candidate contains changes outside its version surfaces",
@@ -595,7 +746,6 @@ impl<E: Execute> Repository<E> {
             "release candidate has untracked files",
         )
     }
-
     fn local_tag(&self, version: &str) -> Result<Option<String>> {
         let refs = self.git(&[
             "for-each-ref",
@@ -610,118 +760,179 @@ impl<E: Execute> Repository<E> {
             .map(|(hash, _)| hash.to_owned()))
     }
 
-    fn remote_ready(&self, version: &str, before_version: bool) -> Result<String> {
-        let branch = self.git(&["symbolic-ref", "--quiet", "--short", "HEAD"])?;
-        let remote_ref = format!("refs/remotes/origin/{branch}");
+    fn remote_ready(&self, selection: &ReleaseSelection) -> Result<()> {
+        require(
+            self.git(&["symbolic-ref", "--quiet", "--short", "HEAD"])? == selection.branch,
+            "selected release branch is not checked out",
+        )?;
+        let remote_ref = format!("refs/remotes/{}/{}", selection.remote, selection.branch);
         self.git(&[
             "fetch",
             "--quiet",
             "--no-tags",
-            "origin",
-            &format!("+refs/heads/{branch}:{remote_ref}"),
+            &selection.remote,
+            &format!("+refs/heads/{}:{remote_ref}", selection.branch),
         ])?;
         self.git(&["merge-base", "--is-ancestor", &remote_ref, "HEAD"])?;
-        let name = format!("refs/tags/v{version}");
-        let refs = self.git(&["ls-remote", "--refs", "origin", &name])?;
-        if !refs.is_empty() {
-            let fields: Vec<_> = refs.split_whitespace().collect();
-            require(
-                fields.len() == 2 && fields[1] == name,
-                "unexpected remote tag response",
-            )?;
-            require(
-                !before_version && self.local_tag(version)?.as_deref() == Some(fields[0]),
-                "remote release tag already exists or conflicts",
-            )?;
-        }
-        Ok(branch)
+        Ok(())
+    }
+    fn validation_path(&self, version: &str) -> Result<PathBuf> {
+        version_parts(version)?;
+        Ok(self
+            .target()?
+            .join("release-validation")
+            .join(format!("{version}-validated.json")))
     }
 
-    fn verify_inputs(&self, evidence: &ReleaseEvidence, source: &str, version: &str) -> Result<()> {
+    fn validation_command(&self) -> Result<Vec<String>> {
+        Ok(vec![
+            "make".to_owned(),
+            "--no-print-directory".to_owned(),
+            "validate".to_owned(),
+            format!("VALIDATION_TOOLCHAIN={}", self.toolchain()?),
+        ])
+    }
+
+    fn run_command(&self, command: &[String]) -> Result<()> {
+        self.run(
+            &command[0],
+            &command[1..].iter().map(String::as_str).collect::<Vec<_>>(),
+        )
+    }
+
+    fn preflight(&self, selection: &ReleaseSelection) -> Result<()> {
+        self.configuration()?;
+        self.check_selection(selection)?;
         require(
-            evidence.source == source && evidence.version == version,
-            "release evidence identifies another source or version",
+            self.git(&["rev-parse", "HEAD"])? == selection.source,
+            "source HEAD differs from the saved release",
         )?;
         require(
-            self.sha256(&self.root.join("Cargo.lock"))? == evidence.lock_sha256,
-            "selected lockfile differs from release validation",
+            self.version(None)? == selection.previous,
+            "preflight requires the saved base version",
         )?;
-        let [cargo, rustc, msrv_rustc] = self.identities()?;
+        self.check_surfaces(selection, None, true)?;
+        let lock = fs::read(self.root.join("Cargo.lock"))?;
+        check_lock_update(
+            &lock,
+            std::str::from_utf8(&lock)?,
+            &selection.previous,
+            &selection.previous,
+        )?;
+        self.remote_ready(selection)?;
+        // Remote inspection and offline cache verification cannot change the
+        // ignored lockfile whose selection will qualify this attempt.
+        self.run(
+            "cargo",
+            &[
+                &format!("+{}", self.toolchain()?),
+                "fetch",
+                "--locked",
+                "--offline",
+            ],
+        )?;
         require(
-            cargo == evidence.cargo && rustc == evidence.rustc && msrv_rustc == evidence.msrv_rustc,
-            "compiler identities differ from release validation",
+            fs::read(self.root.join("Cargo.lock"))? == lock,
+            "dependency selection changed during preflight",
         )?;
+        require(
+            self.git(&["rev-parse", "HEAD"])? == selection.source,
+            "source changed during preflight",
+        )?;
+        self.check_surfaces(selection, None, true)
+    }
+
+    fn verify(&self, selection: &ReleaseSelection) -> Result<()> {
+        self.configuration()?;
+        self.check_selection(selection)?;
+        self.clean()?;
+        require(
+            self.git(&["rev-parse", "HEAD"])? == selection.source
+                && self.version(None)? == selection.previous,
+            "validation requires the saved source and base version",
+        )?;
+        let lock = fs::read(self.root.join("Cargo.lock"))?;
+        check_lock_update(
+            &lock,
+            std::str::from_utf8(&lock)?,
+            &selection.previous,
+            &selection.previous,
+        )?;
+        let evidence = ValidationEvidence {
+            selection: selection.clone(),
+            lock,
+            identities: self.identities()?,
+            configuration: self.configuration()?,
+            command: self.validation_command()?,
+        };
+        self.run_command(&evidence.command)?;
+        self.clean()?;
+        require(
+            self.git(&["rev-parse", "HEAD"])? == selection.source,
+            "source changed during validation",
+        )?;
+        self.verify_inputs(&evidence, false)?;
+        let path = self.validation_path(&selection.version)?;
+        if path.exists() {
+            let retained = path
+                .parent()
+                .ok_or("validation path has no parent")?
+                .join("attempts")
+                .join(format!(
+                    "{}-validated.{}.{}.json",
+                    selection.version,
+                    std::process::id(),
+                    SystemTime::now().duration_since(UNIX_EPOCH)?.as_nanos()
+                ));
+            write_atomic(&retained, &fs::read(&path)?)?;
+        }
+        write_atomic(&path, &serde_json::to_vec_pretty(&evidence)?)
+    }
+
+    fn verify_inputs(&self, evidence: &ValidationEvidence, updated: bool) -> Result<()> {
         require(
             self.configuration()? == evidence.configuration,
             "build configuration differs from release validation",
         )?;
+        require(
+            self.identities()? == evidence.identities,
+            "compiler identities differ from release validation",
+        )?;
+        require(
+            evidence.command == self.validation_command()?,
+            "validation evidence has unexpected commands",
+        )?;
+        self.check_selection(&evidence.selection)?;
+        let current = fs::read(self.root.join("Cargo.lock"))?;
+        if current != evidence.lock {
+            require(updated, "selected lockfile differs from release validation")?;
+            check_lock_update(
+                &evidence.lock,
+                std::str::from_utf8(&current)?,
+                &evidence.selection.previous,
+                &evidence.selection.version,
+            )?;
+        }
         Ok(())
     }
 
-    fn verify_evidence(
-        &self,
-        source: &str,
-        version: &str,
-        head: &str,
-        prepared: bool,
-    ) -> Result<ReleaseEvidence> {
-        let evidence: ReleaseEvidence =
-            serde_json::from_slice(&fs::read(self.receipt_path(version, prepared)?)?)?;
-        self.verify_inputs(&evidence, source, version)?;
+    fn validated(&self, selection: &ReleaseSelection) -> Result<ValidationEvidence> {
+        let evidence: ValidationEvidence =
+            serde_json::from_slice(&fs::read(self.validation_path(&selection.version)?)?)?;
         require(
-            evidence.package_head == head,
-            "package evidence identifies another Git HEAD",
+            evidence.selection == *selection,
+            "validation identifies another release intent",
         )?;
-        require(
-            self.sha256(&self.package_path(version)?)? == evidence.package_sha256,
-            "package differs from release validation",
-        )?;
-        require(
-            self.sha256(&self.retained_package(&evidence.package_sha256)?)?
-                == evidence.package_sha256,
-            "retained archive differs from release validation",
-        )?;
-        let mut commands = self.preparation_commands()?;
-        if !prepared {
-            commands.push(self.final_package_command()?);
-        }
-        require(
-            evidence.commands == commands,
-            "release evidence has unexpected qualification commands",
-        )?;
+        self.verify_inputs(&evidence, true)?;
         Ok(evidence)
     }
 
-    fn final_package_command(&self) -> Result<Vec<String>> {
-        Ok(vec![
-            "cargo".to_owned(),
-            format!("+{}", self.toolchain()?),
-            "package".to_owned(),
-            "--locked".to_owned(),
-            "--offline".to_owned(),
-        ])
-    }
-
-    fn write_evidence(&self, evidence: &ReleaseEvidence, prepared: bool) -> Result<()> {
-        let receipt = self.receipt_path(&evidence.version, prepared)?;
-        fs::create_dir_all(receipt.parent().ok_or("receipt has no parent")?)?;
-        let temporary = receipt.with_extension("json.tmp");
-        fs::write(&temporary, serde_json::to_vec_pretty(evidence)?)?;
-        fs::rename(temporary, receipt)?;
-        Ok(())
-    }
-
     fn preparation_commands(&self) -> Result<Vec<Vec<String>>> {
+        let pin = format!("+{}", self.toolchain()?);
         Ok(vec![
-            vec![
-                "make".to_owned(),
-                "--no-print-directory".to_owned(),
-                "validate".to_owned(),
-                format!("VALIDATION_TOOLCHAIN={}", self.toolchain()?),
-            ],
             vec![
                 "cargo".to_owned(),
-                format!("+{}", self.toolchain()?),
+                pin.clone(),
                 "update".to_owned(),
                 "--workspace".to_owned(),
                 "--offline".to_owned(),
@@ -734,7 +945,7 @@ impl<E: Execute> Repository<E> {
             ],
             vec![
                 "cargo".to_owned(),
-                format!("+{}", self.toolchain()?),
+                pin,
                 "package".to_owned(),
                 "--locked".to_owned(),
                 "--offline".to_owned(),
@@ -743,221 +954,258 @@ impl<E: Execute> Repository<E> {
         ])
     }
 
-    #[expect(
-        clippy::too_many_lines,
-        reason = "keep version mutation and its rollback in one reviewable transaction"
-    )]
-    fn prepare(&self, kind: &str) -> Result<()> {
-        self.clean()?;
-        let source = self.git(&["rev-parse", "HEAD"])?;
-        let previous = self.version(None)?;
-        let version = next_version(&previous, kind)?;
-        let expected = self.surfaces(&source, &version)?;
-        require(
-            self.local_tag(&version)?.is_none(),
-            "local release tag already exists",
-        )?;
-        // A cache/lockfile must already be selected. No implicit online retry.
-        let lock = self.root.join("Cargo.lock");
-        let selected_lock_bytes = fs::read(&lock)?;
-        let selected_lock = self.sha256(&lock)?;
-        let [cargo, rustc, msrv_rustc] = self.identities()?;
-        let configuration = self.configuration()?;
-        self.remote_ready(&version, true)?;
-        let commands = self.preparation_commands()?;
-        let validate = &commands[0];
-        self.run(
-            &validate[0],
-            &validate[1..].iter().map(String::as_str).collect::<Vec<_>>(),
-        )?;
-        self.clean()?;
-        require(
-            self.sha256(&lock)? == selected_lock,
-            "validation changed dependency selection",
-        )?;
-        require(
-            self.identities()? == [cargo.clone(), rustc.clone(), msrv_rustc.clone()],
-            "compiler identities changed during validation",
-        )?;
-        require(
-            self.configuration()? == configuration,
-            "build configuration changed during validation",
-        )?;
-        require(
-            self.git(&["rev-parse", "HEAD"])? == source,
-            "source HEAD changed during validation",
-        )?;
-        self.remote_ready(&version, true)?;
-        self.clean()?;
-        require(
-            self.git(&["rev-parse", "HEAD"])? == source,
-            "source HEAD changed before version edits",
-        )?;
-        let backups: BTreeMap<_, _> = SURFACES
-            .iter()
-            .chain(std::iter::once(&"Cargo.lock"))
-            .map(|path| Ok((*path, fs::read(self.root.join(path))?)))
-            .collect::<Result<_>>()?;
-        // Remote inspection can take time and Git status ignores Cargo.lock.
-        // The mutation/rollback snapshot must still be the validated selection.
-        require(
-            backups["Cargo.lock"] == selected_lock_bytes,
-            "dependency selection changed before version edits",
-        )?;
-        let result = (|| -> Result<()> {
-            for (path, text) in &expected {
-                fs::write(self.root.join(path), text)?;
-            }
-            let update = &commands[1];
-            self.run(
-                &update[0],
-                &update[1..].iter().map(String::as_str).collect::<Vec<_>>(),
-            )?;
-            check_lock_update(
-                &backups["Cargo.lock"],
-                &fs::read_to_string(&lock)?,
-                &previous,
-                &version,
-            )?;
-            // Prepared metadata must already match the saved commit payload;
-            // a pre-commit hook is not allowed to repair release identity.
-            let formatting = &commands[2];
-            self.run(
-                &formatting[0],
-                &formatting[1..]
-                    .iter()
-                    .map(String::as_str)
-                    .collect::<Vec<_>>(),
-            )?;
-            let package = &commands[3];
-            self.run(
-                &package[0],
-                &package[1..].iter().map(String::as_str).collect::<Vec<_>>(),
-            )?;
-            require(
-                self.git(&["rev-parse", "HEAD"])? == source,
-                "source HEAD changed during preparation",
-            )?;
-            self.check_surfaces(&source, &version, None)?;
-            require(
-                self.identities()? == [cargo.clone(), rustc.clone(), msrv_rustc.clone()],
-                "compiler identities changed during preparation",
-            )?;
-            require(
-                self.configuration()? == configuration,
-                "build configuration changed during preparation",
-            )?;
-            let evidence = ReleaseEvidence {
-                package_head: source.clone(),
-                source,
-                version: version.clone(),
-                lock_sha256: self.sha256(&lock)?,
-                package_sha256: self.record_package(&version)?,
-                cargo,
-                rustc,
-                msrv_rustc,
-                configuration,
-                commands,
-            };
-            // Publish complete evidence only after all checks pass. The previous
-            // receipt and build artifacts survive failures before this rename.
-            self.write_evidence(&evidence, true)
-        })();
-        if result.is_err() {
-            for (path, contents) in backups {
-                fs::write(self.root.join(path), contents)?;
-            }
-        }
-        result?;
-        println!(
-            "Prepared {version}. Review git diff; the maintainer runs release-stage, release-commit and release-push."
-        );
-        Ok(())
+    fn final_package_command(&self) -> Result<Vec<String>> {
+        Ok(vec![
+            "cargo".to_owned(),
+            format!("+{}", self.toolchain()?),
+            "package".to_owned(),
+            "--locked".to_owned(),
+            "--offline".to_owned(),
+        ])
     }
 
-    fn prepared(&self) -> Result<ReleaseEvidence> {
-        let source = self.git(&["rev-parse", "HEAD"])?;
-        let version = self.version(None)?;
-        let previous = self.version(Some(&source))?;
-        require(
-            version == next_version(&previous, "patch")?
-                || version == next_version(&previous, "minor")?,
-            "candidate is not the next patch or minor",
-        )?;
-        self.check_surfaces(&source, &version, None)?;
-        self.verify_evidence(&source, &version, &source, true)
-    }
-
-    fn stage(&self) -> Result<()> {
-        self.prepared()?;
-        self.run(
-            "git",
-            &["add", "--", "Cargo.toml", "README.md", "CHANGELOG.md"],
+    fn write_evidence(&self, evidence: &PackageEvidence, prepared: bool) -> Result<()> {
+        write_atomic(
+            &self.receipt_path(&evidence.validation.selection.version, prepared)?,
+            &serde_json::to_vec_pretty(evidence)?,
         )
     }
 
-    fn inspect_release_commit(&self) -> Result<(String, String, String)> {
-        self.clean()?;
-        let version = self.version(None)?;
-        let head = self.git(&["rev-parse", "HEAD"])?;
-        let source = self.git(&["rev-parse", "HEAD^"])?;
+    fn prepare_selected(&self, selection: &ReleaseSelection) -> Result<()> {
+        self.validated(selection)?;
         require(
-            self.git(&["log", "-1", "--format=%B"])?
-                == format!("Release {version}\n\nValidated-source: {source}"),
-            "HEAD is not a validated release commit",
+            self.git(&["rev-parse", "HEAD"])? == selection.source,
+            "source changed before preparation",
         )?;
-        self.check_surfaces(&source, &version, Some("HEAD"))?;
-        let previous = self.version(Some(&source))?;
-        require(
-            version == next_version(&previous, "patch")?
-                || version == next_version(&previous, "minor")?,
-            "release is not the next patch or minor",
-        )?;
-        Ok((version, head, source))
+        self.check_surfaces(selection, None, true)?;
+        let expected = self.surfaces(selection)?;
+        let mut backups = BTreeMap::new();
+        for path in expected
+            .keys()
+            .chain(std::iter::once(&"Cargo.lock".to_owned()))
+        {
+            backups.insert(path.clone(), fs::read(self.root.join(path))?);
+        }
+        let result = (|| -> Result<()> {
+            // Cargo.toml is last: observing the candidate means all other source
+            // metadata is complete. The prepared check can then finish lock and
+            // package qualification after an interrupted operation.
+            for (path, text) in expected
+                .iter()
+                .filter(|(path, _)| path.as_str() != "Cargo.toml")
+            {
+                write_atomic(&self.root.join(path), text.as_bytes())?;
+            }
+            write_atomic(
+                &self.root.join("Cargo.toml"),
+                expected["Cargo.toml"].as_bytes(),
+            )?;
+            self.prepared(selection)?;
+            Ok(())
+        })();
+        if result.is_err() {
+            for (path, bytes) in backups {
+                let current = fs::read(self.root.join(&path))?;
+                let owned = if path == "Cargo.lock" {
+                    current == bytes
+                        || std::str::from_utf8(&current).is_ok_and(|text| {
+                            check_lock_update(&bytes, text, &selection.previous, &selection.version)
+                                .is_ok()
+                        })
+                } else {
+                    current == expected[&path].as_bytes() || current == bytes
+                };
+                if owned {
+                    write_atomic(&self.root.join(path), &bytes)?;
+                }
+            }
+        }
+        result
     }
 
-    fn release_commit(&self) -> Result<(String, String, String)> {
-        let (version, head, source) = self.inspect_release_commit()?;
-        self.verify_evidence(&source, &version, &head, false)?;
-        Ok((version, head, source))
-    }
-
-    fn qualify_release(&self) -> Result<()> {
-        let (version, head, source) = self.inspect_release_commit()?;
-        let mut evidence: ReleaseEvidence =
-            serde_json::from_slice(&fs::read(self.receipt_path(&version, true)?)?)?;
-        self.verify_inputs(&evidence, &source, &version)?;
+    fn verify_evidence(
+        &self,
+        selection: &ReleaseSelection,
+        head: &str,
+        prepared: bool,
+        working: bool,
+    ) -> Result<PackageEvidence> {
+        let evidence: PackageEvidence =
+            serde_json::from_slice(&fs::read(self.receipt_path(&selection.version, prepared)?)?)?;
         require(
-            evidence.commands == self.preparation_commands()?,
-            "prepared evidence has unexpected commands",
+            evidence.validation.selection == *selection,
+            "package evidence identifies another release intent",
+        )?;
+        self.verify_inputs(&evidence.validation, true)?;
+        require(
+            self.sha256(&self.root.join("Cargo.lock"))? == evidence.lock_sha256,
+            "selected lockfile differs from package qualification",
         )?;
         require(
-            evidence.package_head == source,
-            "prepared package evidence identifies another Git HEAD",
+            evidence.package_head == head,
+            "package evidence identifies another Git HEAD",
         )?;
-        // A failed final package may replace Cargo's working archive. The
-        // retained prepared archive must still prove the original qualification.
         require(
             self.sha256(&self.retained_package(&evidence.package_sha256)?)?
                 == evidence.package_sha256,
-            "retained prepared archive differs from release validation",
+            "retained archive differs from release validation",
         )?;
-        let command = self.final_package_command()?;
-        self.run(
-            &command[0],
-            &command[1..].iter().map(String::as_str).collect::<Vec<_>>(),
+        if working {
+            require(
+                self.sha256(&self.package_path(&selection.version)?)? == evidence.package_sha256,
+                "working package differs from release validation",
+            )?;
+        }
+        let mut commands = self.preparation_commands()?;
+        if !prepared {
+            commands.push(self.final_package_command()?);
+        }
+        require(
+            evidence.commands == commands,
+            "package evidence has unexpected commands",
+        )?;
+        Ok(evidence)
+    }
+
+    fn prepared(&self, selection: &ReleaseSelection) -> Result<PackageEvidence> {
+        require(
+            self.git(&["rev-parse", "HEAD"])? == selection.source,
+            "prepared source changed",
+        )?;
+        let validation = self.validated(selection)?;
+        self.check_surfaces(selection, None, false)?;
+        if self.receipt_path(&selection.version, true)?.exists() {
+            // Existing evidence is checked, never silently repaired or replaced.
+            return self.verify_evidence(selection, &selection.source, true, true);
+        }
+        let commands = self.preparation_commands()?;
+        self.run_command(&commands[0])?;
+        check_lock_update(
+            &validation.lock,
+            &fs::read_to_string(self.root.join("Cargo.lock"))?,
+            &selection.previous,
+            &selection.version,
+        )?;
+        self.run_command(&commands[1])?;
+        let lock_sha256 = self.sha256(&self.root.join("Cargo.lock"))?;
+        self.run_command(&commands[2])?;
+        self.check_surfaces(selection, None, false)?;
+        require(
+            self.git(&["rev-parse", "HEAD"])? == selection.source,
+            "source changed during preparation",
+        )?;
+        self.verify_inputs(&validation, true)?;
+        require(
+            self.sha256(&self.root.join("Cargo.lock"))? == lock_sha256,
+            "packaging changed selected dependencies",
+        )?;
+        let evidence = PackageEvidence {
+            validation,
+            package_head: selection.source.clone(),
+            lock_sha256,
+            package_sha256: self.record_package(&selection.version)?,
+            commands,
+        };
+        self.write_evidence(&evidence, true)?;
+        Ok(evidence)
+    }
+
+    fn commit_check(&self, selection: &ReleaseSelection) -> Result<()> {
+        self.prepared(selection)?;
+        require(
+            self.git(&["diff", "--name-only"])?.is_empty(),
+            "release metadata has unstaged changes",
         )?;
         require(
-            self.inspect_release_commit()? == (version.clone(), head.clone(), source.clone()),
-            "release changed during final package qualification",
+            self.git(&["diff", "--cached", "--name-only"])?
+                == self.git(&["diff", "--name-only", &selection.source])?,
+            "stage exactly the release metadata",
+        )
+    }
+
+    fn inspect_release_commit(&self) -> Result<(String, String, ReleaseSelection)> {
+        self.clean()?;
+        let version = self.version(None)?;
+        let prepared: PackageEvidence =
+            serde_json::from_slice(&fs::read(self.receipt_path(&version, true)?)?)?;
+        let selection = prepared.validation.selection;
+        require(
+            selection.version == version,
+            "release metadata differs from saved intent",
         )?;
-        self.verify_inputs(&evidence, &source, &version)?;
+        let head = self.git(&["rev-parse", "HEAD"])?;
+        require(
+            self.git(&["rev-parse", "HEAD^"])? == selection.source,
+            "release parent differs from validated source",
+        )?;
+        require(
+            self.git(&["log", "-1", "--format=%s"])? == format!("Release {version}"),
+            "HEAD is not the selected release commit",
+        )?;
+        self.check_surfaces(&selection, Some("HEAD"), false)?;
+        Ok((version, head, selection))
+    }
+
+    fn release_commit(&self) -> Result<(String, String, ReleaseSelection)> {
+        let release = self.inspect_release_commit()?;
+        self.verify_evidence(&release.2, &release.1, false, true)?;
+        Ok(release)
+    }
+
+    fn qualify_release(&self) -> Result<()> {
+        let (version, head, selection) = self.inspect_release_commit()?;
+        let mut evidence = self.verify_evidence(&selection, &selection.source, true, false)?;
+        if self.receipt_path(&version, false)?.exists() {
+            self.verify_evidence(&selection, &head, false, true)?;
+            return Ok(());
+        }
+        let command = self.final_package_command()?;
+        self.run_command(&command)?;
+        require(
+            self.inspect_release_commit()? == (version.clone(), head.clone(), selection),
+            "release changed during final qualification",
+        )?;
+        self.verify_inputs(&evidence.validation, true)?;
+        require(
+            self.sha256(&self.root.join("Cargo.lock"))? == evidence.lock_sha256,
+            "final packaging changed selected dependencies",
+        )?;
         evidence.package_head = head;
         evidence.package_sha256 = self.record_package(&version)?;
         evidence.commands.push(command);
         self.write_evidence(&evidence, false)
     }
 
+    fn selected_committed_check(&self, selection: &ReleaseSelection) -> Result<()> {
+        require(
+            self.inspect_release_commit()?.2 == *selection,
+            "commit identifies another release intent",
+        )?;
+        self.qualify_release()
+    }
+
+    fn tagged_check(
+        &self,
+        selection: &ReleaseSelection,
+    ) -> Result<(String, String, ReleaseSelection)> {
+        let release = self.release_commit()?;
+        require(
+            release.2 == *selection,
+            "tagged release identifies another intent",
+        )?;
+        self.check_tag(&release.0, &release.1)?;
+        Ok(release)
+    }
+
+    fn push_check(&self, selection: &ReleaseSelection) -> Result<()> {
+        let (version, head, actual) = self.tagged_check(selection)?;
+        self.remote_ready(selection)?;
+        require(
+            self.release_commit()? == (version.clone(), head.clone(), actual),
+            "release changed during remote inspection",
+        )?;
+        self.check_tag(&version, &head)
+    }
     fn check_tag(&self, version: &str, head: &str) -> Result<()> {
         require(self.local_tag(version)?.is_some(), "release tag is missing")?;
         require(
@@ -967,71 +1215,6 @@ impl<E: Execute> Repository<E> {
         require(
             self.git(&["rev-parse", &format!("refs/tags/v{version}^{{commit}}")])? == head,
             "release tag does not identify HEAD",
-        )
-    }
-
-    fn commit(&self) -> Result<()> {
-        if self.git(&["log", "-1", "--format=%s"])? != format!("Release {}", self.version(None)?) {
-            let evidence = self.prepared()?;
-            require(
-                self.git(&["diff", "--name-only"])?.is_empty(),
-                "release surfaces have unstaged changes",
-            )?;
-            let changed = self.git(&["diff", "--cached", "--name-only"])?;
-            let expected = self.git(&["diff", "--name-only", &evidence.source])?;
-            require(changed == expected, "stage exactly the release edits")?;
-            require(
-                self.local_tag(&evidence.version)?.is_none(),
-                "release tag already exists",
-            )?;
-            self.run(
-                "git",
-                &[
-                    "commit",
-                    "-m",
-                    &format!(
-                        "Release {}\n\nValidated-source: {}",
-                        evidence.version, evidence.source
-                    ),
-                ],
-            )?;
-        }
-        self.qualify_release()?;
-        let (version, head, _) = self.release_commit()?;
-        if self.local_tag(&version)?.is_none() {
-            self.run(
-                "git",
-                &[
-                    "tag",
-                    "-a",
-                    &format!("v{version}"),
-                    "-m",
-                    &format!("Release {version}"),
-                ],
-            )?;
-        }
-        self.check_tag(&version, &head)
-    }
-
-    fn push(&self) -> Result<()> {
-        let (version, head, source) = self.release_commit()?;
-        self.check_tag(&version, &head)?;
-        let branch = self.remote_ready(&version, false)?;
-        require(
-            self.release_commit()? == (version.clone(), head.clone(), source),
-            "release changed during remote inspection",
-        )?;
-        self.check_tag(&version, &head)?;
-        self.run(
-            "git",
-            &[
-                "push",
-                "--no-follow-tags",
-                "--atomic",
-                "origin",
-                &format!("{head}:refs/heads/{branch}"),
-                &format!("refs/tags/v{version}:refs/tags/v{version}"),
-            ],
         )
     }
 
@@ -1072,7 +1255,7 @@ pub(super) fn main() -> Result<()> {
     let args: Vec<_> = env::args().skip(1).collect();
     require(
         !args.is_empty() && args.len() <= 2,
-        "usage: repo-tool <version|msrv|toolchain|ensure-clean|wasm-size|patch|minor|stage|commit|qualify-release|push|publish> [--dry-run]",
+        "usage: repo-tool <version|msrv|toolchain|target|ensure-clean|wasm-size|release-preflight|release-verify|release-prepare-version|release-prepared-check|release-files|release-commit-check|release-committed-check|release-tagged-check|release-push-check|qualify-release|publish> [--dry-run]",
     )?;
     let command = args[0].as_str();
     require(
@@ -1087,13 +1270,29 @@ pub(super) fn main() -> Result<()> {
         "version" => println!("{}", repo.version(None)?),
         "msrv" => println!("{}", repo.msrv()?),
         "toolchain" => println!("{}", repo.toolchain()?),
+        "target" => println!("{}", repo.target()?.display()),
         "ensure-clean" => repo.clean()?,
         "wasm-size" => check_wasm_artifacts(&repo.target()?)?,
-        "patch" | "minor" => repo.prepare(command)?,
-        "stage" => repo.stage()?,
-        "commit" => repo.commit()?,
+        "release-preflight" => repo.preflight(&ReleaseSelection::from_env()?)?,
+        "release-verify" => repo.verify(&ReleaseSelection::from_env()?)?,
+        "release-prepare-version" => repo.prepare_selected(&ReleaseSelection::from_env()?)?,
+        "release-prepared-check" => {
+            repo.prepared(&ReleaseSelection::from_env()?)?;
+        }
+        "release-files" => {
+            for path in repo.surfaces(&ReleaseSelection::from_env()?)?.keys() {
+                print!("{path}\0");
+            }
+        }
+        "release-commit-check" => repo.commit_check(&ReleaseSelection::from_env()?)?,
+        "release-committed-check" => {
+            repo.selected_committed_check(&ReleaseSelection::from_env()?)?;
+        }
+        "release-tagged-check" => {
+            repo.tagged_check(&ReleaseSelection::from_env()?)?;
+        }
+        "release-push-check" => repo.push_check(&ReleaseSelection::from_env()?)?,
         "qualify-release" => repo.qualify_release()?,
-        "push" => repo.push()?,
         "publish" => {
             let flag = match env::var("PUBLISH_DRY_RUN") {
                 Ok(flag) => flag,

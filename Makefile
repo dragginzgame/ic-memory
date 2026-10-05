@@ -1,8 +1,16 @@
 .DEFAULT_GOAL := help
 .PHONY: help test version ensure-clean fetch-dependencies verify-shared-tooling \
         fmt fmt-check check-format-tools install-hooks lint-tooling test-hooks test-tooling validate validate-toolchain wasm-size \
-        patch minor release-patch release-minor release-stage release-commit \
-        qualify-release release-push package publish publish-dry-run
+        test-release-runner test-release-adapters release-patch release-minor release-major release-resume \
+        release-version release-preflight release-verify release-prepare-version \
+        release-prepared-check release-files release-commit-check release-committed-check \
+        release-tagged-check release-push-check qualify-release package publish publish-dry-run
+
+RELEASE_REMOTE ?= origin
+RELEASE_BRANCH ?= main
+ifneq ($(word 2,$(filter release-patch release-minor release-major release-resume,$(MAKECMDGOALS))),)
+$(error Select exactly one release target)
+endif
 
 # Bootstrap from the repository's simple, checked-in toolchain declaration.
 # The Rust helper parses the full TOML for its own compiler identity checks.
@@ -13,12 +21,12 @@ CARGO_SORT_VERSION := $(shell sed -n 's/^export IC_MEMORY_CARGO_SORT_VERSION=//p
 
 help:
 	@echo 'Setup: fetch-dependencies, install-hooks (install pinned tools separately).'
-	@echo 'Focused checks: verify-shared-tooling, test-tooling, test-hooks, fmt-check, lint-tooling.'
+	@echo 'Focused checks: verify-shared-tooling, test-tooling, test-release-adapters, test-release-runner, test-hooks, fmt-check, lint-tooling.'
 	@echo 'Formatting: fmt. Full gates require explicit qualification: validate, validate-toolchain.'
+	@echo 'Maintainer releases: release-patch, release-minor, release-major; rerun the same target to recover.'
 
-# Consumer setup boundary: resolve aliases before invoking the recorded installer.
 install-hooks:
-	bash "$$(pwd -P)/scripts/dev/install-git-hooks.sh"
+	bash scripts/dev/install-git-hooks.sh
 
 # Network preparation is separate from offline checks; select Cargo.lock first.
 fetch-dependencies:
@@ -51,6 +59,12 @@ lint-tooling:
 test-tooling:
 	cargo +$(VALIDATION_TOOLCHAIN) test --locked --offline --example repo-tool
 
+test-release-runner:
+	bash scripts/ci/test-release-runner.sh
+
+test-release-adapters:
+	bash scripts/ci/test-release-adapters.sh
+
 test-hooks: check-format-tools
 	RUSTUP_AUTO_INSTALL=0 CARGO_NET_OFFLINE=true bash scripts/ci/test-git-hooks.sh
 
@@ -69,7 +83,7 @@ validate:
 	cargo +$$($(TOOL) msrv) check --locked --offline --all-targets
 
 validate-toolchain:
-	$(MAKE) --no-print-directory verify-shared-tooling test-tooling test-hooks fmt-check
+	$(MAKE) --no-print-directory verify-shared-tooling test-tooling test-release-adapters test-release-runner test-hooks fmt-check
 	cargo +$(VALIDATION_TOOLCHAIN) clippy --locked --offline --all-targets -- -D warnings
 	cargo +$(VALIDATION_TOOLCHAIN) test --locked --offline -- --test-threads=1
 	RUSTDOCFLAGS='-D warnings' cargo +$(VALIDATION_TOOLCHAIN) doc --locked --offline --no-deps
@@ -83,36 +97,33 @@ wasm-size:
 		--example wasm-runtime-integration-size-probe
 	@$(TOOL) wasm-size
 
-patch:
-	$(TOOL) patch
-
-minor:
-	$(TOOL) minor
-
 # Maintainer-only orchestration: these targets commit, tag and push.
-release-patch:
-	$(MAKE) patch
-	$(MAKE) release-stage
-	$(MAKE) release-commit
-	$(MAKE) release-push
+release-patch release-minor release-major:
+	+@bash scripts/ci/run-release.sh "$(@:release-%=%)" "$(RELEASE_REMOTE)" "$(RELEASE_BRANCH)"
 
-release-minor:
-	$(MAKE) minor
-	$(MAKE) release-stage
-	$(MAKE) release-commit
-	$(MAKE) release-push
+release-resume:
+	+@bash scripts/ci/run-release.sh resume "$(VERSION)" "$(RELEASE_REMOTE)" "$(RELEASE_BRANCH)"
 
-release-stage:
-	$(TOOL) stage
+release-version:
+	@$(TOOL) version
 
-release-commit:
-	$(TOOL) commit
+release-preflight release-prepare-version release-prepared-check release-files release-commit-check release-committed-check release-tagged-check release-push-check:
+	@$(TOOL) $@
+
+# Preserve every gate attempt, including failures. The adapter owns the gate;
+# these logs use Cargo's selected target directory, including overrides.
+release-verify:
+	@set -eu; \
+	log_dir="$$($(TOOL) target)/release-validation/attempts"; \
+	mkdir -p "$$log_dir"; \
+	log_file="$$(mktemp "$$log_dir/verify.XXXXXX")"; \
+	if $(TOOL) release-verify > "$$log_file" 2>&1; then result=0; else result=$$?; fi; \
+	cat "$$log_file"; \
+	echo "Retained full-gate log: $$log_file"; \
+	exit "$$result"
 
 qualify-release:
 	$(TOOL) qualify-release
-
-release-push:
-	$(TOOL) push
 
 package: ensure-clean
 	cargo +$(VALIDATION_TOOLCHAIN) package --locked --offline

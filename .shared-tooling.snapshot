@@ -1,8 +1,8 @@
 # Shared Tooling snapshot v1
 format	1
 source	https://github.com/dragginzgame/shared-tooling
-revision	c0206f1943238e21bd00fbe01658e6a0864c24fa
-file	ec0a84e371edff5ed15a70219f2596673d927ff443f5141939d2bcd3b6829a3f	-	DRAGGINZGAME.md
+revision	f52c0e2476aee094359ed21de91c468540d3969f
+file	1c52e09906f5b99411dbef850b51600663185d23fa7f159bc0e89bab28f6bbb6	-	DRAGGINZGAME.md
 file	59f6cb0b47fcfa698396776bbb391737292ebf34457ad7c65803fe7b36961499	-	docs/principles/README.md
 file	9315c9faffa4f36cfab496342535bf49d728ddd2111e8e127cbc44b3fac89ce7	-	docs/principles/decision-artifact-discipline.md
 file	56701aba8ce851ac4cce32fb55ce721698a94218b1e46636818f6b43debcb719	-	docs/principles/reviewable-changes.md
@@ -17,6 +17,10 @@ file	e2697e5a93198a3bc638fb315566db57ae4855b9d67fb251f65ad3b19aae0fbb	x	scripts/
 file	9c95f254c59a1ef312d37981dcd8af2dadf4eda34cf9026cfeda4092a2716858	-	rules/changelogs.md
 file	b8ed357e3cf12e1fd8262273beb2e25244c1f6ea83cefb6b800f8229921c632e	-	rules/cargo-dependencies.md
 file	9a95588444f9bbe4c6adc3dd01a84886ab45a763ec514d6a92dac40b0bbc60e9	-	rules/git-hooks.md
-file	96f328bf06640b1bbd4a2ab80e15421dd986a720546a41ce53e2f26ca93cd33c	-	docs/releases.md
+file	5f0497c3f1b6ac9b256014848468b065a6b34ef5369f62d7b91e5f3653ec4998	-	docs/releases.md
 file	c65e42e65787821947cb56a9e323ce47b1071de613ab327cbaba6c619e8c084b	x	.githooks/pre-commit
-file	95ec02f103165bdce3c3c7a0b5ccae9253ac7f32ffa326ed5fb94bc520dffe86	x	scripts/dev/install-git-hooks.sh
+file	c48e767cb16fce756bea55492e33c62fd1e57560310d63bfb8a1adc118be2212	x	scripts/dev/install-git-hooks.sh
+file	980fb6babdf20d0df6e6295d724152343a5c458ab1451b54706c7c54e50f1810	x	scripts/ci/run-release.sh
+file	37e028e2d9fee271ffdc06d06fc15d7a148ec524def3d9ed2afcd9910c0ec642	x	scripts/ci/next-release-version.sh
+file	a0f5d6f4639e5a62b8e4d34aef573f982441b85214e4e58e60149f10d72d0137	-	scripts/ci/finalize-release-changelog.awk
+file	8f06048c269f1e481389790a55d5df89a864c84151777e43fa5d382e6c24562e	x	scripts/ci/test-release-runner.sh

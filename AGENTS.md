@@ -11,12 +11,14 @@ exception to revision-bound policy adoption while the shared rules are being
 developed locally. The sibling remains read-only to agents.
 
 The existing tooling snapshot at revision
-`c0206f1943238e21bd00fbe01658e6a0864c24fa` is recorded in
+`f52c0e2476aee094359ed21de91c468540d3969f` is recorded in
 [.shared-tooling.snapshot](.shared-tooling.snapshot). It identifies the vendored
 files, hashes and executable modes; it does not freeze the active local policy.
 Keep its provenance accurate and never edit vendored files in place. Do not
-attribute uncommitted shared files to that recorded revision. These instructions
-are the repository's local overlay.
+attribute uncommitted shared files to that recorded revision. The live local
+[user-triggered maintenance rule](../shared-tooling/rules/agent-maintenance.md)
+also applies within its activation scope; it is not part of this recorded snapshot.
+These instructions are the repository's local overlay.
 
 The user-provided ownership rule below is the approved local exception to shared
 tag/push authority: commits, tags and pushes always belong to the maintainer,
@@ -30,7 +32,8 @@ and prerequisites are declared in [docs/host-support.md](docs/host-support.md).
 
 - Before editing or compiling, check for active Cargo, rustc and rustdoc builds.
 - Focused checks: `make verify-shared-tooling`, `make test-tooling`,
-  `make test-hooks`, `make fmt-check`, `make lint-tooling`, or an appropriately
+  `make test-release-adapters`, `make test-release-runner`, `make test-hooks`,
+  `make fmt-check`, `make lint-tooling`, or an appropriately
   selected Rust test.
 - Full gates: `make validate`, `make validate-toolchain`, `make wasm-size` and
   package/release qualification. Run these only on explicit request or in CI.
@@ -53,8 +56,8 @@ builds, fetches dependencies or changes selected lockfiles.
 refreshes selected index entries, so agents must not run it on this repository's
 real index. Exercise it only in disposable fixtures without commits or tags.
 Source adoption, local activation and native host qualification are distinct.
-The setup target resolves physical paths before invoking the recorded installer,
-so logical checkout aliases work without patching a vendored file.
+The recorded installer resolves physical checkout paths, so logical checkout
+aliases work without a consumer setup adapter.
 
 ## Release recovery policy
 
@@ -65,12 +68,13 @@ and stop on identity, payload, destination or concurrency conflicts. Explicit
 `release-resume` is an optional selection command, not a required recovery step.
 Preflight/validation failures repeat fresh gates while preserving earlier evidence.
 
-These rules apply immediately, including while shared changes are uncommitted.
-The current local workflow does not yet implement the common runner or that
-automatic recovery contract; [RELEASING.md](RELEASING.md) distinguishes its actual
-commands from those requirements. Do not claim that upstream stub tests qualify
-ic-memory's adapters, or invoke a release command to prove adoption. Preserve
-the recorded snapshot's actual bytes and provenance while applying live policy.
+The common vendored runner owns release ordering, locks, saved intent and Git
+effects; Rust consumer adapters own metadata and qualification receipts. See
+[RELEASING.md](RELEASING.md) for actual commands and evidence. Qualify canonical
+runner substitutes, consumer Make dispatch and Rust adapters separately; no stub
+pass proves a native or live release. Preserve failed gate logs, earlier receipts
+and retained archives across retries. Never invoke a maintainer release command
+to prove adoption.
 
 ## User-Owned Commits and Pushes
 
@@ -81,8 +85,8 @@ agent to perform these user-owned actions.
 
 - Leave edits unstaged and uncommitted for the user to review.
 - Do not create, move, or delete release tags.
-- Do not run `make release-commit`, `make release-push`, `make release-minor`,
-  `make release-patch`, `make release-major` or `make release-resume`; these
+- Do not run `make release-minor`, `make release-patch`, `make release-major`
+  or `make release-resume`; these
   commands commit, tag, or push.
 - Prepare source, documentation, and validation within the working tree, then
   report the result and any commands the user needs to run.

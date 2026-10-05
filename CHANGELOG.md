@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.26.0]
+
+- Use the shared maintainer release workflow for patch, minor and major releases.
+  Rerunning the same target reconciles interrupted preparation and Git effects at
+  the saved version and destination. Retain gate logs, receipts and archives.
+- **Breaking maintainer workflow:** replace phase commands with the common release
+  targets and use the current qualification receipt schema. Finish outstanding
+  earlier releases with their original tooling before adopting it. Library APIs
+  and stable-memory formats are unchanged.
+- Finalize root and detailed changelog entries with the same saved UTC date.
+
+[Detailed notes](docs/changelog/0.26.md) ·
+[Focused qualification](docs/release-workflow-qualification.md)
+
 ## [0.25.14]
 
 - Fix runtime memory bounds checks that could corrupt a neighboring allocation

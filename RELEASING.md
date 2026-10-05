@@ -4,165 +4,150 @@
 
 # Releasing ic-memory
 
-This guide is for repository maintainers. Application users do not need these
-steps to depend on `ic-memory`.
+This guide is for maintainers. The maintainer owns all commits, tags and pushes.
+Agents leave source, documentation and focused checks unstaged and uncommitted;
+see [AGENTS.md](AGENTS.md). The Rust `repo-tool` example is development tooling,
+not canister runtime code. Prerequisites and native host evidence are in
+[host support](docs/host-support.md).
 
-The maintainer exclusively owns commits, tags and pushes. Agents prepare source,
-documentation and focused validation in the working tree, leaving changes
-unstaged and uncommitted. See [AGENTS.md](AGENTS.md). The release helper is the
-Rust development example `repo-tool`; it is not canister runtime code.
+## Source and dependency preparation
 
-Prerequisites, pinned formatter setup, hook activation and native qualification
-are declared in
-[docs/host-support.md](docs/host-support.md). Development and CI use Rust 1.99.0;
-the crate's MSRV remains Rust 1.88.0. The workflow requires Git, GNU Make and
-`shasum`. Python is no longer a tooling dependency.
+Before 1.0, breaking consumer contracts require a minor release; compatible work
+uses a patch. Maintain one numbered, undated pending entry, `## [X.Y.Z]`, in both
+`CHANGELOG.md` and `docs/changelog/<major>.<minor>.md`. Notes select the candidate
+without changing package versions. Preparation refuses mismatched or duplicate
+identities and preserves historical entries.
 
-## Release policy and source preparation
-
-Before 1.0, breaking public API or semantic changes require a minor release.
-Patch releases preserve the public contract. Hard cuts still remove superseded
-APIs and formats directly; they do not justify an incompatible patch.
-Previously published releases and tags are historical records and are not
-rewritten. Inspect affected downstream callers before choosing a release kind.
-
-Keep one numbered, undated pending entry at the top: `## [X.Y.Z]`. Development
-selects that candidate from the latest actual release and the complete pending
-batch, respecting compatible maintainer overrides. Notes alone do not authorize
-package or lockfile version changes. Keep root summaries concise and link extended
-notes in `docs/changelog/<major>.<minor>.md` and their existing evidence owners.
-Preparation requires the pending heading to match its computed candidate;
-it refuses a conflicting selection rather than renumbering the notes. Historical
-entries remain unchanged. Changelog checks apply to release preparation, not
-downstream deployments.
-
-The current local [common release contract](../shared-tooling/docs/releases.md)
-applies at the maintainer's direction, including uncommitted changes. Read it
-before changing release tooling. Applying that policy and preparing its local
-implementation do not require an upstream commit or snapshot refresh.
-
-The workflow below still needs implementation alignment with that contract:
-the current targets lack `release-major`, a shared release lock and an exact
-saved-plan recovery path through the same normal target. The latest local
-contract selects unfinished intent before any fresh increment, reconciles the
-saved version, commit and destination automatically, and stops on conflicts.
-Explicit `release-resume VERSION=X.Y.Z` is optional selection under that contract;
-it must not be a required step after interruption. The current ic-memory helper
-does not yet provide those common-runner guarantees. These are implementation
-gaps, independent of the
-shared rules' commit state. Snapshot integrity alone does not qualify release
-adapters or their behavior. Agents must not execute the maintainer-owned release
-commands to prove adoption.
-
-The maintainer commits the implementation and changelog before preparation;
-source must then be clean. Check for active builds before compiling or editing.
-Select and cache dependency inputs separately, before release mutation:
+The maintainer commits implementation and pending notes before releasing. The
+selected source must be clean, on the selected branch, with no active build.
+Select dependencies explicitly in a fresh checkout and prepare their cache:
 
 ```sh
-# A fresh checkout needs explicit dependency selection first:
-cargo generate-lockfile
+cargo generate-lockfile # Fresh checkout only; preserve an existing selection.
 make fetch-dependencies
 ```
 
-Do not regenerate an existing validated lockfile. Cache preparation is a network
-step; validation and packaging run offline with the selected lockfile. Dependency
-upgrades are separate work. A missing cache or lockfile fails rather than retrying
-online. The lockfile remains untracked, but its hash is release evidence.
+The untracked `Cargo.lock` is a required qualification input. Release preflight
+checks the selected cache with `cargo fetch --locked --offline`; it never retries
+online or regenerates the lockfile. Validation, version refresh and packaging
+remain offline. A root-version refresh may change only the `ic-memory` entry,
+never dependency selection. Cache preparation is a separate network operation.
 
-Focused checks include `make test-tooling`, `make fmt-check`,
-`make verify-shared-tooling`, and `make lint-tooling` with separately installed
-lint tools. `make validate`, `make validate-toolchain`, `make wasm-size` and
-package qualification are full gates: run only when explicitly requested or in
-configured CI. Release preparation explicitly invokes `make validate`.
-
-## Maintainer release commands
+## Maintainer commands and recovery
 
 ```sh
-make release-patch   # Validate, prepare, stage, commit, qualify, tag, push
-make release-minor   # Same workflow with a minor release
-make publish-dry-run # Check the qualified release; no upload
-make publish         # Publish that release to crates.io
+make release-patch
+make release-minor
+make release-major
+# Defaults: RELEASE_REMOTE=origin RELEASE_BRANCH=main
 ```
 
-Publication is a separate network effect and requires configured crates.io
-credentials. `PUBLISH_DRY_RUN=1 make publish` also performs a dry run.
-The release targets push the current branch and its `vX.Y.Z` annotated tag
-atomically to `origin`. The branch must already exist remotely, and its
-refreshed remote head must be an ancestor of the local source commit.
+All three delegate to the unchanged vendored Shared Tooling runner. It owns
+preflight, the full gate, exact preparation, explicit staging, the `Release X.Y.Z`
+commit, annotated `vX.Y.Z` tag and atomic branch/tag push. All kinds use the same
+pinned `make validate` gate. The branch must already exist remotely, with its
+refreshed remote head an ancestor of local HEAD. Overrides select a remote name
+and branch explicitly; the saved push URL identity must remain unchanged.
 
-To review the version edits before committing:
+Rerun the **same normal target** after interruption. Once preparation may start,
+the runner selects unfinished intent before computing any new increment. Its
+plan and directory lock live in Git's `release-state` directory; the plan fixes
+kind, previous/candidate versions, source commit, UTC date, branch and destination.
+Matching effects are reconciled without a second bump or commit. Conflicting
+source, payload, index, destination, tag or unfinished intent stops recovery.
+Inspect a stale lock's recorded owner before manual removal; do not steal it.
+
+Preflight and validation failures restart fresh gates through the normal target,
+preserving prior attempts. Optional explicit selection uses the same checks:
 
 ```sh
-make patch           # Or make minor; stops after source validation/preparation
-# Review git diff, then the maintainer runs:
-make release-stage
-make release-commit  # Commit, qualify the final archive, then annotate the tag
-make release-push
+make release-resume VERSION=X.Y.Z
 ```
 
-Preparation changes only the root package version, README dependency example
-and the matching pending changelog heading. It refreshes only the root package
-version in `Cargo.lock`; any other dependency-selection change is rejected.
-Failed preparation restores these files and preserves existing receipts and
-build artifacts. A non-mutating `make fmt-check` after metadata preparation
-must pass before packaging or staging; the hook must not repair a saved release
-payload. Release commits must contain exactly the expected edits and
-identify the validated source in their commit message.
+Push uses `--no-follow-tags --atomic` and exactly the selected branch and candidate
+tag refspecs. There is no force push or non-atomic fallback. A lost push reply is
+reconciled with exact remote identities; a failed remote query stops recovery.
+Success retains plans, logs, receipts and archives. Cleanup and package
+publication are separate operations.
 
-A rejected push can be retried with `make release-push`; do not bump again.
-A failed final package or tag step can be retried with `make release-commit`
-without creating another commit. `make qualify-release` repeats final package
-qualification without committing, tagging or pushing. It requires the original
-prepared evidence and unchanged dependency/compiler identities.
-Its prepared package HEAD must identify the validated source, and the retained
-prepared archive must still match its recorded digest. Missing or corrupted
-prepared artifacts stop qualification before repackaging; Cargo's working
-archive may differ after a failed final package without preventing a retry.
-These are the current helper's phase-specific retries. Rerunning `release-patch`
-or `release-minor` after an interrupted preparation is not yet automatic saved-plan
-recovery; the common workflow must replace that orchestration before those
-normal targets can be used for the new recovery contract.
+The Rust consumer adapters consume the runner's seven `RELEASE_*` selections.
+They validate source/input identities, finalize the root and detail notes with
+the saved UTC date, update Cargo/README metadata and qualify the packages. The
+explicit staged file set is `Cargo.toml`, `README.md`, `CHANGELOG.md` and the
+candidate minor-line detail file. The ignored lockfile is evidence, not a staged
+release file. Git mutations belong exclusively to the common runner.
+
+Metadata writes use same-directory atomic replacement, with `Cargo.toml` last.
+An interrupted earlier write can resume from exact original/prepared files. Once
+the candidate manifest is present, prepared checks can finish lock refresh and
+packaging from saved successful validation, without another bump or full gate.
+Returned preparation failures restore only owned edits; conflicting files and
+independently changed dependency selections are preserved and refused.
+
+`release-version`, `release-files` and the other named adapters are runner
+interfaces, not alternative maintainer orchestration. They require the saved
+selection and evidence where applicable. `make qualify-release` can finish final
+package qualification without Git effects, using the original prepared evidence.
 
 ## Evidence and publication
 
-Receipts live under Cargo's actual target directory, including configured paths
-and `CARGO_TARGET_DIR`, in `release-validation/`:
+Under Cargo's actual target directory (including configured overrides),
+`release-validation/` contains:
 
-- `<version>-prepared.json` binds the validated source, selected lockfile,
-compiler identities, commands and package built during preparation.
-- `<version>.json` additionally binds the final archive to the release commit.
-  Cargo embeds Git metadata, so this archive is qualified after the commit.
-- `artifacts/<sha256>.crate` retains each qualified archive independently of
-  Cargo's working package path, which subsequent packaging may replace.
+- `<version>-validated.json`: successful full-gate source, saved selection,
+  original lock bytes, toolchain identities, configuration and exact command.
+- `<version>-prepared.json`: that validation plus refreshed lock digest and the
+  package qualified before the release commit.
+- `<version>.json`: final package bound to the exact release commit. Cargo embeds
+  Git metadata, so final packaging follows commit creation.
+- `artifacts/<sha256>.crate`: retained qualified archives independent of Cargo's
+  replaceable working package path.
+- `attempts/verify.*`: unique stdout/stderr logs, including failed full gates.
+  Replaced successful validation receipts are also archived here before replacement.
 
-Compiler identities include the pinned Cargo/rustc and the MSRV rustc. The
-receipts record SHA-256 digests for the lockfile, package and applicable Cargo
-configuration files, plus build flag/profile environment values. Release
-validation explicitly uses the repository pin even if a local Make override is
-set. Release qualification rejects `RUSTC`, `RUSTC_WRAPPER`,
-`RUSTC_WORKSPACE_WRAPPER`, `RUSTDOC` and their `CARGO_BUILD_*` aliases. Unset these
-variables, including empty assignments, before preparing or using release
-evidence. Remove `build.rustc`, `build.rustc-wrapper`,
-`build.rustc-workspace-wrapper` and `build.rustdoc` from discovered Cargo
-configuration files in the checkout, its ancestors and Cargo home. These checks
-keep qualification tied to the declared toolchains; compiler and wrapper
-replacements are unsupported in the release workflow. Recorded compiler flags
-and profile overrides remain supported.
+Receipts are written atomically. Existing prepared/final receipts and archives
+are checked, never silently repaired. Missing/corrupted prepared evidence stops
+final qualification before packaging; a working archive replaced by failed final
+packaging does not invalidate its intact retained prepared archive. Completed
+prepared/final checks reuse valid evidence without repackaging.
 
-Staging, committing, pushing and publishing refuse stale or missing required
-evidence. Publication
-never generates a replacement lockfile. Keep the prepared and final evidence,
-selected lockfile and package archive for the maintainer workflow; a new
-checkout alone is not publication qualification.
+Compiler identities include pinned Cargo/rustc and MSRV rustc. Discovered Cargo
+configuration digests and build flags/profile overrides are recorded. Qualification
+rejects compiler/wrapper replacements: `RUSTC`, `RUSTC_WRAPPER`,
+`RUSTC_WORKSPACE_WRAPPER`, `RUSTDOC`, their `CARGO_BUILD_*` aliases and corresponding
+`build` keys in checkout, ancestor and Cargo-home configuration. Unset even empty
+assignments. Ordinary recorded flags/profile settings remain supported.
 
-Cargo owns registry upload behavior and immutable package-version identity.
-If publication is interrupted, inspect crates.io for the exact version before
-retrying; a lost reply is not proof of failure. A successful source check is not
-proof of publication, downstream adoption or deployment.
+The current receipt schema is a hard cut from the earlier phase workflow. Old
+receipts are not accepted or migrated. Finish outstanding earlier releases with
+their original tooling before adopting this workflow. Preserve old evidence;
+there is no automatic deletion or conversion of it or canister stable data.
 
-`make test-tooling` exercises the release workflow using substituted commands
-and temporary files owned by each fixture. It checks rollback, invalid evidence,
-final qualification, retry ordering and atomic push arguments. It creates no Git
-commits, tags or pushes, invokes no live Cargo publication, and needs no network.
-Wasm budget tests exercise exact ceilings, missing/oversized artifacts and Cargo
-metadata failure against the selected artifact directory.
+```sh
+make publish-dry-run
+make publish # Separate network effect; requires crates.io credentials.
+```
+
+`PUBLISH_DRY_RUN=1 make publish` also selects a dry run. Publication requires the
+exact commit, annotated tag, selected dependencies and qualified archive; it
+never creates replacement evidence. A fresh checkout alone is not qualification.
+If publication is interrupted, inspect crates.io's exact version before retrying;
+a lost reply is not proof of failure. Release targets never publish implicitly.
+
+## Focused workflow checks
+
+- `make test-tooling`: Rust adapters with substituted Git/Cargo/gate effects;
+  recovery, rollback, input binding, artifact refusal and publication checks.
+- `make test-release-adapters`: actual consumer Make recipes with substituted
+  helper/runner; all entry points, selection forwarding and unique gate logs.
+- `make test-release-runner`: unchanged canonical runner with command substitutes;
+  ordering, all increments, Git effect scope, locks and interruption reconciliation.
+- `make verify-shared-tooling`, `make test-hooks`, `make fmt-check` and
+  `make lint-tooling`: snapshot, setup/formatting and portable tooling checks.
+
+These tests create no commits/tags/pushes and perform no publication or full gate.
+They do not prove a live release or native macOS behavior. The declared native CI
+matrix includes them in `make validate-toolchain`. Full gates (`make validate`,
+`make validate-toolchain`, `make wasm-size`, package qualification) run only on
+explicit request or in configured CI. Current focused evidence is recorded in
+[release workflow qualification](docs/release-workflow-qualification.md).

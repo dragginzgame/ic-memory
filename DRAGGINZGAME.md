@@ -161,8 +161,10 @@ Consumer choices described in those guides remain subject to this baseline.
   validation-only failures restart through the normal target against current
   source with fresh preflight and complete validation; retain earlier evidence.
   Persist exact release intent before preparation may begin, then reconcile an
-  interrupted release at its exact version and commit before retrying. Do not
-  force-push, overwrite tags, silently bump again or add implicit package
+  interrupted release automatically when the same normal target is rerun, at
+  its saved version and commit. Select unfinished intent before computing another
+  increment; stop for identity, payload, destination or concurrency conflicts.
+  Do not force-push, overwrite tags, silently bump again or add implicit package
   publication, deployment or post-release cleanup.
 
 ## Changelogs and artifact preservation

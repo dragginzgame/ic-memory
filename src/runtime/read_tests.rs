@@ -324,7 +324,7 @@ fn byte_io_crosses_four_gib_with_discontiguous_buckets() {
     memory.write(offset, &[1, 2, 3]);
     let cold = handle(&runtime, 1);
     assert_eq!(read_uninitialized::<3>(&cold, offset), [1, 2, 3]);
-    assert_eq!(read_uninitialized::<3>(&cold.clone(), offset), [1, 2, 3]);
+    assert_eq!(read_uninitialized::<3>(&cold, offset), [1, 2, 3]);
     let mut dst = [0; 3];
     memory.read(offset, &mut dst);
     assert_eq!(dst, [1, 2, 3]);

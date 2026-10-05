@@ -4,6 +4,8 @@ target/
 # Library crates generally do not commit Cargo.lock.
 Cargo.lock
 .shared-tooling-refresh.*
+# Helper-owned scratch for atomic release metadata and receipt replacement.
+.ic-memory-release.*.tmp
 
 # Local editor and OS metadata
 .DS_Store

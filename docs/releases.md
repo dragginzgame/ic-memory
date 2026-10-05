@@ -158,13 +158,22 @@ push or version change has been authorized, because commits remain
 maintainer-owned under the [engineering baseline](../DRAGGINZGAME.md). Agents
 may use separate read-only or preparation phases within existing authorization.
 
-Once version preparation has started, the normal targets reject any unfinished
-release, including when the bumped metadata would otherwise select another
-candidate. If preparation, tagging or a push is interrupted, retain the exact candidate,
-source/commit identity, completed phases and evidence. Inspect local and remote
-state before `make release-resume VERSION=X.Y.Z` resumes that release. A missing push reply does not prove failure.
-Never rerun the increment from the already bumped version, recreate an existing
-release commit, overwrite a tag or discard artifacts to obtain a clean retry.
+Once version preparation may have started, rerun the same normal target to
+automatically reconcile the unfinished release at its saved version. The runner
+selects that intent before computing a new candidate, including when metadata
+has already been bumped. It retains the source/commit identity, UTC date,
+destination, completed phases and evidence. A different release kind, competing
+unfinished identities, changed source or payload, conflicting tag or destination,
+or an occupied lock stops recovery; the existence of a plan alone does not.
+
+Recovery checks the saved phase against actual local and remote state. It never
+increments the prepared version again, recreates a matching release commit,
+overwrites a tag or replays a push whose outcome cannot be established. A missing
+push reply does not prove failure: matching remote branch and tag identities
+complete that release without another push; a failed remote query stops it.
+`make release-resume VERSION=X.Y.Z` remains available for explicit selection of
+a retained release, using the same reconciliation and conflict checks. Preserve
+artifacts throughout recovery; publication and cleanup remain separate.
 
 `Release X.Y.Z completed; retained plan: ...` is a success message. The completed
 plan is retained evidence and does not block the next release. A later failure

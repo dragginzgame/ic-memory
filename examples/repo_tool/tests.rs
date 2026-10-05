@@ -12,6 +12,7 @@ const LOCK: &str = "version = 4\n[[package]]\nname = \"ic-memory\"\nversion = \"
 
 struct Fixture {
     repo: Repository<Substitute>,
+    selection: ReleaseSelection,
 }
 
 impl Fixture {
@@ -34,8 +35,13 @@ impl Fixture {
                     .to_owned(),
             ),
             ("source.rs".to_owned(), "// committed source\n".to_owned()),
+            (
+                "docs/changelog/0.13.md".to_owned(),
+                "# Detail\n\n## [0.13.0]\n\nFixture changes.\n".to_owned(),
+            ),
         ]);
         for (path, text) in &source {
+            fs::create_dir_all(root.join(path).parent().unwrap()).unwrap();
             fs::write(root.join(path), text).unwrap();
         }
         fs::write(root.join("Cargo.lock"), LOCK).unwrap();
@@ -52,18 +58,63 @@ impl Fixture {
                 calls: Vec::new(),
                 fail: None,
                 tag: false,
-                remote_collision: false,
             }),
         };
         Self {
             repo: Repository { root, exec },
+            selection: ReleaseSelection {
+                kind: "minor".to_owned(),
+                previous: "0.12.3".to_owned(),
+                version: "0.13.0".to_owned(),
+                date: "2026-10-05".to_owned(),
+                source: "source".to_owned(),
+                remote: "origin".to_owned(),
+                branch: "main".to_owned(),
+            },
         }
     }
 
+    fn prepare(&self) -> Result<()> {
+        self.repo.preflight(&self.selection)?;
+        self.repo.verify(&self.selection)?;
+        self.repo.preflight(&self.selection)?;
+        self.repo.prepare_selected(&self.selection)
+    }
+
+    fn stage(&self) -> Result<()> {
+        self.repo.prepared(&self.selection)?;
+        self.repo.exec.state.borrow_mut().staged = true;
+        Ok(())
+    }
+
+    fn commit(&self) -> Result<()> {
+        if self.repo.exec.state.borrow().release.is_none() {
+            self.repo.commit_check(&self.selection)?;
+            let mut state = self.repo.exec.state.borrow_mut();
+            let release = state
+                .source
+                .keys()
+                .map(|path| {
+                    (
+                        path.clone(),
+                        fs::read_to_string(self.repo.root.join(path)).unwrap(),
+                    )
+                })
+                .collect();
+            state.release = Some(release);
+            state
+                .calls
+                .push(vec!["shared-runner".to_owned(), "commit".to_owned()]);
+        }
+        self.repo.selected_committed_check(&self.selection)?;
+        self.repo.exec.state.borrow_mut().tag = true;
+        Ok(())
+    }
+
     fn release(&self) {
-        self.repo.prepare("minor").unwrap();
-        self.repo.stage().unwrap();
-        self.repo.commit().unwrap();
+        self.prepare().unwrap();
+        self.stage().unwrap();
+        self.commit().unwrap();
     }
 
     fn fail(&self, effect: &str) {
@@ -97,7 +148,6 @@ struct State {
     calls: Vec<Vec<String>>,
     fail: Option<String>,
     tag: bool,
-    remote_collision: bool,
 }
 
 struct Substitute {
@@ -136,9 +186,10 @@ impl Execute for Substitute {
                 .join("\n"))
         };
         match program {
+            "bash" => Processes.run(Path::new(env!("CARGO_MANIFEST_DIR")), program, args, true),
             "shasum" => {
                 // Hashes use the real, portable process boundary rather than an
-                // invented checksum. This is the only external fixture command.
+                // invented checksum. The other external command is the read-only version helper.
                 Processes.run(root, program, args, true)
             }
             "rustc" => Ok(format!("fixture-rustc {}\n", args[0])),
@@ -163,8 +214,8 @@ impl Execute for Substitute {
             }
             "cargo" if args.get(1) == Some(&"update") => {
                 let mut lock = fs::read_to_string(root.join("Cargo.lock"))?.replacen(
-                    "version = \"0.12.3\"",
-                    &format!("version = \"{}\"", version()?),
+                    "name = \"ic-memory\"\nversion = \"0.12.3\"",
+                    &format!("name = \"ic-memory\"\nversion = \"{}\"", version()?),
                     1,
                 );
                 if state.fail.as_deref() == Some("dependency-update") {
@@ -176,6 +227,7 @@ impl Execute for Substitute {
                 fs::write(root.join("Cargo.lock"), lock)?;
                 Ok(String::new())
             }
+            "cargo" if args.get(1) == Some(&"fetch") => Ok(String::new()),
             "cargo" if args.get(1) == Some(&"package") => {
                 let directory = target.join("package");
                 fs::create_dir_all(&directory)?;
@@ -279,13 +331,7 @@ impl Execute for Substitute {
                     }
                     Ok(String::new())
                 }
-                ["fetch" | "merge-base" | "ls-files" | "push", ..] => Ok(String::new()),
-                ["ls-remote", ..] => Ok(if state.remote_collision {
-                    "other-tag refs/tags/v0.13.0"
-                } else {
-                    ""
-                }
-                .to_owned()),
+                ["fetch" | "merge-base" | "ls-files", ..] => Ok(String::new()),
                 ["diff", "--name-only", "source", ..] => changed(&state.source),
                 ["diff", "--name-only"] => {
                     if state.staged {
@@ -301,34 +347,12 @@ impl Execute for Substitute {
                         Ok(String::new())
                     }
                 }
-                ["add", ..] => {
-                    state.staged = true;
-                    Ok(String::new())
-                }
-                ["commit", ..] => {
-                    state.release = Some(
-                        state
-                            .source
-                            .keys()
-                            .map(|path| Ok((path.clone(), fs::read_to_string(root.join(path))?)))
-                            .collect::<Result<_>>()?,
-                    );
-                    state.staged = false;
-                    Ok(String::new())
-                }
                 ["log", "-1", "--format=%s"] => Ok(if state.release.is_some() {
                     "Release 0.13.0"
                 } else {
                     "Fixture source"
                 }
                 .to_owned()),
-                ["log", "-1", "--format=%B"] => {
-                    Ok("Release 0.13.0\n\nValidated-source: source".to_owned())
-                }
-                ["tag", ..] => {
-                    state.tag = true;
-                    Ok(String::new())
-                }
                 ["cat-file", "-t", ..] => Ok("tag".to_owned()),
                 ["rev-parse", reference] if reference.ends_with("^{commit}") => {
                     Ok("release".to_owned())
@@ -361,7 +385,7 @@ fn compiler_environment_overrides_refuse_preparation_and_release_effects() {
         let receipt = fixture.repo.receipt_path("0.13.0", true).unwrap();
         fs::create_dir_all(receipt.parent().unwrap()).unwrap();
         fs::write(&receipt, "previous evidence").unwrap();
-        assert!(fixture.repo.prepare("minor").is_err());
+        assert!(fixture.prepare().is_err());
         fixture.assert_original();
         assert_eq!(fs::read(receipt).unwrap(), b"previous evidence");
         assert!(!fixture.repo.exec.state.borrow().calls.iter().any(|call| {
@@ -381,7 +405,7 @@ fn compiler_environment_overrides_refuse_preparation_and_release_effects() {
         };
         let call_start = repo.exec.state.borrow().calls.len();
         assert!(repo.qualify_release().is_err());
-        assert!(repo.push().is_err());
+        assert!(repo.push_check(&fixture.selection).is_err());
         assert!(repo.publish(true).is_err());
         assert!(
             !repo.exec.state.borrow().calls[call_start..]
@@ -401,7 +425,7 @@ fn compiler_environment_overrides_refuse_preparation_and_release_effects() {
     let state = serde_json::to_string(&*fixture.repo.exec.state.borrow()).unwrap();
     let evidence = fixture
         .repo
-        .verify_evidence("source", "0.13.0", "release", false)
+        .verify_evidence(&fixture.selection, "release", false, true)
         .unwrap();
     let paths = [
         fixture.repo.receipt_path("0.13.0", true).unwrap(),
@@ -455,7 +479,7 @@ fn compiler_configuration_overrides_refuse_preparation() {
                 let path = directory.join(filename);
                 let text = format!("[build]\n{field} = {value:?}\n");
                 fs::write(&path, &text).unwrap();
-                assert!(fixture.repo.prepare("minor").is_err());
+                assert!(fixture.prepare().is_err());
                 fixture.assert_original();
                 assert_eq!(fs::read_to_string(path).unwrap(), text);
                 assert!(
@@ -512,6 +536,7 @@ fn inherited_compiler_configuration_refuses_preparation() {
         .map(String::as_str)
         .chain(["Cargo.lock", "rust-toolchain.toml"])
     {
+        fs::create_dir_all(root.join(path).parent().unwrap()).unwrap();
         fs::copy(fixture.repo.root.join(path), root.join(path)).unwrap();
     }
     let repo = Repository {
@@ -524,11 +549,10 @@ fn inherited_compiler_configuration_refuses_preparation() {
                 calls: Vec::new(),
                 fail: None,
                 tag: false,
-                remote_collision: false,
             }),
         },
     };
-    assert!(repo.prepare("minor").is_err());
+    assert!(repo.preflight(&fixture.selection).is_err());
     assert_eq!(repo.version(None).unwrap(), "0.12.3");
     assert!(
         !repo
@@ -542,35 +566,48 @@ fn inherited_compiler_configuration_refuses_preparation() {
 }
 
 #[test]
-fn release_versions_and_drafts_preserve_dependency_versions_and_history() {
-    assert_eq!(next_version("0.12.3", "patch").unwrap(), "0.12.4");
-    assert_eq!(next_version("0.12.3", "minor").unwrap(), "0.13.0");
+fn release_versions_and_pending_notes_preserve_dependency_versions_and_history() {
     for invalid in ["0.01.3", "0.12", "0.12.3-dev", "0.12.+3"] {
         assert!(version_parts(invalid).is_err());
     }
     let updated = replace_package_version(MANIFEST, "0.12.3", "0.13.0").unwrap();
     assert!(updated.contains("other = \"0.12.3\""));
     let current = "# Changelog\n\n## [0.13.0]\n\nChanges.\n\n## 0.12.3\n\nHistory.\n";
-    assert_eq!(release_changelog(current, "0.13.0").unwrap(), current);
-    assert!(release_changelog(current, "0.12.4").is_err());
-    assert!(release_changelog("## [0.13.0]\n\n## 0.12.3\nHistory", "0.13.0").is_err());
+    assert_eq!(
+        release_changelog(current, "0.13.0", "2026-10-05").unwrap(),
+        current.replacen("## [0.13.0]", "## [0.13.0] - 2026-10-05", 1)
+    );
+    assert!(release_changelog(current, "0.12.4", "2026-10-05").is_err());
+    assert!(
+        release_changelog("## [0.13.0]\n\n## 0.12.3\nHistory", "0.13.0", "2026-10-05").is_err()
+    );
     for historical in ["0.13.0", "[0.13.0]", "[0.13.0] - 2026-10-05"] {
         let duplicate = format!("{current}\n## {historical}\n\nAlready released.\n");
-        assert!(release_changelog(&duplicate, "0.13.0").is_err());
+        assert!(release_changelog(&duplicate, "0.13.0", "2026-10-05").is_err());
     }
+    for date in [
+        "2026-02-29",
+        "2026-04-31",
+        "2026-13-01",
+        "2026-10-05\n",
+        "0000-01-01",
+    ] {
+        assert!(!valid_date(date));
+    }
+    assert!(valid_date("2024-02-29"));
 }
 
 #[test]
 fn preparation_stage_commit_qualification_and_publish_preserve_exact_evidence() {
     let fixture = Fixture::new();
     fixture.release();
-    let prepared: ReleaseEvidence = serde_json::from_slice(
+    let prepared: PackageEvidence = serde_json::from_slice(
         &fs::read(fixture.repo.receipt_path("0.13.0", true).unwrap()).unwrap(),
     )
     .unwrap();
     let final_evidence = fixture
         .repo
-        .verify_evidence("source", "0.13.0", "release", false)
+        .verify_evidence(&fixture.selection, "release", false, true)
         .unwrap();
     assert_ne!(prepared.package_sha256, final_evidence.package_sha256);
     assert!(
@@ -588,6 +625,7 @@ fn preparation_stage_commit_qualification_and_publish_preserve_exact_evidence() 
             .is_file()
     );
     assert_eq!(final_evidence.package_head, "release");
+    fixture.repo.tagged_check(&fixture.selection).unwrap();
     assert!(
         fixture
             .repo
@@ -595,19 +633,13 @@ fn preparation_stage_commit_qualification_and_publish_preserve_exact_evidence() 
             .join("configured output/release-validation/0.13.0-prepared.json")
             .is_file()
     );
-    fixture.repo.push().unwrap();
+    fixture.repo.push_check(&fixture.selection).unwrap();
     fixture.repo.publish(true).unwrap();
     let state = fixture.repo.exec.state.borrow();
-    assert!(state.calls.iter().any(|call| call
-        == &[
-            "git",
-            "push",
-            "--no-follow-tags",
-            "--atomic",
-            "origin",
-            "release:refs/heads/main",
-            "refs/tags/v0.13.0:refs/tags/v0.13.0"
-        ]));
+    assert!(
+        !state.calls.iter().any(|call| call[0] == "git"
+            && matches!(call[1].as_str(), "add" | "commit" | "tag" | "push"))
+    );
     assert!(state.calls.iter().any(|call| call
         == &[
             "cargo",
@@ -628,14 +660,29 @@ fn preparation_stage_commit_qualification_and_publish_preserve_exact_evidence() 
 fn version_preparation_failures_restore_files_and_preserve_evidence_and_artifacts() {
     for failure in ["validate", "formatting", "package", "dependency-update"] {
         let fixture = Fixture::new();
-        let receipt = fixture.repo.receipt_path("0.13.0", true).unwrap();
+        let receipt = fixture.repo.receipt_path("0.13.0", false).unwrap();
         fs::create_dir_all(receipt.parent().unwrap()).unwrap();
         fs::write(&receipt, "previous evidence").unwrap();
         let sentinel = fixture.repo.target().unwrap().join("consumer-evidence");
         fs::write(&sentinel, "keep").unwrap();
         fixture.fail(failure);
-        assert!(fixture.repo.prepare("minor").is_err());
-        fixture.assert_original();
+        assert!(fixture.prepare().is_err());
+        assert_eq!(fixture.repo.version(None).unwrap(), "0.12.3");
+        if failure == "dependency-update" {
+            assert!(
+                fs::read_to_string(fixture.repo.root.join("Cargo.lock"))
+                    .unwrap()
+                    .contains("name = \"other\"\nversion = \"0.12.4\"")
+            );
+        } else {
+            fixture.assert_original();
+        }
+        for (path, text) in &fixture.repo.exec.state.borrow().source {
+            assert_eq!(
+                fs::read_to_string(fixture.repo.root.join(path)).unwrap(),
+                *text
+            );
+        }
         assert_eq!(fs::read_to_string(receipt).unwrap(), "previous evidence");
         assert_eq!(fs::read_to_string(sentinel).unwrap(), "keep");
         if failure == "formatting" {
@@ -654,21 +701,188 @@ fn version_preparation_failures_restore_files_and_preserve_evidence_and_artifact
 }
 
 #[test]
-fn dirty_sources_remote_collisions_and_changed_validation_inputs_prevent_version_edits() {
+fn validation_binds_saved_intent_and_retains_previous_attempts() {
+    let fixture = Fixture::new();
+    assert!(fixture.repo.prepare_selected(&fixture.selection).is_err());
+    fixture.assert_original();
+    fixture.repo.verify(&fixture.selection).unwrap();
+    let receipt = fixture.repo.validation_path("0.13.0").unwrap();
+    let first = fs::read(&receipt).unwrap();
+    for field in [
+        "kind", "version", "previous", "source", "date", "remote", "branch",
+    ] {
+        let mut selection = serde_json::to_value(&fixture.selection).unwrap();
+        selection[field] = serde_json::json!("changed");
+        let selection = serde_json::from_value(selection).unwrap();
+        assert!(
+            fixture.repo.prepare_selected(&selection).is_err(),
+            "{field}"
+        );
+        fixture.assert_original();
+        assert_eq!(fs::read(&receipt).unwrap(), first);
+    }
+    fixture.fail("validate");
+    assert!(fixture.repo.verify(&fixture.selection).is_err());
+    assert_eq!(fs::read(&receipt).unwrap(), first);
+    fixture.repo.exec.state.borrow_mut().fail = None;
+    fixture.repo.verify(&fixture.selection).unwrap();
+    let attempts = receipt.parent().unwrap().join("attempts");
+    let entries: Vec<_> = fs::read_dir(attempts).unwrap().collect();
+    assert_eq!(entries.len(), 1);
+    assert_eq!(
+        fs::read(entries[0].as_ref().unwrap().path()).unwrap(),
+        first
+    );
+    fixture.assert_original();
+}
+
+#[test]
+fn interrupted_preparation_finishes_saved_candidate_without_revalidating() {
+    for interruption in ["partial", "manifest", "lock", "package"] {
+        let fixture = Fixture::new();
+        fixture.repo.verify(&fixture.selection).unwrap();
+        let evidence = fs::read(fixture.repo.validation_path("0.13.0").unwrap()).unwrap();
+        let expected = fixture.repo.surfaces(&fixture.selection).unwrap();
+        for (path, text) in &expected {
+            if interruption != "partial" || path == "README.md" {
+                fs::write(fixture.repo.root.join(path), text).unwrap();
+            }
+        }
+        if matches!(interruption, "lock" | "package") {
+            fixture
+                .repo
+                .run_command(&fixture.repo.preparation_commands().unwrap()[0])
+                .unwrap();
+        }
+        if interruption == "package" {
+            fixture.fail("package");
+            assert!(fixture.repo.prepared(&fixture.selection).is_err());
+            assert!(fixture.repo.package_path("0.13.0").unwrap().exists());
+            fixture.repo.exec.state.borrow_mut().fail = None;
+        }
+        if interruption == "partial" {
+            fixture.repo.preflight(&fixture.selection).unwrap();
+            fixture.repo.prepare_selected(&fixture.selection).unwrap();
+        } else {
+            fixture.repo.prepared(&fixture.selection).unwrap();
+        }
+        for (path, text) in expected {
+            assert_eq!(
+                fs::read_to_string(fixture.repo.root.join(path)).unwrap(),
+                text
+            );
+        }
+        assert_eq!(
+            fs::read(fixture.repo.validation_path("0.13.0").unwrap()).unwrap(),
+            evidence
+        );
+        let calls = fixture.repo.exec.state.borrow().calls.clone();
+        assert_eq!(
+            calls
+                .iter()
+                .filter(|call| call.get(2).is_some_and(|arg| arg == "validate"))
+                .count(),
+            1
+        );
+        let start = calls.len();
+        fixture.repo.prepared(&fixture.selection).unwrap();
+        assert!(
+            !fixture.repo.exec.state.borrow().calls[start..]
+                .iter()
+                .any(|call| call.get(2).is_some_and(|arg| matches!(
+                    arg.as_str(),
+                    "update" | "package" | "fmt-check" | "validate"
+                )))
+        );
+        assert!(fixture.repo.exec.state.borrow().release.is_none());
+    }
+}
+
+#[test]
+fn preparation_recovery_preserves_conflicting_inputs_and_corrupted_evidence() {
+    for conflict in ["metadata", "lock", "receipt", "archive"] {
+        let fixture = Fixture::new();
+        fixture.prepare().unwrap();
+        let receipt = fixture.repo.receipt_path("0.13.0", true).unwrap();
+        let evidence: PackageEvidence =
+            serde_json::from_slice(&fs::read(&receipt).unwrap()).unwrap();
+        let path = match conflict {
+            "metadata" => fixture.repo.root.join("README.md"),
+            "lock" => fixture.repo.root.join("Cargo.lock"),
+            "receipt" => receipt,
+            "archive" => fixture
+                .repo
+                .retained_package(&evidence.package_sha256)
+                .unwrap(),
+            _ => unreachable!(),
+        };
+        fs::write(&path, b"conflicting retained input").unwrap();
+        let start = fixture.repo.exec.state.borrow().calls.len();
+        assert!(
+            fixture.repo.prepared(&fixture.selection).is_err(),
+            "{conflict}"
+        );
+        assert_eq!(fs::read(&path).unwrap(), b"conflicting retained input");
+        assert!(
+            !fixture.repo.exec.state.borrow().calls[start..]
+                .iter()
+                .any(|call| call
+                    .get(2)
+                    .is_some_and(|arg| matches!(arg.as_str(), "update" | "package")))
+        );
+    }
+}
+
+#[test]
+fn all_release_kinds_finalize_root_and_detail_notes_at_saved_date() {
+    for (kind, version, detail) in [
+        ("patch", "0.12.4", "docs/changelog/0.12.md"),
+        ("minor", "0.13.0", "docs/changelog/0.13.md"),
+        ("major", "1.0.0", "docs/changelog/1.0.md"),
+    ] {
+        let mut fixture = Fixture::new();
+        fixture.selection.kind = kind.to_owned();
+        fixture.selection.version = version.to_owned();
+        for path in ["CHANGELOG.md", detail] {
+            let text = format!("# Notes\n\n## [{version}]\n\nChanges.\n\n## 0.12.3\n\nHistory.\n");
+            fs::write(fixture.repo.root.join(path), &text).unwrap();
+            fixture
+                .repo
+                .exec
+                .state
+                .borrow_mut()
+                .source
+                .insert(path.to_owned(), text);
+        }
+        fixture.prepare().unwrap();
+        assert_eq!(fixture.repo.version(None).unwrap(), version);
+        let files = fixture.repo.surfaces(&fixture.selection).unwrap();
+        assert_eq!(files.len(), 4);
+        for path in ["CHANGELOG.md", detail] {
+            let text = fs::read_to_string(fixture.repo.root.join(path)).unwrap();
+            assert!(text.contains(&format!("## [{version}] - 2026-10-05")));
+            assert!(text.ends_with("## 0.12.3\n\nHistory.\n"));
+        }
+        assert!(
+            fs::read_to_string(fixture.repo.root.join("Cargo.lock"))
+                .unwrap()
+                .contains("name = \"other\"\nversion = \"0.12.3\"")
+        );
+    }
+}
+
+#[test]
+fn dirty_sources_and_changed_validation_inputs_prevent_version_edits() {
     let fixture = Fixture::new();
     fs::write(fixture.repo.root.join("README.md"), "unfinished").unwrap();
-    assert!(fixture.repo.prepare("minor").is_err());
+    assert!(fixture.prepare().is_err());
     assert_eq!(
         fs::read_to_string(fixture.repo.root.join("Cargo.toml")).unwrap(),
         MANIFEST
     );
     let fixture = Fixture::new();
-    fixture.repo.exec.state.borrow_mut().remote_collision = true;
-    assert!(fixture.repo.prepare("minor").is_err());
-    fixture.assert_original();
-    let fixture = Fixture::new();
     fixture.fail("validation-lock");
-    assert!(fixture.repo.prepare("minor").is_err());
+    assert!(fixture.prepare().is_err());
     assert_eq!(
         fs::read_to_string(fixture.repo.root.join("Cargo.toml")).unwrap(),
         MANIFEST
@@ -679,7 +893,7 @@ fn dirty_sources_remote_collisions_and_changed_validation_inputs_prevent_version
 fn lockfile_changes_during_post_validation_remote_inspection_stop_before_mutation() {
     let fixture = Fixture::new();
     fixture.fail("remote-lock");
-    assert!(fixture.repo.prepare("minor").is_err());
+    assert!(fixture.prepare().is_err());
     assert_eq!(fixture.repo.version(None).unwrap(), "0.12.3");
     for (path, text) in &fixture.repo.exec.state.borrow().source {
         assert_eq!(
@@ -733,7 +947,7 @@ fn changed_missing_and_wrong_source_receipts_never_dispatch_publication() {
                 fs::remove_file(receipt).unwrap();
             }
             "retained" => {
-                let evidence: ReleaseEvidence =
+                let evidence: PackageEvidence =
                     serde_json::from_slice(&fs::read(&receipt).unwrap()).unwrap();
                 fs::remove_file(
                     fixture
@@ -750,15 +964,20 @@ fn changed_missing_and_wrong_source_receipts_never_dispatch_publication() {
                 let mut evidence: serde_json::Value =
                     serde_json::from_slice(&fs::read(&receipt).unwrap()).unwrap();
                 if field == "configuration" {
-                    evidence[field] = serde_json::json!({"env:RUSTFLAGS": "--cfg unqualified"});
+                    evidence["validation"][field] =
+                        serde_json::json!({"env:RUSTFLAGS": "--cfg unqualified"});
                 } else if field == "commands" {
                     evidence[field] = serde_json::json!([]);
+                } else if field == "compiler" {
+                    evidence["validation"]["identities"][1] = serde_json::json!("changed");
                 } else {
-                    evidence[if field == "compiler" { "rustc" } else { field }] =
-                        serde_json::json!("changed");
+                    evidence["validation"]["selection"][field] = serde_json::json!("changed");
                 }
                 fs::write(receipt, serde_json::to_vec(&evidence).unwrap()).unwrap();
             }
+        }
+        if changed == "tag" {
+            assert!(fixture.repo.tagged_check(&fixture.selection).is_err());
         }
         assert!(fixture.repo.publish(true).is_err());
         assert!(
@@ -780,7 +999,7 @@ fn invalid_prepared_artifacts_stop_final_qualification_without_replacing_evidenc
         let fixture = Fixture::new();
         fixture.release();
         let prepared_path = fixture.repo.receipt_path("0.13.0", true).unwrap();
-        let mut prepared: ReleaseEvidence =
+        let mut prepared: PackageEvidence =
             serde_json::from_slice(&fs::read(&prepared_path).unwrap()).unwrap();
         let retained = fixture
             .repo
@@ -797,7 +1016,7 @@ fn invalid_prepared_artifacts_stop_final_qualification_without_replacing_evidenc
         }
         let final_path = fixture.repo.receipt_path("0.13.0", false).unwrap();
         let final_bytes = fs::read(&final_path).unwrap();
-        let final_evidence: ReleaseEvidence = serde_json::from_slice(&final_bytes).unwrap();
+        let final_evidence: PackageEvidence = serde_json::from_slice(&final_bytes).unwrap();
         let final_archive = fixture
             .repo
             .retained_package(&final_evidence.package_sha256)
@@ -824,15 +1043,15 @@ fn invalid_prepared_artifacts_stop_final_qualification_without_replacing_evidenc
 #[test]
 fn final_package_failure_is_retryable_without_a_second_commit() {
     let fixture = Fixture::new();
-    fixture.repo.prepare("minor").unwrap();
-    fixture.repo.stage().unwrap();
+    fixture.prepare().unwrap();
+    fixture.stage().unwrap();
     fixture.fail("package");
-    assert!(fixture.repo.commit().is_err());
+    assert!(fixture.commit().is_err());
     assert!(fixture.repo.exec.state.borrow().release.is_some());
     assert!(!fixture.repo.exec.state.borrow().tag);
     assert!(!fixture.repo.receipt_path("0.13.0", false).unwrap().exists());
     fixture.repo.exec.state.borrow_mut().fail = None;
-    fixture.repo.commit().unwrap();
+    fixture.commit().unwrap();
     assert_eq!(
         fixture
             .repo
@@ -871,7 +1090,7 @@ fn wasm_metadata_and_budgets_use_only_the_selected_artifact_directory() {
 
 #[test]
 fn patch_preparation_keeps_head_and_rejects_unvalidated_source_or_staging() {
-    let fixture = Fixture::new();
+    let mut fixture = Fixture::new();
     let path = "CHANGELOG.md";
     let notes = fixture.repo.exec.state.borrow().source[path].replace("[0.13.0]", "[0.12.4]");
     fs::write(fixture.repo.root.join(path), &notes).unwrap();
@@ -882,7 +1101,19 @@ fn patch_preparation_keeps_head_and_rejects_unvalidated_source_or_staging() {
         .borrow_mut()
         .source
         .insert(path.to_owned(), notes);
-    fixture.repo.prepare("patch").unwrap();
+    fixture.selection.kind = "patch".to_owned();
+    fixture.selection.version = "0.12.4".to_owned();
+    let detail = "docs/changelog/0.12.md";
+    let notes = "# Detail\n\n## [0.12.4]\n\nFixture changes.\n";
+    fs::write(fixture.repo.root.join(detail), notes).unwrap();
+    fixture
+        .repo
+        .exec
+        .state
+        .borrow_mut()
+        .source
+        .insert(detail.to_owned(), notes.to_owned());
+    fixture.prepare().unwrap();
     assert!(fixture.repo.exec.state.borrow().release.is_none());
     assert_eq!(fixture.repo.version(None).unwrap(), "0.12.4");
     assert!(!fixture.repo.exec.state.borrow().calls.iter().any(|call| {
@@ -890,18 +1121,18 @@ fn patch_preparation_keeps_head_and_rejects_unvalidated_source_or_staging() {
             .is_some_and(|arg| matches!(arg.as_str(), "commit" | "tag" | "push"))
     }));
     let fixture = Fixture::new();
-    fixture.repo.prepare("minor").unwrap();
-    assert!(fixture.repo.commit().is_err()); // Expected edits are not staged.
-    fixture.repo.stage().unwrap();
+    fixture.prepare().unwrap();
+    assert!(fixture.commit().is_err()); // Expected edits are not staged.
+    fixture.stage().unwrap();
     fs::write(
         fixture.repo.root.join("source.rs"),
         "// unvalidated source\n",
     )
     .unwrap();
-    assert!(fixture.repo.commit().is_err());
+    assert!(fixture.commit().is_err());
     assert!(fixture.repo.exec.state.borrow().release.is_none());
     let fixture = Fixture::new();
     fixture.fail("remote-ahead");
-    assert!(fixture.repo.prepare("minor").is_err());
+    assert!(fixture.prepare().is_err());
     fixture.assert_original();
 }
