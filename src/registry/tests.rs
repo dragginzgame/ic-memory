@@ -105,7 +105,7 @@ fn static_declaration_rejects_invalid_decoded_declaration() {
     let declaration =
         AllocationDeclaration::memory_manager("app.users.v1", 100, "users").expect("declaration");
     let mut value = serde_json::to_value(declaration).unwrap();
-    value["schema"]["schema_version"] = serde_json::json!(0);
+    value["label"] = serde_json::json!("");
     let declaration = serde_json::from_value(value).expect("decoded declaration metadata");
 
     let err = StaticMemoryDeclaration::new("app", declaration)
@@ -113,9 +113,7 @@ fn static_declaration_rejects_invalid_decoded_declaration() {
 
     assert!(matches!(
         err,
-        StaticMemoryDeclarationError::Declaration(crate::DeclarationSnapshotError::SchemaMetadata(
-            crate::SchemaMetadataError::InvalidVersion
-        ))
+        StaticMemoryDeclarationError::Declaration(crate::DeclarationSnapshotError::EmptyLabel)
     ));
 }
 

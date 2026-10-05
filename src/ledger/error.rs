@@ -3,7 +3,6 @@ use crate::{
     key::{StableKey, StableKeyError},
     ledger::LedgerPayloadEnvelopeError,
     physical::CommitRecoveryError,
-    schema::SchemaMetadataError,
     slot::MemoryManagerSlot,
 };
 
@@ -117,16 +116,6 @@ pub enum LedgerIntegrityError {
         generation: u64,
         /// Latest generation that observed the allocation.
         last_seen_generation: u64,
-    },
-    /// Schema metadata in committed allocation history is invalid.
-    #[error("stable key '{stable_key}' has invalid schema metadata at generation {generation}")]
-    InvalidSchemaMetadata {
-        /// Stable key whose schema metadata is invalid.
-        stable_key: StableKey,
-        /// Generation that recorded the invalid schema metadata.
-        generation: u64,
-        /// Schema metadata validation error.
-        error: SchemaMetadataError,
     },
     /// Generation record appears more than once.
     #[error("generation {generation} appears more than once")]
@@ -289,14 +278,6 @@ pub enum AllocationReservationError {
     TooManyReservations {
         /// Number of reservations in the staged generation.
         count: usize,
-    },
-    /// A staged reservation carries invalid schema metadata.
-    #[error("stable key '{stable_key}' has invalid schema metadata")]
-    InvalidSchemaMetadata {
-        /// Stable key whose schema metadata is invalid.
-        stable_key: StableKey,
-        /// Schema metadata validation error.
-        error: SchemaMetadataError,
     },
     /// A staged reservation declaration violates declaration invariants.
     #[error("reservation declaration is invalid")]

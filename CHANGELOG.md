@@ -1,5 +1,42 @@
 # Changelog
 
+## 0.25.5
+
+- Store optional schema versions as checked nonzero values. Construction and
+  JSON/CBOR decoding reject version zero; valid encodings, required explicit
+  nulls, current wire fixtures and declaration fingerprints remain unchanged.
+- Hard-cut `SchemaMetadata::validate`,
+  `DeclarationSnapshotError::SchemaMetadata`,
+  `AllocationReservationError::InvalidSchemaMetadata` and
+  `LedgerIntegrityError::InvalidSchemaMetadata`. Remove repeated schema-version
+  checks from declarations, logical requests, reservations and ledger history.
+  `SchemaMetadataRecord::new` now returns the record directly. Schema constructor
+  errors, label checks, policy, history ordering and commit validation remain.
+- Malformed schema versions in persisted ledger history now reject as
+  `LedgerCommitError::Codec`. Verify protected recovery preserves both slots;
+  retain decoded-label refusal tests at registry, allocation-validation and
+  reservation boundaries. New schema-decode regressions fail against 0.25.4,
+  while valid wire-encoding assertions pass against both implementations.
+- Select Cargo's self-contained manifest schema to avoid Even Better TOML's
+  false rejection of valid lint settings. Cargo configuration is unchanged.
+- Hard-cut `validate_stable_cell_ledger_memory` and expose the existing
+  `decode_stable_cell_ledger_record_from_memory` reader. Manual owners can retain
+  its decoded record for recovery instead of validating, discarding it and
+  decoding again. Empty memory remains unwritten; envelope bounds, typed decode
+  failures and protected recovery requirements remain unchanged. Update manual
+  integration guidance and consolidate wrapper assertions into the reader tests.
+- Read ledger records for exports, commit diagnostics and doctor reports through
+  the owned manager's virtual memory directly. Remove unused growth-state handles
+  from these read-only paths; bootstrap persistence and application handles keep
+  guarded growth. Extend borrowed, nonclone backing coverage to exports and doctor
+  reports, preserving backing bytes.
+- Validation: 276 library tests, public integration/composed-host tests, all
+  eight compile-fail cases and six active doctests pass. Strict all-target
+  Clippy, Rust 1.88.0 all-target compilation, warning-denied Rustdoc, formatting,
+  whitespace checks and all five raw Wasm size gates pass. No removed API usage
+  was found in inspected Canic/IcyDB source; downstream builds and deployments
+  were not qualified.
+
 ## 0.25.4
 
 - Establish stable-key grammar and usable range bounds during deserialization,

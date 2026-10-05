@@ -1,6 +1,6 @@
 use crate::{
     key::{StableKey, StableKeyError},
-    schema::{SchemaMetadata, SchemaMetadataError},
+    schema::SchemaMetadata,
     slot::{MemoryManagerSlot, MemoryManagerSlotError},
     text::{DiagnosticTextError, validate_diagnostic_text},
 };
@@ -13,8 +13,8 @@ use std::collections::BTreeSet;
 /// Checked runtime claim that a stable key should own an allocation slot.
 ///
 /// Declarations are supplied by the current binary before opening storage.
-/// Constructors validate the stable key, label and schema metadata and accept
-/// an already checked slot. A declaration becomes authoritative only after
+/// Constructors validate the stable key and label and accept already checked
+/// slots and schema metadata. A declaration becomes authoritative only after
 /// validation against the recovered ledger and commitment in a generation.
 ///
 
@@ -42,9 +42,6 @@ impl AllocationDeclaration {
     ) -> Result<Self, DeclarationSnapshotError> {
         let stable_key = StableKey::parse(stable_key).map_err(DeclarationSnapshotError::Key)?;
         validate_label(label.as_deref())?;
-        schema
-            .validate()
-            .map_err(DeclarationSnapshotError::SchemaMetadata)?;
         Ok(Self {
             stable_key,
             slot,
@@ -117,13 +114,10 @@ impl AllocationDeclaration {
         &self.schema
     }
 
-    /// Validate label and schema metadata after decode or manual assembly.
-    /// Key syntax and usable slot IDs are established by their checked types.
+    /// Validate the label after decode or manual assembly.
+    /// Key syntax, usable slot IDs and schema versions belong to checked types.
     pub fn validate(&self) -> Result<(), DeclarationSnapshotError> {
-        validate_label(self.label.as_deref())?;
-        self.schema
-            .validate()
-            .map_err(DeclarationSnapshotError::SchemaMetadata)
+        validate_label(self.label.as_deref())
     }
 }
 
@@ -220,9 +214,6 @@ pub enum DeclarationSnapshotError {
     /// `MemoryManager` slot validation failure.
     #[error(transparent)]
     MemoryManagerSlot(MemoryManagerSlotError),
-    /// Schema metadata encoding failure.
-    #[error(transparent)]
-    SchemaMetadata(SchemaMetadataError),
     /// A stable key appeared more than once in one snapshot.
     #[error("stable key '{0}' is declared more than once")]
     DuplicateStableKey(StableKey),

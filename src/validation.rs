@@ -308,25 +308,20 @@ mod tests {
     }
 
     #[test]
-    fn decoded_snapshot_rejects_invalid_schema_and_count_before_minting_authority() {
+    fn decoded_snapshot_rejects_invalid_label_and_count_before_minting_authority() {
         let recovered = recovered(Vec::new());
         let source = serde_json::to_value(
             DeclarationSnapshot::new(vec![declaration("app.users.v1", 100)]).unwrap(),
         )
         .unwrap();
-        let mut invalid_schema = source.clone();
-        invalid_schema["declarations"][0]["schema"]["schema_version"] = 0.into();
+        let mut invalid_label = source.clone();
+        invalid_label["declarations"][0]["label"] = "".into();
         let mut oversized = source;
         oversized["declarations"] =
             serde_json::Value::Array(vec![oversized["declarations"][0].clone(); 256]);
 
         for (value, expected) in [
-            (
-                invalid_schema,
-                DeclarationSnapshotError::SchemaMetadata(
-                    crate::SchemaMetadataError::InvalidVersion,
-                ),
-            ),
+            (invalid_label, DeclarationSnapshotError::EmptyLabel),
             (oversized, DeclarationSnapshotError::TooManyDeclarations),
         ] {
             let snapshot: DeclarationSnapshot = serde_json::from_value(value).unwrap();

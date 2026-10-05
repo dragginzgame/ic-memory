@@ -4,10 +4,7 @@ use super::{
     GenerationRecord, ReservationClaimConflict, validate_declaration_claim,
     validate_reservation_claim,
 };
-use crate::{
-    capability::ValidatedAllocations,
-    declaration::{AllocationDeclaration, DeclarationSnapshotError},
-};
+use crate::{capability::ValidatedAllocations, declaration::AllocationDeclaration};
 use std::borrow::Cow;
 
 impl AllocationLedger {
@@ -228,15 +225,9 @@ fn record_reservation(
 pub fn validate_reservation_declaration(
     reservation: &AllocationDeclaration,
 ) -> Result<(), AllocationReservationError> {
-    reservation.validate().map_err(|err| match err {
-        DeclarationSnapshotError::SchemaMetadata(error) => {
-            AllocationReservationError::InvalidSchemaMetadata {
-                stable_key: reservation.stable_key.clone(),
-                error,
-            }
-        }
-        err => AllocationReservationError::InvalidDeclaration(err),
-    })
+    reservation
+        .validate()
+        .map_err(AllocationReservationError::InvalidDeclaration)
 }
 
 const fn checked_next_generation(current_generation: u64) -> Result<u64, u64> {

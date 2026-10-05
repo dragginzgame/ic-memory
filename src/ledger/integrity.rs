@@ -219,14 +219,6 @@ fn validate_schema_history_integrity(
 
     let mut previous = None;
     for schema in &record.schema_history {
-        schema
-            .schema
-            .validate()
-            .map_err(|error| LedgerIntegrityError::InvalidSchemaMetadata {
-                stable_key: record.stable_key.clone(),
-                generation: schema.generation,
-                error,
-            })?;
         if previous.is_some_and(|generation| schema.generation <= generation) {
             return Err(LedgerIntegrityError::NonIncreasingSchemaHistory {
                 stable_key: record.stable_key.clone(),

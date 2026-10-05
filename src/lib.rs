@@ -214,8 +214,8 @@ pub use slot::{
 pub use stable_cell::{
     STABLE_CELL_HEADER_SIZE, STABLE_CELL_LAYOUT_VERSION, STABLE_CELL_MAGIC,
     STABLE_CELL_VALUE_OFFSET, StableCellLedgerError, StableCellLedgerRecord,
-    StableCellPayloadError, decode_stable_cell_ledger_record, decode_stable_cell_payload,
-    validate_stable_cell_ledger_memory,
+    StableCellPayloadError, decode_stable_cell_ledger_record,
+    decode_stable_cell_ledger_record_from_memory, decode_stable_cell_payload,
 };
 pub use validation::{AllocationValidationError, validate_allocations};
 

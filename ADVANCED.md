@@ -334,6 +334,15 @@ resolve requests or authorize historical opens.
 Maintained recovery paths enforce byte, collection, nesting and history limits
 before the relevant allocations and decoding. See the
 [current recovery limits](docs/key-only-recovery.md#recovery-and-admission-limits).
+
+For a manually persisted stable-cell ledger, call
+`decode_stable_cell_ledger_record_from_memory(&ledger_memory)` once and retain
+the returned record for recovery and bootstrap. Empty memory returns an
+uninitialized record without writing; corrupt envelopes or record bytes return
+typed errors. The decoded record still needs protected ledger recovery. This
+avoids a separate preflight followed by another panic-based decode through
+`Cell::init`. Persistence remains the manual owner's responsibility.
+
 Opaque generation payloads use bounded CBOR byte strings, introduced in 0.14.3;
 the current decoder rejects the superseded integer-array representation.
 

@@ -215,9 +215,10 @@ validation, or commit path has accepted them.
 Serde decoding alone does not grant allocation authority. `StableKey`,
 `MemoryManagerSlot` and `MemoryManagerIdRange` enforce their identity syntax and
 usable bounds during construction and decoding. Keys remain canonical, slot IDs
-exclude sentinel 255, and ranges remain ordered with usable ends. Diagnostic
-metadata, duplicate claims, policy and ledger history still require their
-validation boundaries before influencing authority.
+exclude sentinel 255, and ranges remain ordered with usable ends. `SchemaMetadata`
+contains an absent or nonzero schema version, established by construction and
+decoding. Labels, fingerprints, range metadata, duplicate claims, policy and ledger
+history still require their validation boundaries before influencing authority.
 
 Invariant-bearing DTO fields are intentionally private where feasible. Callers
 should use checked constructors and accessors instead of fabricating durable

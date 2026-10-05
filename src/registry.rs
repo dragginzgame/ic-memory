@@ -102,9 +102,6 @@ impl MemoryRequest {
         validate_external_authority(&authority)?;
         let stable_key =
             crate::StableKey::parse(stable_key).map_err(crate::DeclarationSnapshotError::Key)?;
-        schema
-            .validate()
-            .map_err(crate::DeclarationSnapshotError::SchemaMetadata)?;
         if is_ic_memory_stable_key(stable_key.as_str()) {
             return Err(StaticMemoryDeclarationError::ReservedStableKey {
                 stable_key: stable_key.as_str().to_string(),
