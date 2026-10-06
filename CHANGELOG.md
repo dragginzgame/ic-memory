@@ -1,6 +1,6 @@
 # Changelog
 
-## [0.28.1]
+## [0.28.1] - 2026-10-06
 
 - Reuse Shared Tooling’s release-command checker, reducing duplicated fixtures
   and expanding failure and conflicting-target checks.
