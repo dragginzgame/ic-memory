@@ -11,7 +11,7 @@ exception to revision-bound policy adoption while the shared rules are being
 developed locally. The sibling remains read-only to agents.
 
 The existing tooling snapshot at revision
-`a7efade1a68e43f148252a1a73908a46c4cbe9e9` is recorded in
+`a37771f1b6b5fc9a88ed6ab3b705bdda35cd8fa3` is recorded in
 [.shared-tooling.snapshot](.shared-tooling.snapshot). It identifies the vendored
 files, hashes and executable modes; it does not freeze the active local policy.
 Keep its provenance accurate and never edit vendored files in place. Do not
@@ -20,10 +20,10 @@ attribute uncommitted shared files to that recorded revision. The live local
 also applies within its activation scope and is included in this recorded snapshot.
 These instructions are the repository's local overlay.
 
-The pinning adoption uses the local 0.1.5 commit, which became available during
-preparation. Its 28-file snapshot includes the dependency checker, jq module,
-installer, tests and linked rules. CI and release checks use these immutable
-exports without a sibling checkout. The live local policy exception above
+The 44-file snapshot uses the reviewed local 0.1.6 commit, including the common
+audit methods, local host/IC setup, dependency checker and linked rules. CI and
+release checks use these immutable exports without a sibling checkout. The live
+local policy exception above
 continues to govern subsequent uncommitted rule development.
 
 The user-provided ownership rule below is the approved local exception to shared

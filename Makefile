@@ -1,5 +1,6 @@
 .DEFAULT_GOAL := help
 .PHONY: help test version ensure-clean fetch-dependencies verify-shared-tooling check-pins test-pins \
+        install-tools tools-check install-host-tools host-tools-check install-ic-tools ic-tools-check test-tools \
         fmt fmt-check check-format-tools install-hooks lint-tooling test-hooks test-tooling validate validate-toolchain wasm-size \
         test-release-runner test-release-adapters release-patch release-minor release-major release-resume \
         release-version release-preflight release-verify release-prepare-version \
@@ -17,16 +18,45 @@ endif
 VALIDATION_TOOLCHAIN ?= $(shell sed -n 's/^channel = "\([^"]*\)"$$/\1/p' rust-toolchain.toml)
 TOOL := bash scripts/dev/run-repo-tool.sh $(VALIDATION_TOOLCHAIN)
 FORMAT_CARGO := RUSTUP_AUTO_INSTALL=0 CARGO_NET_OFFLINE=true cargo +$(VALIDATION_TOOLCHAIN)
-CARGO_SORT_VERSION := $(shell sed -n 's/^export IC_MEMORY_CARGO_SORT_VERSION=//p' ci-tool-versions.env)
+CARGO_SORT_VERSION := $(shell sed -n 's/^export SHARED_TOOLING_CARGO_SORT_VERSION=//p' ci/tool-versions.env)
+IC_TOOL_PINS ?= ci/ic-tools.tsv
+HOST_TOOL_VERSIONS ?= ci/tool-versions.env
+export PATH := $(CURDIR)/.tools/host/bin:$(CURDIR)/.tools/ic/bin:$(PATH)
 
 help:
-	@echo 'Setup: fetch-dependencies, install-hooks (install pinned tools separately).'
-	@echo 'Focused checks: verify-shared-tooling, check-pins, test-pins, test-tooling, test-release-adapters, test-release-runner, test-hooks, fmt-check, lint-tooling.'
+	@echo 'Setup: install-tools (host then IC tools), fetch-dependencies, install-hooks; prepare Rust/cargo-sort separately.'
+	@echo 'Focused checks: tools-check, test-tools, verify-shared-tooling, check-pins, test-pins, test-tooling, test-release-adapters, test-release-runner, test-hooks, fmt-check, lint-tooling.'
 	@echo 'Formatting: fmt. Full gates require explicit qualification: validate, validate-toolchain.'
 	@echo 'Maintainer releases: release-patch, release-minor, release-major; normal targets recover unfinished releases.'
 
 install-hooks:
 	bash scripts/dev/install-git-hooks.sh
+
+# Explicit network setup; ordinary checks never install prerequisites.
+install-tools:
+	+$(MAKE) --no-print-directory install-host-tools
+	+$(MAKE) --no-print-directory install-ic-tools
+
+tools-check:
+	+$(MAKE) --no-print-directory host-tools-check
+	+$(MAKE) --no-print-directory ic-tools-check
+
+install-host-tools:
+	bash scripts/dev/install-host-tools.sh --versions "$(HOST_TOOL_VERSIONS)"
+
+host-tools-check:
+	bash scripts/dev/install-host-tools.sh --versions "$(HOST_TOOL_VERSIONS)" --check
+
+install-ic-tools:
+	bash scripts/dev/install-ic-tools.sh --pins "$(IC_TOOL_PINS)"
+
+ic-tools-check:
+	bash scripts/dev/install-ic-tools.sh --pins "$(IC_TOOL_PINS)" --check
+
+test-tools:
+	bash scripts/ci/test-host-tools.sh
+	bash scripts/ci/test-ic-tools.sh
+	bash scripts/ci/test-evidence-checksums.sh
 
 # Network preparation is separate from offline checks; preserve tracked locks.
 fetch-dependencies:
@@ -43,7 +73,7 @@ test-pins:
 
 check-format-tools:
 	@test "$$($(FORMAT_CARGO) sort --version)" = "cargo-sort $(CARGO_SORT_VERSION)" || \
-		{ echo 'Install the pinned cargo-sort from ci-tool-versions.env before formatting.' >&2; exit 1; }
+		{ echo 'Install the pinned cargo-sort from ci/tool-versions.env before formatting.' >&2; exit 1; }
 
 fmt: check-format-tools
 	$(FORMAT_CARGO) sort --workspace
@@ -60,7 +90,7 @@ fmt-check: check-format-tools
 # Install exact, checksum-verified tools separately; these checks are offline.
 lint-tooling:
 	$${ACTIONLINT_BIN:-actionlint} .github/workflows/*.yml
-	$${SHELLCHECK_BIN:-shellcheck} ci-tool-versions.env scripts/ci/*.sh scripts/dev/*.sh .githooks/pre-commit
+	$${SHELLCHECK_BIN:-shellcheck} --shell=bash ci/tool-versions.env scripts/ci/*.sh scripts/dev/*.sh .githooks/pre-commit
 
 test-tooling:
 	cargo +$(VALIDATION_TOOLCHAIN) test --locked --offline --example repo-tool
@@ -89,7 +119,7 @@ validate:
 	cargo +$$($(TOOL) msrv) check --locked --offline --all-targets
 
 validate-toolchain:
-	$(MAKE) --no-print-directory verify-shared-tooling check-pins test-pins test-tooling test-release-adapters test-release-runner test-hooks fmt-check
+	$(MAKE) --no-print-directory verify-shared-tooling host-tools-check check-pins test-pins test-tools test-tooling test-release-adapters test-release-runner test-hooks fmt-check
 	cargo +$(VALIDATION_TOOLCHAIN) clippy --locked --offline --all-targets -- -D warnings
 	cargo +$(VALIDATION_TOOLCHAIN) test --locked --offline -- --test-threads=1
 	RUSTDOCFLAGS='-D warnings' cargo +$(VALIDATION_TOOLCHAIN) doc --locked --offline --no-deps

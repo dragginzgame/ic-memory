@@ -1,284 +1,76 @@
-<p align="center">
-  <img src="https://raw.githubusercontent.com/dragginzgame/shared-assets/main/ic-memory/ic-memory-readme-header.svg" alt="IC Memory — Stops upgrades from mixing up stored data" width="100%">
-</p>
+# ic-memory code hygiene overlay
 
-# ic-memory Recurring Audit: Code Hygiene
+Use the unchanged [shared code hygiene method](../../../audits/code-hygiene.md)
+and [audit contract](../../../audits/README.md), recorded at Shared Tooling
+`a37771f1b6b5fc9a88ed6ab3b705bdda35cd8fa3` in
+[the snapshot](../../../.shared-tooling.snapshot). The shared method owns generic
+questions, severity, verdicts, evidence and repair authority. This overlay owns
+the crate-specific obligations below. An audit does not authorize fixes.
 
-## Purpose
+## Product authorities and traces
 
-Catch small defects, drift, and maintainability regressions before they become architectural issues.
+- Current [safety contract](../../../SAFETY.md), [advanced API](../../../ADVANCED.md),
+  [current ledger](../../current-ledger.md) and [operations](../../operations.md).
+  Review current contracts; historical reports do not establish present behavior.
+- Public API roots: `src/lib.rs`, `src/capability.rs`, `src/declaration.rs`,
+  `src/policy.rs`, `src/slot/`, `src/runtime/`, and `examples/composed_host.rs`.
+  Inventory constructors separately from inert/diagnostic DTOs and manual owners.
+- Trust transitions: declarations/decoded DTOs → validation → staged ledger →
+  physical persistence → committed capability → runtime publication. Trace
+  `src/cbor.rs`, `src/validation.rs`, `src/ledger/`, `src/physical.rs`,
+  `src/stable_cell.rs`, `src/bootstrap.rs`, `src/registry.rs` and `src/runtime/`.
+  Recovery must reject malformed current-format bytes and corrupt/ambiguous slots
+  before issuing authority. Keep constructor/deserialization invariants aligned;
+  decoded DTOs and diagnostics never grant memory access.
+- Admission and warm adoption remain distinct. Verify explicit grants, logical
+  placement, per-thread native bootstrap ordering, nonconstructing observations
+  and the sole owned manager. Manual persistence confirmation remains caller-owned.
+- Classify panic sites against stable-memory input reachability and the substrate's
+  `Storable` contract. Preserve typed distinctions where operator action differs:
+  corruption, invalid input, unsupported format, policy rejection and readiness.
+- Trace bounds, checked arithmetic, growth failure, zero-length/page-edge IO,
+  bounded decode/recovery, retained bytes and physical allocation accounting.
+  Never describe allocated backing bytes as application payload occupancy.
+- Consumer policy stays outside ic-memory. README/examples should show the shortest
+  supported path; advanced authority/recovery caveats belong in ADVANCED/SAFETY.
+  Archived API names and measurements retain their original source identities.
 
-This audit is intentionally simple. It is not a security audit, compatibility audit, or design review.
+## Focused evidence
 
-## Assessment
+Inspect `src`, `tests`, `examples`, `fixtures/current`, `testing/runtime-qualification`,
+Make/CI and maintained guides for the selected scope. Trace the macros in
+`src/lib.rs` through the registry, examples and compile-fail consumers. Runtime,
+host release adapters and the independent PocketIC harness have different contracts;
+name omitted families rather than implying they passed.
 
-This is the right recurring audit shape for `ic-memory`: it is narrow,
-repeatable, and focused on the kinds of small quality failures that can weaken
-the larger safety model over time. The strongest parts are the trust-boundary
-questions, the emphasis on precise errors, and the insistence on negative tests.
+Use `rg` inventories for public/serde/panic/unsafe sites and their callers.
+Prefer existing negative behavior and compile-fail capability tests over new
+private-layout assertions. Declaration-registry tests mutate shared state: run
+their selected cases with `--test-threads=1`.
 
-The main weakness is that the current checklist can still produce a broad,
-subjective review unless the auditor is forced to separate mechanical hygiene
-from protocol design. `ic-memory` has many protocol-sensitive types, so a code
-hygiene pass should identify confusing surfaces and missing guardrails, but it
-should not silently become the temporal-compatibility audit or a redesign
-proposal.
+- Formatting: `make fmt-check` checks both workspaces without builds or installs.
+- Product changes: select the affected Rust test on the pinned toolchain using
+  `cargo +1.99.0 test --locked --offline <selection> -- --test-threads=1`.
+- Host tooling: select `make verify-shared-tooling`, `test-tools`, `test-pins`,
+  `test-tooling`, `test-release-adapters`, `test-release-runner`, `test-hooks`
+  or `lint-tooling` as relevant. Scripts use disposable substitutes where effects
+  would otherwise create commits, tags or publication; never run the real hook.
+- Check active builds before compilation or edits. Full validation, Wasm budgets,
+  packaging, installed PocketIC and broad MSRV qualification require explicit
+  request or configured CI. Audits do not automatically install tools or fetch.
+- Performance evidence follows the owning qualification procedure, for example
+  [runtime IO](../../runtime-io-qualification.md). Bind matched bytes/instructions/
+  timings to compiler, lock, artifact and workload; counts are inspection aids.
 
-The best improvement is to make the audit more evidence-driven:
+## Reports and history
 
-- require a public API inventory;
-- require a trust-state inventory;
-- require a panic/unwrap classification;
-- require a serde/constructor classification;
-- require each finding to state whether it is mechanical, behavioral, or design
-  work.
+Keep reports in `docs/audits/recurring/`, using distinct dated filenames for new
+runs. Record source/dirty scope, shared revision and overlay hash, chosen families,
+checks and gaps under the common contract. This is not an automatic schedule.
 
-## Scope
-
-Audit the current `ic-memory` crate for:
-
-1. Dead or misleading code
-   - unused helpers
-   - stale abstractions
-   - obsolete comments
-   - misleading names
-   - public APIs that should be private
-   - test-only code leaking into production API
-
-2. Error hygiene
-   - vague error variants
-   - duplicated error types
-   - errors that lose important context
-   - panic paths in library/runtime code
-   - unwrap/expect usage outside tests
-   - errors that should distinguish corrupt / unsupported / invalid / policy-rejected
-
-3. API hygiene
-   - unnecessary public fields
-   - unnecessary public constructors
-   - authority-bearing types with too much surface
-   - confusing advanced APIs
-   - missing rustdoc on public protocol-sensitive items
-   - names that obscure whether a value is raw, decoded, validated, recovered, or authoritative
-
-4. Validation hygiene
-   - validation duplicated inconsistently
-   - validation missing at public boundaries
-   - manual construction paths not covered by validation
-   - serde-decoded values treated as trusted too early
-   - tests that validate only the golden path
-
-5. Test hygiene
-   - missing regression tests for recent fixes
-   - overly broad tests that do not assert the important invariant
-   - tests coupled to implementation details rather than behavior
-   - missing negative tests
-   - missing panic/fail-closed tests
-   - stale fixture names or comments
-
-6. Documentation hygiene
-   - README drift
-   - ADVANCED.md drift
-   - rustdoc drift
-   - examples that use old API names
-   - docs that describe behavior no longer enforced
-   - docs that omit important authority/protocol caveats
-
-7. Dependency and feature hygiene
-   - unnecessary dependencies
-   - unstable feature flags
-   - test-only dependencies in normal builds
-   - public API accidentally depending on optional features
-   - workspace/package metadata drift
-
-8. Module and ownership hygiene
-   - files carrying too many unrelated responsibilities
-   - tests embedded in modules that now obscure production code
-   - TODOs that have become durable design decisions
-   - helpers whose names no longer match their authority level
-   - duplicated concepts between runtime, bootstrap, validation, and ledger code
-
-## Commands
-
-Run with the repository's pinned development toolchain:
-
-```sh
-cargo fmt --all --check
-cargo test --locked -p ic-memory -- --test-threads=1
-cargo clippy --locked -p ic-memory --all-targets -- -D warnings
-RUSTDOCFLAGS="-D warnings" cargo doc --locked -p ic-memory --no-deps
-cargo check --locked -p ic-memory --all-features
-cargo check --locked -p ic-memory --no-default-features
-cargo check --locked --target wasm32-unknown-unknown --tests
-cargo +1.88.0 check --locked --all-targets
-git diff --check
-```
-
-The maintainer pin is Rust 1.99.0 in `rust-toolchain.toml`; the declared MSRV is
-Rust 1.88.0 in `Cargo.toml`. Keep this checklist aligned with those files when
-either changes. Tests use serialized execution because declaration-registry
-qualification mutates shared test state.
-
-Also run targeted searches:
-
-```sh
-rg "unwrap|expect|panic!|todo!|unimplemented!" src tests
-rg "pub " src
-rg "Deserialize|Serialize|Default|Clone|Copy" src
-rg "compatibility|unsafe|advanced|deprecated|TODO|FIXME|HACK" src README.md ADVANCED.md
-rg "pub\\(|pub(crate)|pub struct|pub enum|pub trait|pub fn" src
-rg "from_slice|from_bytes|decode|deserialize|Deserialize" src
-rg "Result<|thiserror|panic!" src
-```
-
-For the `pub` and serde searches, do not paste raw output into the report. Use
-the output to build a short inventory and then identify only actionable issues.
-
-## Method
-
-1. Build a public API inventory.
-   - List authority-bearing types separately from inert DTOs.
-   - Note every public constructor for those types.
-   - Note every public function that returns or consumes authority.
-
-2. Build a decoded-data inventory.
-   - List every `Deserialize` type.
-   - Mark each as `inert`, `diagnostic`, `physical`, `ledger`, `declaration`,
-     or `authority`.
-   - Authority types should not deserialize. Decoded DTOs must be validated
-     before use.
-
-3. Build a panic inventory.
-   - Classify each `panic!`, `unwrap`, and `expect` as test-only, constructor
-     invariant, impossible-by-type, or bug.
-   - Runtime/library paths that inspect stable memory should prefer classified
-     errors over panics.
-
-4. Build an error inventory.
-   - Confirm errors distinguish corruption, malformed current-format bytes,
-     invalid input, policy rejection, and not-yet-bootstrapped state where that
-     distinction affects operator action.
-
-5. Build a test inventory.
-   - For each recent fix, identify its regression test.
-   - For each public validation boundary, identify at least one negative test.
-   - Prefer behavior names over implementation names in new tests.
-
-6. Classify each finding.
-   - `Mechanical`: rename, visibility, rustdoc, stale comment, test name.
-   - `Behavioral`: fail-closed behavior, validation ordering, error split.
-   - `Design`: protocol evolution, migration model, long-term storage format.
-
-Only mechanical and clearly safe behavioral findings should be fixed during the
-audit. Design findings should be linked to design docs or follow-up issues.
-
-## Key ic-memory Questions
-
-For every public item, ask:
-
-- Is this raw data, decoded data, validated data, recovered state, or authority?
-- Does the type name make that distinction obvious?
-- Can a downstream caller misuse it to bypass validation?
-- Should this be `pub`, `pub(crate)`, or private?
-- Does rustdoc explain the trust boundary?
-- Is this public because downstream crates need it, or because tests once needed
-  it?
-
-For every error path, ask:
-
-- Does this fail closed?
-- Would an operator know what happened?
-- Is corrupt state distinct from unsupported future state?
-- Is policy rejection distinct from integrity rejection?
-- Is panic avoided in library/runtime paths?
-- Does the error name match the layer that reports it?
-
-For every test, ask:
-
-- What invariant does this prove?
-- Would it catch a regression?
-- Does it test failure as well as success?
-- Does it protect a recently fixed bug?
-- Would a future maintainer understand which invariant the test protects from
-  the test name alone?
-
-For every document and example, ask:
-
-- Does the README show the shortest normal path?
-- Is advanced protocol or recovery material in `ADVANCED.md` or `SAFETY.md`
-  instead of the README?
-- Do examples use `rust` fenced code blocks?
-- Do docs distinguish `ic-memory` generic mechanics from Canic policy?
-- Do examples include logical placement under explicit grants, cold admission,
-  warm authority adoption and native per-thread bootstrap ordering?
-- Do current docs describe nonconstructing default observations, typed growth,
-  bounded recovery and physical accounting without claiming payload occupancy?
-- Are archived designs and measurements labeled with their original release,
-  rather than presented as current APIs, budgets or outstanding work?
-
-## Deliverable
-
-Write a concise report with:
-
-1. Executive summary
-2. Risk score 0-10
-3. Findings grouped by High / Medium / Low / Cleanup
-4. For each finding:
-   - file:path:line
-   - issue
-   - why it matters
-   - recommended fix
-   - suggested regression test, if applicable
-5. A checklist of quick fixes suitable for one PR
-6. A separate list of issues that should be deferred to design work
-7. A short "Audit Quality" section:
-   - what the audit is confident about;
-   - what it did not inspect;
-   - what would make the next pass stronger.
-
-Use this severity guide:
-
-- `High`: a public API or runtime path can plausibly be misused to bypass
-  validation, panic on stable-memory input, or hide an operator-actionable error.
-- `Medium`: stale naming, documentation, or module shape can mislead future
-  maintainers around authority, recovery, or validation.
-- `Low`: local cleanup, test clarity, or ergonomics issues with limited blast
-  radius.
-- `Cleanup`: mechanical formatting, dead comments, duplicate fixtures, or
-  naming polish.
-
-## Non-goals
-
-Do not redesign the protocol.
-Do not propose large migration architecture changes unless code hygiene reveals a concrete immediate hazard.
-Do not make speculative security claims.
-Do not change code unless the fix is mechanical and obviously safe.
-
-## Expected Output Style
-
-Be direct and practical.
-
-Prefer findings like:
-
-- “make this private”
-- “rename this”
-- “add rustdoc here”
-- “split this error”
-- “replace expect with Result”
-- “add a negative test”
-- “delete stale helper”
-
-Avoid broad architecture commentary unless it directly follows from code hygiene.
-
-## Common False Positives
-
-- A public DTO is not automatically a bug. It is a bug only if callers can treat
-  it as authority without validation.
-- A `Deserialize` derive is not automatically a bug. It is a bug when the decoded
-  value can cross into authority without deep validation.
-- An advanced API is not automatically a bug. It is a hygiene issue when rustdoc
-  does not clearly state the trust boundary and intended users.
-- A large module is not automatically a bug. It becomes a hygiene issue when
-  unrelated responsibilities make review or invariant tracing difficult.
-- A missing test is not automatically high severity. Severity should follow the
-  invariant the test would protect.
+The [frozen prior definition](frozen/code-hygiene-19efb34.md) reproduces historical
+method evidence only and is ineligible for new runs. Old composite risk scores
+are `N/A (method change)` against the shared finding-based method. Preserve
+historical reports unchanged; any reused test evidence needs matching assertions
+and identities. [Adoption review](shared-tooling-adoption-2026-10-06.md) maps the
+prior obligations without claiming a fresh product audit.

@@ -190,11 +190,6 @@ impl Execute for Substitute {
         };
         match program {
             "bash" => Processes.run(Path::new(env!("CARGO_MANIFEST_DIR")), program, args, true),
-            "shasum" => {
-                // Hashes use the real, portable process boundary rather than an
-                // invented checksum. The other external command is the read-only version helper.
-                Processes.run(root, program, args, true)
-            }
             "rustc" => Ok(format!("fixture-rustc {}\n", args[0])),
             "cargo"
                 if args
@@ -431,6 +426,24 @@ impl Execute for Substitute {
             _ => Err(format!("unexpected fixture process: {program} {args:?}").into()),
         }
     }
+}
+
+#[test]
+fn retained_package_paths_require_digest_authority_before_target_discovery() {
+    let fixture = Fixture::new();
+    for digest in ["", "../other", &"A".repeat(64), &"0".repeat(63)] {
+        assert!(fixture.repo.retained_package(digest).is_err());
+    }
+    assert!(fixture.repo.exec.state.borrow().calls.is_empty());
+    let digest = "0".repeat(64);
+    assert_eq!(
+        fixture.repo.retained_package(&digest).unwrap(),
+        fixture
+            .repo
+            .root
+            .join("configured output/release-validation/artifacts")
+            .join(format!("{digest}.crate"))
+    );
 }
 
 #[test]

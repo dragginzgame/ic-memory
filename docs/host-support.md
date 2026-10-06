@@ -35,7 +35,8 @@ when recording release qualification; retain failed runs and their limitations.
 - Rustup with Rust 1.99.0, Clippy, rustfmt and `wasm32-unknown-unknown`; also
   install the declared MSRV, Rust 1.88.0. Toolchain changes need a demonstrated
   reason and separate qualification.
-- Git, GNU Make, Bash 3.2 or newer, `sed`, `awk`, and `shasum` with SHA-256 support.
+- Git, GNU Make, Bash 3.2 or newer, curl, tar with gzip/xz support, Perl,
+  `sed`, `awk`, and either `sha256sum` or `shasum` with SHA-256 support.
   On macOS, install Xcode Command Line Tools for native compilation and Git.
   The system `make` is sufficient when it is GNU Make; Homebrew `gmake` is an
   alternative. Do not substitute BSD Make.
@@ -45,14 +46,12 @@ when recording release qualification; retain failed runs and their limitations.
   separately with `cargo fetch --locked --manifest-path testing/runtime-qualification/Cargo.toml`
   when installed qualification is needed. Preserve both selections; never
   regenerate them to make a check pass.
-- Git, jq and Mike Farah yq 4.47.2 for `make check-pins`; ripgrep for
-  `make test-pins`. The consumer-selected yq digests live in
-  `ci-tool-versions.env`; the shared installer verifies them before executing the
-  download. Interrupted manifest/lockfile recovery also uses yq to locate
-  Cargo's selected target directory. Checks are offline and never install their
-  prerequisites.
+- The common jq/yq pair under `.tools/host/bin` for `make check-pins`; ripgrep
+  for `make test-pins`. The reviewed pins live in `ci/tool-versions.env`.
+  Interrupted manifest/lockfile recovery also uses yq to locate Cargo's selected
+  target directory. Checks are offline and never install prerequisites.
 - Actionlint and ShellCheck for `make lint-tooling`. CI installs exact
-  consumer-owned versions and hashes from `ci-tool-versions.env` using the
+  shared versions and hashes from `ci/tool-versions.env` using the
   reviewed shared installers. Local installation is a separate network step.
 - Crates.io credentials are needed only for maintainer publication. Tests use
   deterministic command substitutes and never need credentials or network.
@@ -63,8 +62,8 @@ Install the exact manifest formatter separately from validation, then activate
 the reviewed hook once per clone (also run the installer after setup updates):
 
 ```sh
-source ci-tool-versions.env
-cargo +1.99.0 install cargo-sort --version "$IC_MEMORY_CARGO_SORT_VERSION" --locked
+source ci/tool-versions.env
+cargo +1.99.0 install cargo-sort --version "$SHARED_TOOLING_CARGO_SORT_VERSION" --locked
 make install-hooks
 git config --get core.hooksPath # .githooks
 make fmt-check
@@ -76,19 +75,24 @@ formats Rust in both the root workspace and `testing/runtime-qualification`.
 builds, installs tools, fetches dependencies or changes selected lockfiles.
 Bare `make` prints available commands rather than preparing dependencies.
 
-Prepare the dependency parser explicitly for the detected host:
+Prepare the common host and IC tool sets explicitly for the detected host:
 
 ```sh
-bash scripts/dev/install-yq.sh --install-dir "$HOME/.local/bin"
-export YQ="$HOME/.local/bin/yq"
+make install-tools
+make tools-check
+export PATH="$PWD/.tools/host/bin:$PWD/.tools/ic/bin:$PATH"
 make check-pins test-pins
 ```
 
-This setup command downloads yq over HTTPS using the exact selected version and
-platform digest, checks the executable version, and changes only the chosen
-installation directory. It supports the declared Linux/macOS hosts; Linux ARM64
-asset mapping is not a native qualification claim. CI executes the same selection
-adapter on each declared test host. The pin checker requires locks already tracked
+Make selects those local paths automatically. Setup does not edit shell profiles.
+See [common local setup](local-setup.md) for system bootstrap packages and
+[IC tools](ic-tools.md) for the selected Quill, ICP CLI, didc, ic-wasm, PocketIC
+and wasm-opt set. Host and IC setup activate independently; previous selections
+and failed candidates stay under `.tools/`. `install-host-tools` and
+`install-ic-tools` can prepare either set separately, with offline checks through
+`host-tools-check` and `ic-tools-check`. Ordinary validation never installs tools.
+CI explicitly installs and checks both sets on each declared native test host;
+configured jobs alone do not qualify this adoption. The pin checker requires locks already tracked
 by Git: agents leave new locks unstaged, so the maintainer must commit their
 adoption before the real-checkout declaration/release gate can pass.
 
@@ -110,7 +114,7 @@ historical runtime gates above.
 
 ## Native checks
 
-Focused tooling checks are `make verify-shared-tooling check-pins test-pins test-tooling test-hooks fmt-check`,
+Focused tooling checks are `make verify-shared-tooling tools-check test-tools check-pins test-pins test-tooling test-hooks fmt-check`,
 `make test-release-adapters test-release-runner` and `make lint-tooling`. Compilation must wait for any existing build to finish.
 
 CI runs `make validate-toolchain` and the offline all-target MSRV check on each
@@ -126,3 +130,9 @@ They do not prove a live push or publication. The native release prerequisites
 and evidence checks are shared by the maintainer workflow in
 [RELEASING.md](../RELEASING.md). Live publication and downstream deployment need
 their own authorization and observations.
+
+The repository helper uses the registry `ic-host-tools` development dependency
+for streaming file hashes and digest parsing. It is selected only for native
+targets and is absent from canister dependency graphs. `shasum` remains a setup
+and CI prerequisite through common scripts, rather than a release adapter
+subprocess. Product receipts, release identities and Wasm budgets stay local.

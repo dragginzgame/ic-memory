@@ -73,11 +73,16 @@ measurements. Use the current guides above for present-day API instructions.
 - [Wasm codec size audit](audits/wasm-codec-size-2026-07-14.md)
 - [Recurring audit records](audits/recurring/)
 
+Current maintenance reviews use the [shared methods and ic-memory overlay](audits/README.md).
+Historical reports retain their original methods and measurements.
+
 Measurement CSVs under `measurements/` belong to the historical reports that
 link to them.
 
 ## Maintainers
 
+- [Detailed 0.28 release notes](changelog/0.28.md)
+- [Local developer setup](local-setup.md) and [product host requirements](host-support.md)
 - [Detailed 0.27 release notes](changelog/0.27.md)
 - [Detailed 0.26 release notes](changelog/0.26.md)
 - [Detailed 0.25 release notes](changelog/0.25.md)

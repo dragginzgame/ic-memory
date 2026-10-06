@@ -4,6 +4,7 @@
 //! package travel together in one receipt. Publication checks that evidence
 //! before dispatch; it never resolves a replacement lockfile.
 
+use ic_host_tools::artifact::{Sha256Digest, hash_file};
 use serde::{Deserialize, Serialize};
 use std::{
     collections::BTreeMap,
@@ -525,28 +526,9 @@ impl<E: Execute> Repository<E> {
             .join(format!("ic-memory-{version}.crate")))
     }
 
-    fn sha256(&self, path: &Path) -> Result<String> {
-        require(
-            fs::metadata(path)?.is_file(),
-            "checksum input must be a regular file",
-        )?;
-        // shasum ships with macOS and is also provided by Ubuntu's Perl package.
-        let output = self.output(
-            "shasum",
-            &["-a", "256", path.to_str().ok_or("non-UTF-8 checksum path")?],
-        )?;
-        let digest = output
-            .split_whitespace()
-            .next()
-            .ok_or("missing SHA-256 output")?;
-        require(
-            digest.len() == 64
-                && digest
-                    .bytes()
-                    .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte)),
-            "invalid SHA-256 output",
-        )?;
-        Ok(digest.to_owned())
+    fn sha256(path: &Path) -> Result<String> {
+        // Preserve the existing file-size contract; hashing uses constant memory.
+        Ok(hash_file(path, u64::MAX)?.sha256.to_string())
     }
 
     fn identities(&self) -> Result<[String; 3]> {
@@ -558,13 +540,7 @@ impl<E: Execute> Repository<E> {
     }
 
     fn retained_package(&self, digest: &str) -> Result<PathBuf> {
-        require(
-            digest.len() == 64
-                && digest
-                    .bytes()
-                    .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte)),
-            "invalid package digest",
-        )?;
+        let digest: Sha256Digest = digest.parse()?;
         Ok(self
             .target()?
             .join("release-validation/artifacts")
@@ -573,20 +549,20 @@ impl<E: Execute> Repository<E> {
 
     fn record_package(&self, version: &str) -> Result<String> {
         let package = self.package_path(version)?;
-        let digest = self.sha256(&package)?;
+        let digest = Self::sha256(&package)?;
         let retained = self.retained_package(&digest)?;
         if !retained.exists() {
             fs::create_dir_all(retained.parent().ok_or("archive has no parent")?)?;
             let temporary = retained.with_extension("crate.tmp");
             fs::copy(package, &temporary)?;
             require(
-                self.sha256(&temporary)? == digest,
+                Self::sha256(&temporary)? == digest,
                 "package changed while retaining evidence",
             )?;
             fs::rename(temporary, &retained)?;
         }
         require(
-            self.sha256(&retained)? == digest,
+            Self::sha256(&retained)? == digest,
             "retained package differs from its digest",
         )?;
         Ok(digest)
@@ -666,7 +642,8 @@ impl<E: Execute> Repository<E> {
                             ),
                         )?;
                     }
-                    configuration.insert(format!("config:{}", path.display()), self.sha256(&path)?);
+                    configuration
+                        .insert(format!("config:{}", path.display()), Self::sha256(&path)?);
                 }
             }
         }
@@ -1121,7 +1098,7 @@ impl<E: Execute> Repository<E> {
         )?;
         self.verify_inputs(&evidence.validation, true)?;
         require(
-            self.sha256(&self.root.join("Cargo.lock"))? == evidence.lock_sha256,
+            Self::sha256(&self.root.join("Cargo.lock"))? == evidence.lock_sha256,
             "selected lockfile differs from package qualification",
         )?;
         require(
@@ -1129,13 +1106,13 @@ impl<E: Execute> Repository<E> {
             "package evidence identifies another Git HEAD",
         )?;
         require(
-            self.sha256(&self.retained_package(&evidence.package_sha256)?)?
+            Self::sha256(&self.retained_package(&evidence.package_sha256)?)?
                 == evidence.package_sha256,
             "retained archive differs from release validation",
         )?;
         if working {
             require(
-                self.sha256(&self.package_path(&selection.version)?)? == evidence.package_sha256,
+                Self::sha256(&self.package_path(&selection.version)?)? == evidence.package_sha256,
                 "working package differs from release validation",
             )?;
         }
@@ -1170,7 +1147,7 @@ impl<E: Execute> Repository<E> {
             &selection.version,
         )?;
         self.run_command(&commands[1])?;
-        let lock_sha256 = self.sha256(&self.root.join("Cargo.lock"))?;
+        let lock_sha256 = Self::sha256(&self.root.join("Cargo.lock"))?;
         self.run_command(&commands[2])?;
         self.check_surfaces(selection, None, false)?;
         require(
@@ -1179,7 +1156,7 @@ impl<E: Execute> Repository<E> {
         )?;
         self.verify_inputs(&validation, true)?;
         require(
-            self.sha256(&self.root.join("Cargo.lock"))? == lock_sha256,
+            Self::sha256(&self.root.join("Cargo.lock"))? == lock_sha256,
             "packaging changed selected dependencies",
         )?;
         let evidence = PackageEvidence {
@@ -1264,7 +1241,7 @@ impl<E: Execute> Repository<E> {
         )?;
         self.verify_inputs(&evidence.validation, true)?;
         require(
-            self.sha256(&self.root.join("Cargo.lock"))? == evidence.lock_sha256,
+            Self::sha256(&self.root.join("Cargo.lock"))? == evidence.lock_sha256,
             "final packaging changed selected dependencies",
         )?;
         evidence.package_head = head;

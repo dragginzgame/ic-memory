@@ -1,5 +1,6 @@
 # Rust build output
 target/
+/.tools/
 
 # Maintained workspaces commit their selected Cargo.lock files.
 .shared-tooling-refresh.*

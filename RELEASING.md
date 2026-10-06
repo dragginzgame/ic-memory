@@ -32,7 +32,7 @@ checks the selected cache with `cargo fetch --locked --offline`; it never retrie
 online or regenerates the lockfile. Validation, version refresh and packaging
 remain offline. A root-version refresh may change only the `ic-memory` entry,
 never dependency selection. Cache preparation is a separate network operation.
-Prepare the checksum-pinned `yq` parser separately as described in
+Prepare the checksum-pinned local jq/yq pair with `make install-host-tools`, as described in
 [host support](docs/host-support.md). `make check-pins` checks declarations and
 tracked locks; `make validate` includes it and the canonical pinning fixtures.
 Commit the initial tracked-lock adoption before running those gates. Complete

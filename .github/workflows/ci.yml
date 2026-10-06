@@ -25,15 +25,15 @@ jobs:
       - name: Install exact validation tools
         shell: bash
         run: |
-          source ci-tool-versions.env
+          source ci/tool-versions.env
           tool_dir="$RUNNER_TEMP/ic-memory-tools"
           actionlint_bin="$(bash scripts/ci/install-actionlint.sh \
-            --version "$IC_MEMORY_ACTIONLINT_VERSION" \
-            --sha256 "$IC_MEMORY_ACTIONLINT_SHA256_LINUX_AMD64" \
+            --version "$SHARED_TOOLING_ACTIONLINT_VERSION" \
+            --sha256 "$SHARED_TOOLING_ACTIONLINT_SHA256_LINUX_AMD64" \
             --install-dir "$tool_dir")"
           shellcheck_bin="$(bash scripts/ci/install-shellcheck.sh \
-            --version "$IC_MEMORY_SHELLCHECK_VERSION" \
-            --sha256 "$IC_MEMORY_SHELLCHECK_SHA256_LINUX_X86_64" \
+            --version "$SHARED_TOOLING_SHELLCHECK_VERSION" \
+            --sha256 "$SHARED_TOOLING_SHELLCHECK_SHA256_LINUX_X86_64" \
             --install-dir "$tool_dir")"
           {
             echo "ACTIONLINT_BIN=$actionlint_bin"
@@ -69,13 +69,25 @@ jobs:
         env:
           RUSTUP_TOOLCHAIN: ${{ steps.pin.outputs.channel }}
         run: |
-          source ci-tool-versions.env
-          cargo install cargo-sort --version "$IC_MEMORY_CARGO_SORT_VERSION" --locked
-      - name: Install checksum-verified dependency parser
+          source ci/tool-versions.env
+          cargo install cargo-sort --version "$SHARED_TOOLING_CARGO_SORT_VERSION" --locked
+      - name: Install and verify repository-local host and IC tools
         shell: bash
         run: |
-          yq_bin="$(bash scripts/dev/install-yq.sh --install-dir "$RUNNER_TEMP/ic-memory-pin-tools")"
-          echo "YQ=$yq_bin" >> "$GITHUB_ENV"
+          make install-tools tools-check
+          echo "$PWD/.tools/host/bin" >> "$GITHUB_PATH"
+          echo "$PWD/.tools/ic/bin" >> "$GITHUB_PATH"
+      - name: Install pin and tool fixture bootstrap prerequisite
+        shell: bash
+        run: |
+          if ! command -v rg >/dev/null; then
+            case "$RUNNER_OS" in
+              Linux) sudo apt-get update && sudo apt-get install -y ripgrep ;;
+              macOS) brew install ripgrep ;;
+              *) echo 'Unsupported fixture host' >&2; exit 1 ;;
+            esac
+          fi
+          rg --version
       - name: Check both workspaces without changing files
         run: make fmt-check
       - name: Exercise hook isolation on the native host

@@ -6,7 +6,9 @@ unset MAKEFLAGS MFLAGS MAKEOVERRIDES VALIDATION_REPOSITORY_ROOT VALIDATION_RUNNE
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 FIXTURE="$(mktemp -d "${TMPDIR:-/tmp}/ic-memory-release-adapters.XXXXXX")"
 trap 'rm -rf "$FIXTURE"' EXIT
-cp "$ROOT/Makefile" "$ROOT/rust-toolchain.toml" "$ROOT/ci-tool-versions.env" "$FIXTURE/"
+mkdir -p "$FIXTURE/ci"
+cp "$ROOT/Makefile" "$ROOT/rust-toolchain.toml" "$FIXTURE/"
+cp "$ROOT/ci/tool-versions.env" "$FIXTURE/ci/"
 mkdir -p "$FIXTURE/scripts/ci" "$FIXTURE/custom target"
 cat > "$FIXTURE/helper" <<'STUB'
 #!/usr/bin/env bash
@@ -90,8 +92,9 @@ done
 # The actual Make launcher must reach the adapter while only the root lock is
 # prepared. Cargo/parser substitutes prove isolation and argument propagation.
 mkdir -p "$FIXTURE/bootstrap/scripts/dev" "$FIXTURE/bootstrap/bin" \
-    "$FIXTURE/bootstrap/src" "$FIXTURE/bootstrap/examples"
-cp "$ROOT/Makefile" "$ROOT/rust-toolchain.toml" "$ROOT/ci-tool-versions.env" "$FIXTURE/bootstrap/"
+    "$FIXTURE/bootstrap/src" "$FIXTURE/bootstrap/examples" "$FIXTURE/bootstrap/ci"
+cp "$ROOT/Makefile" "$ROOT/rust-toolchain.toml" "$FIXTURE/bootstrap/"
+cp "$ROOT/ci/tool-versions.env" "$FIXTURE/bootstrap/ci/"
 cp "$ROOT/scripts/dev/run-repo-tool.sh" "$FIXTURE/bootstrap/scripts/dev/"
 cd "$FIXTURE/bootstrap"
 cat > Cargo.toml <<'MANIFEST'

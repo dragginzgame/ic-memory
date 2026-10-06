@@ -25,6 +25,7 @@ exclude = ["testing/runtime-qualification"]
 ciborium = "0.2.2"
 # Constructors register hooks; the registry owns their execution phases.
 ctor = { version = "1.0", default-features = false, features = ["std", "proc_macro"] }
+ic-host-tools = "0.1.10"
 # Qualified manager/Cell layout boundary; see AGENTS.md#dependency-exceptions.
 ic-stable-structures = "=0.7.2"
 serde = { version = "1.0", default-features = false, features = [
@@ -42,6 +43,9 @@ ctor.workspace = true
 ic-stable-structures.workspace = true
 serde.workspace = true
 thiserror.workspace = true
+
+[target.'cfg(not(target_arch = "wasm32"))'.dev-dependencies]
+ic-host-tools.workspace = true
 
 [dev-dependencies]
 serde_json.workspace = true

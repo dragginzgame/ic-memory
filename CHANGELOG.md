@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.28.0]
+
+- Use Shared Tooling’s pinned local host/IC setup and audit methods, replacing
+  duplicate installers, tool selections and the generic audit checklist.
+  [#11](https://github.com/dragginzgame/ic-memory/issues/11) ·
+  [#12](https://github.com/dragginzgame/ic-memory/issues/12)
+- Use ic-host-tools for release artifact hashes and digest parsing, removing
+  the SHA-256 subprocess and output parser from the repository adapter.
+- Provision the missing ripgrep prerequisite in native CI before running shared
+  pin and tool fixtures.
+- **Breaking developer setup:** replace the standalone yq installer with
+  `make install-tools` (or `make install-host-tools`). Full validation now checks
+  the local parser set. Library APIs, stable-memory formats and receipt schemas
+  are unchanged.
+
+[Detailed notes](docs/changelog/0.28.md) ·
+[Adoption qualification](docs/audits/recurring/shared-tooling-adoption-2026-10-06.md)
+
 ## [0.27.3] - 2026-10-06
 
 - Restore publication network access by keeping helper compilation offline without
