@@ -434,7 +434,7 @@ fn retained_package_paths_require_digest_authority_before_target_discovery() {
     for digest in ["", "../other", &"A".repeat(64), &"0".repeat(63)] {
         assert!(fixture.repo.retained_package(digest).is_err());
     }
-    assert!(fixture.repo.exec.state.borrow().calls.is_empty());
+    assert_eq!(fixture.repo.exec.state.borrow().calls.len(), 0);
     let digest = "0".repeat(64);
     assert_eq!(
         fixture.repo.retained_package(&digest).unwrap(),

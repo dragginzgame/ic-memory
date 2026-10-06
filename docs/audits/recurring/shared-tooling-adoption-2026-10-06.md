@@ -145,3 +145,16 @@ The actual YAML bootstrap step also passed Linux/macOS install selection, existi
 skip and unsupported-host rejection through command substitutes; evidence remains
 under `target/shared-tooling-adoption/bootstrap.p9y7tW`. These substitutes performed
 no package installation and do not qualify native Homebrew/apt execution.
+
+## Follow-up: test-target lint qualification
+
+The maintainer's gate on adoption commit
+`1794de9bc1ada301c86f20ed9d174cdf3285700a` caught the new test's empty-vector
+assertion lint. The earlier example-only Clippy command above did not include
+the example's test target. Change that assertion to an explicit zero call count,
+preserving the proof that invalid digests reject before target discovery.
+On that source plus the unstaged assertion fix,
+`cargo +1.99.0 clippy --locked --offline --example repo-tool --tests -- -D warnings`,
+the selected `retained_package_paths_require_digest_authority_before_target_discovery`
+test, `make fmt-check` and `git diff --check` passed. No full gate or release
+command was executed; this evidence does not relabel the original narrower check.
