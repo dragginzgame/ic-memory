@@ -77,8 +77,18 @@ required to run setup. Make targets and CI select this same local parser pair.
 | Snapshot verification | A SHA-256 implementation |
 | Snapshot refresh | Git, a clean Shared Tooling checkout, and a SHA-256 implementation |
 | Dependency pin checker | Git, jq, Mike Farah yq v4.47.2+; Cargo when Cargo manifests exist |
+| Workspace-version reader | Prepared Cargo, jq and Mike Farah yq v4.47.2+; explicit Cargo.toml input; no dependency resolution |
 | Release runner | GNU Make, Git, `date`, explicit consumer metadata/check targets, and Bash 3.2 |
 | Rust pre-commit hook and installer | Git, GNU Make, consumer-owned `fmt` prerequisites (Cargo/rustfmt and an exact `cargo-sort` version), Bash 3.2 and standard Unix file utilities |
+| Consumer formatting adoption checker | The hook prerequisites above, Perl-free shell utilities, and reviewed consumer Make inputs; no implicit downloads |
+| Local lockfile transformer | Perl core only; the caller separately validates the prepared graph with Cargo |
+| Explicit tag maintenance | Git and Perl core modules; atomic push support for remote deletion; see [tag maintenance](tag-maintenance.md) |
+
+Host setup optionally selects ripgrep with `--with-ripgrep`; Shared Tooling's
+Make/CI callers enable it. Its archive verification also requires tar/gzip and
+cmp. The selected native binary must report PCRE2 support. All four Linux/macOS
+architecture mappings have substitute fixtures; only native execution qualifies
+the corresponding official binary. See [local setup](local-setup.md).
 
 The hook regression fixture also requires `jq` and the `cargo-sort` version from
 `ci/tool-versions.env` (`2.1.4`). CI installs it before offline tests; local

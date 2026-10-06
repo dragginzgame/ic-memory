@@ -53,7 +53,11 @@ for kind in patch minor major resume; do
         make --no-print-directory -f Makefile "release-$kind" VERSION=0.1.1 \
             RELEASE_REMOTE=review RELEASE_BRANCH=release-review \
             > "$kind-$result.log" 2>&1 || status=$?
-        if [[ "$result" == 0 ]]; then [[ "$status" == 0 ]]; else [[ "$status" != 0 ]]; fi
+        if [[ "$result" == 0 ]]; then
+            [[ "$status" == 0 ]] || exit 1
+        else
+            [[ "$status" != 0 ]] || exit 1
+        fi
         if [[ "$kind" == resume ]]; then
             printf '%s\0' resume 0.1.1 review release-review > expected
         else
@@ -73,7 +77,7 @@ for first in patch minor major resume; do
             echo 'Makefile accepted conflicting release commands' >&2
             exit 1
         fi
-        [[ ! -s "$RELEASE_COMMAND_EVENTS" ]]
+        [[ ! -s "$RELEASE_COMMAND_EVENTS" ]] || exit 1
     done
 done
 echo 'Standard release Make adapters passed (substitute runner; no release effects)'

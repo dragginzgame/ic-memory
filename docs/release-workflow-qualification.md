@@ -547,3 +547,91 @@ history. No original-index staging, commits, tags, pushes, publication, dependen
 fetching or full gate was performed. No function, method or type was removed.
 Library/Wasm source is unchanged. Native macOS and matching remote CI for these
 pending edits remain separate qualifications.
+
+## 0.28.3 shared Cargo and installer adoption
+
+Focused Linux evidence uses consumer HEAD
+`51a28a666b8b2000e0f63ed664ea47d00127d2ca` plus the pending adoption and the
+maintainer's pre-existing root Cargo edits. The 50-file snapshot exports committed
+Shared Tooling 0.1.8 at `d957d1f8801885c5b69e4a9ef900155f5f2a8a9d` from a clean
+private checkout. A first refresh refused that private clone's local origin
+before replacing any export; correcting only its origin URL permitted the normal
+refresh. No dirty upstream bytes or vendored-file patches were used.
+
+These focused checks passed:
+
+- Snapshot integrity, the actual `make check-pins` caller and both shared pin/
+  Cargo metadata fixtures. The metadata fixture is now part of `make test-pins`
+  and therefore the existing native CI/release gate.
+- A disposable export of the actual consumer sources and current manifests/
+  lockfiles: the real Make caller passed, rejected an independent build dependency
+  separately in the root and runtime-qualification manifest with
+  `cargo-inheritance` findings, then passed after restoration. Both selected
+  graphs' manifests and lockfiles were preserved byte for byte.
+- `make test-tools`, `make test-release-adapters`, strict tooling lint and
+  non-mutating formatting checks for both workspaces.
+- The pin/metadata, tool and release-adapter checks under GNU Bash 3.2.57 on
+  Linux, with that Bash selected for child commands too. This tests the shell
+  baseline, not native macOS userland.
+- The committed upstream installer fixture under Bash 5 and Bash 3.2.57, covering
+  asset mapping, checksum/version refusal, candidate retention and preservation
+  of installed executables. These are substitutes, not official asset downloads.
+
+Logs, exact dependency-input hashes, source identity and the disposable consumer
+check are retained in
+`target/qualification/shared-cargo-installers-0.28.3.BNFCxs/`. The maintainer's
+root `ic-host-tools` 0.2 selection and both original workspace lockfiles were
+preserved; this adoption did not resolve dependencies or qualify that dependency
+upgrade through compilation. The two old installer entry points contained
+`usage`, `resolve_platform` and `main`; those six functions are removed from the
+entry points in favor of the upstream-owned common installer. Its 88 lines plus
+the two five-line wrappers replace 246 lines, a 148-line reduction in that surface.
+No library API, durable layout, Wasm source or product Rust implementation changes.
+No Wasm-size or instruction-cost measurement is claimed.
+
+Native qualification remains outstanding. Shared Tooling
+[CI run 37484175750](https://github.com/dragginzgame/shared-tooling/actions/runs/37484175750)
+tests the selected `d957d1f` source: Linux and lint pass, while both macOS portable
+jobs fail after IC fixture completion and before the host fixture reports
+completion. Official host installation/offline checks and the installer fixture
+passed earlier in both jobs. Suppressed host-fixture output does not identify the
+exact assertion; this is not proof of an official asset or installer defect.
+The upstream failure is already recorded in
+[shared-tooling #17](https://github.com/dragginzgame/shared-tooling/issues/17#issuecomment-6019280848).
+The sibling remains read-only under this repository's instructions.
+
+The earlier successful
+[0.28.2 CI run](https://github.com/dragginzgame/ic-memory/actions/runs/37466450294)
+does not qualify these dirty adoption inputs or the maintainer's Cargo edits.
+Matching consumer native CI and upstream host-fixture resolution are required
+before treating [#13](https://github.com/dragginzgame/ic-memory/issues/13) as
+qualified. No full gate, compilation, live installation, release command,
+original-index staging, commit, tag, push or publication was performed.
+
+### Pending upstream host-fixture repair
+
+On 2026-10-06 the upstream repair and formatter prerequisite helper remain
+uncommitted after `d957d1f`. Their selected working-tree scripts were copied into
+private qualification inputs; they were not installed into the consumer snapshot.
+Input hashes, before/after logs and the reproduction scripts are retained under
+`target/qualification/shared-host-repair-0.28.3.D74GNJ/`.
+
+The reproduction delegates archive creation/extraction to GNU tar, changing only
+the valid gzip modification-time header on each creation. This simulates a
+non-reproducible archive header without changing the tar/executable payload. The
+committed old fixture fails under both Bash 5 and Bash 3.2.57; the repaired fixture
+passes under both. The old fixture's retained repacked archive remains valid gzip
+and extracts the identical executable, but its SHA-256 differs from the originally
+authenticated archive. Restoring the saved archive bytes avoids that mismatch;
+the repaired cases also prove that version/PCRE2 rejection actually executes the
+authenticated payload. This is a targeted Linux simulation, not reproduction or
+qualification on native macOS.
+
+The pending shared formatter fixture passes under both shells, including failed
+status with apparently correct version output and unavailable rustfmt. Its actual
+offline probes of this consumer's prepared Rust 1.99.0/cargo-sort 2.1.4 also pass.
+No formatter helper is adopted from dirty upstream source. A maintainer commit
+containing these changes is required before refreshing the snapshot and wiring
+the formatter caller; matching native CI remains separately required. The
+maintainer's root Cargo edits and both selected workspace lockfiles remain
+unchanged. This qualification does not add a release gate or authorize Git effects.

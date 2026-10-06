@@ -11,7 +11,7 @@ exception to revision-bound policy adoption while the shared rules are being
 developed locally. The sibling remains read-only to agents.
 
 The existing tooling snapshot at revision
-`47cd2ccaf0e8b428f06e6db0262df76cfc1581de` is recorded in
+`d957d1f8801885c5b69e4a9ef900155f5f2a8a9d` is recorded in
 [.shared-tooling.snapshot](.shared-tooling.snapshot). It identifies the vendored
 files, hashes and executable modes; it does not freeze the active local policy.
 Keep its provenance accurate and never edit vendored files in place. Do not
@@ -20,9 +20,12 @@ attribute uncommitted shared files to that recorded revision. The live local
 also applies within its activation scope and is included in this recorded snapshot.
 These instructions are the repository's local overlay.
 
-The 46-file snapshot uses the reviewed local 0.1.7 commit, including the common
+The 50-file snapshot uses the reviewed local 0.1.8 commit, including the common
 audit methods, local host/IC setup, dependency checker, release-command checker
-and linked rules. CI and
+and linked rules. Cargo inheritance checks cover both approved workspace roots;
+the common metadata fixture also includes its workspace-version reader. Product
+version parsing stays in the Rust release adapter. The linked tag-maintenance
+guide is documentation only; no tag-maintenance executable is adopted. CI and
 release checks use these immutable exports without a sibling checkout. The live
 local policy exception above
 continues to govern subsequent uncommitted rule development.

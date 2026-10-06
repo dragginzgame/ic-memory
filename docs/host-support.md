@@ -96,6 +96,23 @@ configured jobs alone do not qualify this adoption. The pin checker requires loc
 by Git: agents leave new locks unstaged, so the maintainer must commit their
 adoption before the real-checkout declaration/release gate can pass.
 
+`make check-pins` also checks Cargo inheritance against each manifest's owning
+workspace catalog. The independent runtime-qualification root keeps its approved
+scope and lockfile; it is not merged into the library graph. `make test-pins`
+reuses the shared metadata fixture for ordinary/inline dependency tables,
+aliases, target/dev/build declarations, rejected child overrides and independent
+workspace discovery. Its workspace-version reader is a fixture dependency;
+the Rust release adapter still owns this crate's `package.version`.
+
+The actionlint and ShellCheck setup commands delegate to the shared
+`install-ci-tool.sh` implementation. Existing arguments and pins are unchanged.
+Rejected checksums or versions preserve the selected executable and retain the
+failed candidate. Snapshot integrity and focused Linux checks are separate from
+native macOS qualification; see the
+[adoption evidence](release-workflow-qualification.md#0283-shared-cargo-and-installer-adoption).
+The common setup guide also describes opt-in pinned ripgrep. This consumer
+continues to select the jq/yq pair; ripgrep remains a separate fixture prerequisite.
+
 The pre-commit hook formats an export of the exact index and refreshes only the
 selected files. It refuses partial staging and preserves unrelated working
 edits; a formatter failure leaves the real index and files unchanged. The

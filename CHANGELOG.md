@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.28.3]
+
+- Check Cargo inheritance in both workspaces and reuse the common CI installers,
+  reducing duplicated setup code while preserving tool pins and release policy.
+  [#13](https://github.com/dragginzgame/ic-memory/issues/13).
+
+[Detailed notes](docs/changelog/0.28.md)
+
 ## [0.28.2] - 2026-10-06
 
 - Keep release and hook fixtures independent of inherited Make includes and
