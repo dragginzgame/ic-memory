@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.27.2]
+
+- Preserve tracked dependency selections in CI and release preparation; check
+  dependency/action pins using the locally reviewed Shared Tooling checker.
+- Include the root lockfile in exact release metadata and interruption recovery,
+  including a retry after its write precedes the manifest. Reject dependency
+  drift and arbitrary staging. Library APIs and durable formats are unchanged.
+  [#10](https://github.com/dragginzgame/ic-memory/issues/10)
+
+[Detailed notes](docs/changelog/0.27.md) ·
+[Qualification](docs/release-workflow-qualification.md#0272-tracked-dependencies-and-local-pinning)
+
 ## [0.27.1] - 2026-10-06
 
 - Update shared release tooling so normal commands can finish an already-qualified

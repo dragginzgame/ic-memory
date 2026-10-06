@@ -395,6 +395,23 @@ fn check_lock_update(before: &[u8], after: &str, previous: &str, version: &str) 
     )
 }
 
+// Cargo's canonical lockfile places name and version together. Preserve every
+// other byte and independently verify that only the root package identity moved.
+fn replace_lock_version(text: &str, previous: &str, version: &str) -> Result<String> {
+    let identity = format!("name = \"ic-memory\"\nversion = \"{previous}\"");
+    require(
+        text.matches(&identity).count() == 1,
+        "expected one canonical locked root package",
+    )?;
+    let updated = text.replacen(
+        &identity,
+        &format!("name = \"ic-memory\"\nversion = \"{version}\""),
+        1,
+    );
+    check_lock_update(text.as_bytes(), &updated, previous, version)?;
+    Ok(updated)
+}
+
 fn target_directory(metadata: &str) -> Result<PathBuf> {
     let value: serde_json::Value = serde_json::from_str(metadata)?;
     let target = value
@@ -697,6 +714,10 @@ impl<E: Execute> Repository<E> {
         let detail = format!("docs/changelog/{major}.{minor}.md");
         Ok(BTreeMap::from([
             (
+                "Cargo.lock".to_owned(),
+                replace_lock_version(&self.text("Cargo.lock", Some(source))?, previous, version)?,
+            ),
+            (
                 "Cargo.toml".to_owned(),
                 replace_package_version(
                     &self.text("Cargo.toml", Some(source))?,
@@ -859,24 +880,34 @@ impl<E: Execute> Repository<E> {
         self.check_surfaces(selection, None, true)?;
         self.check_index(selection, &self.surfaces(selection)?)?;
         let lock = fs::read(self.root.join("Cargo.lock"))?;
-        check_lock_update(
-            &lock,
-            std::str::from_utf8(&lock)?,
-            &selection.previous,
-            &selection.previous,
-        )?;
+        let interrupted = lock != self.text("Cargo.lock", Some(&selection.source))?.as_bytes();
+        if interrupted {
+            // The exact candidate lock can precede the manifest after an
+            // interrupted write. Reuse source-bound successful validation;
+            // locked Cargo fetching cannot reconcile that temporary mismatch.
+            self.validated(selection)?;
+        } else {
+            check_lock_update(
+                &lock,
+                std::str::from_utf8(&lock)?,
+                &selection.previous,
+                &selection.previous,
+            )?;
+        }
         self.remote_ready(selection)?;
         // Remote inspection and offline cache verification cannot change the
-        // ignored lockfile whose selection will qualify this attempt.
-        self.run(
-            "cargo",
-            &[
-                &format!("+{}", self.toolchain()?),
-                "fetch",
-                "--locked",
-                "--offline",
-            ],
-        )?;
+        // tracked lockfile whose selection will qualify this attempt.
+        if !interrupted {
+            self.run(
+                "cargo",
+                &[
+                    &format!("+{}", self.toolchain()?),
+                    "fetch",
+                    "--locked",
+                    "--offline",
+                ],
+            )?;
+        }
         require(
             fs::read(self.root.join("Cargo.lock"))? == lock,
             "dependency selection changed during preflight",
@@ -937,6 +968,13 @@ impl<E: Execute> Repository<E> {
     }
 
     fn verify_inputs(&self, evidence: &ValidationEvidence, updated: bool) -> Result<()> {
+        require(
+            evidence.lock
+                == self
+                    .text("Cargo.lock", Some(&evidence.selection.source))?
+                    .as_bytes(),
+            "validation lockfile differs from the saved source",
+        )?;
         require(
             self.configuration()? == evidence.configuration,
             "build configuration differs from release validation",
@@ -1027,15 +1065,13 @@ impl<E: Execute> Repository<E> {
         self.check_surfaces(selection, None, true)?;
         let expected = self.surfaces(selection)?;
         let mut backups = BTreeMap::new();
-        for path in expected
-            .keys()
-            .chain(std::iter::once(&"Cargo.lock".to_owned()))
-        {
+        for path in expected.keys() {
             backups.insert(path.clone(), fs::read(self.root.join(path))?);
         }
         let result = (|| -> Result<()> {
             // Cargo.toml is last: observing the candidate means all other source
-            // metadata is complete. The prepared check can then finish lock and
+            // metadata, including the selected root lock, is complete. The
+            // prepared check can then finish offline workspace verification and
             // package qualification after an interrupted operation.
             for (path, text) in expected
                 .iter()

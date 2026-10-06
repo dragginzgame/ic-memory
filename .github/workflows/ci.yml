@@ -71,13 +71,17 @@ jobs:
         run: |
           source ci-tool-versions.env
           cargo install cargo-sort --version "$IC_MEMORY_CARGO_SORT_VERSION" --locked
+      - name: Install checksum-verified dependency parser
+        shell: bash
+        run: |
+          yq_bin="$(bash scripts/dev/install-yq.sh --install-dir "$RUNNER_TEMP/ic-memory-pin-tools")"
+          echo "YQ=$yq_bin" >> "$GITHUB_ENV"
       - name: Check both workspaces without changing files
         run: make fmt-check
       - name: Exercise hook isolation on the native host
         run: make test-hooks
-      - name: Select and prepare dependency inputs
+      - name: Prepare tracked dependency inputs
         run: |
-          cargo generate-lockfile
           make fetch-dependencies
           shasum -a 256 Cargo.lock
           rustc -Vv
@@ -105,11 +109,10 @@ jobs:
       - uses: dtolnay/rust-toolchain@e97e2d8cc328f1b50210efc529dca0028893a2d9 # reviewed master-history commit
         with:
           toolchain: ${{ steps.pin.outputs.channel }}
-      - name: Select and prepare dependency inputs
+      - name: Prepare tracked dependency inputs
         env:
           RUSTUP_TOOLCHAIN: ${{ steps.pin.outputs.channel }}
         run: |
-          cargo generate-lockfile
           cargo fetch --locked
           shasum -a 256 Cargo.lock
           rustc -Vv

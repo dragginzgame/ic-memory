@@ -35,15 +35,22 @@ when recording release qualification; retain failed runs and their limitations.
 - Rustup with Rust 1.99.0, Clippy, rustfmt and `wasm32-unknown-unknown`; also
   install the declared MSRV, Rust 1.88.0. Toolchain changes need a demonstrated
   reason and separate qualification.
-- Git, GNU Make, Bash 3.2 or newer, `sed`, and `shasum` with SHA-256 support.
+- Git, GNU Make, Bash 3.2 or newer, `sed`, `awk`, and `shasum` with SHA-256 support.
   On macOS, install Xcode Command Line Tools for native compilation and Git.
   The system `make` is sufficient when it is GNU Make; Homebrew `gmake` is an
   alternative. Do not substitute BSD Make.
-- A selected `Cargo.lock` and cached dependencies before offline validation.
-  This library keeps its development lockfile untracked. In a fresh checkout,
-  explicitly select it with `cargo generate-lockfile`, then run
-  `make fetch-dependencies`. Preserve that file throughout qualification and
-  release; do not regenerate it after validation.
+- The tracked root and independent runtime-qualification `Cargo.lock` files,
+  with cached dependencies before offline validation. In a fresh checkout run
+  `make fetch-dependencies` for the root selection. Prepare the independent graph
+  separately with `cargo fetch --locked --manifest-path testing/runtime-qualification/Cargo.toml`
+  when installed qualification is needed. Preserve both selections; never
+  regenerate them to make a check pass.
+- Git, jq and Mike Farah yq 4.47.2 for `make check-pins`; ripgrep for
+  `make test-pins`. The consumer-selected yq digests live in
+  `ci-tool-versions.env`; the shared installer verifies them before executing the
+  download. Interrupted manifest/lockfile recovery also uses yq to locate
+  Cargo's selected target directory. Checks are offline and never install their
+  prerequisites.
 - Actionlint and ShellCheck for `make lint-tooling`. CI installs exact
   consumer-owned versions and hashes from `ci-tool-versions.env` using the
   reviewed shared installers. Local installation is a separate network step.
@@ -69,6 +76,22 @@ formats Rust in both the root workspace and `testing/runtime-qualification`.
 builds, installs tools, fetches dependencies or changes selected lockfiles.
 Bare `make` prints available commands rather than preparing dependencies.
 
+Prepare the dependency parser explicitly for the detected host:
+
+```sh
+bash scripts/dev/install-yq.sh --install-dir "$HOME/.local/bin"
+export YQ="$HOME/.local/bin/yq"
+make check-pins test-pins
+```
+
+This setup command downloads yq over HTTPS using the exact selected version and
+platform digest, checks the executable version, and changes only the chosen
+installation directory. It supports the declared Linux/macOS hosts; Linux ARM64
+asset mapping is not a native qualification claim. CI executes the same selection
+adapter on each declared test host. The pin checker requires locks already tracked
+by Git: agents leave new locks unstaged, so the maintainer must commit their
+adoption before the real-checkout declaration/release gate can pass.
+
 The pre-commit hook formats an export of the exact index and refreshes only the
 selected files. It refuses partial staging and preserves unrelated working
 edits; a formatter failure leaves the real index and files unchanged. The
@@ -87,7 +110,7 @@ historical runtime gates above.
 
 ## Native checks
 
-Focused tooling checks are `make verify-shared-tooling test-tooling test-hooks fmt-check`,
+Focused tooling checks are `make verify-shared-tooling check-pins test-pins test-tooling test-hooks fmt-check`,
 `make test-release-adapters test-release-runner` and `make lint-tooling`. Compilation must wait for any existing build to finish.
 
 CI runs `make validate-toolchain` and the offline all-target MSRV check on each

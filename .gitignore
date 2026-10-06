@@ -1,8 +1,7 @@
 # Rust build output
 target/
 
-# Library crates generally do not commit Cargo.lock.
-Cargo.lock
+# Maintained workspaces commit their selected Cargo.lock files.
 .shared-tooling-refresh.*
 # Helper-owned scratch for atomic release metadata and receipt replacement.
 .ic-memory-release.*.tmp

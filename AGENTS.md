@@ -11,7 +11,7 @@ exception to revision-bound policy adoption while the shared rules are being
 developed locally. The sibling remains read-only to agents.
 
 The existing tooling snapshot at revision
-`cb86188c5956866564de4fb6ec6be67b27981ab9` is recorded in
+`a7efade1a68e43f148252a1a73908a46c4cbe9e9` is recorded in
 [.shared-tooling.snapshot](.shared-tooling.snapshot). It identifies the vendored
 files, hashes and executable modes; it does not freeze the active local policy.
 Keep its provenance accurate and never edit vendored files in place. Do not
@@ -19,6 +19,12 @@ attribute uncommitted shared files to that recorded revision. The live local
 [user-triggered maintenance rule](../shared-tooling/rules/agent-maintenance.md)
 also applies within its activation scope and is included in this recorded snapshot.
 These instructions are the repository's local overlay.
+
+The pinning adoption uses the local 0.1.5 commit, which became available during
+preparation. Its 28-file snapshot includes the dependency checker, jq module,
+installer, tests and linked rules. CI and release checks use these immutable
+exports without a sibling checkout. The live local policy exception above
+continues to govern subsequent uncommitted rule development.
 
 The user-provided ownership rule below is the approved local exception to shared
 tag/push authority: commits, tags and pushes always belong to the maintainer,
@@ -31,14 +37,15 @@ and prerequisites are declared in [docs/host-support.md](docs/host-support.md).
 ## Development and qualification commands
 
 - Before editing or compiling, check for active Cargo, rustc and rustdoc builds.
-- Focused checks: `make verify-shared-tooling`, `make test-tooling`,
+- Focused checks: `make verify-shared-tooling`, `make check-pins`, `make test-pins`, `make test-tooling`,
   `make test-release-adapters`, `make test-release-runner`, `make test-hooks`,
   `make fmt-check`, `make lint-tooling`, or an appropriately
   selected Rust test.
 - Full gates: `make validate`, `make validate-toolchain`, `make wasm-size` and
   package/release qualification. Run these only on explicit request or in CI.
 - Dependency preparation: `make fetch-dependencies` is a separate network step.
-  Validation and release preparation require the selected lockfile and populated
+  Both maintained workspaces track their existing selected lockfiles.
+  Validation and release preparation require those lockfiles and populated
   cache, and run offline without changing dependency selection.
 - Do not run maintainer release commands or tests that create commits/tags/pushes,
   including in disposable repositories. Tooling tests substitute command effects.
@@ -153,6 +160,19 @@ separate selected lockfile outside the library's normal gates and dependencies.
 This exception does not permit other nested workspaces or drifting duplicate
 declarations. It preserves the accepted qualification scope rather than silently
 merging or upgrading the two measured dependency graphs.
+
+## Dependency exceptions
+
+Registry requirements remain compatible ranges, except for two qualified
+protocol boundaries recorded exactly in
+[ci/dependency-pinning-exceptions.json](ci/dependency-pinning-exceptions.json).
+`ic-stable-structures = "=0.7.2"` owns the manager/Cell layouts inspected by
+`runtime/layout.rs` and `stable_cell.rs`; a change requires layout, corruption,
+growth and installed IO/upgrade qualification. `pocket-ic = "=16.0.0"` is scoped
+to the independent qualification workspace and its caller-owned server API;
+changing that pair requires repeating installed qualification. These are existing
+maintainer-selected boundaries, not new dependency selections. Keep both
+lockfiles, sources, features and toolchains unchanged during pinning adoption.
 
 ## Rust Item Documentation Style
 

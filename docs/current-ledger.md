@@ -37,7 +37,7 @@ writes; arbitrary native files are not made crash atomic by this protocol.
 
 ## Hard cut and retained installations
 
-Pending 0.27.0 changes public APIs, diagnostic JSON and the durable logical ledger.
+Released 0.27.0 changed public APIs, diagnostic JSON and the durable logical ledger.
 The family magic remains `ICMEMLED`; the current format marker is `ICMS`, version
 1. The former discriminator is unsupported before its logical data is decoded.
 There is no earlier-layout reader, automatic reset or migration engine.

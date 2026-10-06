@@ -179,10 +179,10 @@ runner accepts an explicitly owned server URL instead.
 
 Wait for active Cargo/rustc/rustdoc processes before editing or compiling.
 Preserve each selected lockfile. Dependency/cache preparation is a separate step;
-no implicit download or online fallback belongs to qualification. In a fresh
-host-runner checkout, select its lockfile explicitly with
-`cargo generate-lockfile --offline --manifest-path testing/runtime-qualification/Cargo.toml`
-only if none exists. A different selection needs a new qualification record.
+no implicit download or online fallback belongs to qualification. Current
+checkouts track the host runner's selected lockfile; preserve that selection.
+A deliberate selection change needs a new qualification record and does not
+relabel the historical measurements above.
 For the selected lock, prepare cached dependencies with `cargo fetch --locked
 --offline --manifest-path testing/runtime-qualification/Cargo.toml`; a cache
 miss requires separate authorized preparation. The library's own cache/lock

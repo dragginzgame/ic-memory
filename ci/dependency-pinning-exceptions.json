@@ -1,0 +1,18 @@
+[
+  {
+    "rule": "cargo-exact",
+    "file": "Cargo.toml",
+    "subject": "ic-stable-structures",
+    "value": "=0.7.2",
+    "reason": "The runtime validates the manager and Cell durable layouts and qualifies IO against this exact upstream protocol boundary.",
+    "evidence": "AGENTS.md#dependency-exceptions"
+  },
+  {
+    "rule": "cargo-exact",
+    "file": "testing/runtime-qualification/Cargo.toml",
+    "subject": "pocket-ic",
+    "value": "=16.0.0",
+    "reason": "The installed qualification caller must use the API paired with its caller-owned PocketIC 16.0.0 server.",
+    "evidence": "AGENTS.md#dependency-exceptions"
+  }
+]

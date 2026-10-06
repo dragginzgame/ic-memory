@@ -1,10 +1,11 @@
 # Current ownership ledger qualification
 
-Pending 0.27.0 hard cut after released
-`62e15131c6145fa66a77528d96b00dcbf64a892c` (0.26.2). This is local Linux source,
-behavior and footprint evidence. The package manifest remains 0.26.2; no release,
-publication or retained installation is claimed. The [current contract](current-ledger.md)
-owns consumer API and deployment requirements.
+The original 0.27.0 hard-cut evidence was captured after released
+`62e15131c6145fa66a77528d96b00dcbf64a892c` (0.26.2), while the manifest still
+declared 0.26.2. Later reviews and experiments identify their own source below.
+These are local Linux source, behavior and footprint observations; they do not
+establish publication or retained-installation qualification. The
+[current contract](current-ledger.md) owns consumer API and deployment requirements.
 
 ## Post-release physical-slot audit
 
@@ -51,6 +52,164 @@ Ordinary small ledgers already fit one virtual page, and manager buckets round
 physical allocation: lower encoded bytes do not establish fewer allocated pages
 or buckets. The existing bounded two-slot implementation remains supported until
 a replacement is separately implemented and qualified.
+
+## Single-snapshot prototype measurements
+
+2026-10-06, against released 0.27.1 at
+`6e98b07882ed43d180195f5f915eafaef05f25db`. Both controls were exported from that
+commit into isolated source directories under
+`target/qualification/single-snapshot/`, with the same selected root lockfile
+copied explicitly. The maintained library, manifests, lockfiles and current
+fixtures are unchanged. This experiment is not a prepared release.
+
+The candidate changes four source modules: `physical.rs`, `ledger/mod.rs`,
+`lib.rs` and `constants.rs`. One `SnapshotCommitStore::current` replaces the
+two-slot DTO and selection logic. It keeps checked counters, the bounded opaque
+payload, one checksum, logical-envelope/integrity recovery and the existing
+persist-before-publication runtime flow. The candidate physical marker is
+`ICMESNAP`, distinct from the released `ICMEMCOM`; the logical envelope is
+unchanged. The enclosing decode ceiling becomes 64 KiB + 4 KiB. Slot-specific
+diagnostics/errors are replaced with a current-record diagnostic/corruption error.
+There is no earlier-format reader or optional storage mode.
+
+### Native encoding, recovery and stable IO
+
+Linux x86-64, Rust 1.99.0, standard release profile, locked/offline, one test
+thread. Both sources use the identical disposable `snapshot_measurements.rs`
+harness and the existing metered VectorMemory. Controls have two successful
+commits with the same retained records, counters 1 and 2, maximum schema versions
+and reserved lifecycle state. These are steady-state comparisons: a newly
+initialized two-slot store has less predecessor data. The 255-record long-key
+control uses 128-byte keys; the others use `app.storeNNN.v1` keys.
+
+| Records / key control | Released encoded bytes | Candidate encoded bytes | Released reopen peak heap | Candidate reopen peak heap |
+| --- | ---: | ---: | ---: | ---: |
+| 0 | 266 | 144 | 374 | 198 |
+| 1 | 466 | 244 | 774 | 398 |
+| 64 | 13,150 | 6,586 | 29,534 | 14,778 |
+| 255 / short | 51,732 | 25,877 | 117,268 | 58,645 |
+| 255 / maximum | 109,872 | 54,947 | 240,944 | 120,483 |
+
+Reopen includes the bounded Cell read, outer decode and logical recovery. Heap
+counts are System allocation requests on this thread, excluding existing inputs
+and backing memory; every measured result is dropped and live measured bytes
+return to zero. They are not RSS, Wasm linear-memory consumption or IC costs.
+Removing one opaque buffer saves one allocation per reopen, not half the number
+of allocations: the 255-record short-key case is 301 -> 300 allocations, with
+reallocations 6 -> 3. Owned strings and logical record validation still dominate
+allocation count. Canonical encoding uses one allocation in both controls.
+
+The reopen-and-commit phase reads and recovers the stored record, commits a prepared
+counter-3 ledger and writes it through `Cell::new`. It excludes declaration
+admission and creation of the prepared ledger. Peak requested heap for the
+255-record short-key case is 133,652 -> 81,920 bytes; maximum keys use
+240,968 -> 131,096 bytes. This phase still performs two stable reads and four
+writes. Short-key read bytes and write bytes each fall from 51,740 to 25,885;
+maximum keys fall from 109,880 to 54,955. Every same-width replacement fits its
+existing capacity, with no measured growth. No timing claim is made.
+
+Full rows: [native allocations and IO](measurements/single-snapshot-native.csv).
+
+### Page and bucket controls
+
+Separate fresh MemoryManager controls persist the same canonical records into
+ID 0 with bucket sizes 1 and 128 pages. This measures the substrate's allocation
+rounding; it is not an admitted application runtime or an installed canister.
+
+| 255-record control | Bucket pages | Released virtual pages | Candidate virtual pages | Released physical pages | Candidate physical pages |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Short keys | 1 | 1 | 1 | 2 | 2 |
+| Short keys | 128 | 1 | 1 | 129 | 129 |
+| Maximum keys | 1 | 2 | 1 | 3 | 2 |
+| Maximum keys | 128 | 2 | 1 | 129 | 129 |
+
+The maximum-key record saves one virtual page and, with one-page buckets, one
+physical page on fresh allocation. Both controls still allocate one default
+128-page bucket. Existing grown memory cannot be shrunk by writing a smaller
+record, so these observations do not establish reclamation on retained stores.
+Full rows: [bucket controls](measurements/single-snapshot-buckets.csv).
+
+### Matched Wasm artifact
+
+Both sources use Rust 1.99.0, the identical runtime-integration probe, selected
+lockfile, standard release profile and `--emit=asm`. Independent build directories
+prevent reuse of an artifact compiled from the other source.
+
+| Source | Raw Wasm bytes |
+| --- | ---: |
+| Released 0.27.1 control | 374,986 |
+| Single-snapshot candidate | 371,104 |
+| Reduction | 3,882 (1.04%) |
+
+This is one matched raw probe, not the full Wasm budget gate or a consumer binary.
+It does not establish IC instruction/cycle savings. The earlier 0.27.0 result
+above retains its own source binding; it is not relabelled as this baseline.
+
+### Boundaries, limitations and reproduction
+
+The two native workloads pass on Rust 1.99.0 and MSRV 1.88.0. Four candidate
+integration tests also pass on both toolchains: payload/counter refusal leaves
+the snapshot unchanged; corruption or the released marker cannot initialize or
+commit; physical/logical counter disagreement rejects; and the current record
+round-trips while the actual released Cell fixture is refused. Repeated current
+commits retain only the current record. These are focused prototype checks.
+
+The candidate's existing owner-local tests and fixture producers have not been
+converted to the new contract. Full library/caller/compile-fail qualification,
+growth refusal and publication behavior, installed upgrade rollback, supported
+native macOS execution and IC costs remain unqualified for this candidate. The
+prototype is not suitable for direct adoption. Retained installations and
+external consumers have not been changed or retired.
+
+These measurements support a tightly scoped **0.28.0 hard cut** replacing the
+physical DTO, diagnostics, current fixtures and outer bound together. Keep the
+logical ledger, tombstones, checksum and checked counter; introduce no migration
+engine, compatibility reader or storage configuration. Production adoption must
+finish that propagation and qualification and resolve retained-data disposition.
+The current 0.27 contract remains supported. This investigation introduces no
+pending release entry or package version change.
+
+For each `variant` of `baseline` and `candidate`, from the owning repository:
+
+```bash
+CARGO_TARGET_DIR="$PWD/target/qualification/single-snapshot/$variant-build" \
+  cargo +1.99.0 test --locked --offline --release \
+  --manifest-path "target/qualification/single-snapshot/$variant/Cargo.toml" \
+  --test snapshot_measurements -- --test-threads=1 --nocapture
+CARGO_TARGET_DIR="$PWD/target/qualification/single-snapshot/$variant-build" \
+  cargo +1.99.0 rustc --locked --offline --release \
+  --manifest-path "target/qualification/single-snapshot/$variant/Cargo.toml" \
+  --target wasm32-unknown-unknown \
+  --example wasm-runtime-integration-size-probe -- --emit=asm
+```
+
+The candidate additionally runs `--test snapshot_boundaries`. MSRV native checks
+use `+1.88.0` and the separate `candidate-msrv-build` directory. All source copies,
+the candidate source diff, harnesses, logs, binaries and Wasm artifacts are
+retained under `target/qualification/single-snapshot/`. These are local evidence,
+not package artifacts or release receipts. Failed lockfile/harness attempts are
+preserved. An initial candidate attempt sharing the baseline build directory
+reused the baseline binary; its identical rows are discarded. All candidate rows
+above come from its independent build directory.
+
+Tree hashes use sorted relative `src` paths and their SHA-256 lines, hashed again.
+
+| Input / artifact | SHA-256 |
+| --- | --- |
+| Baseline source tree | `ddf8eeaa5892b6dd23f775f0de8202b95034eb59ffd4b8cf9ea718bd31fa44f2` |
+| Candidate source tree | `6bf68d2ca8c99d90b5d4f0f90fd1fa4a9174d690379bd973f48e57e7786551e2` |
+| Unchanged manifest | `68387104f7bc35ca55eee123fea79a528f10bf7bc85f57bd1d964dc8ba96c4c9` |
+| Selected lockfile, both controls | `83627663ed770d5dc84a7c4f58fb5121491e2588f68cace773ba41e80f792b60` |
+| Candidate source diff | `980955d930068e17150e0702f9866158f76317b1dde2da061921d600a50d26be` |
+| Common measurement harness | `4c74901640e9bf10f40c92b161d63c55da44a64c73b4b79e030ef32d269e183b` |
+| Candidate boundary harness | `27a3325ca9daf34a92edd00a5154080de3392b4337043e8c37153f47d0a2991b` |
+| Runtime-integration probe | `4767d041e455b89e2ddbdd76b4129b2f9a64ed029f237f54aeb15d0eeef2b8bc` |
+| Baseline native measurement binary | `e6b3c73e43a1c09e3be9dc2edb06835abbada627a244b61ea8d019ebb3d73420` |
+| Candidate native measurement binary | `e888df2b551f65c213d645328a7777c869cb1e55babf3c65f3151e0f969de677` |
+| Baseline Wasm | `55449f4947345131a63e54cf5bc2f90967a7770d414ffdf207056c69e13ffb33` |
+| Candidate Wasm | `faf32342e8d636ff86623d46e5ddd58bf87047b612e52dc87dc655041f675e98` |
+| Native CSV | `a7a1d054100afe29e12bb8d5915e4dd2eb0baec11893aa0d287d85b62ea09c37` |
+| Bucket CSV | `64c200cf89d2ac8f372e1ca74a00acd4251ad170290282c8af776a550be91191` |
 
 ## Overengineering review and resulting cut
 

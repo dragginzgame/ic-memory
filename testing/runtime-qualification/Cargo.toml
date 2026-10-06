@@ -10,6 +10,7 @@ license = "MIT"
 [workspace]
 
 [workspace.dependencies]
+# Paired caller-owned server API; see ../../AGENTS.md#dependency-exceptions.
 pocket-ic = "=16.0.0"
 
 [dependencies]

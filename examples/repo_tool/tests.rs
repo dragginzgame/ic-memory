@@ -24,6 +24,7 @@ impl Fixture {
         ));
         fs::create_dir(&root).unwrap();
         let source = BTreeMap::from([
+            ("Cargo.lock".to_owned(), LOCK.to_owned()),
             ("Cargo.toml".to_owned(), MANIFEST.to_owned()),
             (
                 "README.md".to_owned(),
@@ -44,7 +45,6 @@ impl Fixture {
             fs::create_dir_all(root.join(path).parent().unwrap()).unwrap();
             fs::write(root.join(path), text).unwrap();
         }
-        fs::write(root.join("Cargo.lock"), LOCK).unwrap();
         fs::write(
             root.join("rust-toolchain.toml"),
             "[toolchain]\nchannel = \"1.99.0\"\n",
@@ -603,7 +603,7 @@ fn inherited_compiler_configuration_refuses_preparation() {
     for path in source
         .keys()
         .map(String::as_str)
-        .chain(["Cargo.lock", "rust-toolchain.toml"])
+        .chain(["rust-toolchain.toml"])
     {
         fs::create_dir_all(root.join(path).parent().unwrap()).unwrap();
         fs::copy(fixture.repo.root.join(path), root.join(path)).unwrap();
@@ -754,6 +754,9 @@ fn version_preparation_failures_restore_files_and_preserve_evidence_and_artifact
             fixture.assert_original();
         }
         for (path, text) in &fixture.repo.exec.state.borrow().source {
+            if failure == "dependency-update" && path == "Cargo.lock" {
+                continue;
+            }
             assert_eq!(
                 fs::read_to_string(fixture.repo.root.join(path)).unwrap(),
                 *text
@@ -813,14 +816,44 @@ fn validation_binds_saved_intent_and_retains_previous_attempts() {
 }
 
 #[test]
+fn validation_lock_cannot_be_rebound_to_an_uncommitted_graph() {
+    let fixture = Fixture::new();
+    fixture.repo.verify(&fixture.selection).unwrap();
+    let path = fixture.repo.validation_path("0.13.0").unwrap();
+    let mut evidence: ValidationEvidence =
+        serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
+    let changed = LOCK.replace(
+        "name = \"other\"\nversion = \"0.12.3\"",
+        "name = \"other\"\nversion = \"0.12.4\"",
+    );
+    evidence.lock = changed.as_bytes().to_vec();
+    fs::write(&path, serde_json::to_vec(&evidence).unwrap()).unwrap();
+    fs::write(fixture.repo.root.join("Cargo.lock"), &changed).unwrap();
+    assert!(fixture.repo.prepare_selected(&fixture.selection).is_err());
+    assert_eq!(fixture.repo.version(None).unwrap(), "0.12.3");
+    assert_eq!(
+        fs::read_to_string(fixture.repo.root.join("Cargo.lock")).unwrap(),
+        changed
+    );
+    assert!(!fixture.repo.exec.state.borrow().calls.iter().any(|call| {
+        call.get(2)
+            .is_some_and(|arg| matches!(arg.as_str(), "update" | "package"))
+    }));
+}
+
+#[test]
 fn interrupted_preparation_finishes_saved_candidate_without_revalidating() {
-    for interruption in ["partial", "manifest", "lock", "package"] {
+    for interruption in ["partial", "partial-lock", "manifest", "lock", "package"] {
         let fixture = Fixture::new();
         fixture.repo.verify(&fixture.selection).unwrap();
         let evidence = fs::read(fixture.repo.validation_path("0.13.0").unwrap()).unwrap();
         let expected = fixture.repo.surfaces(&fixture.selection).unwrap();
         for (path, text) in &expected {
-            if interruption != "partial" || path == "README.md" {
+            if match interruption {
+                "partial" => path == "README.md",
+                "partial-lock" => path.as_str() <= "Cargo.lock",
+                _ => true,
+            } {
                 fs::write(fixture.repo.root.join(path), text).unwrap();
             }
         }
@@ -836,8 +869,13 @@ fn interrupted_preparation_finishes_saved_candidate_without_revalidating() {
             assert!(fixture.repo.package_path("0.13.0").unwrap().exists());
             fixture.repo.exec.state.borrow_mut().fail = None;
         }
-        if interruption == "partial" {
+        if matches!(interruption, "partial" | "partial-lock") {
             fixture.repo.preflight(&fixture.selection).unwrap();
+            if interruption == "partial-lock" {
+                assert!(!fixture.repo.exec.state.borrow().calls.iter().any(|call| {
+                    call[0] == "cargo" && call.get(2).is_some_and(|arg| arg == "fetch")
+                }));
+            }
             fixture.repo.prepare_selected(&fixture.selection).unwrap();
         } else {
             fixture.repo.prepared(&fixture.selection).unwrap();
@@ -871,6 +909,46 @@ fn interrupted_preparation_finishes_saved_candidate_without_revalidating() {
                 )))
         );
         assert!(fixture.repo.exec.state.borrow().release.is_none());
+    }
+}
+
+#[test]
+fn partial_lock_preflight_requires_saved_validation() {
+    for invalid in ["missing", "selection", "configuration"] {
+        let fixture = Fixture::new();
+        fixture.repo.verify(&fixture.selection).unwrap();
+        let path = fixture.repo.validation_path("0.13.0").unwrap();
+        if invalid == "missing" {
+            fs::remove_file(&path).unwrap();
+        } else {
+            let mut evidence: ValidationEvidence =
+                serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
+            if invalid == "selection" {
+                evidence.selection.date = "2026-10-04".to_owned();
+            } else {
+                evidence
+                    .configuration
+                    .insert("RUSTFLAGS".to_owned(), "--cfg foreign".to_owned());
+            }
+            fs::write(&path, serde_json::to_vec(&evidence).unwrap()).unwrap();
+        }
+        let expected = fixture.repo.surfaces(&fixture.selection).unwrap();
+        fs::write(
+            fixture.repo.root.join("Cargo.lock"),
+            &expected["Cargo.lock"],
+        )
+        .unwrap();
+        assert!(fixture.repo.preflight(&fixture.selection).is_err());
+        assert_eq!(fixture.repo.version(None).unwrap(), "0.12.3");
+        assert_eq!(
+            fs::read_to_string(fixture.repo.root.join("Cargo.lock")).unwrap(),
+            expected["Cargo.lock"]
+        );
+        assert!(
+            !fixture.repo.exec.state.borrow().calls.iter().any(|call| {
+                call[0] == "cargo" && call.get(2).is_some_and(|arg| arg == "fetch")
+            })
+        );
     }
 }
 
@@ -933,7 +1011,16 @@ fn all_release_kinds_finalize_root_and_detail_notes_at_saved_date() {
         fixture.prepare().unwrap();
         assert_eq!(fixture.repo.version(None).unwrap(), version);
         let files = fixture.repo.surfaces(&fixture.selection).unwrap();
-        assert_eq!(files.len(), 4);
+        assert_eq!(
+            files.keys().map(String::as_str).collect::<Vec<_>>(),
+            [
+                "CHANGELOG.md",
+                "Cargo.lock",
+                "Cargo.toml",
+                "README.md",
+                detail
+            ],
+        );
         for path in ["CHANGELOG.md", detail] {
             let text = fs::read_to_string(fixture.repo.root.join(path)).unwrap();
             assert!(text.contains(&format!("## [{version}] - 2026-10-05")));
@@ -972,12 +1059,15 @@ fn lockfile_changes_during_post_validation_remote_inspection_stop_before_mutatio
     assert!(fixture.prepare().is_err());
     assert_eq!(fixture.repo.version(None).unwrap(), "0.12.3");
     for (path, text) in &fixture.repo.exec.state.borrow().source {
+        if path == "Cargo.lock" {
+            continue;
+        }
         assert_eq!(
             fs::read_to_string(fixture.repo.root.join(path)).unwrap(),
             *text
         );
     }
-    // Preserve the separately changed ignored file; it is not our version edit.
+    // Preserve the separately changed lock selection; it is not our version edit.
     assert_eq!(
         fs::read_to_string(fixture.repo.root.join("Cargo.lock")).unwrap(),
         LOCK.replace(
@@ -1294,22 +1384,32 @@ fn real_index_rejects_hidden_staging_and_checks_exact_prepared_bytes() {
     let mut selection = fixture.selection.clone();
     selection.source = repo.git(&["rev-parse", "HEAD"]).unwrap();
     repo.git(&["read-tree", "HEAD"]).unwrap();
+    // Give this real index fixture a tracked lock in an uncommitted tree object.
+    // Existing repository history is reused; no commit or tag is created.
+    fs::write(repo.root.join("Cargo.lock"), LOCK).unwrap();
+    repo.git(&["add", "--force", "--", "Cargo.lock"]).unwrap();
+    selection.source = repo.git(&["write-tree"]).unwrap();
+    repo.git(&["read-tree", &selection.source]).unwrap();
     let original = repo.text("README.md", Some("HEAD")).unwrap();
     let expected = format!("{original}\nPrepared release fixture.\n");
-    let surfaces = BTreeMap::from([("README.md".to_owned(), expected.clone())]);
+    let locked = replace_lock_version(LOCK, "0.12.3", "0.13.0").unwrap();
+    let surfaces = BTreeMap::from([
+        ("README.md".to_owned(), expected.clone()),
+        ("Cargo.lock".to_owned(), locked.clone()),
+    ]);
     repo.check_index(&selection, &surfaces).unwrap();
 
     fs::write(repo.root.join("README.md"), &original).unwrap();
     repo.git(&["update-index", "--chmod=+x", "README.md"])
         .unwrap();
     assert!(repo.check_index(&selection, &surfaces).is_err());
-    repo.git(&["read-tree", "HEAD"]).unwrap();
+    repo.git(&["read-tree", &selection.source]).unwrap();
 
     fs::write(repo.root.join("unrelated.rs"), "unrelated index change").unwrap();
     repo.git(&["add", "--", "unrelated.rs"]).unwrap();
     fs::remove_file(repo.root.join("unrelated.rs")).unwrap();
     assert!(repo.check_index(&selection, &surfaces).is_err());
-    repo.git(&["read-tree", "HEAD"]).unwrap();
+    repo.git(&["read-tree", &selection.source]).unwrap();
 
     for (staged, accepted) in [
         ("arbitrary staged metadata".to_owned(), false),
@@ -1320,7 +1420,24 @@ fn real_index_rejects_hidden_staging_and_checks_exact_prepared_bytes() {
         repo.git(&["add", "--", "README.md"]).unwrap();
         fs::write(repo.root.join("README.md"), &original).unwrap();
         assert_eq!(repo.check_index(&selection, &surfaces).is_ok(), accepted);
-        repo.git(&["read-tree", "HEAD"]).unwrap();
+        repo.git(&["read-tree", &selection.source]).unwrap();
+    }
+    for (staged, accepted) in [
+        (locked.clone(), true),
+        (
+            locked.replace(
+                "name = \"other\"\nversion = \"0.12.3\"",
+                "name = \"other\"\nversion = \"0.12.4\"",
+            ),
+            false,
+        ),
+        (format!("{locked}# arbitrary staged text\n"), false),
+    ] {
+        fs::write(repo.root.join("Cargo.lock"), staged).unwrap();
+        repo.git(&["add", "--force", "--", "Cargo.lock"]).unwrap();
+        fs::write(repo.root.join("Cargo.lock"), LOCK).unwrap();
+        assert_eq!(repo.check_index(&selection, &surfaces).is_ok(), accepted);
+        repo.git(&["read-tree", &selection.source]).unwrap();
     }
 }
 

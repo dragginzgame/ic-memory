@@ -1,5 +1,5 @@
 .DEFAULT_GOAL := help
-.PHONY: help test version ensure-clean fetch-dependencies verify-shared-tooling \
+.PHONY: help test version ensure-clean fetch-dependencies verify-shared-tooling check-pins test-pins \
         fmt fmt-check check-format-tools install-hooks lint-tooling test-hooks test-tooling validate validate-toolchain wasm-size \
         test-release-runner test-release-adapters release-patch release-minor release-major release-resume \
         release-version release-preflight release-verify release-prepare-version \
@@ -15,25 +15,31 @@ endif
 # Bootstrap from the repository's simple, checked-in toolchain declaration.
 # The Rust helper parses the full TOML for its own compiler identity checks.
 VALIDATION_TOOLCHAIN ?= $(shell sed -n 's/^channel = "\([^"]*\)"$$/\1/p' rust-toolchain.toml)
-TOOL := cargo +$(VALIDATION_TOOLCHAIN) run --locked --offline --quiet --example repo-tool --
+TOOL := bash scripts/dev/run-repo-tool.sh $(VALIDATION_TOOLCHAIN)
 FORMAT_CARGO := RUSTUP_AUTO_INSTALL=0 CARGO_NET_OFFLINE=true cargo +$(VALIDATION_TOOLCHAIN)
 CARGO_SORT_VERSION := $(shell sed -n 's/^export IC_MEMORY_CARGO_SORT_VERSION=//p' ci-tool-versions.env)
 
 help:
 	@echo 'Setup: fetch-dependencies, install-hooks (install pinned tools separately).'
-	@echo 'Focused checks: verify-shared-tooling, test-tooling, test-release-adapters, test-release-runner, test-hooks, fmt-check, lint-tooling.'
+	@echo 'Focused checks: verify-shared-tooling, check-pins, test-pins, test-tooling, test-release-adapters, test-release-runner, test-hooks, fmt-check, lint-tooling.'
 	@echo 'Formatting: fmt. Full gates require explicit qualification: validate, validate-toolchain.'
 	@echo 'Maintainer releases: release-patch, release-minor, release-major; normal targets recover unfinished releases.'
 
 install-hooks:
 	bash scripts/dev/install-git-hooks.sh
 
-# Network preparation is separate from offline checks; select Cargo.lock first.
+# Network preparation is separate from offline checks; preserve tracked locks.
 fetch-dependencies:
 	cargo +$(VALIDATION_TOOLCHAIN) fetch --locked
 
 verify-shared-tooling:
 	bash scripts/ci/verify-shared-tooling-snapshot.sh
+
+check-pins:
+	RUSTUP_TOOLCHAIN=$(VALIDATION_TOOLCHAIN) RUSTUP_AUTO_INSTALL=0 CARGO_NET_OFFLINE=true bash scripts/ci/check-dependency-pins.sh
+
+test-pins:
+	RUSTUP_TOOLCHAIN=$(VALIDATION_TOOLCHAIN) RUSTUP_AUTO_INSTALL=0 CARGO_NET_OFFLINE=true bash scripts/ci/test-dependency-pins.sh
 
 check-format-tools:
 	@test "$$($(FORMAT_CARGO) sort --version)" = "cargo-sort $(CARGO_SORT_VERSION)" || \
@@ -83,7 +89,7 @@ validate:
 	cargo +$$($(TOOL) msrv) check --locked --offline --all-targets
 
 validate-toolchain:
-	$(MAKE) --no-print-directory verify-shared-tooling test-tooling test-release-adapters test-release-runner test-hooks fmt-check
+	$(MAKE) --no-print-directory verify-shared-tooling check-pins test-pins test-tooling test-release-adapters test-release-runner test-hooks fmt-check
 	cargo +$(VALIDATION_TOOLCHAIN) clippy --locked --offline --all-targets -- -D warnings
 	cargo +$(VALIDATION_TOOLCHAIN) test --locked --offline -- --test-threads=1
 	RUSTDOCFLAGS='-D warnings' cargo +$(VALIDATION_TOOLCHAIN) doc --locked --offline --no-deps

@@ -20,18 +20,25 @@ identities and preserves historical entries.
 
 The maintainer commits implementation and pending notes before releasing. The
 selected source must be clean, on the selected branch, with no active build.
-Select dependencies explicitly in a fresh checkout and prepare their cache:
+Preserve the tracked dependency selections and prepare their cache:
 
 ```sh
-cargo generate-lockfile # Fresh checkout only; preserve an existing selection.
 make fetch-dependencies
 ```
 
-The untracked `Cargo.lock` is a required qualification input. Release preflight
+Both maintained workspaces track their `Cargo.lock`. The root lock is a required
+source-bound qualification input. Release preflight
 checks the selected cache with `cargo fetch --locked --offline`; it never retries
 online or regenerates the lockfile. Validation, version refresh and packaging
 remain offline. A root-version refresh may change only the `ic-memory` entry,
 never dependency selection. Cache preparation is a separate network operation.
+Prepare the checksum-pinned `yq` parser separately as described in
+[host support](docs/host-support.md). `make check-pins` checks declarations and
+tracked locks; `make validate` includes it and the canonical pinning fixtures.
+Commit the initial tracked-lock adoption before running those gates. Complete
+any earlier unfinished release using its qualified source/tooling first: old
+source commits without the root lock cannot satisfy the new source binding.
+Retain their plans, receipts and archives; do not reinterpret or discard them.
 
 ## Maintainer commands and recovery
 
@@ -80,9 +87,10 @@ publication are separate operations.
 The Rust consumer adapters consume the runner's eight `RELEASE_*` selections.
 They validate source/input identities, finalize the root and detail notes with
 the saved UTC date, update Cargo/README metadata and qualify the packages. The
-explicit staged file set is `Cargo.toml`, `README.md`, `CHANGELOG.md` and the
-candidate minor-line detail file. The ignored lockfile is evidence, not a staged
-release file. Git mutations belong exclusively to the common runner.
+explicit staged file set is `Cargo.toml`, `Cargo.lock`, `README.md`, `CHANGELOG.md`
+and the candidate minor-line detail file. The root lock edit changes only the
+`ic-memory` package version; the independent qualification lock is not a release
+edit. Git mutations belong exclusively to the common runner.
 
 Preflight checks both working files and the entire index. Restoring a working
 file does not hide unrelated or arbitrary staged content. The same index guard
@@ -92,10 +100,20 @@ exact prepared metadata to match saved intent.
 
 Metadata writes use same-directory atomic replacement, with `Cargo.toml` last.
 An interrupted earlier write can resume from exact original/prepared files. Once
-the candidate manifest is present, prepared checks can finish lock refresh and
+the candidate manifest is present, all owned metadata including the lock is
+complete; prepared checks can finish offline workspace verification and
 packaging from saved successful validation, without another bump or full gate.
 Returned preparation failures restore only owned edits; conflicting files and
 independently changed dependency selections are preserved and refused.
+
+If the candidate lock precedes the base manifest, the Make helper launcher uses
+`--no-deps` Cargo metadata and the prepared yq to find the selected target
+directory. It compiles current source against a coherent scratch manifest and
+an unchanged copy of the lock, using `--locked --offline`. It runs the adapter
+in the real checkout; compilation alone grants no release authority. Preflight
+requires the saved source-bound successful validation before accepting this
+partial state. Metadata and builds remain under `repo-tool-bootstrap/` in the
+selected target directory. Normal helper calls use the original workspace.
 
 `release-version`, `release-files` and the other named adapters are runner
 interfaces, not alternative maintainer orchestration. They require the saved

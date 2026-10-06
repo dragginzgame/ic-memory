@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
+# This independent fixture owns its checkout, formatter and Make selections.
+unset MAKEFLAGS MFLAGS MAKEOVERRIDES VALIDATION_REPOSITORY_ROOT VALIDATION_RUNNER_SNAPSHOT_PATH
 
 # Consumer-owned integration of the vendored hook with this repository's Make
 # targets. Reuse an existing commit read-only; never create commits or tags.

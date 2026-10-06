@@ -1,0 +1,9 @@
+variant,layout,records,bucket_pages,encoded_bytes,virtual_pages,physical_pages,grows,grown_pages
+released_0.27.1,short_keys,255,1,51732,1,2,1,1
+released_0.27.1,short_keys,255,128,51732,1,129,1,128
+released_0.27.1,max_keys,255,1,109872,2,3,1,2
+released_0.27.1,max_keys,255,128,109872,2,129,1,128
+single_snapshot_prototype,short_keys,255,1,25877,1,2,1,1
+single_snapshot_prototype,short_keys,255,128,25877,1,129,1,128
+single_snapshot_prototype,max_keys,255,1,54947,1,2,1,1
+single_snapshot_prototype,max_keys,255,128,54947,1,129,1,128

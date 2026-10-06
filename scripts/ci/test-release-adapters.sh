@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 # Exercise the consumer Make boundary with effect-free helper/runner substitutes.
 set -euo pipefail
+# This independent fixture owns its selections, not the invoking release's.
+unset MAKEFLAGS MFLAGS MAKEOVERRIDES VALIDATION_REPOSITORY_ROOT VALIDATION_RUNNER_SNAPSHOT_PATH
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 FIXTURE="$(mktemp -d "${TMPDIR:-/tmp}/ic-memory-release-adapters.XXXXXX")"
 trap 'rm -rf "$FIXTURE"' EXIT
@@ -84,4 +86,108 @@ for log in "${logs[@]}"; do
     if [[ "$(cat "$log")" == $'gate stdout 0\ngate stderr 0' ]]; then passed=$((passed + 1)); fi
 done
 [[ "$failed" == 1 && "$passed" == 1 ]]
+
+# The actual Make launcher must reach the adapter while only the root lock is
+# prepared. Cargo/parser substitutes prove isolation and argument propagation.
+mkdir -p "$FIXTURE/bootstrap/scripts/dev" "$FIXTURE/bootstrap/bin" \
+    "$FIXTURE/bootstrap/src" "$FIXTURE/bootstrap/examples"
+cp "$ROOT/Makefile" "$ROOT/rust-toolchain.toml" "$ROOT/ci-tool-versions.env" "$FIXTURE/bootstrap/"
+cp "$ROOT/scripts/dev/run-repo-tool.sh" "$FIXTURE/bootstrap/scripts/dev/"
+cd "$FIXTURE/bootstrap"
+cat > Cargo.toml <<'MANIFEST'
+[package]
+name = "ic-memory"
+version = "0.12.3"
+[workspace]
+[workspace.dependencies]
+other = "0.12.3"
+MANIFEST
+cat > Cargo.lock <<'LOCK'
+version = 4
+[[package]]
+name = "ic-memory"
+version = "0.12.3"
+[[package]]
+name = "other"
+version = "0.12.3"
+LOCK
+echo fixture > README.md
+cp Cargo.toml original-manifest
+cat > bin/cargo <<'STUB'
+#!/usr/bin/env bash
+set -euo pipefail
+[[ "$1" == +1.99.0 ]]
+[[ "$RUSTUP_AUTO_INSTALL" == 0 && "$CARGO_NET_OFFLINE" == true ]]
+case "$2" in
+    metadata)
+        [[ "$*" == '+1.99.0 metadata --locked --offline --no-deps --format-version 1' ]]
+        echo metadata >> calls
+        echo '{"target_directory":"fixture"}'
+        ;;
+    run)
+        [[ "$3" == --locked && "$4" == --offline && "$5" == --quiet ]]
+        if [[ "$6" == --manifest-path ]]; then
+            [[ "$8" == --target-dir && "$9" == "$BOOTSTRAP_TARGET/repo-tool-bootstrap/build" ]]
+            [[ "${10}" == --example && "${11}" == repo-tool && "${12}" == -- && "${13}" == version ]]
+            cmp expected-manifest "$7"
+            cmp Cargo.lock "$(dirname "$7")/Cargo.lock"
+            cmp README.md "$(dirname "$7")/README.md"
+            [[ "$(readlink "$(dirname "$7")/src")" == "$PWD/src" ]]
+            [[ "$(readlink "$(dirname "$7")/examples")" == "$PWD/examples" ]]
+            echo bootstrap >> calls
+        else
+            [[ "$*" == '+1.99.0 run --locked --offline --quiet --example repo-tool -- version' ]]
+            echo normal >> calls
+        fi
+        exit_code="${BOOTSTRAP_STATUS:-0}"
+        [[ "$exit_code" == 0 ]] || exit "$exit_code"
+        echo 0.12.3
+        ;;
+    *) exit 2 ;;
+esac
+STUB
+cat > bin/yq <<'STUB'
+#!/usr/bin/env bash
+set -euo pipefail
+[[ "$*" == '-p=json -r .target_directory' ]]
+[[ "$(cat)" == '{"target_directory":"fixture"}' ]]
+printf '%s\n' "$BOOTSTRAP_TARGET"
+STUB
+chmod +x bin/cargo bin/yq
+export PATH="$PWD/bin:$PATH" YQ="$PWD/bin/yq" BOOTSTRAP_TARGET="$PWD/custom target"
+[[ "$(make --no-print-directory -s release-version)" == 0.12.3 ]]
+[[ "$(cat calls)" == normal ]]
+cat > expected-manifest <<'MANIFEST'
+[package]
+name = "ic-memory"
+version = "0.13.0"
+[workspace]
+[workspace.dependencies]
+other = "0.12.3"
+MANIFEST
+awk '!changed && $0 == "version = \"0.12.3\"" { $0 = "version = \"0.13.0\""; changed = 1 } { print }' \
+    Cargo.lock > prepared-lock
+cp prepared-lock Cargo.lock
+[[ "$(make --no-print-directory -s release-version 2> bootstrap.log)" == 0.12.3 ]]
+[[ "$(cat calls)" == $'normal\nmetadata\nbootstrap' ]]
+cmp original-manifest Cargo.toml
+cmp prepared-lock Cargo.lock
+if BOOTSTRAP_STATUS=7 make --no-print-directory -s release-version > refusal.log 2>&1; then
+    echo 'launcher ignored a failed locked bootstrap' >&2; exit 1
+fi
+cmp original-manifest Cargo.toml
+cmp prepared-lock Cargo.lock
+cp calls saved-calls
+cat >> Cargo.lock <<'LOCK'
+[[package]]
+name = "ic-memory"
+version = "0.14.0"
+LOCK
+cp Cargo.lock conflicting-lock
+if make --no-print-directory -s release-version > conflicting.log 2>&1; then
+    echo 'launcher accepted multiple root lock versions' >&2; exit 1
+fi
+cmp saved-calls calls
+cmp original-manifest Cargo.toml
+cmp conflicting-lock Cargo.lock
 echo 'Consumer release Make dispatch, selection forwarding and attempt retention passed (substitutes only).'

@@ -1,5 +1,144 @@
 # Shared release workflow qualification
 
+## 0.27.2 tracked dependencies and local pinning
+
+Local Linux x86-64 working-tree qualification on 2026-10-06, based on released
+ic-memory `6e98b07882ed43d180195f5f915eafaef05f25db` (0.27.1). Pending notes select
+0.27.2; package metadata remains 0.27.1. This tooling batch does not change the
+runtime, library APIs or durable memory format.
+
+The maintainer requested the current local Shared Tooling. Its pinning files
+were initially uncommitted and temporarily exported with explicit working-tree
+provenance. During qualification they became commit
+`a7efade1a68e43f148252a1a73908a46c4cbe9e9` (local 0.1.5), matching the reviewed
+pinning bytes. The final 28-file snapshot was exported through the canonical
+refresh helper from an isolated checkout of that exact commit, with the original
+upstream URL. The temporary manifest was removed; its evidence remains under
+`target/qualification/dependency-pins/`. Final CI/release commands require no
+sibling checkout. No sibling file was changed by this adoption.
+
+Both lockfiles retain their original bytes and selected versions/features:
+
+| Lockfile | SHA-256 |
+| --- | --- |
+| Root | `83627663ed770d5dc84a7c4f58fb5121491e2588f68cace773ba41e80f792b60` |
+| Independent PocketIC workspace | `7bc872926fbeddd23706750c6205582ba9eae6c873612794e06e862503bb6be7` |
+
+CI now fetches the tracked root graph with `--locked`, instead of generating a
+new selection on each run. `make check-pins` checks parsed declarations and Git
+tracking; `make test-pins` runs the unmodified canonical fixtures. The complete
+release gate includes both. Scoped exceptions record the existing exact
+stable-structures 0.7.2 layout boundary and PocketIC 16.0.0 server API. The
+independent workspace remains excluded from the library's build/dependency gate.
+
+Release surfaces now include `Cargo.lock`. `replace_lock_version` preserves all
+other bytes and independently checks TOML graph equality after changing the
+root package version. Validation lock bytes must equal the saved source's lock.
+Preparation writes all other metadata, including the lock, before the manifest;
+retries and rollback retain exact owned edits and preserve conflicting input.
+The existing offline Cargo workspace refresh, command evidence, receipt schema,
+commit/tag/push ownership and retained archives remain. A real Cargo 1.99.0
+workspace-refresh control in a disposable source tree locked zero new packages
+and preserved the expected version-edited lock byte-for-byte. This is not final
+package or release qualification.
+
+A follow-up bounded recovery review traced the canonical runner's prepare retry
+through Make and the Rust adapter. It applied the current local Shared Tooling
+audit contract/code-hygiene questions, under this repository's `AGENTS.md`
+overlay and existing release qualification scope. The new `audits/` methods
+were uncommitted beside baseline `a7efade1a68e43f148252a1a73908a46c4cbe9e9`,
+not part of the recorded snapshot: `audits/README.md` SHA-256
+`926d5a39ea62a3becd19ff0326c63987b2929d3a1a728e2a0ef8a7180824d231`,
+`audits/code-hygiene.md` SHA-256
+`518d890bf485bef06c316b4cf26ac6bf357ed52bcce995e8d9b1232a103d0ea3`.
+Scope was the pending pin/CI adoption, tracked-lock writes, helper startup,
+receipt admission and retry/refusal paths; runtime storage and installed
+PocketIC behavior were excluded because this batch changes neither. This is
+additional release evidence, not a whole-product audit or native release proof.
+
+The review reproduced a bounded recovery defect: interruption after the lock
+write but before the manifest caused preflight to reject the exact candidate
+lock. A real locked Cargo helper invocation also refused before Rust could run.
+The corrected preflight requires saved source-bound successful validation for
+this partial state. The Make launcher builds current source against coherent
+scratch metadata with an unchanged lock, then executes in the actual checkout.
+Ordinary helper calls use the original workspace. No stale helper executable,
+alternate dependency selection or release-effect dispatcher was introduced.
+Bootstrap inputs/builds remain under Cargo's selected target directory.
+The launcher disables automatic Rustup installation and forces Cargo offline;
+consumer substitutes check both settings.
+
+Focused results:
+
+- Rust 1.99.0 and MSRV 1.88.0 pass all 22 release adapter tests. Tracked-lock
+  coverage includes all increments, interruption retry, rollback/conflicting
+  inputs, receipt/source graph binding, final-package HEAD movement and older
+  selected-commit evidence. Command effects remain substituted.
+- The interrupted-lock test fails before the correction and resumes after it
+  without another validation or a Cargo fetch against mismatched metadata.
+  Missing receipts, changed selection and changed compiler configuration refuse
+  preflight while preserving the partial lock/base manifest. A native disposable
+  checkout reproduces locked Cargo startup refusal, then the actual Make launcher
+  returns its real base version on both Rust 1.99.0 and 1.88.0. These native
+  startup checks do not execute a release gate or Git effects. Consumer Make
+  substitutes also prove normal dispatch, scratch metadata isolation, selected
+  target paths with spaces, command failure propagation and duplicate-root
+  refusal. Native macOS startup remains for matching CI qualification.
+- The real Git index fixture reuses local history and creates an uncommitted
+  tree object with a tracked lock. It accepts only original/prepared lock bytes
+  and refuses dependency drift, arbitrary added text, unrelated staging and
+  metadata mode changes. It touches only its own index; no commits/tags are made.
+- The complete consumer declaration check passes in a disposable checkout with
+  the current adoption files and both locks staged there. The real checkout's
+  check correctly refuses the still-untracked root lock. The maintainer must
+  commit adoption before that gate can pass; the agent did not alter the real index.
+- Both actual workspace graphs pass `cargo +1.99.0 metadata --locked --offline
+  --format-version 1`, with unchanged lock hashes. These cheap graph checks are
+  not independent host-package compilation or installed IC qualification.
+- Canonical pinning fixtures, the consumer Make adapter/attempt-retention tests,
+  canonical runner substitutes, hook fixtures, manifest/Rust formatting and
+  strict tooling lint pass. Strict Rust Clippy passes for the helper/tests.
+- Independent consumer fixtures clear inherited Make flags and logger checkout
+  identities, following the current release rule. The old hook fixture failed
+  under an inherited `FORMAT_CARGO=true`; the updated fixture passes. Actual
+  parent Make calls with release selections and unrelated logger identities pass
+  the adapter/hook fixtures, without invoking a real release or full gate.
+- The selected yq 4.47.2 Linux executable was found in a local cache, verified
+  against the consumer SHA-256 and version, then copied into owned qualification
+  tooling. No network download was made. A curl substitute supplied those bytes
+  through the actual consumer selection adapter/canonical installer; corruption
+  refusal preserved the previously verified executable. The local canonical
+  installer tests pass with synthetic payloads and platform substitutions. These
+  checks do not prove real macOS execution or live release-asset downloads.
+
+Logs, fixture sources/indexes, metadata JSON, cached parser and failed/inconclusive
+attempts remain in `target/qualification/dependency-pins/`. The initial lint
+failure for the consumer setup wrapper's ShellCheck source annotation and its
+successful correction are retained, as are the interruption reproductions and
+corrected launcher/adapter checks (`partial-lock-*.log`). Earlier local-export checks retain their
+original scope; they are not relabelled as committed snapshot adoption.
+
+| Qualified file | SHA-256 |
+| --- | --- |
+| `Makefile` | `dc478376835c6683d9f1c4cc14fe01468f7dc985d9cfa80c2abce231073f8497` |
+| `examples/repo_tool/mod.rs` | `ce3914f67f62d8f4cc19e983ff1802977b3570522e2c18e775a59fd433b0c9d8` |
+| `examples/repo_tool/tests.rs` | `7eb09b126929fe191c33fe9f8334333143026a97a69d16536b2ff92e0c2a28dc` |
+| `.shared-tooling.snapshot` | `557d47e2c7e5711c6569037fc7844fbf47c46d19c191b334bdc6b4d02c5c6323` |
+| `.github/workflows/ci.yml` | `50e40b8fd633e7a03d8a96066347e1c0db2391277c0864ebc4be2a15a0ec474c` |
+| `ci-tool-versions.env` | `f7015ec217daa9a78f0deb80297e6e314fc02cd23be1e2439d7bb1367baa9cea` |
+| `scripts/ci/test-release-adapters.sh` | `cae5f008c594193b9f64a3e427722fd009cccca9667fe69bab5a1dc08de776d5` |
+| `scripts/ci/test-git-hooks.sh` | `6293a3caed33cdbfc04cbd4aeaf37f8eddef8469758d9e80a7198db31165a750` |
+| `scripts/dev/install-yq.sh` | `939c06aa48fa0e2861db668046ad1d9eb1e7254855588f6d15adfed656a2eaac` |
+| `scripts/dev/run-repo-tool.sh` | `a6263e1a3bf25d004a81644810823b1f5b7d1faad2dfbc6425a5bd1bcd4e832c` |
+
+No function, method or type was removed or renamed. Full validation, Wasm budgets,
+package/release gates, live pushes/publication and installed IC tests were not
+executed. Supported native macOS and remote CI qualification for this batch
+remain outstanding until matching source runs complete. Old source commits
+without a tracked root lock cannot satisfy the new source binding: complete any
+earlier unfinished release with its qualified source/tooling before adoption,
+preserving its plans and evidence. See [maintainer steps](../RELEASING.md).
+
 ## 0.27.1 selected-commit recovery
 
 Local Linux x86-64 working-tree qualification on 2026-10-06, based on released
