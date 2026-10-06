@@ -1,6 +1,6 @@
 # Changelog
 
-## [0.28.0]
+## [0.28.0] - 2026-10-06
 
 - Use Shared Tooling’s pinned local host/IC setup and audit methods, replacing
   duplicate installers, tool selections and the generic audit checklist.
