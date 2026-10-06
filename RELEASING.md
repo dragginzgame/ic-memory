@@ -188,8 +188,9 @@ a lost reply is not proof of failure. Release targets never publish implicitly.
 
 - `make test-tooling`: Rust adapters with substituted Git/Cargo/gate effects;
   recovery, rollback, input binding, artifact refusal and publication checks.
-- `make test-release-adapters`: actual consumer Make recipes with substituted
-  helper/runner; all entry points, selection forwarding and unique gate logs.
+- `make test-release-adapters`: the shared checker exercises Make entry points,
+  runner failures and conflicting selections with a substitute runner. Local
+  fixtures cover selection forwarding, unique gate logs and locked bootstrap.
 - `make test-release-runner`: unchanged canonical runner with command substitutes;
   ordering, all increments, Git effect scope, locks and interruption reconciliation.
 - `make verify-shared-tooling`, `make test-hooks`, `make fmt-check` and

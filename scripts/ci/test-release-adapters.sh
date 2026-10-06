@@ -1,15 +1,16 @@
 #!/usr/bin/env bash
-# Exercise the consumer Make boundary with effect-free helper/runner substitutes.
+# Exercise common dispatch and consumer-specific release adapters without effects.
 set -euo pipefail
 # This independent fixture owns its selections, not the invoking release's.
 unset MAKEFLAGS MFLAGS MAKEOVERRIDES VALIDATION_REPOSITORY_ROOT VALIDATION_RUNNER_SNAPSHOT_PATH
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+bash "$ROOT/scripts/ci/check-release-commands.sh" "$ROOT" rust-toolchain.toml ci/tool-versions.env
 FIXTURE="$(mktemp -d "${TMPDIR:-/tmp}/ic-memory-release-adapters.XXXXXX")"
 trap 'rm -rf "$FIXTURE"' EXIT
 mkdir -p "$FIXTURE/ci"
 cp "$ROOT/Makefile" "$ROOT/rust-toolchain.toml" "$FIXTURE/"
 cp "$ROOT/ci/tool-versions.env" "$FIXTURE/ci/"
-mkdir -p "$FIXTURE/scripts/ci" "$FIXTURE/custom target"
+mkdir -p "$FIXTURE/custom target"
 cat > "$FIXTURE/helper" <<'STUB'
 #!/usr/bin/env bash
 set -euo pipefail
@@ -36,26 +37,8 @@ case "$1" in
     *) exit 2 ;;
 esac
 STUB
-cat > "$FIXTURE/scripts/ci/run-release.sh" <<'STUB'
-#!/usr/bin/env bash
-set -euo pipefail
-printf '%s\n' "$@" > dispatch
-STUB
 chmod +x "$FIXTURE/helper"
 cd "$FIXTURE"
-for kind in patch minor major; do
-    make --no-print-directory "release-$kind" RELEASE_REMOTE=fixture RELEASE_BRANCH=reviewed
-    printf '%s\n' "$kind" fixture reviewed > expected
-    cmp expected dispatch
-done
-make --no-print-directory release-resume VERSION=0.26.0 RELEASE_REMOTE=fixture RELEASE_BRANCH=reviewed
-printf '%s\n' resume 0.26.0 fixture reviewed > expected
-cmp expected dispatch
-cp dispatch saved-dispatch
-if make --no-print-directory release-patch release-minor > conflict.log 2>&1; then
-    echo 'multiple release selections accepted' >&2; exit 1
-fi
-cmp saved-dispatch dispatch
 selection=(RELEASE_KIND=minor RELEASE_PREVIOUS=0.25.14 RELEASE_VERSION=0.26.0
     RELEASE_DATE=2026-10-05 RELEASE_SOURCE=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
     RELEASE_REMOTE=fixture RELEASE_BRANCH=reviewed RELEASE_COMMIT= TOOL=./helper)
@@ -216,4 +199,4 @@ fi
 cmp saved-calls calls
 cmp original-manifest Cargo.toml
 cmp conflicting-lock Cargo.lock
-echo 'Consumer release Make dispatch, selection forwarding and attempt retention passed (substitutes only).'
+echo 'Consumer selection forwarding, attempt retention and launcher checks passed (substitutes only).'

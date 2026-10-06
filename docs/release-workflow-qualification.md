@@ -478,3 +478,39 @@ qualification lockfile digests remain those recorded above. All edits are
 unstaged; no release, publication, original-index staging, full gate or artifact
 cleanup was run by the agent. Native macOS and a successful maintainer release
 still require their own observations.
+
+## 0.28.1 shared release-command adoption
+
+This focused Linux review uses source
+`6096c2ed597dee248823b011811a48bc00dce05d` plus the pending snapshot, adapter,
+instruction and documentation edits. The unchanged 46-file Shared Tooling 0.1.7
+snapshot selects `47cd2ccaf0e8b428f06e6db0262df76cfc1581de`. Every exported byte,
+digest and executable state was compared with that committed source. The active
+code-hygiene method is unchanged; its local source reference was refreshed.
+
+The [shared checker](../scripts/ci/check-release-commands.sh) now owns generic
+Make dispatch. The consumer passes only its reviewed parse-time inputs,
+`rust-toolchain.toml` and `ci/tool-versions.env`. Local fixtures retain selection
+forwarding, gate-attempt retention and locked launcher/publication-environment
+checks. The [helper contract](verification-helpers.md) defines the boundary.
+
+Focused checks passed with Bash 5.2.21, GNU Make 4.3, Actionlint 1.7.12 and
+ShellCheck 0.11.0:
+
+- `make verify-shared-tooling test-release-adapters`.
+- `make test-tools` and `make lint-tooling`.
+- The frozen upstream `test-file-digests.sh`, `test-release-commands.sh` and
+  `test-release-metadata.sh`, including GNU/Perl digests, nested Make isolation,
+  retained failures and common changelog-finalizer rejection/history behavior.
+  These are upstream fixtures, not consumer release qualification.
+- Unchanged selected manifests/lockfiles and Makefile, preserved published
+  changelog history, and unchanged captured qualification inputs after the checks.
+
+Source identity, input hashes and full logs are retained under
+`target/qualification/shared-release-checker-0.28.1.syrqcuz5/`. Tests use substitute
+release effects or disposable indexes and existing history; they create no
+commits, tags, pushes or publication. No named function, method or type was removed.
+The local adapter shrank by 17 lines; added shared exports remain upstream-owned.
+Library code and dependency selection are unchanged. No full gate, Wasm-size
+measurement, installed IC qualification or native macOS execution was performed;
+matching remote CI remains separate evidence for the pending edits.

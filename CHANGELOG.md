@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.28.1]
+
+- Reuse Shared Tooling’s release-command checker, reducing duplicated fixtures
+  and expanding failure and conflicting-target checks.
+- Refresh shared tooling with portable file hashes and safer IC tool receipts.
+
+[Detailed notes](docs/changelog/0.28.md)
+
 ## [0.28.0] - 2026-10-06
 
 - Use Shared Tooling’s pinned local host/IC setup and audit methods, replacing
