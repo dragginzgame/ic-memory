@@ -1,6 +1,6 @@
 # Changelog
 
-## [0.26.2]
+## [0.26.2] - 2026-10-06
 
 - Reject oversized ledger text during CBOR preflight, before allocating owned
   strings. Corrupt storage still fails closed; APIs and persisted bytes are
