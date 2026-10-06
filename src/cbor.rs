@@ -68,7 +68,7 @@ fn preflight(bytes: &[u8]) -> Result<(), ciborium::de::Error<std::io::Error>> {
                 if major == 2 && n > crate::constants::MAX_COMMITTED_PAYLOAD_BYTES {
                     return Err(invalid());
                 }
-                // All current ledger text, including fingerprints and field
+                // All current ledger text, including keys and field
                 // names, fits the diagnostic ceiling. Enforce it before the
                 // codec allocates an owned String; opaque byte strings retain
                 // their independent payload bound and are not syntax-walked.
@@ -118,14 +118,6 @@ where
     T: Deserialize<'de>,
 {
     deserialize_bounded_vec::<D, T, { crate::constants::MAX_ALLOCATIONS }>(deserializer)
-}
-
-pub fn deserialize_history<'de, D, T>(deserializer: D) -> Result<Vec<T>, D::Error>
-where
-    D: Deserializer<'de>,
-    T: Deserialize<'de>,
-{
-    deserialize_bounded_vec::<D, T, { crate::constants::MAX_LEDGER_GENERATIONS }>(deserializer)
 }
 
 pub fn deserialize_bounded_vec<'de, D, T, const LIMIT: usize>(

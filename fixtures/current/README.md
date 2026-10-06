@@ -18,20 +18,21 @@ Construction and decoding both reject sentinel ID 255; valid slot bytes are
 unchanged by the 0.25 source API consolidation.
 
 Current logical payload envelopes carry the `ICMEMLED` family magic followed
-by the `ICMF` format marker, format version `1`, payload length, and CBOR
+by the `ICMS` format marker, format version `1`, payload length, and CBOR
 ledger bytes.
 
-Opaque committed payloads use definite-length CBOR byte strings. This is a
-pre-1.0 persisted-format hard cut introduced in 0.14.3: recreate data written
-before that release. Later releases retain this shape unless another hard cut
-is explicitly documented.
+Logical ledgers contain a commit counter and current ownership records only.
+Opaque committed payloads use definite-length CBOR byte strings. The 0.27.0
+hard cut replaces the former logical layout and discriminator; retained
+installations require explicit disposition before deployment. See
+[the current ledger contract](../../docs/current-ledger.md).
 The logical format version remains `1`; there is no old-shape reader.
 
 Fixture groups:
 
 - `*_payload_envelope.hex`: logical `LedgerPayloadEnvelope` bytes.
 - `ledger_commit_store_single_active.cbor.hex`: full `LedgerCommitStore` bytes
-  with one active allocation generation.
+  with one active allocation snapshot.
 - `dual_slot_store_valid_newer.cbor.hex`: full dual-slot store where the newer
   generation is valid and authoritative.
 - `dual_slot_store_corrupt_newer.cbor.hex`: full dual-slot store where the

@@ -1,5 +1,5 @@
 const LEDGER_PAYLOAD_MAGIC: &[u8; 8] = b"ICMEMLED";
-const LEDGER_PAYLOAD_FORMAT_MARKER: &[u8; 4] = b"ICMF";
+const LEDGER_PAYLOAD_FORMAT_MARKER: &[u8; 4] = b"ICMS";
 /// Current durable ledger payload format version.
 pub const LEDGER_PAYLOAD_FORMAT_VERSION: u32 = 1;
 use crate::constants::LEDGER_PAYLOAD_HEADER_LEN;
@@ -296,20 +296,7 @@ mod tests {
         for generations in [0, 1, 24, 256, 1024] {
             let ledger = super::super::AllocationLedger {
                 current_generation: generations,
-                allocation_history: super::super::AllocationHistory::from_parts(
-                    Vec::new(),
-                    (1..=generations)
-                        .map(|generation| super::super::GenerationRecord {
-                            generation,
-                            parent_generation: generation - 1,
-                            runtime_fingerprint: Some(
-                                "x".repeat(usize::try_from(generation % 256 + 1).unwrap()),
-                            ),
-                            declaration_count: 0,
-                            committed_at: Some(generation),
-                        })
-                        .collect(),
-                ),
+                records: Vec::new(),
             };
             let mut payload = Vec::new();
             ciborium::into_writer(&ledger, &mut payload).unwrap();

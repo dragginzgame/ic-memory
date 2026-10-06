@@ -1,5 +1,5 @@
 use ic_memory::{
-    AllocationDeclaration, DeclarationSnapshot, DeclarationSnapshotError, GenerationRecord,
+    AllocationDeclaration, DeclarationSnapshot, DeclarationSnapshotError,
     MemoryManagerAuthorityRecord, MemoryManagerIdRange, MemoryManagerRangeAuthority,
     MemoryManagerRangeAuthorityError, MemoryManagerRangeMode, MemoryRequest, PolicyIdentity,
     PolicyIdentityError, SchemaMetadata, StaticMemoryDeclarationError,
@@ -31,10 +31,6 @@ fn diagnostic_metadata_accepts_printable_ascii_through_the_byte_limit() {
             ciborium::from_reader::<AllocationDeclaration, _>(bytes.as_slice()).unwrap(),
             declaration
         );
-        DeclarationSnapshot::new(Vec::new())
-            .unwrap()
-            .with_runtime_fingerprint(value.as_str())
-            .unwrap();
         PolicyIdentity::new(value.as_str(), 1).unwrap();
         MemoryRequest::new(value.as_str(), "app.rows.v1", SchemaMetadata::default()).unwrap();
         let record = MemoryManagerAuthorityRecord::new(
@@ -74,7 +70,7 @@ fn diagnostic_metadata_accepts_printable_ascii_through_the_byte_limit() {
         unlabeled
     );
     let snapshot = DeclarationSnapshot::new(vec![unlabeled]).unwrap();
-    assert_eq!(snapshot.runtime_fingerprint(), None);
+    assert_eq!(snapshot.declarations().len(), 1);
     assert_eq!(
         MemoryManagerAuthorityRecord::new(
             MemoryManagerIdRange::new(100, 100).unwrap(),
@@ -94,7 +90,6 @@ fn diagnostic_metadata_preserves_field_errors_and_rejection_order() {
         (
             String::new(),
             DeclarationSnapshotError::EmptyLabel,
-            DeclarationSnapshotError::EmptyRuntimeFingerprint,
             PolicyIdentityError::EmptyName,
             "must not be empty",
         ),
@@ -102,7 +97,6 @@ fn diagnostic_metadata_preserves_field_errors_and_rejection_order() {
             // Length rejection precedes control-character rejection.
             format!("{}\0", "x".repeat(256)),
             DeclarationSnapshotError::LabelTooLong,
-            DeclarationSnapshotError::RuntimeFingerprintTooLong,
             PolicyIdentityError::NameTooLong {
                 length: 257,
                 maximum: 256,
@@ -113,19 +107,17 @@ fn diagnostic_metadata_preserves_field_errors_and_rejection_order() {
             // ASCII rejection precedes control-character rejection.
             "é\0".to_string(),
             DeclarationSnapshotError::NonAsciiLabel,
-            DeclarationSnapshotError::NonAsciiRuntimeFingerprint,
             PolicyIdentityError::NonAsciiName,
             "must be ASCII",
         ),
         (
             "printable\u{7f}".to_string(),
             DeclarationSnapshotError::ControlCharacterLabel,
-            DeclarationSnapshotError::ControlCharacterRuntimeFingerprint,
             PolicyIdentityError::ControlCharacterName,
             "must not contain ASCII control characters",
         ),
     ];
-    for (value, label, fingerprint, policy, reason) in cases {
+    for (value, label, policy, reason) in cases {
         let mut encoded = serde_json::to_value(
             AllocationDeclaration::memory_manager_unlabeled("app.rows.v1", 100).unwrap(),
         )
@@ -140,19 +132,11 @@ fn diagnostic_metadata_preserves_field_errors_and_rejection_order() {
         assert!(error.to_string().contains(&label.to_string()));
         let snapshot = serde_json::json!({
             "declarations": [encoded],
-            "runtime_fingerprint": null,
         });
         assert!(serde_json::from_value::<DeclarationSnapshot>(snapshot).is_err());
         assert_eq!(
             AllocationDeclaration::memory_manager("app.rows.v1", 100, value.as_str()).unwrap_err(),
             label
-        );
-        assert_eq!(
-            DeclarationSnapshot::new(Vec::new())
-                .unwrap()
-                .with_runtime_fingerprint(value.as_str())
-                .unwrap_err(),
-            fingerprint
         );
         assert_eq!(PolicyIdentity::new(value.as_str(), 1).unwrap_err(), policy);
         assert_eq!(
@@ -305,36 +289,7 @@ fn snapshot_decode_error(value: &serde_json::Value, expected: &DeclarationSnapsh
 }
 
 #[test]
-fn snapshot_decode_checks_fingerprint_invariants() {
-    let declaration = AllocationDeclaration::memory_manager_unlabeled("app.rows.v1", 100).unwrap();
-    let source =
-        serde_json::to_value(DeclarationSnapshot::new(vec![declaration]).unwrap()).unwrap();
-    for (fingerprint, expected) in [
-        (
-            String::new(),
-            DeclarationSnapshotError::EmptyRuntimeFingerprint,
-        ),
-        (
-            format!("{}\0", "x".repeat(256)),
-            DeclarationSnapshotError::RuntimeFingerprintTooLong,
-        ),
-        (
-            "é\0".to_string(),
-            DeclarationSnapshotError::NonAsciiRuntimeFingerprint,
-        ),
-        (
-            "printable\u{7f}".to_string(),
-            DeclarationSnapshotError::ControlCharacterRuntimeFingerprint,
-        ),
-    ] {
-        let mut value = source.clone();
-        value["runtime_fingerprint"] = fingerprint.into();
-        snapshot_decode_error(&value, &expected);
-    }
-}
-
-#[test]
-fn snapshot_decode_checks_collection_invariants_before_fingerprint() {
+fn snapshot_decode_checks_collection_invariants() {
     let declaration = AllocationDeclaration::memory_manager_unlabeled("app.rows.v1", 100).unwrap();
     for (second, expected) in [
         (
@@ -352,15 +307,12 @@ fn snapshot_decode_checks_collection_invariants_before_fingerprint() {
     ] {
         let value = serde_json::json!({
             "declarations": [declaration, second],
-            // Collection refusal precedes malformed fingerprint metadata.
-            "runtime_fingerprint": "",
         });
         snapshot_decode_error(&value, &expected);
     }
     let mut value =
         serde_json::to_value(DeclarationSnapshot::new(vec![declaration]).unwrap()).unwrap();
     value["declarations"] = serde_json::Value::Array(vec![value["declarations"][0].clone(); 256]);
-    value["runtime_fingerprint"] = "".into();
     assert!(serde_json::from_value::<DeclarationSnapshot>(value.clone()).is_err());
     let mut bytes = Vec::new();
     ciborium::into_writer(&value, &mut bytes).unwrap();
@@ -386,7 +338,7 @@ fn snapshot_decode_rejects_excess_before_decoding_the_extra_declaration() {
 
     // Advertise 256 entries, without providing even the first declaration.
     // A semantic refusal proves the size hint was checked before an EOF read.
-    let bytes = b"\xa2\x6cdeclarations\x99\x01\x00";
+    let bytes = b"\xa1\x6cdeclarations\x99\x01\x00";
     let error = ciborium::from_reader::<DeclarationSnapshot, _>(bytes.as_slice()).unwrap_err();
     assert!(matches!(error, ciborium::de::Error::Semantic(..)));
 }
@@ -394,15 +346,9 @@ fn snapshot_decode_rejects_excess_before_decoding_the_extra_declaration() {
 #[test]
 fn snapshot_decode_preserves_current_shape_order_and_full_slot_domain() {
     let empty = DeclarationSnapshot::new(Vec::new()).unwrap();
-    let expected = b"\xa2\x6cdeclarations\x80\x73runtime_fingerprint\xf6";
     let mut bytes = Vec::new();
     ciborium::into_writer(&empty, &mut bytes).unwrap();
-    assert_eq!(bytes, expected);
-    assert_eq!(
-        ciborium::from_reader::<DeclarationSnapshot, _>(bytes.as_slice()).unwrap(),
-        empty
-    );
-
+    assert_eq!(bytes, b"\xa1\x6cdeclarations\x80");
     let full = DeclarationSnapshot::new(
         (0..=254)
             .rev()
@@ -414,141 +360,26 @@ fn snapshot_decode_preserves_current_shape_order_and_full_slot_domain() {
     )
     .unwrap();
     for snapshot in [empty, full] {
-        for fingerprint in [
-            None,
-            Some(" ".to_string()),
-            Some((b' '..=b'~').map(char::from).collect()),
-            Some("x".repeat(256)),
-        ] {
-            let snapshot = fingerprint.map_or_else(
-                || snapshot.clone(),
-                |value| snapshot.clone().with_runtime_fingerprint(value).unwrap(),
-            );
-            let value = serde_json::to_value(&snapshot).unwrap();
-            assert_eq!(
-                serde_json::from_value::<DeclarationSnapshot>(value).unwrap(),
-                snapshot
-            );
-            let mut bytes = Vec::new();
-            ciborium::into_writer(&snapshot, &mut bytes).unwrap();
-            assert_eq!(
-                ciborium::from_reader::<DeclarationSnapshot, _>(bytes.as_slice()).unwrap(),
-                snapshot
-            );
-        }
-    }
-    let source = serde_json::to_value(DeclarationSnapshot::new(Vec::new()).unwrap()).unwrap();
-    for field in ["declarations", "runtime_fingerprint"] {
-        let mut value = source.clone();
-        value.as_object_mut().unwrap().remove(field);
-        assert!(serde_json::from_value::<DeclarationSnapshot>(value.clone()).is_err());
+        let value = serde_json::to_value(&snapshot).unwrap();
+        assert_eq!(
+            serde_json::from_value::<DeclarationSnapshot>(value).unwrap(),
+            snapshot
+        );
         let mut bytes = Vec::new();
-        ciborium::into_writer(&value, &mut bytes).unwrap();
-        assert!(ciborium::from_reader::<DeclarationSnapshot, _>(bytes.as_slice()).is_err());
+        ciborium::into_writer(&snapshot, &mut bytes).unwrap();
+        assert_eq!(
+            ciborium::from_reader::<DeclarationSnapshot, _>(bytes.as_slice()).unwrap(),
+            snapshot
+        );
     }
     for value in [
-        serde_json::json!({"declarations": [], "runtime_fingerprint": 42}),
-        serde_json::json!({"declarations": [], "runtime_fingerprint": null, "extra": true}),
+        serde_json::json!({}),
+        serde_json::json!({"declarations": 42}),
+        serde_json::json!({"declarations": [], "extra": true}),
     ] {
         assert!(serde_json::from_value::<DeclarationSnapshot>(value.clone()).is_err());
         let mut bytes = Vec::new();
         ciborium::into_writer(&value, &mut bytes).unwrap();
         assert!(ciborium::from_reader::<DeclarationSnapshot, _>(bytes.as_slice()).is_err());
-    }
-}
-
-#[test]
-fn generation_decode_checks_fingerprint_metadata() {
-    let source = serde_json::to_value(GenerationRecord::new(1, 0, None, 0, None).unwrap()).unwrap();
-    for (fingerprint, expected) in [
-        (
-            String::new(),
-            DeclarationSnapshotError::EmptyRuntimeFingerprint,
-        ),
-        (
-            format!("{}\0", "x".repeat(256)),
-            DeclarationSnapshotError::RuntimeFingerprintTooLong,
-        ),
-        (
-            "é\0".to_string(),
-            DeclarationSnapshotError::NonAsciiRuntimeFingerprint,
-        ),
-        (
-            "printable\u{7f}".to_string(),
-            DeclarationSnapshotError::ControlCharacterRuntimeFingerprint,
-        ),
-    ] {
-        assert_eq!(
-            GenerationRecord::new(1, 0, Some(fingerprint.clone()), 0, None).unwrap_err(),
-            expected
-        );
-        let mut value = source.clone();
-        value["runtime_fingerprint"] = fingerprint.into();
-        let json = serde_json::from_value::<GenerationRecord>(value.clone());
-        let mut bytes = Vec::new();
-        ciborium::into_writer(&value, &mut bytes).unwrap();
-        let cbor = ciborium::from_reader::<GenerationRecord, _>(bytes.as_slice());
-        assert_eq!([json.is_err(), cbor.is_err()], [true, true], "{expected}");
-        assert!(
-            json.unwrap_err()
-                .to_string()
-                .contains(&expected.to_string())
-        );
-        assert!(
-            cbor.unwrap_err()
-                .to_string()
-                .contains(&expected.to_string())
-        );
-    }
-}
-
-#[test]
-fn generation_decode_preserves_current_shape_and_metadata_bounds() {
-    let record = GenerationRecord::new(1, 0, None, 0, None).unwrap();
-    let expected = b"\xa5\x6ageneration\x01\x71parent_generation\x00\x73runtime_fingerprint\xf6\x71declaration_count\x00\x6ccommitted_at\xf6";
-    let mut bytes = Vec::new();
-    ciborium::into_writer(&record, &mut bytes).unwrap();
-    assert_eq!(bytes, expected);
-    for fingerprint in [
-        None,
-        Some(" ".to_string()),
-        Some((b' '..=b'~').map(char::from).collect()),
-        Some("x".repeat(256)),
-    ] {
-        for committed_at in [None, Some(u64::MAX)] {
-            let record =
-                GenerationRecord::new(1, 0, fingerprint.clone(), 255, committed_at).unwrap();
-            let json = serde_json::json!({
-                "generation": 1, "parent_generation": 0, "runtime_fingerprint": fingerprint,
-                "declaration_count": 255, "committed_at": committed_at,
-            });
-            assert_eq!(serde_json::to_value(&record).unwrap(), json);
-            assert_eq!(
-                serde_json::from_value::<GenerationRecord>(json).unwrap(),
-                record
-            );
-            let mut bytes = Vec::new();
-            ciborium::into_writer(&record, &mut bytes).unwrap();
-            assert_eq!(
-                ciborium::from_reader::<GenerationRecord, _>(bytes.as_slice()).unwrap(),
-                record
-            );
-        }
-    }
-    let source = serde_json::to_value(record).unwrap();
-    let mut missing = source.clone();
-    missing
-        .as_object_mut()
-        .unwrap()
-        .remove("runtime_fingerprint");
-    let mut extra = source.clone();
-    extra["extra"] = true.into();
-    let mut wrong_type = source;
-    wrong_type["runtime_fingerprint"] = 42.into();
-    for value in [missing, extra, wrong_type] {
-        assert!(serde_json::from_value::<GenerationRecord>(value.clone()).is_err());
-        let mut bytes = Vec::new();
-        ciborium::into_writer(&value, &mut bytes).unwrap();
-        assert!(ciborium::from_reader::<GenerationRecord, _>(bytes.as_slice()).is_err());
     }
 }

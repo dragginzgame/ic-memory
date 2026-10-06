@@ -325,7 +325,7 @@ impl SealedDeclarationSnapshot {
         }
         let mut declarations = self.registered_declarations().to_vec();
         let mut occupied = [false; 255];
-        for record in ledger.allocation_history().records() {
+        for record in ledger.records() {
             occupied[usize::from(record.slot().id())] = true;
         }
         for fixed in &declarations {
@@ -342,7 +342,6 @@ impl SealedDeclarationSnapshot {
             .chain(historical.into_iter().map(Cow::Owned))
         {
             let historical = ledger
-                .allocation_history()
                 .records()
                 .iter()
                 .find(|record| record.stable_key() == &request.stable_key);

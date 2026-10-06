@@ -53,7 +53,7 @@ fn prepare_database(admission: &mut BootstrapAdmission<'_>) -> Result<(), &'stat
         }
         if key.starts_with("db.main.")
             && key.ends_with(".journal.v1")
-            && !matches!(record.state, AllocationState::Retired { .. })
+            && !matches!(record.state, AllocationState::Retired)
             && !admission.is_declared(record.stable_key)
         {
             omitted.push(record.stable_key.clone());

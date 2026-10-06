@@ -31,8 +31,8 @@ authorization, or endpoint safety.
 - A reservation is policy/diagnostic staging only until it is declared as an
   active allocation. Refreshing a matching reservation is allowed; reserving an
   already active or retired allocation is rejected.
-- Schema metadata attached to declarations, reservations, and committed schema
-  history contains only absent or nonzero versions, checked at construction
+- Schema metadata attached to declarations, reservations, and current committed schema
+  metadata contains only absent or nonzero versions, checked at construction
   and decoding. This metadata does not validate application schemas.
 
 ## Runtime IO Bounds
@@ -54,9 +54,9 @@ authorization, or endpoint safety.
   generation no longer matches the current ledger.
 - Durable generation counters must never silently saturate or wrap.
 - Physical commit generation must equal logical ledger generation.
-- Committed generation history must form a strict parent-linked chain.
-- A committed ledger with a nonzero current generation must contain the matching
-  generation record.
+- Counter zero is empty genesis. Nonzero counters need no audit record.
+- A ledger retains at most 255 ownership records and the latest schema metadata
+  per record. Omitting or retiring an identity never frees its slot.
 
 ## Physical / Logical Binding
 
@@ -78,7 +78,7 @@ authorization, or endpoint safety.
   deterministically.
 - Every present commit slot must pass marker and checksum validation. Recovery
   must not discard an invalid slot and fall back to an older generation because
-  doing so could forget committed allocation history.
+  doing so could forget committed allocation ownership.
 - Decoded ledger DTOs are untrusted until the explicit current-format
   discriminator and committed-integrity checks succeed.
 - Stable-cell ledger storage used by every `MemoryRuntime` must pass fallible
@@ -89,7 +89,7 @@ authorization, or endpoint safety.
 - Each runtime's internal `ic_memory.*` governance allocations must stay
   recoverable in the durable ledger, but must not be published or opened through
   public application-memory helpers.
-- Maintained recovery must enforce encoded-byte, collection, nesting and history
+- Maintained recovery must enforce encoded-byte, collection and nesting
   limits before the corresponding untrusted allocation or decoding. Writers and
   readers must admit the same current bounded shape; oversized or corrupt state
   must never be replaced with an empty ledger.
@@ -104,7 +104,7 @@ Storage integrations must validate layout before opening stable-memory handles:
    expected by the current binary, and recover the persisted allocation ledger.
 3. Run host/consumer admission against bounded recovered metadata, then resolve
    requests while retaining existing assignments.
-4. Validate the completed declarations against ledger history and current policy.
+4. Validate the completed declarations against retained ownership and current policy.
 5. Stage and durably persist one new allocation generation.
 6. Publish committed authority, then open application stable-memory handles.
 
@@ -194,7 +194,7 @@ Zero-page growth must check the shared reservation for reentry, then return the
 current extent without backing IO or manager mutation.
 
 Physical reports and numeric summaries must remain read-only and bounded to
-34,848 bytes of validated manager metadata, without decoding ledger history.
+34,848 bytes of validated manager metadata, without decoding retained ownership.
 They distinguish current, ledger and unknown bindings and preserve physical,
 bucket, virtual, slack and unmanaged-byte conservation. Virtual extent is not
 payload occupancy; a reported range claim is not historical ownership or access
@@ -234,11 +234,9 @@ decoding. `AllocationDeclaration` checks optional printable ASCII labels at
 construction and decoding, including their 256-byte bound.
 `MemoryManagerAuthorityRecord` checks its printable ASCII authority and optional
 purpose through its constructor, including on decode. `DeclarationSnapshot`
-checks its declaration count, unique keys and slots, and bounded printable ASCII
-runtime fingerprint during construction and decoding. `GenerationRecord`
-establishes the same fingerprint text rule during construction and decoding.
-Historical claims, range overlaps, namespace ownership, policy and ledger
-history still require their validation boundaries before influencing authority.
+checks its declaration count and unique keys and slots during construction and
+decoding. Retained claims, range overlaps, namespace ownership and policy still
+require their validation boundaries before influencing authority.
 
 Invariant-bearing DTO fields are intentionally private where feasible. Callers
 should use checked constructors and accessors instead of fabricating durable

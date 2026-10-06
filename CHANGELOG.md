@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.27.0]
+
+- **Breaking API and durable format:** retain current ownership and latest schema
+  metadata, removing per-upgrade and schema history. Update history/timestamp
+  callers and external DTO fixtures. Earlier ledgers are unsupported; retained
+  installations need an explicit data disposition before deployment.
+- Bound logical metadata to 64 KiB. Keep tombstones, stale-proof checks and
+  protected commits; repeated upgrades no longer grow an audit trail.
+- Remove the temporary heap buffer from manager validation and allocation
+  diagnostics, using a bounded 32 KiB stack buffer.
+
+[Detailed notes](docs/changelog/0.27.md) ·
+[Ledger contract](docs/current-ledger.md) ·
+[Focused qualification](docs/current-ledger-qualification.md)
+
 ## [0.26.2] - 2026-10-06
 
 - Reject oversized ledger text during CBOR preflight, before allocating owned

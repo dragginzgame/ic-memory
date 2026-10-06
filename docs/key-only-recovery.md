@@ -16,7 +16,7 @@ authority identifier and schema metadata. Register it with
 `ic_memory_declaration!` form, or pass it to `SealedDeclarationSnapshot::new`
 with explicitly owned fixed declarations and range grants.
 
-The runtime opens its fixed ledger root (ID 0), recovers history, runs host
+The runtime opens its fixed ledger root (ID 0), recovers ownership records, runs host
 admission, resolves requests, validates the complete resolved snapshot under
 current policy, stages one generation, persists it, then publishes
 `CommittedAllocations`. The default runtime delegates to this same
@@ -55,7 +55,7 @@ fixed declaration and logical request under its authority, then `memory_id`
 and `open_memory_by_key`. Default-runtime equivalents are
 `verify_default_memory_manager_authority`, `default_memory_manager_memory_id`
 and `open_default_memory_manager_memory_by_key`. These calls neither bootstrap nor
-replace policy/configuration. They do not read history or construct an absent
+replace policy/configuration. They do not read ownership records or construct an absent
 default runtime. Verification reports typed missing-key, fixed-ID, current
 authority and diagnostic-metadata mismatches; it does not validate application
 schema semantics or replay admission. The runnable
@@ -128,62 +128,48 @@ redeclaration does not promise that IcyDB can reintroduce a retired database.
 
 ## Recovery and admission limits
 
-Before 0.14.0, the stable-cell header was checked against physical capacity and
-`usize`, then allocated. CBOR decoding checked trailing bytes after decoding;
-metadata and ownership invariants were validated after DTO construction.
-Generation staging cloned history and appended a record even for unchanged
-inputs. These did not establish a small history or pre-allocation bound.
+The current ledger is bounded by the usable memory-ID domain, not the number
+of upgrades. It contains one retained ownership record per identity, its current
+lifecycle state, and latest schema metadata. There is no generation trail or
+schema trail. A checked `u64` commit counter binds proofs to commits.
 
 | Resource | Current ceiling | Earliest enforcement |
 | --- | ---: | --- |
-| Stable-cell ledger value | 33,558,528 bytes (32 MiB + 4 KiB) | Header check before payload allocation/read; direct record decode before CBOR |
-| Logical ledger CBOR | 16,777,216 bytes (16 MiB) | Envelope decode before payload copy/CBOR; direct ledger writer before any write would cross the byte ceiling, before header finalization or commit mutation |
+| Stable-cell ledger value | 135,168 bytes (128 KiB + 4 KiB) | Header check before payload allocation/read; direct record decode before CBOR |
+| Logical ledger CBOR | 65,536 bytes (64 KiB) | Envelope decode before payload copy/CBOR; bounded writer before append or commit mutation |
 | CBOR container depth | 32 nested edges | Allocation-free syntax walk before serde |
-| Advertised CBOR text length | 256 bytes and remaining input bytes | Syntax walk before serde allocation; all current ledger text fits this ceiling |
-| Opaque generation byte string | 16,777,240 bytes (16 MiB + 24-byte envelope) and remaining input bytes | Allocation-free syntax walk before serde; writer checks the same limit |
-| Advertised array/map entries | At least one remaining byte per element (two per map pair) | Syntax walk before serde allocation hints |
+| Advertised CBOR text length | 256 bytes and remaining input | Syntax walk before serde allocation; keys also obey their 128-byte grammar |
+| Opaque commit payload | 65,560 bytes (64 KiB + 24-byte envelope) | Syntax walk before serde; writer checks the same limit |
+| Advertised array/map entries | Remaining input bounds | Syntax walk before serde allocation hints |
 | External fixed + logical declarations | 254 | Snapshot sealing before copying/canonicalizing inputs |
 | External range declarations | 254 | Snapshot sealing before copying inputs |
-| Resolved/generic declarations and allocation records | 255, including governance | Declaration validation; record visitor before vector growth; ledger integrity before staging/commit |
-| Generation records | 65,536 | Bounded serde visitor before vector growth; staging before history clone |
-| Schema records per allocation | 65,536 | Bounded serde visitor before vector growth |
-| Total schema records | 65,536 | Integrity/staging checks; encoded-byte ceiling bounds construction before this aggregate check |
-| Diagnostic strings | 256 bytes | Maintained CBOR length preflight before allocation; constructors and field validation retain printable ASCII and non-empty checks |
+| Resolved/generic declarations and retained records | 255, including governance | Snapshot validation; record visitor before vector growth; integrity before staging/commit |
+| Diagnostic strings | 256 bytes | CBOR preflight before allocation; constructors retain printable ASCII and non-empty checks |
 
-The syntax walk accepts the definite-length current writer shape, rejects
-indefinite containers, oversized text, excessive nesting, truncation and trailing
-bytes, and allocates no temporary tree. It is shared only by maintained ledger/record
-production decode owners (plus test helpers), not application data. Direct
-caller-selected serde decoders are outside the recovery contract; decoded DTOs
-are not capabilities. Typed outer payload/envelope errors, codec errors and
-`LedgerIntegrityError::LimitExceeded` fail closed. Oversized existing storage
-cannot be replaced with genesis.
+The syntax walk rejects indefinite containers, oversized text, excessive nesting,
+truncation and trailing bytes without allocating a temporary tree. Direct
+caller-selected serde decoders remain outside the maintained recovery contract;
+DTOs are not capabilities. Typed envelope, codec and integrity failures reject
+without replacing existing storage with genesis.
 
-The outer ceiling permits two maximum byte-string payloads, including their
-24-byte envelopes, plus record metadata. The current persisted shape is a
-pre-1.0 hard cut introduced in 0.14.3: recreate records written before that
-release; the format version remains 1. See
-[codec qualification](opaque-ledger-payloads.md). Writers
-validate structural bounds before encoding and byte bounds before mutating the
-commit store; runtimes also check outer bytes before memory growth/write.
-Staging rejects excessive prior history before cloning and checks the resulting
-record/schema counts. The logical writer checks each serialized slice before
-appending it and caps capacity reservations at the 16 MiB payload plus its
-24-byte envelope. Oversized output is discarded without committing a partial
-payload. This remains one canonical CBOR serialization pass. Definite collection
-lengths are admitted before reserving their vectors; non-empty collections below
-their ceiling retain one spare entry for next-generation staging.
-Reader/writer tests round-trip the 65,536-generation boundary and 255-record
-boundary and verify rejection leaves the store unchanged.
+The outer ceiling permits two maximum payloads and record metadata. The current
+`ICMS` format marker and version 1 identify the current ownership layout; earlier
+ledger layouts are unsupported. Before deploying this hard cut to retained
+installations, follow [the explicit data disposition requirements](current-ledger.md).
+No automatic clearing, fallback reader or migration engine is provided.
 
-Repeated bootstrap on the same runtime and same sealed snapshot/policy remains
-idempotent. Recreating a runtime for an upgrade adds one generation even for an
-unchanged declaration set. There is no compaction: 65,536 generations allow over
-179 years of daily upgrades or about 7.5 years of hourly upgrades. Reservations
-and retirements also consume generations. Large fingerprints, schema churn and
-the byte ceiling can exhaust capacity sooner. Exhaustion is explicit and typed;
-operators must monitor history and plan a future format/import decision before
-reaching it. No ownership or tombstone is discarded to make room.
+The bounded writer performs one canonical CBOR pass. Admitted definite collection
+lengths reserve their vectors; nonempty collections below 255 retain one spare
+entry for staging. The maximum key/schema/record set round-trips through the
+current writer and reader. Excess counts, overflow and corruption reject before
+commit mutation.
+
+Matching warm bootstrap is idempotent. Recreating a runtime, reserving or retiring
+advances the commit counter, including unchanged declarations. The counter can
+change CBOR integer width by at most eight bytes; no event is appended. Repeated
+schema changes replace the latest metadata. Recovery and serialization work depend
+on retained record count, not upgrade count. Counter overflow is explicit and
+never wraps. Ownership and tombstones are never dropped to make room.
 
 Assumptions: backing `Memory` obeys its read/grow/write contract, the runtime is
 the sole manager owner, and IC messages roll back stable-memory writes on traps.

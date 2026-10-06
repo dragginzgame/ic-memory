@@ -43,7 +43,7 @@ can interpret one kind of data as another.
 
 `ic-memory` remembers which storage location belongs to each named store. Before
 the application opens any of those stores, it checks the new layout against the
-saved allocation history. A conflicting upgrade stops with an error instead of
+saved ownership records. A conflicting upgrade stops with an error instead of
 opening the wrong data.
 
 > `ic-memory` protects the connection between a store and its storage location.
@@ -118,6 +118,11 @@ This check-and-record operation is called **bootstrap**. Its important guarantee
 is **validation before open**: a diagnostic report or an uncommitted validation
 result cannot grant access to a store. The runtime publishes permission only
 after the allocation ledger has been recovered, checked, and durably updated.
+
+The ledger stores one current record per allocated identity and the latest schema
+metadata. It keeps no per-upgrade or schema-change history. Omitted and retired
+identities retain their IDs to prevent accidental reuse. A commit counter and two
+protected commit slots support stale-proof checks and corruption detection.
 
 ## What happens when a check fails?
 

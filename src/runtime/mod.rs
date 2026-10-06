@@ -271,7 +271,6 @@ impl<M: Memory> MemoryRuntime<M> {
                 recovered,
                 resolved.allocation_snapshot().clone(),
                 &runtime_policy,
-                None,
             )
             .map_err(runtime_bootstrap_error_from_bootstrap)?;
         ensure_ledger_cell_capacity(&memory, &record)?;

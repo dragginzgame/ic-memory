@@ -64,12 +64,11 @@ pub fn validate_allocations<P: AllocationPolicy>(
     policy: &P,
 ) -> Result<ValidatedAllocations, AllocationValidationError<P::Error>> {
     check_allocations(recovered, &snapshot, policy)?;
-    let (declarations, runtime_fingerprint) = snapshot.into_parts();
+    let declarations = snapshot.into_declarations();
 
     Ok(ValidatedAllocations::new(
         recovered.current_generation(),
         declarations,
-        runtime_fingerprint,
     ))
 }
 
@@ -134,7 +133,7 @@ mod tests {
     use super::*;
     use crate::{
         declaration::AllocationDeclaration,
-        ledger::{AllocationHistory, AllocationRecord, AllocationState, GenerationRecord},
+        ledger::{AllocationRecord, AllocationState},
         schema::SchemaMetadata,
         slot::MemoryManagerSlot,
     };
@@ -170,22 +169,9 @@ mod tests {
     }
 
     fn ledger(records: Vec<AllocationRecord>) -> AllocationLedger {
-        let generations = (1..=7)
-            .map(|generation| {
-                GenerationRecord::new(
-                    generation,
-                    if generation == 1 { 0 } else { generation - 1 },
-                    None,
-                    0,
-                    None,
-                )
-                .expect("generation record")
-            })
-            .collect();
-
         AllocationLedger {
             current_generation: 7,
-            allocation_history: AllocationHistory::from_parts(records, generations),
+            records,
         }
     }
 
@@ -200,7 +186,7 @@ mod tests {
     }
 
     fn active_record(key: &str, id: u8) -> AllocationRecord {
-        AllocationRecord::active(1, &declaration(key, id))
+        AllocationRecord::active(&declaration(key, id))
     }
 
     fn recovered(records: Vec<AllocationRecord>) -> RecoveredLedger {
@@ -277,7 +263,7 @@ mod tests {
     #[test]
     fn rejects_retired_redeclaration() {
         let mut record = active_record("app.users.v1", 100);
-        record.state = AllocationState::Retired { generation: 3 };
+        record.state = AllocationState::Retired;
         let snapshot =
             DeclarationSnapshot::new(vec![declaration("app.users.v1", 100)]).expect("snapshot");
 
@@ -304,7 +290,7 @@ mod tests {
     #[test]
     fn full_slot_domain_validates_stages_and_commits_through_public_boundaries() {
         let mut store = crate::LedgerCommitStore::default();
-        let genesis = AllocationLedger::new(0, AllocationHistory::default()).unwrap();
+        let genesis = AllocationLedger::new(0, Vec::new()).unwrap();
         let recovered = store.recover_or_initialize(&genesis).unwrap();
         let snapshot = DeclarationSnapshot::new(
             (0..=crate::MEMORY_MANAGER_MAX_ID)
@@ -315,13 +301,10 @@ mod tests {
         let validated = validate_allocations(&recovered, snapshot, &TestPolicy).unwrap();
         let staged = recovered
             .ledger()
-            .stage_validated_generation(&validated, None)
+            .stage_validated_generation(&validated)
             .unwrap();
-        assert_eq!(staged.allocation_history().records().len(), 255);
-        assert_eq!(
-            staged.allocation_history().generations()[0].declaration_count(),
-            255
-        );
+        assert_eq!(staged.records().len(), 255);
+
         let committed = store.commit(&staged).unwrap();
         assert_eq!(committed.current_generation(), 1);
         assert_eq!(store.recover().unwrap(), committed);

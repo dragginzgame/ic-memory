@@ -31,9 +31,14 @@ totals without constructing 255 rows or copying store names, owners, or range
 claims.
 
 Both paths read exactly 34,848 bytes of validated manager metadata. They do not
-decode ledger history, initialize stores, write, grow memory, or advance the
+decode retained ownership, initialize stores, write, grow memory, or advance the
 ledger generation. Default-runtime helpers also refuse to construct a missing
 runtime merely to answer a diagnostic request.
+
+Manager validation, including reopen, uses a fixed 32 KiB local table buffer.
+This removes a temporary heap allocation while increasing stack use. Custom
+stack budgets must include the validator and its callers; see the measured
+[buffer tradeoff](allocation-diagnostics-qualification.md).
 
 ## Understanding the numbers
 
@@ -63,6 +68,20 @@ assigned bucket bytes = sum(per-ID bucket bytes)
 A current range declaration is policy metadata, not proof of historical
 ownership. Retired and omitted stores remain unknown rather than being guessed
 from their bytes.
+
+## Ledger size and upgrade count
+
+The ledger keeps current ownership and latest schema metadata, with at most 255
+records. Repeated upgrades add no audit entries. Two protected snapshots and one
+commit counter remain for recovery and stale-proof checks. Logical metadata is
+bounded to 64 KiB; the enclosing record to 128 KiB + 4 KiB. Physical allocation
+also depends on the configured manager bucket size, so smaller encoded bytes do
+not necessarily reduce assigned bucket bytes. See [the current ledger contract](current-ledger.md).
+
+The 32 KiB bucket table belongs to the pinned `ic-stable-structures`
+`MemoryManager`: its entries map physical buckets to 255 usable memory IDs.
+It is not an ic-memory upgrade log or 32,768 separate store IDs. The diagnostic
+buffer reads that existing table and adds no table to stable memory.
 
 ## Choosing a bucket size
 

@@ -284,7 +284,7 @@ fn snapshot_order_is_independent_of_registration_order() {
     );
     assert_eq!(first.fingerprint(), second.fingerprint());
     assert_eq!(first.fingerprint().algorithm_version(), 1);
-    assert_eq!(first.fingerprint().value(), 2_424_977_581_879_595_487);
+    assert_eq!(first.fingerprint().value(), 18_277_250_388_931_193_270);
 }
 
 #[test]
@@ -625,7 +625,7 @@ fn resolved_history_permutations_match_fully_sealed_declarations_and_fingerprint
     };
     let request = |key| MemoryRequest::new("app", key, SchemaMetadata::default()).unwrap();
     let mut store = crate::LedgerCommitStore::default();
-    let genesis = crate::AllocationLedger::new(0, crate::AllocationHistory::default()).unwrap();
+    let genesis = crate::AllocationLedger::new(0, Vec::new()).unwrap();
     let _pending = crate::AllocationBootstrap::new(&mut store)
         .initialize_validate_and_commit(
             &genesis,
@@ -635,7 +635,6 @@ fn resolved_history_permutations_match_fully_sealed_declarations_and_fingerprint
             ])
             .unwrap(),
             &crate::GenericRangePolicy,
-            None,
         )
         .unwrap();
     let recovered = store.recover().unwrap();

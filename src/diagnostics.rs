@@ -1,7 +1,7 @@
 use crate::{
     constants::WASM_PAGE_SIZE_BYTES,
     declaration::AllocationDeclaration,
-    ledger::{AllocationLedger, AllocationRecord, GenerationRecord},
+    ledger::{AllocationLedger, AllocationRecord},
     physical::CommitStoreDiagnostic,
     policy::PolicyIdentity,
     registry::SealedDeclarationFingerprint,
@@ -22,8 +22,6 @@ pub struct DiagnosticExport {
     pub ledger_anchor: MemoryManagerSlot,
     /// Allocation records.
     pub records: Vec<DiagnosticRecord>,
-    /// Generation records.
-    pub generations: Vec<GenerationRecord>,
     /// Optional protected commit recovery diagnostic.
     #[serde(deserialize_with = "crate::cbor::deserialize_present_option")]
     pub commit_recovery: Option<CommitStoreDiagnostic>,
@@ -327,12 +325,11 @@ impl DiagnosticExport {
         Self::from_records(
             ledger.current_generation,
             ledger_anchor,
-            ledger.allocation_history.records.iter().cloned(),
-            ledger.allocation_history.generations.clone(),
+            ledger.records.iter().cloned(),
         )
     }
 
-    // Normal exports consume their decoded history. Borrowed exports copy
+    // Normal exports consume their decoded records. Borrowed exports copy
     // records directly into the same projection without an intermediate ledger.
     pub(crate) fn from_owned_ledger(
         ledger: AllocationLedger,
@@ -341,8 +338,7 @@ impl DiagnosticExport {
         Self::from_records(
             ledger.current_generation,
             ledger_anchor,
-            ledger.allocation_history.records.into_iter(),
-            ledger.allocation_history.generations,
+            ledger.records.into_iter(),
         )
     }
 
@@ -350,7 +346,6 @@ impl DiagnosticExport {
         current_generation: u64,
         ledger_anchor: MemoryManagerSlot,
         records: impl Iterator<Item = AllocationRecord>,
-        generations: Vec<GenerationRecord>,
     ) -> Self {
         Self {
             current_generation,
@@ -361,7 +356,6 @@ impl DiagnosticExport {
                     memory_size: None,
                 })
                 .collect(),
-            generations,
             commit_recovery: None,
         }
     }
@@ -415,7 +409,7 @@ mod tests {
     use super::*;
     use crate::{
         declaration::AllocationDeclaration,
-        ledger::{AllocationHistory, AllocationRecord},
+        ledger::AllocationRecord,
         physical::{CommitRecoveryError, CommitSlotDiagnostic, CommitStoreDiagnostic},
         schema::SchemaMetadata,
     };
@@ -431,16 +425,7 @@ mod tests {
         .expect("declaration");
         let ledger = AllocationLedger {
             current_generation: 3,
-            allocation_history: AllocationHistory::from_parts(
-                vec![AllocationRecord::active(3, &declaration)],
-                vec![GenerationRecord {
-                    generation: 3,
-                    parent_generation: 2,
-                    runtime_fingerprint: Some("wasm:abc123".to_string()),
-                    declaration_count: 1,
-                    committed_at: None,
-                }],
-            ),
+            records: vec![AllocationRecord::active(&declaration)],
         };
 
         let export =
@@ -449,31 +434,23 @@ mod tests {
         assert_eq!(export.current_generation, 3);
         assert_eq!(export.records.len(), 1);
         assert_eq!(export.records[0].memory_size, None);
-        assert_eq!(export.generations.len(), 1);
+
         assert_eq!(
             export.ledger_anchor,
             MemoryManagerSlot::new(0).expect("usable slot")
         );
         assert_eq!(export.commit_recovery, None);
-        assert_eq!(
-            export.generations,
-            ledger.allocation_history().generations()
-        );
+
         assert_eq!(
             export,
             DiagnosticExport::from_owned_ledger(ledger, export.ledger_anchor.clone())
         );
         let wire = serde_json::to_value(&export).expect("diagnostic JSON");
         assert_eq!(
-            wire["generations"][0],
-            serde_json::json!({
-                "generation": 3,
-                "parent_generation": 2,
-                "runtime_fingerprint": "wasm:abc123",
-                "declaration_count": 1,
-                "committed_at": null,
-            })
+            wire["records"][0]["allocation"]["schema"],
+            serde_json::json!({"schema_version": null})
         );
+
         let decoded: DiagnosticExport = serde_json::from_value(wire).expect("current JSON shape");
         assert_eq!(decoded, export);
     }
@@ -486,7 +463,6 @@ mod tests {
             current_generation: 0,
             ledger_anchor: MemoryManagerSlot::new(0).expect("usable slot"),
             records: Vec::new(),
-            generations: Vec::new(),
             commit_recovery: None,
         };
         let Value::Map(mut map) = crate::test_cbor::to_value(export).expect("diagnostic value")
@@ -564,7 +540,7 @@ mod tests {
     fn diagnostic_export_can_include_commit_recovery_state() {
         let ledger = AllocationLedger {
             current_generation: 3,
-            allocation_history: AllocationHistory::default(),
+            records: Vec::new(),
         };
         let commit_recovery = CommitStoreDiagnostic {
             slot0: CommitSlotDiagnostic::Valid { generation: 3 },
@@ -590,10 +566,7 @@ mod tests {
         .expect("declaration");
         let ledger = AllocationLedger {
             current_generation: 3,
-            allocation_history: AllocationHistory::from_parts(
-                vec![AllocationRecord::active(3, &declaration)],
-                Vec::new(),
-            ),
+            records: vec![AllocationRecord::active(&declaration)],
         };
 
         let mut export =
@@ -618,7 +591,7 @@ mod tests {
     fn diagnostic_export_can_report_recovery_failure() {
         let ledger = AllocationLedger {
             current_generation: 0,
-            allocation_history: AllocationHistory::default(),
+            records: Vec::new(),
         };
         let commit_recovery = CommitStoreDiagnostic {
             slot0: CommitSlotDiagnostic::Empty,

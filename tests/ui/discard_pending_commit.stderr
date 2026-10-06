@@ -1,8 +1,8 @@
 error: unused `PendingBootstrapCommit` that must be used
   --> tests/ui/discard_pending_commit.rs:10:5
    |
-10 |     bootstrap.validate_and_commit(declarations, policy, None)?;
-   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+10 |     bootstrap.validate_and_commit(declarations, policy)?;
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
    |
    = note: persist the owning ledger record, then confirm_persisted before opening allocations
 note: the lint level is defined here
@@ -12,5 +12,5 @@ note: the lint level is defined here
    |         ^^^^^^^^^^^^^^^
 help: use `let _ = ...` to ignore the resulting value
    |
-10 |     let _ = bootstrap.validate_and_commit(declarations, policy, None)?;
+10 |     let _ = bootstrap.validate_and_commit(declarations, policy)?;
    |     +++++++

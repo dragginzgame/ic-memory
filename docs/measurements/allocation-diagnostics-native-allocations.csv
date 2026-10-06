@@ -1,0 +1,17 @@
+variant,phase,generations,iterations,allocations,reallocations,peak_bytes,elapsed_us
+baseline,empty_unbootstrapped_summary,0,100,100,0,32768,2216
+baseline,empty_unbootstrapped_report,0,100,400,0,36748,2459
+baseline,empty_bootstrapped_summary,1,100,100,0,32768,2208
+baseline,empty_bootstrapped_report,1,100,1400,0,36838,2542
+baseline,populated_unbootstrapped_summary,0,100,100,0,32768,2321
+baseline,populated_unbootstrapped_report,0,100,400,0,36748,2517
+baseline,populated_bootstrapped_summary,1,100,100,0,32768,2248
+baseline,populated_bootstrapped_report,1,100,1400,0,36838,2576
+candidate,empty_unbootstrapped_summary,0,100,0,0,0,1679
+candidate,empty_unbootstrapped_report,0,100,300,0,36748,1825
+candidate,empty_bootstrapped_summary,1,100,0,0,0,1549
+candidate,empty_bootstrapped_report,1,100,1300,0,36838,1829
+candidate,populated_unbootstrapped_summary,0,100,0,0,0,1546
+candidate,populated_unbootstrapped_report,0,100,300,0,36748,1814
+candidate,populated_bootstrapped_summary,1,100,0,0,0,1548
+candidate,populated_bootstrapped_report,1,100,1300,0,36838,1846

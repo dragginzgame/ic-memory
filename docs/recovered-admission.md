@@ -18,8 +18,8 @@ There is no additional bootstrap entrypoint or separately published capability.
 
 The hook receives `BootstrapAdmission`: the original sealed declarations and
 an iterator over validated recovered key/slot/state/latest-schema metadata.
-The iterator exposes at most 255 records and does not copy generation or schema
-history. It offers no memory handles, raw manager, ledger DTO or mutation API.
+The iterator exposes at most 255 current ownership records; the ledger stores
+no generation or schema audit trail. It offers no memory handles, raw manager, ledger DTO or mutation API.
 `include_historical(authority, key)` selects only a known nonretired allocation
 under an explicit current host grant. It retains the recovered slot and schema.
 Unknown/retired selections reject instead of entering ordinary new placement.
@@ -90,7 +90,7 @@ resolution, validation, staging and persistence errors still apply.
 Known reserved keys may activate through the existing reservation contract.
 Selected keys preserve the latest diagnostic schema metadata and durable slot.
 Selection does not establish application schema support. Governance keys cannot
-be selected externally. Unselected history continues to own its slots and gains
+be selected externally. Unselected records continue to own their slots and gains
 no new capability. Current grants authorize selections; metadata does not claim
 that a historical authority string was durably recorded.
 
@@ -154,7 +154,7 @@ remain applicable; arbitrary partially written native backing is not made
 crash-atomic by this hook.
 
 Recovered metadata has at most 255 records; iteration borrows key/slot/state and
-latest-schema references without copying histories. At most 254 external
+latest-schema references without copying records. At most 254 external
 requests, including the original set, can be completed. Membership uses the sealed
 fixed-key lookup and canonical request vector; only earlier selections need a
 scan. Selection also scans bounded recovered records and checks current grants.

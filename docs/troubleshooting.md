@@ -92,7 +92,7 @@ application migration outside `ic-memory`.
 
 Construction and recovery reject nonempty bytes that are not the supported
 `MemoryManager` layout, unsupported manager versions, malformed stable-cell
-records, invalid commit slots, and inconsistent ledger history. These errors
+records, invalid commit slots, and inconsistent retained ownership. These errors
 fail closed so that unknown bytes are not overwritten as a fresh ledger.
 
 Preserve the original backing memory. Use an explicit runtime and its read-only
@@ -133,7 +133,7 @@ range must supply new automatic allocations.
 
 ## “A retired store cannot be opened again”
 
-Retirement is permanent allocation history, not a free-list operation. Neither
+Retirement is permanent allocation ownership, not a free-list operation. Neither
 the stable key nor its former slot can be revived or assigned to something
 else. This protects upgrades and rollbacks from interpreting unrelated bytes as
 the retired store.

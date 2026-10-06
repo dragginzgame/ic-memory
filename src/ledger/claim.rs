@@ -40,8 +40,8 @@ pub fn validate_declaration_claim<'ledger>(
     declaration: &AllocationDeclaration,
 ) -> Result<ClaimOutcome, ClaimConflict<'ledger>> {
     if let Some(record_index) = find_by_key_index(ledger, &declaration.stable_key) {
-        let record = &ledger.allocation_history.records()[record_index];
-        if matches!(record.state, AllocationState::Retired { .. }) {
+        let record = &ledger.records()[record_index];
+        if matches!(record.state, AllocationState::Retired) {
             return Err(ClaimConflict::Tombstoned { record });
         }
         if record.slot != declaration.slot {
@@ -62,7 +62,7 @@ pub fn validate_reservation_claim<'ledger>(
     reservation: &AllocationDeclaration,
 ) -> Result<ClaimOutcome, ReservationClaimConflict<'ledger>> {
     if let Some(record_index) = find_by_key_index(ledger, &reservation.stable_key) {
-        let record = &ledger.allocation_history.records()[record_index];
+        let record = &ledger.records()[record_index];
         if record.slot != reservation.slot {
             return Err(ReservationClaimConflict::Claim(
                 ClaimConflict::StableKeyMoved { record },
@@ -72,7 +72,7 @@ pub fn validate_reservation_claim<'ledger>(
         return match record.state {
             AllocationState::Reserved => Ok(ClaimOutcome::Existing { record_index }),
             AllocationState::Active => Err(ReservationClaimConflict::ActiveAllocation { record }),
-            AllocationState::Retired { .. } => {
+            AllocationState::Retired => {
                 Err(ReservationClaimConflict::Claim(ClaimConflict::Tombstoned {
                     record,
                 }))
@@ -91,7 +91,6 @@ pub fn validate_reservation_claim<'ledger>(
 
 fn find_by_key_index(ledger: &AllocationLedger, stable_key: &StableKey) -> Option<usize> {
     ledger
-        .allocation_history
         .records()
         .iter()
         .position(|record| &record.stable_key == stable_key)
@@ -101,9 +100,5 @@ fn find_by_slot<'ledger>(
     ledger: &'ledger AllocationLedger,
     slot: &MemoryManagerSlot,
 ) -> Option<&'ledger AllocationRecord> {
-    ledger
-        .allocation_history
-        .records()
-        .iter()
-        .find(|record| &record.slot == slot)
+    ledger.records().iter().find(|record| &record.slot == slot)
 }

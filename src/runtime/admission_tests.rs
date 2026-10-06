@@ -281,7 +281,6 @@ fn current_policy_revoked_grants_and_retirement_still_reject() {
         .retire_and_commit(
             &crate::AllocationRetirement::new(JOURNAL, MemoryManagerSlot::new(101).unwrap())
                 .unwrap(),
-            None,
         )
         .unwrap();
     let _cell = Cell::new(runtime.memory(MEMORY_MANAGER_LEDGER_ID), record);
@@ -354,13 +353,22 @@ fn failed_persistence_retries_admission_without_partial_publication() {
         }
     }
     let backing = seeded();
-    let before = backing.borrow().clone();
-    let limit = std::rc::Rc::new(Counter::new(backing.size()));
-    // Long valid keys force capacity growth even with compact byte-string payloads.
+    // Two current snapshots with many retained keys require a second ledger page.
     let keys: Vec<_> = (0..240)
         .map(|i| format!("app.new{i}.{}.v1", "x".repeat(110)))
         .collect();
     let refs: Vec<_> = keys.iter().map(String::as_str).collect();
+    let mut seeded_refs = refs.clone();
+    seeded_refs.extend([CONTROL, JOURNAL]);
+    MemoryRuntime::new(backing.clone())
+        .unwrap()
+        .bootstrap(
+            &snapshot(&seeded_refs, "app", 10, 254, &[]),
+            &GenericRangePolicy,
+        )
+        .unwrap();
+    let before = backing.borrow().clone();
+    let limit = std::rc::Rc::new(Counter::new(backing.size()));
     let current = snapshot(&refs, "app", 10, 254, &[]);
     let policy = AdmissionPolicy {
         selections: vec![("app", JOURNAL)],
@@ -387,7 +395,7 @@ fn failed_persistence_retries_admission_without_partial_publication() {
     limit.set(100);
     assert_eq!(
         runtime.bootstrap(&current, &policy).unwrap().generation(),
-        2
+        3
     );
     assert_eq!(policy.calls.get(), 2);
     let mut marker = [0; 12];
@@ -467,7 +475,6 @@ fn completion_bound_and_reservation_activation_preserve_evidence() {
                 .unwrap(),
             ],
             &GenericRangePolicy,
-            None,
         )
         .unwrap();
     let _cell = Cell::new(runtime.memory(MEMORY_MANAGER_LEDGER_ID), record);

@@ -20,7 +20,7 @@ use std::borrow::Cow;
 ///
 /// This type owns allocation-governance sequencing only: recover the persisted
 /// ledger, apply the owner layer's policy, validate current declarations
-/// against ledger history, stage and commit the next generation, and return
+/// against retained ownership, stage and commit the next generation, and return
 /// a pending [`PendingBootstrapCommit`] after the in-memory commit store advances.
 /// The persistence owner must durably write that state and explicitly confirm
 /// persistence before it can obtain [`CommittedAllocations`].
@@ -55,13 +55,12 @@ impl<'store> AllocationBootstrap<'store> {
         &mut self,
         snapshot: DeclarationSnapshot,
         policy: &P,
-        committed_at: Option<u64>,
     ) -> Result<PendingBootstrapCommit, BootstrapError<P::Error>>
     where
         P: AllocationPolicy,
     {
         let prior = self.store.recover().map_err(BootstrapError::Ledger)?;
-        self.validate_against(prior, snapshot, policy, committed_at)
+        self.validate_against(prior, snapshot, policy)
     }
 
     /// Initialize an empty ledger store, then validate and advance a pending commit.
@@ -80,7 +79,6 @@ impl<'store> AllocationBootstrap<'store> {
         genesis: &AllocationLedger,
         snapshot: DeclarationSnapshot,
         policy: &P,
-        committed_at: Option<u64>,
     ) -> Result<PendingBootstrapCommit, BootstrapError<P::Error>>
     where
         P: AllocationPolicy,
@@ -89,7 +87,7 @@ impl<'store> AllocationBootstrap<'store> {
             .store
             .recover_or_initialize(genesis)
             .map_err(BootstrapError::Ledger)?;
-        self.validate_against(prior, snapshot, policy, committed_at)
+        self.validate_against(prior, snapshot, policy)
     }
 
     /// Recover, policy-check, reserve, and commit one reservation generation.
@@ -100,7 +98,6 @@ impl<'store> AllocationBootstrap<'store> {
         &mut self,
         reservations: &[AllocationDeclaration],
         policy: &P,
-        committed_at: Option<u64>,
     ) -> Result<AllocationLedger, BootstrapReservationError<P::Error>>
     where
         P: AllocationPolicy,
@@ -109,7 +106,7 @@ impl<'store> AllocationBootstrap<'store> {
             .store
             .recover()
             .map_err(BootstrapReservationError::Ledger)?;
-        self.reserve_against(prior.into_ledger(), reservations, policy, committed_at)
+        self.reserve_against(prior.into_ledger(), reservations, policy)
     }
 
     /// Initialize an empty ledger store, then reserve and commit.
@@ -124,7 +121,6 @@ impl<'store> AllocationBootstrap<'store> {
         genesis: &AllocationLedger,
         reservations: &[AllocationDeclaration],
         policy: &P,
-        committed_at: Option<u64>,
     ) -> Result<AllocationLedger, BootstrapReservationError<P::Error>>
     where
         P: AllocationPolicy,
@@ -133,22 +129,20 @@ impl<'store> AllocationBootstrap<'store> {
             .store
             .recover_or_initialize(genesis)
             .map_err(BootstrapReservationError::Ledger)?;
-        self.reserve_against(prior.into_ledger(), reservations, policy, committed_at)
+        self.reserve_against(prior.into_ledger(), reservations, policy)
     }
 
     /// Recover, retire, and commit one explicit retirement generation.
     pub fn retire_and_commit(
         &mut self,
         retirement: &AllocationRetirement,
-        committed_at: Option<u64>,
     ) -> Result<AllocationLedger, BootstrapRetirementError> {
         let prior = self
             .store
             .recover()
             .map_err(BootstrapRetirementError::Ledger)?;
-        let staged =
-            stage_retirement_generation(Cow::Owned(prior.into_ledger()), retirement, committed_at)
-                .map_err(BootstrapRetirementError::Retirement)?;
+        let staged = stage_retirement_generation(Cow::Owned(prior.into_ledger()), retirement)
+            .map_err(BootstrapRetirementError::Retirement)?;
         self.store
             .commit_generation(&staged)
             .map_err(BootstrapRetirementError::Ledger)?;
@@ -160,7 +154,6 @@ impl<'store> AllocationBootstrap<'store> {
         prior: AllocationLedger,
         reservations: &[AllocationDeclaration],
         policy: &P,
-        committed_at: Option<u64>,
     ) -> Result<AllocationLedger, BootstrapReservationError<P::Error>>
     where
         P: AllocationPolicy,
@@ -176,7 +169,7 @@ impl<'store> AllocationBootstrap<'store> {
                 .map_err(BootstrapReservationError::Policy)?;
         }
 
-        let staged = stage_reservation_generation(Cow::Owned(prior), reservations, committed_at)
+        let staged = stage_reservation_generation(Cow::Owned(prior), reservations)
             .map_err(BootstrapReservationError::Reservation)?;
         self.store
             .commit_generation(&staged)
@@ -189,16 +182,14 @@ impl<'store> AllocationBootstrap<'store> {
         prior: crate::RecoveredLedger,
         snapshot: DeclarationSnapshot,
         policy: &P,
-        committed_at: Option<u64>,
     ) -> Result<PendingBootstrapCommit, BootstrapError<P::Error>>
     where
         P: AllocationPolicy,
     {
         let validated =
             validate_allocations(&prior, snapshot, policy).map_err(BootstrapError::Validation)?;
-        let staged =
-            stage_validated_generation(Cow::Owned(prior.into_ledger()), &validated, committed_at)
-                .map_err(BootstrapError::Staging)?;
+        let staged = stage_validated_generation(Cow::Owned(prior.into_ledger()), &validated)
+            .map_err(BootstrapError::Staging)?;
         self.store
             .commit_generation(&staged)
             .map_err(BootstrapError::Ledger)?;
@@ -315,7 +306,7 @@ mod tests {
     use super::*;
     use crate::{
         declaration::AllocationDeclaration,
-        ledger::{AllocationHistory, AllocationLedger, AllocationState},
+        ledger::{AllocationLedger, AllocationState},
         schema::SchemaMetadata,
         slot::MemoryManagerSlot,
     };
@@ -430,7 +421,7 @@ mod tests {
     fn ledger() -> AllocationLedger {
         AllocationLedger {
             current_generation: 0,
-            allocation_history: AllocationHistory::default(),
+            records: Vec::new(),
         }
     }
 
@@ -451,12 +442,12 @@ mod tests {
         let snapshot = DeclarationSnapshot::new(vec![declaration()]).expect("snapshot");
 
         let commit = AllocationBootstrap::new(&mut store)
-            .validate_and_commit(snapshot, &TestPolicy, Some(42))
+            .validate_and_commit(snapshot, &TestPolicy)
             .expect("bootstrap commit");
 
         assert_eq!(commit.ledger().current_generation, 1);
-        assert_eq!(commit.ledger().allocation_history.records().len(), 1);
-        assert_eq!(commit.ledger().allocation_history.generations().len(), 1);
+        assert_eq!(commit.ledger().records().len(), 1);
+
         assert_eq!(store.recover().unwrap().ledger(), commit.ledger());
         assert_eq!(commit.confirm_persisted().generation(), 1);
     }
@@ -467,11 +458,11 @@ mod tests {
         let snapshot = DeclarationSnapshot::new(vec![declaration()]).expect("snapshot");
 
         let commit = AllocationBootstrap::new(&mut store)
-            .initialize_validate_and_commit(&ledger(), snapshot, &TestPolicy, Some(42))
+            .initialize_validate_and_commit(&ledger(), snapshot, &TestPolicy)
             .expect("bootstrap commit");
 
         assert_eq!(commit.ledger().current_generation, 1);
-        assert_eq!(commit.ledger().allocation_history.records().len(), 1);
+        assert_eq!(commit.ledger().records().len(), 1);
         assert_eq!(commit.confirm_persisted().generation(), 1);
     }
 
@@ -484,7 +475,7 @@ mod tests {
         let snapshot = DeclarationSnapshot::new(vec![declaration()]).expect("snapshot");
 
         let err = AllocationBootstrap::new(&mut store)
-            .initialize_validate_and_commit(&ledger(), snapshot, &TestPolicy, Some(42))
+            .initialize_validate_and_commit(&ledger(), snapshot, &TestPolicy)
             .expect_err("corrupt state");
 
         assert!(matches!(err, BootstrapError::Ledger(_)));
@@ -497,15 +488,12 @@ mod tests {
         let reservation = declaration();
 
         let committed = AllocationBootstrap::new(&mut store)
-            .reserve_and_commit(&[reservation], &TestPolicy, Some(42))
+            .reserve_and_commit(&[reservation], &TestPolicy)
             .expect("reservation commit");
 
         assert_eq!(committed.current_generation, 1);
-        assert_eq!(committed.allocation_history.records().len(), 1);
-        assert_eq!(
-            committed.allocation_history.records()[0].state(),
-            AllocationState::Reserved
-        );
+        assert_eq!(committed.records().len(), 1);
+        assert_eq!(committed.records()[0].state(), AllocationState::Reserved);
         assert_eq!(store.recover().unwrap().ledger(), &committed);
 
         // The first reservation changes local staging state before the second
@@ -517,7 +505,7 @@ mod tests {
         ];
         let before = store.clone();
         let expected = committed
-            .stage_reservation_generation(&reservations, None)
+            .stage_reservation_generation(&reservations)
             .unwrap_err();
         assert!(matches!(
             expected,
@@ -525,7 +513,7 @@ mod tests {
         ));
         assert_eq!(committed, *store.recover().unwrap().ledger());
         let error = AllocationBootstrap::new(&mut store)
-            .reserve_and_commit(&reservations, &TestPolicy, None)
+            .reserve_and_commit(&reservations, &TestPolicy)
             .unwrap_err();
         assert_eq!(error, BootstrapReservationError::Reservation(expected));
         assert_eq!(store, before);
@@ -537,14 +525,11 @@ mod tests {
         let reservation = declaration();
 
         let committed = AllocationBootstrap::new(&mut store)
-            .initialize_reserve_and_commit(&ledger(), &[reservation], &TestPolicy, Some(42))
+            .initialize_reserve_and_commit(&ledger(), &[reservation], &TestPolicy)
             .expect("reservation commit");
 
         assert_eq!(committed.current_generation, 1);
-        assert_eq!(
-            committed.allocation_history.records()[0].state(),
-            AllocationState::Reserved
-        );
+        assert_eq!(committed.records()[0].state(), AllocationState::Reserved);
     }
 
     #[test]
@@ -554,13 +539,13 @@ mod tests {
         let reservation = declaration();
 
         let err = AllocationBootstrap::new(&mut store)
-            .reserve_and_commit(&[reservation], &RejectReservedPolicy, Some(42))
+            .reserve_and_commit(&[reservation], &RejectReservedPolicy)
             .expect_err("policy failure");
         let recovered = store.recover().expect("recovered");
 
         assert!(matches!(err, BootstrapReservationError::Policy(_)));
         assert_eq!(recovered.current_generation(), 0);
-        assert_eq!(recovered.ledger().allocation_history().records(), []);
+        assert_eq!(recovered.ledger().records(), []);
     }
 
     #[test]
@@ -579,18 +564,12 @@ mod tests {
             store.commit(&ledger()).expect("initial ledger");
 
             let committed = AllocationBootstrap::new(&mut store)
-                .reserve_and_commit(&reservations, &TestPolicy, Some(42))
+                .reserve_and_commit(&reservations, &TestPolicy)
                 .expect("bounded batch commits");
 
             assert_eq!(committed.current_generation(), 1);
-            assert_eq!(
-                committed.allocation_history().records().len(),
-                usize::from(count)
-            );
-            assert_eq!(
-                committed.allocation_history().generations()[0].declaration_count(),
-                u32::from(count)
-            );
+            assert_eq!(committed.records().len(), usize::from(count));
+
             assert_eq!(store.recover().unwrap().ledger(), &committed);
         }
     }
@@ -604,14 +583,9 @@ mod tests {
             let before = store.clone();
             let mut bootstrap = AllocationBootstrap::new(&mut store);
             let error = if initialize {
-                bootstrap.initialize_reserve_and_commit(
-                    &ledger(),
-                    &reservations,
-                    &PolicyMustNotRun,
-                    None,
-                )
+                bootstrap.initialize_reserve_and_commit(&ledger(), &reservations, &PolicyMustNotRun)
             } else {
-                bootstrap.reserve_and_commit(&reservations, &PolicyMustNotRun, None)
+                bootstrap.reserve_and_commit(&reservations, &PolicyMustNotRun)
             }
             .expect_err("oversized batch must fail before policy");
 
@@ -633,7 +607,7 @@ mod tests {
         expected.commit(&ledger()).expect("expected genesis");
 
         let error = AllocationBootstrap::new(&mut store)
-            .initialize_reserve_and_commit(&ledger(), &reservations, &PolicyMustNotRun, None)
+            .initialize_reserve_and_commit(&ledger(), &reservations, &PolicyMustNotRun)
             .expect_err("size rejection precedes policy checks");
 
         assert_eq!(
@@ -651,12 +625,12 @@ mod tests {
         store.commit(&ledger()).expect("initial ledger");
         let reservation = declaration();
         AllocationBootstrap::new(&mut store)
-            .reserve_and_commit(&[reservation], &TestPolicy, Some(42))
+            .reserve_and_commit(&[reservation], &TestPolicy)
             .expect("reservation commit");
         let snapshot = DeclarationSnapshot::new(vec![declaration()]).expect("snapshot");
 
         let err = AllocationBootstrap::new(&mut store)
-            .validate_and_commit(snapshot, &RejectActivePolicy, Some(43))
+            .validate_and_commit(snapshot, &RejectActivePolicy)
             .expect_err("active validation must run");
         let recovered = store.recover().expect("recovered");
 
@@ -665,7 +639,7 @@ mod tests {
             BootstrapError::Validation(AllocationValidationError::Policy("active slot rejected"))
         ));
         assert_eq!(
-            recovered.ledger().allocation_history().records()[0].state(),
+            recovered.ledger().records()[0].state(),
             AllocationState::Reserved
         );
     }
@@ -676,7 +650,7 @@ mod tests {
         store.commit(&ledger()).expect("initial ledger");
         let snapshot = DeclarationSnapshot::new(vec![declaration()]).expect("snapshot");
         let _pending = AllocationBootstrap::new(&mut store)
-            .validate_and_commit(snapshot, &TestPolicy, Some(42))
+            .validate_and_commit(snapshot, &TestPolicy)
             .expect("active commit");
         let retirement = AllocationRetirement::new(
             "app.users.v1",
@@ -685,14 +659,11 @@ mod tests {
         .expect("retirement");
 
         let committed = AllocationBootstrap::new(&mut store)
-            .retire_and_commit(&retirement, Some(43))
+            .retire_and_commit(&retirement)
             .expect("retirement commit");
 
         assert_eq!(committed.current_generation, 2);
-        assert_eq!(
-            committed.allocation_history.records()[0].state(),
-            AllocationState::Retired { generation: 2 }
-        );
+        assert_eq!(committed.records()[0].state(), AllocationState::Retired);
         assert_eq!(store.recover().unwrap().ledger(), &committed);
     }
 
@@ -707,12 +678,12 @@ mod tests {
         .expect("retirement");
 
         let err = AllocationBootstrap::new(&mut store)
-            .retire_and_commit(&retirement, Some(43))
+            .retire_and_commit(&retirement)
             .expect_err("unknown key");
         let recovered = store.recover().expect("recovered");
 
         assert!(matches!(err, BootstrapRetirementError::Retirement(_)));
         assert_eq!(recovered.current_generation(), 0);
-        assert_eq!(recovered.ledger().allocation_history().records(), []);
+        assert_eq!(recovered.ledger().records(), []);
     }
 }

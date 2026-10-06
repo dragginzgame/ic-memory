@@ -46,7 +46,7 @@ MemoryManager ID 0
 The logical payload inside the `LedgerPayloadEnvelope` is the built-in
 `ic-memory` CBOR ledger format. Callers do not provide a custom codec.
 
-The default runtime keeps this internal ledger allocation in durable history,
+The default runtime keeps this internal ledger allocation in its ownership records,
 but it removes `ic_memory.*` governance keys from the committed allocations it
 publishes for application opens. Public default-runtime open helpers reject
 those reserved keys.
@@ -58,7 +58,7 @@ to one runtime. A cold bootstrap then:
 2. Runs the host's `prepare_bootstrap` hook to admit consumer identity and select
    authorized historical keys from bounded allocation metadata.
 3. Resolves logical requests while preserving existing assignments.
-4. Validates the completed declarations against history and current policy.
+4. Validates the completed declarations against retained ownership and current policy.
 5. Stages and persists one generation before publishing `CommittedAllocations`.
 6. Opens application stable-memory handles through that runtime.
 
@@ -255,7 +255,7 @@ Registration and sealing failures return typed errors before a report is built.
 Doctor validation covers the supplied declaration set and allocation policy;
 it does not run `prepare_bootstrap`, predict historical completion or certify
 consumer admission. Use the bounded allocation summary/report when metrics
-need physical accounting without decoding ledger history.
+need physical accounting without decoding retained ownership.
 
 The report identifies the tested policy and declaration-snapshot fingerprint,
 shows the binding established by successful bootstrap, and reports whether the
@@ -320,7 +320,7 @@ The safe order is fixed:
 ```text
 recover persisted allocation ledger
 declare this binary's expected stable stores
-validate declarations against ledger/history/policy
+validate declarations against ledger ownership and policy
 commit the new generation
 only then open stable-memory handles
 ```
@@ -331,7 +331,7 @@ preparation and resolution before the same validation/persistence boundary.
 Use the runtime when composing those features; a diagnostic export cannot
 resolve requests or authorize historical opens.
 
-Maintained recovery paths enforce byte, collection, nesting and history limits
+Maintained recovery paths enforce byte, collection and nesting limits
 before the relevant allocations and decoding. See the
 [current recovery limits](docs/key-only-recovery.md#recovery-and-admission-limits).
 
@@ -377,7 +377,6 @@ let commit = AllocationBootstrap::new(record.store_mut()).initialize_validate_an
     &genesis_ledger,
     declarations,
     &policy,
-    committed_at,
 )?;
 
 persist_record(&record)?;
@@ -388,7 +387,7 @@ let orders = open_storage(slot)?;
 ```
 
 The helper names for `record`, `persist_record`, `genesis_ledger`, `policy`,
-`committed_at`, and `open_storage` are placeholders. Frameworks and libraries
+and `open_storage` are placeholders. Frameworks and libraries
 wire those to their own stable-memory persistence and collection construction.
 The ordering is the contract. Calling `confirm_persisted()` before
 `persist_record` succeeds violates the protocol.
@@ -398,11 +397,13 @@ use an empty current-format ledger, like the default runtime does. A non-empty
 genesis ledger is an import or migration decision owned by the layer that owns
 the ledger store.
 
-`AllocationLedger::new(...)` builds a structurally valid ledger DTO. Use
-`AllocationLedger::new_committed(...)` only when you are manually constructing
-committed ledger state and want the stricter committed-generation checks.
-Normal integrations should usually recover through the commit/recovery flow
-instead of hand-assembling committed state.
+`AllocationLedger::new(counter, records)` checks count, unique ownership and
+empty-genesis rules. It returns a passive DTO; protected recovery is still needed
+before declaration validation. There is one integrity validator for the current
+format, and no retained generation or schema trail. Inspect
+`AllocationLedger::records()` and `AllocationRecord::schema()` for current state.
+See the [current ledger hard cut](docs/current-ledger.md) before upgrading retained
+installations.
 
 `ValidatedAllocations` is intentionally opaque and non-serializable pre-commit
 state. It can be staged but cannot open storage. `CommittedAllocations` is the

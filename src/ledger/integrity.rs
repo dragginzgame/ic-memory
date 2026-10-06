@@ -1,307 +1,39 @@
-use super::{AllocationLedger, AllocationRecord, AllocationState, LedgerIntegrityError};
+use super::{AllocationLedger, LedgerIntegrityError};
 use std::collections::BTreeSet;
 
 impl AllocationLedger {
-    pub(crate) fn validate_bounds(&self) -> Result<(), LedgerIntegrityError> {
-        for (resource, count, limit) in [
-            (
-                "allocation records",
-                self.allocation_history.records().len(),
-                crate::constants::MAX_ALLOCATIONS,
-            ),
-            (
-                "generation history",
-                self.allocation_history.generations().len(),
-                crate::constants::MAX_LEDGER_GENERATIONS,
-            ),
-        ] {
-            if count > limit {
-                return Err(LedgerIntegrityError::LimitExceeded { resource, limit });
-            }
-        }
-        // Refuse oversized outer collections before walking their histories.
-        // Subtract each history from remaining capacity and stop at the first
-        // excess, without constructing an unbounded aggregate count.
-        let mut schema_headroom = crate::constants::MAX_LEDGER_GENERATIONS;
-        for record in self.allocation_history.records() {
-            schema_headroom = schema_headroom
-                .checked_sub(record.schema_history.len())
-                .ok_or(LedgerIntegrityError::LimitExceeded {
-                    resource: "schema history",
-                    limit: crate::constants::MAX_LEDGER_GENERATIONS,
-                })?;
-        }
-        Ok(())
-    }
-
-    pub(crate) fn validate_staging_bounds(&self) -> Result<(), LedgerIntegrityError> {
-        self.validate_bounds()?;
-        if self.allocation_history.generations().len() >= crate::constants::MAX_LEDGER_GENERATIONS {
+    pub(crate) const fn validate_bounds(&self) -> Result<(), LedgerIntegrityError> {
+        if self.records.len() > crate::constants::MAX_ALLOCATIONS {
             return Err(LedgerIntegrityError::LimitExceeded {
-                resource: "generation history",
-                limit: crate::constants::MAX_LEDGER_GENERATIONS,
+                resource: "allocation records",
+                limit: crate::constants::MAX_ALLOCATIONS,
             });
         }
         Ok(())
     }
 
-    /// Validate structural ledger invariants before recovery or commit.
+    /// Validate count, unique ownership and empty genesis before recovery or commit.
+    /// Checked field types already enforce key, slot and schema invariants.
     pub fn validate_integrity(&self) -> Result<(), LedgerIntegrityError> {
         self.validate_bounds()?;
         let mut stable_keys = BTreeSet::new();
-        // Slot construction and decoding have already excluded the sentinel.
         let mut slots = [false; crate::constants::MAX_ALLOCATIONS];
-
-        for record in self.allocation_history.records() {
-            if !stable_keys.insert(&record.stable_key) {
+        for record in self.records() {
+            if !stable_keys.insert(record.stable_key()) {
                 return Err(LedgerIntegrityError::DuplicateStableKey {
                     stable_key: record.stable_key.clone(),
                 });
             }
-            let occupied = &mut slots[usize::from(record.slot.id())];
-            if *occupied {
+            if slots[usize::from(record.slot.id())] {
                 return Err(LedgerIntegrityError::DuplicateSlot {
                     slot: record.slot.clone(),
                 });
             }
-            *occupied = true;
-            validate_record_integrity(self.current_generation, record)?;
+            slots[usize::from(record.slot.id())] = true;
         }
-
-        // Increasing generation numbers are already unique. Retain the general
-        // set path for unordered DTOs, including its existing refusal order.
-        let ordered = self
-            .allocation_history
-            .generations()
-            .windows(2)
-            .all(|pair| pair[0].generation < pair[1].generation);
-        let mut generations = BTreeSet::new();
-        for generation in self.allocation_history.generations() {
-            if !ordered && !generations.insert(generation.generation) {
-                return Err(LedgerIntegrityError::DuplicateGeneration {
-                    generation: generation.generation,
-                });
-            }
-            if generation.generation > self.current_generation {
-                return Err(LedgerIntegrityError::FutureGeneration {
-                    generation: generation.generation,
-                    current_generation: self.current_generation,
-                });
-            }
-            if generation.parent_generation >= generation.generation {
-                return Err(LedgerIntegrityError::InvalidParentGeneration {
-                    generation: generation.generation,
-                    parent_generation: generation.parent_generation,
-                });
-            }
-        }
-
-        Ok(())
-    }
-
-    /// Validate strict committed-ledger invariants before recovery or commit.
-    ///
-    /// Public durable structs are DTOs: decoded or manually constructed values
-    /// are untrusted until this method succeeds.
-    pub fn validate_committed_integrity(&self) -> Result<(), LedgerIntegrityError> {
-        self.validate_integrity()?;
-
-        if self.current_generation != 0
-            && !self
-                .allocation_history
-                .generations()
-                .iter()
-                .any(|record| record.generation == self.current_generation)
-        {
-            return Err(LedgerIntegrityError::MissingCurrentGenerationRecord {
-                current_generation: self.current_generation,
-            });
-        }
-
-        let mut expected_parent = 0;
-        for generation in self.allocation_history.generations() {
-            if generation.generation != expected_parent + 1 {
-                return Err(LedgerIntegrityError::NonIncreasingGenerationRecords {
-                    generation: generation.generation,
-                });
-            }
-
-            if generation.parent_generation != expected_parent {
-                return Err(LedgerIntegrityError::BrokenGenerationChain {
-                    generation: generation.generation,
-                    expected_parent,
-                    actual_parent: generation.parent_generation,
-                });
-            }
-
-            expected_parent = generation.generation;
-        }
-
-        // The checked chain contains exactly generations 1..=current_generation.
-        // Structural validation bounds every record reference by its first
-        // generation and current_generation, so only genesis exclusion remains.
-        for record in self.allocation_history.records() {
-            if record.first_generation == 0 {
-                return Err(LedgerIntegrityError::UnknownRecordGeneration {
-                    stable_key: record.stable_key.clone(),
-                    generation: 0,
-                });
-            }
-        }
-
-        Ok(())
-    }
-}
-
-fn validate_record_integrity(
-    current_generation: u64,
-    record: &AllocationRecord,
-) -> Result<(), LedgerIntegrityError> {
-    if record.first_generation > record.last_seen_generation {
-        return Err(LedgerIntegrityError::InvalidRecordGenerationOrder {
-            stable_key: record.stable_key.clone(),
-            first_generation: record.first_generation,
-            last_seen_generation: record.last_seen_generation,
-        });
-    }
-    if record.last_seen_generation > current_generation {
-        return Err(LedgerIntegrityError::FutureRecordGeneration {
-            stable_key: record.stable_key.clone(),
-            generation: record.last_seen_generation,
-            current_generation,
-        });
-    }
-
-    match record.state {
-        AllocationState::Retired {
-            generation: retired_generation,
-        } => {
-            if retired_generation < record.first_generation {
-                return Err(LedgerIntegrityError::RetiredBeforeFirstGeneration {
-                    stable_key: record.stable_key.clone(),
-                    first_generation: record.first_generation,
-                    retired_generation,
-                });
-            }
-            if retired_generation > current_generation {
-                return Err(LedgerIntegrityError::FutureRecordGeneration {
-                    stable_key: record.stable_key.clone(),
-                    generation: retired_generation,
-                    current_generation,
-                });
-            }
-            if retired_generation <= record.last_seen_generation {
-                return Err(LedgerIntegrityError::RetirementNotAfterLastSeen {
-                    stable_key: record.stable_key.clone(),
-                    last_seen_generation: record.last_seen_generation,
-                    retired_generation,
-                });
-            }
-        }
-        AllocationState::Reserved | AllocationState::Active => {}
-    }
-
-    validate_schema_history_integrity(current_generation, record)
-}
-
-fn validate_schema_history_integrity(
-    current_generation: u64,
-    record: &AllocationRecord,
-) -> Result<(), LedgerIntegrityError> {
-    if record.schema_history.is_empty() {
-        return Err(LedgerIntegrityError::EmptySchemaHistory {
-            stable_key: record.stable_key.clone(),
-        });
-    }
-
-    let first_schema_generation = record.schema_history[0].generation;
-    if first_schema_generation != record.first_generation {
-        return Err(LedgerIntegrityError::SchemaHistoryStartMismatch {
-            stable_key: record.stable_key.clone(),
-            first_generation: record.first_generation,
-            schema_generation: first_schema_generation,
-        });
-    }
-
-    let mut previous = None;
-    for schema in &record.schema_history {
-        if previous.is_some_and(|generation| schema.generation <= generation) {
-            return Err(LedgerIntegrityError::NonIncreasingSchemaHistory {
-                stable_key: record.stable_key.clone(),
-            });
-        }
-        // The matching first entry and strict ordering establish the lower bound.
-        if schema.generation > current_generation {
-            return Err(LedgerIntegrityError::SchemaHistoryOutOfBounds {
-                stable_key: record.stable_key.clone(),
-                generation: schema.generation,
-            });
-        }
-        if schema.generation > record.last_seen_generation {
-            return Err(LedgerIntegrityError::SchemaHistoryAfterLastSeen {
-                stable_key: record.stable_key.clone(),
-                generation: schema.generation,
-                last_seen_generation: record.last_seen_generation,
-            });
-        }
-        previous = Some(schema.generation);
-    }
-
-    Ok(())
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::{AllocationHistory, GenerationRecord};
-
-    fn reference(records: &[GenerationRecord], current: u64) -> Result<(), LedgerIntegrityError> {
-        let mut seen = Vec::new();
-        for record in records {
-            let generation = record.generation();
-            if seen.contains(&generation) {
-                return Err(LedgerIntegrityError::DuplicateGeneration { generation });
-            }
-            seen.push(generation);
-            if generation > current {
-                return Err(LedgerIntegrityError::FutureGeneration {
-                    generation,
-                    current_generation: current,
-                });
-            }
-            if record.parent_generation() >= generation {
-                return Err(LedgerIntegrityError::InvalidParentGeneration {
-                    generation,
-                    parent_generation: record.parent_generation(),
-                });
-            }
+        if self.current_generation == 0 && !self.records.is_empty() {
+            return Err(LedgerIntegrityError::NonemptyGenesis);
         }
         Ok(())
-    }
-
-    #[test]
-    fn generation_validation_matches_reference_for_orderings_and_overlapping_failures() {
-        for len in 0..=4 {
-            for mut code in 0..12_usize.pow(len) {
-                let mut records = Vec::new();
-                for _ in 0..len {
-                    let choice = u8::try_from(code % 12).unwrap();
-                    code /= 12;
-                    let generation = u64::from(choice / 2);
-                    let parent = if choice % 2 == 0 {
-                        generation.saturating_sub(1)
-                    } else {
-                        generation
-                    };
-                    records.push(GenerationRecord::new(generation, parent, None, 0, None).unwrap());
-                }
-                let expected = reference(&records, 4);
-                let ledger = AllocationLedger {
-                    current_generation: 4,
-                    allocation_history: AllocationHistory::from_parts(Vec::new(), records),
-                };
-                assert_eq!(ledger.validate_integrity(), expected);
-            }
-        }
     }
 }

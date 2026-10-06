@@ -21,7 +21,7 @@
 //! 2. Admit consumer identity and authorized historical selections from bounded
 //!    metadata under the host's `RuntimeBootstrapPolicy`.
 //! 3. Resolve logical requests under explicit host grants, combine them with
-//!    sealed fixed declarations, then validate against history and current policy.
+//!    sealed fixed declarations, then validate against retained ownership and current policy.
 //! 4. Stage and durably persist the next generation.
 //! 5. Only then open stable-memory handles through committed allocation
 //!    authority.
@@ -47,7 +47,7 @@
 //! Bounded physical attribution is available through
 //! [`MemoryRuntime::memory_allocations`] and
 //! [`default_memory_manager_memory_allocations`]. It reports actual persisted
-//! buckets and explicit residuals without decoding ledger history. Virtual
+//! buckets and explicit residuals without decoding retained ownership. Virtual
 //! extent is not payload occupancy. Opens return [`RuntimeMemory`]; explicit
 //! [`MemoryManagerConfig`] selects fresh-state buckets or checks a persisted
 //! setting without migration. The default remains 128 pages.
@@ -155,8 +155,7 @@ pub use bootstrap::{
 };
 pub use capability::{CommittedAllocations, ValidatedAllocations};
 pub use constants::{
-    MAX_LEDGER_BYTES, MAX_LEDGER_GENERATIONS, MAX_LEDGER_NESTING, MAX_LEDGER_RECORD_BYTES,
-    WASM_PAGE_SIZE_BYTES,
+    MAX_LEDGER_BYTES, MAX_LEDGER_NESTING, MAX_LEDGER_RECORD_BYTES, WASM_PAGE_SIZE_BYTES,
 };
 pub use declaration::{AllocationDeclaration, DeclarationSnapshot, DeclarationSnapshotError};
 pub use diagnostics::{
@@ -166,11 +165,10 @@ pub use diagnostics::{
 };
 pub use key::{StableKey, StableKeyError};
 pub use ledger::{
-    AllocationHistory, AllocationLedger, AllocationRecord, AllocationReservationError,
-    AllocationRetirement, AllocationRetirementError, AllocationStageError, AllocationState,
-    GenerationRecord, LEDGER_PAYLOAD_FORMAT_VERSION, LedgerCommitError, LedgerCommitStore,
-    LedgerIntegrityError, LedgerPayloadEnvelope, LedgerPayloadEnvelopeError, RecoveredLedger,
-    SchemaMetadataRecord,
+    AllocationLedger, AllocationRecord, AllocationReservationError, AllocationRetirement,
+    AllocationRetirementError, AllocationStageError, AllocationState,
+    LEDGER_PAYLOAD_FORMAT_VERSION, LedgerCommitError, LedgerCommitStore, LedgerIntegrityError,
+    LedgerPayloadEnvelope, LedgerPayloadEnvelopeError, RecoveredLedger,
 };
 pub use physical::{
     CommitRecoveryError, CommitSlotDiagnostic, CommitStoreDiagnostic, CommittedGenerationBytes,

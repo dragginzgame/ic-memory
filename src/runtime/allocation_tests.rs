@@ -320,6 +320,11 @@ fn corrupt_layouts_are_typed_and_never_reinitialized() {
             MemoryManagerLayoutError::BucketTable { index: 0 },
         ),
         (
+            (layout::METADATA_BYTES - 1) as u64,
+            &[120],
+            MemoryManagerLayoutError::BucketTable { index: 32_767 },
+        ),
+        (
             40 + 120 * 8,
             &[1],
             MemoryManagerLayoutError::VirtualExtent { id: 120 },

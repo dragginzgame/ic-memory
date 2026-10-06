@@ -7,7 +7,7 @@ use std::num::NonZeroU32;
 /// Optional diagnostic metadata for an in-place store schema.
 ///
 /// This metadata helps humans and frameworks diagnose which schema version was
-/// declared in each generation. Construction and decoding require a nonzero
+/// most recently declared. Construction and decoding require a nonzero
 /// version when present. It does not perform application schema migrations or
 /// validate stable data semantics.
 ///

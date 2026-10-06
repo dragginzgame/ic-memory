@@ -111,11 +111,15 @@ pub(super) fn read<M: Memory>(memory: &M) -> Result<Layout, RuntimeConstructionE
         }
         .into());
     }
-    // Fixed allocation and read bound, independent of physical size/history.
-    let mut table = vec![0; BUCKETS];
+    // Fixed local buffer and read bound, independent of physical size/history.
+    #[expect(
+        clippy::large_stack_arrays,
+        reason = "bounded 32 KiB table avoids heap work without extra stable reads"
+    )]
+    let mut table = [0; BUCKETS];
     memory.read(HEADER_BYTES as u64, &mut table);
     let mut buckets = [0_u16; IDS];
-    for (index, id) in (0_u16..32_768).zip(table) {
+    for (index, id) in (0_u16..32_768).zip(table.iter().copied()) {
         if (index < allocated_buckets) != (id != 255) {
             return Err(MemoryManagerLayoutError::BucketTable { index }.into());
         }

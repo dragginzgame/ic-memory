@@ -1,109 +1,80 @@
 use super::{AllocationRetirementError, LedgerIntegrityError};
 use crate::{
-    declaration::{AllocationDeclaration, DeclarationSnapshotError, validate_runtime_fingerprint},
-    key::StableKey,
-    schema::SchemaMetadata,
+    declaration::AllocationDeclaration, key::StableKey, schema::SchemaMetadata,
     slot::MemoryManagerSlot,
 };
-use serde::{Deserialize, Deserializer, Serialize, de::Error as _};
+use serde::{Deserialize, Serialize};
 
 ///
 /// AllocationLedger
 ///
-/// Durable root of allocation history.
+/// Durable ownership and current metadata, bounded by the usable memory-ID
+/// domain. Omitted and retired identities retain their slots; no per-upgrade or
+/// schema audit trail is stored.
 ///
-/// Decoded ledgers are input from persistent storage and should be treated as
-/// untrusted until current-format and integrity validation pass. Public
-/// construction goes through [`AllocationLedger::new`], which validates
-/// structural history invariants before returning a value. Use
-/// [`AllocationLedger::new_committed`] when the value should also satisfy the
-/// strict committed-generation chain required by recovery and commit.
-///
-/// Public staging APIs clone this DTO before applying a logical generation;
-/// bootstrap transfers its owned ledger into the same staging implementation.
-/// The ledger contains allocation metadata only, bounded by the number of
-/// stable allocation identities and committed bootstrap generations, not user
-/// collection contents.
+/// The counter binds validation proofs to physical commits. Decoded DTOs remain
+/// untrusted until integrity validation and protected recovery succeed.
 ///
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct AllocationLedger {
-    /// Current committed generation selected by recovery.
     pub(crate) current_generation: u64,
-    /// Historical allocation facts.
-    pub(crate) allocation_history: AllocationHistory,
-}
-
-///
-/// AllocationHistory
-///
-/// Durable allocation records and generation history.
-///
-/// This is the durable DTO embedded in an [`AllocationLedger`]. It records
-/// allocation facts and generation diagnostics; callers should prefer ledger
-/// staging/validation methods over mutating histories directly.
-#[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
-#[serde(deny_unknown_fields)]
-pub struct AllocationHistory {
-    /// Stable-key allocation records.
     #[serde(deserialize_with = "crate::cbor::deserialize_records")]
     pub(crate) records: Vec<AllocationRecord>,
-    /// Committed generation records.
-    #[serde(deserialize_with = "crate::cbor::deserialize_history")]
-    pub(crate) generations: Vec<GenerationRecord>,
 }
 
 ///
 /// AllocationRecord
 ///
-/// Durable ownership record for one stable key.
-///
-/// Records are historical facts, not live handles. Fields are private so stale
-/// or invalid ownership state cannot be assembled through public struct
-/// literals; use accessors for diagnostics and ledger methods for mutation.
+/// Durable ownership, lifecycle state and latest schema metadata for one stable
+/// key. Retaining this record prevents slot reuse after omission or retirement.
+/// It is metadata, not a live memory handle or an upgrade audit log.
 ///
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct AllocationRecord {
-    /// Stable key that owns the slot.
     pub(crate) stable_key: StableKey,
-    /// Durable allocation slot owned by the key.
     pub(crate) slot: MemoryManagerSlot,
-    /// Current allocation lifecycle state.
     pub(crate) state: AllocationState,
-    /// First committed generation that recorded this allocation.
-    pub(crate) first_generation: u64,
-    /// Latest committed generation that observed this allocation declaration.
-    pub(crate) last_seen_generation: u64,
-    /// Per-generation schema metadata history.
-    #[serde(deserialize_with = "crate::cbor::deserialize_history")]
-    pub(crate) schema_history: Vec<SchemaMetadataRecord>,
+    pub(crate) schema: SchemaMetadata,
+}
+
+///
+/// AllocationState
+///
+/// Current allocation lifecycle state. Retirement permanently retains the
+/// identity and slot rather than adding a historical event or freeing the ID.
+///
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub enum AllocationState {
+    /// Slot is reserved for a future allocation identity.
+    Reserved,
+    /// Slot is active and may be opened after validation.
+    Active,
+    /// Identity and slot are permanently tombstoned.
+    Retired,
 }
 
 ///
 /// AllocationRetirement
 ///
-/// Explicit request to tombstone one historical allocation identity.
-///
-/// Retirement prevents a stable key from being redeclared. It does not make the
-/// physical slot safe for another active stable key.
-/// Its key and slot are checked during construction and decoding; staging still
-/// verifies the historical assignment and retirement eligibility.
+/// Explicit request to tombstone one retained allocation identity. Retirement
+/// prevents redeclaration and never frees the physical slot for another key.
 ///
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct AllocationRetirement {
-    /// Stable key being retired.
     pub(crate) stable_key: StableKey,
-    /// Allocation slot historically owned by the stable key.
     pub(crate) slot: MemoryManagerSlot,
 }
 
 impl AllocationRetirement {
-    /// Build an explicit retirement request from raw parts.
+    /// Build an explicit retirement request from checked raw parts.
     pub fn new(
         stable_key: impl AsRef<str>,
         slot: MemoryManagerSlot,
@@ -118,7 +89,7 @@ impl AllocationRetirement {
         &self.stable_key
     }
 
-    /// Return the allocation slot historically owned by the stable key.
+    /// Return the allocation slot named by the request.
     #[must_use]
     pub const fn slot(&self) -> &MemoryManagerSlot {
         &self.slot
@@ -126,81 +97,11 @@ impl AllocationRetirement {
 }
 
 ///
-/// AllocationState
-///
-/// Allocation lifecycle state.
-///
-
-#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
-#[serde(deny_unknown_fields)]
-pub enum AllocationState {
-    /// Slot is reserved for a future allocation identity.
-    Reserved,
-    /// Slot is active and may be opened after validation.
-    Active,
-    /// Slot was explicitly retired and remains tombstoned.
-    Retired {
-        /// Committed generation that retired the allocation.
-        generation: u64,
-    },
-}
-
-///
-/// SchemaMetadataRecord
-///
-/// Schema metadata observed in one committed generation.
-///
-/// Schema metadata is diagnostic ledger history. It is validated for bounded
-/// durable encoding, but `ic-memory` does not prove application schema
-/// support or data migration correctness.
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-#[serde(deny_unknown_fields)]
-pub struct SchemaMetadataRecord {
-    /// Generation that declared this schema metadata.
-    pub(crate) generation: u64,
-    /// Schema metadata declared by that generation.
-    pub(crate) schema: SchemaMetadata,
-}
-
-///
-/// GenerationRecord
-///
-/// Diagnostic metadata for one committed ledger generation.
-/// Construction and decoding require an absent or bounded printable ASCII
-/// runtime fingerprint. Generation ordering and chain integrity remain ledger
-/// validation responsibilities.
-///
-
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-#[serde(deny_unknown_fields)]
-pub struct GenerationRecord {
-    /// Committed generation number.
-    pub(crate) generation: u64,
-    /// Parent generation.
-    pub(crate) parent_generation: u64,
-    /// Optional binary/runtime fingerprint.
-    #[serde(deserialize_with = "deserialize_runtime_fingerprint")]
-    pub(crate) runtime_fingerprint: Option<String>,
-    /// Number of declarations in the generation.
-    pub(crate) declaration_count: u32,
-    /// Optional commit timestamp supplied by the integration layer.
-    #[serde(deserialize_with = "crate::cbor::deserialize_present_option")]
-    pub(crate) committed_at: Option<u64>,
-}
-
-///
 /// RecoveredLedger
 ///
-/// Proof object for an allocation ledger that has crossed physical recovery,
-/// logical payload-envelope routing, current-format checks, and committed
-/// integrity validation.
-///
-/// Recovery checks that physical and logical generations agree before
-/// constructing this proof; both generation accessors report that one value.
-///
-/// This type is not serializable and has no public constructor. It is the
-/// provenance boundary required before declarations can mint pre-commit
-/// [`crate::ValidatedAllocations`].
+/// Proof that a ledger crossed physical recovery, current-format decoding,
+/// integrity validation and physical/logical commit-counter binding. Only this
+/// proof can feed declaration validation; a decoded ledger is a passive DTO.
 ///
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -213,24 +114,19 @@ impl RecoveredLedger {
         Self { ledger }
     }
 
-    /// Borrow the recovered canonical allocation ledger.
-    ///
-    /// The returned ledger is diagnostic/staging state. It is not itself an
-    /// authority token; callers must keep passing the `RecoveredLedger` proof
-    /// across validation boundaries.
+    /// Borrow the recovered metadata, without granting open authority.
     #[must_use]
     pub const fn ledger(&self) -> &AllocationLedger {
         &self.ledger
     }
 
-    /// Return the selected physical committed generation.
-    /// Recovery has established that it equals the current logical generation.
+    /// Return the checked physical commit counter.
     #[must_use]
     pub const fn physical_generation(&self) -> u64 {
         self.ledger.current_generation
     }
 
-    /// Return the recovered ledger's current logical generation.
+    /// Return the matching logical commit counter.
     #[must_use]
     pub const fn current_generation(&self) -> u64 {
         self.ledger.current_generation
@@ -241,254 +137,80 @@ impl RecoveredLedger {
     }
 }
 
-impl AllocationHistory {
-    #[cfg(test)]
-    pub(crate) const fn from_parts(
-        records: Vec<AllocationRecord>,
-        generations: Vec<GenerationRecord>,
-    ) -> Self {
+impl AllocationRecord {
+    fn from_declaration(declaration: &AllocationDeclaration, state: AllocationState) -> Self {
         Self {
-            records,
-            generations,
+            stable_key: declaration.stable_key.clone(),
+            slot: declaration.slot.clone(),
+            state,
+            schema: declaration.schema.clone(),
         }
     }
 
-    /// Borrow stable-key allocation records in durable order.
-    #[must_use]
-    pub fn records(&self) -> &[AllocationRecord] {
-        &self.records
+    pub(crate) fn active(declaration: &AllocationDeclaration) -> Self {
+        Self::from_declaration(declaration, AllocationState::Active)
     }
 
-    /// Borrow committed generation records in durable order.
-    #[must_use]
-    pub fn generations(&self) -> &[GenerationRecord] {
-        &self.generations
+    pub(crate) fn reserved(declaration: &AllocationDeclaration) -> Self {
+        Self::from_declaration(declaration, AllocationState::Reserved)
     }
 
-    /// Return true when the history has no allocation records and no generation records.
+    /// Return the permanent store identity.
     #[must_use]
-    pub const fn is_empty(&self) -> bool {
-        self.records.is_empty() && self.generations.is_empty()
-    }
-}
-
-impl SchemaMetadataRecord {
-    /// Build a history record from checked schema metadata.
-    /// Ledger integrity validation checks its generation against the history.
-    #[must_use]
-    pub const fn new(generation: u64, schema: SchemaMetadata) -> Self {
-        Self { generation, schema }
+    pub const fn stable_key(&self) -> &StableKey {
+        &self.stable_key
     }
 
-    /// Return the generation that declared this schema metadata.
+    /// Return its permanently claimed memory ID.
     #[must_use]
-    pub const fn generation(&self) -> u64 {
-        self.generation
+    pub const fn slot(&self) -> &MemoryManagerSlot {
+        &self.slot
     }
 
-    /// Return the schema metadata declared by that generation.
+    /// Return the current lifecycle state.
+    #[must_use]
+    pub const fn state(&self) -> AllocationState {
+        self.state
+    }
+
+    /// Borrow the latest declared schema metadata; no schema history is kept.
     #[must_use]
     pub const fn schema(&self) -> &SchemaMetadata {
         &self.schema
     }
 }
 
-impl GenerationRecord {
-    /// Build a committed generation diagnostic record after validating metadata.
-    pub fn new(
-        generation: u64,
-        parent_generation: u64,
-        runtime_fingerprint: Option<String>,
-        declaration_count: u32,
-        committed_at: Option<u64>,
-    ) -> Result<Self, DeclarationSnapshotError> {
-        validate_runtime_fingerprint(runtime_fingerprint.as_deref())?;
-        Ok(Self {
-            generation,
-            parent_generation,
-            runtime_fingerprint,
-            declaration_count,
-            committed_at,
-        })
-    }
-
-    /// Return the committed generation number.
-    #[must_use]
-    pub const fn generation(&self) -> u64 {
-        self.generation
-    }
-
-    /// Return the parent generation.
-    #[must_use]
-    pub const fn parent_generation(&self) -> u64 {
-        self.parent_generation
-    }
-
-    /// Borrow the optional binary/runtime fingerprint.
-    #[must_use]
-    pub fn runtime_fingerprint(&self) -> Option<&str> {
-        self.runtime_fingerprint.as_deref()
-    }
-
-    /// Return the number of declarations in the generation.
-    #[must_use]
-    pub const fn declaration_count(&self) -> u32 {
-        self.declaration_count
-    }
-
-    /// Return the optional commit timestamp supplied by the integration layer.
-    #[must_use]
-    pub const fn committed_at(&self) -> Option<u64> {
-        self.committed_at
-    }
-}
-
-// Require explicit presence and the constructor's text rules while retaining
-// the decoded string without another owned representation.
-fn deserialize_runtime_fingerprint<'de, D: Deserializer<'de>>(
-    deserializer: D,
-) -> Result<Option<String>, D::Error> {
-    let fingerprint = Option::<String>::deserialize(deserializer)?;
-    validate_runtime_fingerprint(fingerprint.as_deref()).map_err(D::Error::custom)?;
-    Ok(fingerprint)
-}
-
-impl AllocationRecord {
-    // SchemaMetadata establishes its own version invariant before staging.
-    // Copy only persisted fields; declaration labels are not ledger history.
-    fn from_declaration(
-        generation: u64,
-        declaration: &AllocationDeclaration,
-        state: AllocationState,
-    ) -> Self {
-        Self {
-            stable_key: declaration.stable_key.clone(),
-            slot: declaration.slot.clone(),
-            state,
-            first_generation: generation,
-            last_seen_generation: generation,
-            schema_history: vec![SchemaMetadataRecord {
-                generation,
-                schema: declaration.schema.clone(),
-            }],
-        }
-    }
-
-    /// Create an active record from a declaration with validated schema metadata.
-    pub(crate) fn active(generation: u64, declaration: &AllocationDeclaration) -> Self {
-        Self::from_declaration(generation, declaration, AllocationState::Active)
-    }
-
-    /// Create a reserved record from a declaration with validated schema metadata.
-    pub(crate) fn reserved(generation: u64, declaration: &AllocationDeclaration) -> Self {
-        Self::from_declaration(generation, declaration, AllocationState::Reserved)
-    }
-
-    /// Return the stable key that owns this allocation record.
-    #[must_use]
-    pub const fn stable_key(&self) -> &StableKey {
-        &self.stable_key
-    }
-
-    /// Return the durable allocation slot owned by this record.
-    #[must_use]
-    pub const fn slot(&self) -> &MemoryManagerSlot {
-        &self.slot
-    }
-
-    /// Return the current allocation lifecycle state.
-    #[must_use]
-    pub const fn state(&self) -> AllocationState {
-        self.state
-    }
-
-    /// Return the first committed generation that recorded this allocation.
-    #[must_use]
-    pub const fn first_generation(&self) -> u64 {
-        self.first_generation
-    }
-
-    /// Return the latest committed generation that observed this allocation.
-    #[must_use]
-    pub const fn last_seen_generation(&self) -> u64 {
-        self.last_seen_generation
-    }
-
-    /// Return the per-generation schema metadata history.
-    #[must_use]
-    pub fn schema_history(&self) -> &[SchemaMetadataRecord] {
-        &self.schema_history
-    }
-
-    pub(super) fn observe_schema(&mut self, generation: u64, schema: &SchemaMetadata) {
-        self.last_seen_generation = generation;
-
-        let latest_schema = self.schema_history.last().map(|record| &record.schema);
-        if latest_schema != Some(schema) {
-            self.schema_history.push(SchemaMetadataRecord {
-                generation,
-                schema: schema.clone(),
-            });
-        }
-    }
-}
-
 impl AllocationLedger {
-    /// Build the known empty genesis used by runtime bootstrap and diagnostics.
-    pub(crate) fn empty_genesis() -> Self {
-        // An empty history at generation zero satisfies committed integrity
-        // without decoded input or declaration references to validate.
+    pub(crate) const fn empty_genesis() -> Self {
         Self {
             current_generation: 0,
-            allocation_history: AllocationHistory::default(),
+            records: Vec::new(),
         }
     }
 
-    /// Build a ledger DTO and validate structural ledger invariants.
-    ///
-    /// This constructor validates duplicate records, lifecycle state, record
-    /// generation bounds, and schema metadata records. It does not require a
-    /// complete committed-generation chain. Use
-    /// [`AllocationLedger::new_committed`] when constructing an authoritative
-    /// committed ledger DTO.
+    /// Build a ledger DTO after validating count, ownership and genesis rules.
+    /// Recovery must still establish the persisted format and physical binding.
     pub fn new(
         current_generation: u64,
-        allocation_history: AllocationHistory,
+        records: Vec<AllocationRecord>,
     ) -> Result<Self, LedgerIntegrityError> {
         let ledger = Self {
             current_generation,
-            allocation_history,
+            records,
         };
         ledger.validate_integrity()?;
         Ok(ledger)
     }
 
-    /// Build a committed ledger DTO and validate strict committed-history invariants.
-    ///
-    /// This constructor runs the same committed-integrity checks used by
-    /// recovery and commit. Use it when the value should be treated as an
-    /// authoritative committed ledger, not merely as a structurally valid DTO.
-    pub fn new_committed(
-        current_generation: u64,
-        allocation_history: AllocationHistory,
-    ) -> Result<Self, LedgerIntegrityError> {
-        let ledger = Self {
-            current_generation,
-            allocation_history,
-        };
-        ledger.validate_committed_integrity()?;
-        Ok(ledger)
-    }
-
-    /// Return the current committed generation selected by recovery.
+    /// Return the current commit counter; this is not retained upgrade history.
     #[must_use]
     pub const fn current_generation(&self) -> u64 {
         self.current_generation
     }
 
-    /// Return the historical allocation facts.
+    /// Borrow retained ownership records, including omitted and retired stores.
     #[must_use]
-    pub const fn allocation_history(&self) -> &AllocationHistory {
-        &self.allocation_history
+    pub fn records(&self) -> &[AllocationRecord] {
+        &self.records
     }
 }

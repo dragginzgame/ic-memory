@@ -1,9 +1,8 @@
 use super::*;
 use crate::{
-    AllocationDeclaration, AllocationHistory, AllocationPolicy, AllocationRetirement,
-    MemoryManagerAuthorityRecord, MemoryManagerIdRange, MemoryManagerRangeMode, MemoryManagerSlot,
-    MemoryRequest, SchemaMetadata, StableKey, StaticMemoryDeclaration,
-    StaticMemoryRangeDeclaration,
+    AllocationDeclaration, AllocationPolicy, AllocationRetirement, MemoryManagerAuthorityRecord,
+    MemoryManagerIdRange, MemoryManagerRangeMode, MemoryManagerSlot, MemoryRequest, SchemaMetadata,
+    StableKey, StaticMemoryDeclaration, StaticMemoryRangeDeclaration,
 };
 use ic_stable_structures::VectorMemory;
 
@@ -273,12 +272,12 @@ fn exhaustion_and_fixed_conflicts_do_not_publish_or_change_committed_state() {
 fn reservation_activation_and_retirement_use_existing_claim_rules() {
     let backing = VectorMemory::default();
     let mut runtime = MemoryRuntime::new(backing.clone()).unwrap();
-    let genesis = AllocationLedger::new(0, AllocationHistory::default()).unwrap();
+    let genesis = AllocationLedger::new(0, Vec::new()).unwrap();
     let reservation = AllocationDeclaration::memory_manager_unlabeled("app.b.v1", 101).unwrap();
     let mut record = StableCellLedgerRecord::default();
     record.store_mut().commit(&genesis).unwrap();
     AllocationBootstrap::new(record.store_mut())
-        .reserve_and_commit(&[reservation], &GenericRangePolicy, None)
+        .reserve_and_commit(&[reservation], &GenericRangePolicy)
         .unwrap();
     let _cell = Cell::init(runtime.memory(MEMORY_MANAGER_LEDGER_ID), record);
     runtime
@@ -295,7 +294,6 @@ fn reservation_activation_and_retirement_use_existing_claim_rules() {
     AllocationBootstrap::new(record.store_mut())
         .retire_and_commit(
             &AllocationRetirement::new("app.b.v1", MemoryManagerSlot::new(101).unwrap()).unwrap(),
-            None,
         )
         .unwrap();
     let _cell = Cell::new(runtime.memory(MEMORY_MANAGER_LEDGER_ID), record);
@@ -345,11 +343,9 @@ fn failed_persistence_publishes_no_mapping_and_retries_deterministically() {
         }
     }
     let bytes = VectorMemory::default();
-    let limit = std::rc::Rc::new(std::cell::Cell::new(2));
-    // Long valid keys force capacity growth even with compact byte-string payloads.
-    let keys: Vec<_> = (0..239)
-        .map(|i| format!("app.store{i:03}.{}.v1", "x".repeat(110)))
-        .collect();
+    let limit = std::rc::Rc::new(std::cell::Cell::new(1));
+    // Refuse the ledger cell's first backing page, before publishing any mapping.
+    let keys = ["app.rows.v1".to_string()];
     let refs: Vec<_> = keys.iter().map(String::as_str).collect();
     let declarations = snapshot(&refs, "app", 16, 254, &[]);
     let mut runtime = MemoryRuntime::new_with_config(

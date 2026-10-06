@@ -1,10 +1,9 @@
 //! Run with `cargo run --example key_only`.
 use ic_memory::{
-    AllocationBootstrap, AllocationDeclaration, AllocationHistory, AllocationLedger,
-    GenericRangePolicy, LedgerCommitStore, MemoryManagerAuthorityRecord, MemoryManagerIdRange,
-    MemoryManagerRangeMode, MemoryRequest, MemoryRuntime, SchemaMetadata,
-    SealedDeclarationSnapshot, StableCellLedgerRecord, StaticMemoryDeclaration,
-    StaticMemoryRangeDeclaration,
+    AllocationBootstrap, AllocationDeclaration, AllocationLedger, GenericRangePolicy,
+    LedgerCommitStore, MemoryManagerAuthorityRecord, MemoryManagerIdRange, MemoryManagerRangeMode,
+    MemoryRequest, MemoryRuntime, SchemaMetadata, SealedDeclarationSnapshot,
+    StableCellLedgerRecord, StaticMemoryDeclaration, StaticMemoryRangeDeclaration,
 };
 use ic_stable_structures::{
     Cell, Memory, VectorMemory,
@@ -52,13 +51,12 @@ fn main() {
     let backing = VectorMemory::default();
     let mut store = LedgerCommitStore::default();
     store
-        .commit(&AllocationLedger::new(0, AllocationHistory::default()).unwrap())
+        .commit(&AllocationLedger::new(0, Vec::new()).unwrap())
         .unwrap();
     AllocationBootstrap::new(&mut store)
         .reserve_and_commit(
             &[AllocationDeclaration::memory_manager_unlabeled("db.journal.v1", 101).unwrap()],
             &GenericRangePolicy,
-            None,
         )
         .unwrap();
     {

@@ -118,10 +118,10 @@ impl AllocationDeclaration {
 ///
 /// DeclarationSnapshot
 ///
-/// Immutable runtime declaration snapshot ready for policy and history validation.
+/// Immutable runtime declaration snapshot ready for policy and ownership validation.
 ///
-/// Construction and decoding enforce the declaration count, unique keys and
-/// slots, and bounded printable ASCII runtime fingerprint. A snapshot is still
+/// Construction and decoding enforce the declaration count and unique keys and
+/// slots. A snapshot is still
 /// not permission to open storage. Integrations should call
 /// [`crate::validate_allocations`], commit the staged generation, and only then
 /// expose committed allocation authority.
@@ -131,8 +131,6 @@ impl AllocationDeclaration {
 pub struct DeclarationSnapshot {
     /// Runtime declarations.
     declarations: Vec<AllocationDeclaration>,
-    /// Optional binary/runtime identity for generation diagnostics.
-    runtime_fingerprint: Option<String>,
 }
 
 impl<'de> Deserialize<'de> for DeclarationSnapshot {
@@ -142,20 +140,10 @@ impl<'de> Deserialize<'de> for DeclarationSnapshot {
         struct Snapshot {
             #[serde(deserialize_with = "crate::cbor::deserialize_records")]
             declarations: Vec<AllocationDeclaration>,
-            #[serde(deserialize_with = "crate::cbor::deserialize_present_option")]
-            runtime_fingerprint: Option<String>,
         }
 
         let snapshot = Snapshot::deserialize(deserializer)?;
-        // Keep constructor refusal order: count and uniqueness precede the
-        // optional fingerprint, without copying or reordering declarations.
-        let checked = Self::new(snapshot.declarations).map_err(D::Error::custom)?;
-        match snapshot.runtime_fingerprint {
-            Some(fingerprint) => checked
-                .with_runtime_fingerprint(fingerprint)
-                .map_err(D::Error::custom),
-            None => Ok(checked),
-        }
+        Self::new(snapshot.declarations).map_err(D::Error::custom)
     }
 }
 
@@ -163,21 +151,7 @@ impl DeclarationSnapshot {
     /// Create and validate a declaration snapshot.
     pub fn new(declarations: Vec<AllocationDeclaration>) -> Result<Self, DeclarationSnapshotError> {
         validate_declaration_set(&declarations)?;
-        Ok(Self {
-            declarations,
-            runtime_fingerprint: None,
-        })
-    }
-
-    /// Attach an optional runtime fingerprint.
-    pub fn with_runtime_fingerprint(
-        mut self,
-        fingerprint: impl Into<String>,
-    ) -> Result<Self, DeclarationSnapshotError> {
-        let fingerprint = fingerprint.into();
-        validate_runtime_fingerprint(Some(&fingerprint))?;
-        self.runtime_fingerprint = Some(fingerprint);
-        Ok(self)
+        Ok(Self { declarations })
     }
 
     /// Return true when the snapshot has no declarations.
@@ -198,14 +172,8 @@ impl DeclarationSnapshot {
         &self.declarations
     }
 
-    /// Borrow the optional runtime fingerprint.
-    #[must_use]
-    pub fn runtime_fingerprint(&self) -> Option<&str> {
-        self.runtime_fingerprint.as_deref()
-    }
-
-    pub(crate) fn into_parts(self) -> (Vec<AllocationDeclaration>, Option<String>) {
-        (self.declarations, self.runtime_fingerprint)
+    pub(crate) fn into_declarations(self) -> Vec<AllocationDeclaration> {
+        self.declarations
     }
 }
 
@@ -242,18 +210,6 @@ pub enum DeclarationSnapshotError {
     /// Declaration labels must be printable metadata.
     #[error("allocation declaration label must not contain ASCII control characters")]
     ControlCharacterLabel,
-    /// Present runtime fingerprints must be non-empty.
-    #[error("runtime_fingerprint must not be empty when present")]
-    EmptyRuntimeFingerprint,
-    /// Runtime fingerprints must stay bounded for durable ledger storage.
-    #[error("runtime_fingerprint must be at most 256 bytes")]
-    RuntimeFingerprintTooLong,
-    /// Runtime fingerprints must not require Unicode normalization.
-    #[error("runtime_fingerprint must be ASCII")]
-    NonAsciiRuntimeFingerprint,
-    /// Runtime fingerprints must be printable metadata.
-    #[error("runtime_fingerprint must not contain ASCII control characters")]
-    ControlCharacterRuntimeFingerprint,
 }
 
 fn validate_label(label: Option<&str>) -> Result<(), DeclarationSnapshotError> {
@@ -276,22 +232,6 @@ fn deserialize_label<'de, D: Deserializer<'de>>(
     let label = Option::<String>::deserialize(deserializer)?;
     validate_label(label.as_deref()).map_err(D::Error::custom)?;
     Ok(label)
-}
-
-pub fn validate_runtime_fingerprint(
-    fingerprint: Option<&str>,
-) -> Result<(), DeclarationSnapshotError> {
-    let Some(fingerprint) = fingerprint else {
-        return Ok(());
-    };
-    validate_diagnostic_text(fingerprint).map_err(|error| match error {
-        DiagnosticTextError::Empty => DeclarationSnapshotError::EmptyRuntimeFingerprint,
-        DiagnosticTextError::TooLong => DeclarationSnapshotError::RuntimeFingerprintTooLong,
-        DiagnosticTextError::NonAscii => DeclarationSnapshotError::NonAsciiRuntimeFingerprint,
-        DiagnosticTextError::ControlCharacter => {
-            DeclarationSnapshotError::ControlCharacterRuntimeFingerprint
-        }
-    })
 }
 
 fn validate_declaration_set(
@@ -380,18 +320,6 @@ mod tests {
         let mut value = serde_json::to_value(snapshot).unwrap();
         value["declarations"][0]["slot"]["slot"]["MemoryManagerId"] = serde_json::json!(255);
         assert!(serde_json::from_value::<DeclarationSnapshot>(value).is_err());
-    }
-
-    #[test]
-    fn snapshot_rejects_unbounded_runtime_fingerprint() {
-        let snapshot =
-            DeclarationSnapshot::new(vec![declaration("app.users.v1", 100)]).expect("snapshot");
-
-        let err = snapshot
-            .with_runtime_fingerprint("x".repeat(257))
-            .expect_err("fingerprint too long");
-
-        assert_eq!(err, DeclarationSnapshotError::RuntimeFingerprintTooLong);
     }
 
     #[test]

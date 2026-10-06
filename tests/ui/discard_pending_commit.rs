@@ -7,7 +7,7 @@ fn discard<P: AllocationPolicy>(
     declarations: DeclarationSnapshot,
     policy: &P,
 ) -> Result<(), BootstrapError<P::Error>> {
-    bootstrap.validate_and_commit(declarations, policy, None)?;
+    bootstrap.validate_and_commit(declarations, policy)?;
     Ok(())
 }
 

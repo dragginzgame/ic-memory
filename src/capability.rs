@@ -15,7 +15,7 @@ use std::sync::Arc;
 /// constructor and should only be produced by validation or bootstrap paths.
 /// Its declarations have valid schema metadata and at most 255 unique keys and
 /// slots. These facts are established before the proof is constructed.
-/// The base generation has passed bounded committed-history validation.
+/// The base generation has passed bounded ownership validation.
 ///
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -29,21 +29,14 @@ struct ValidatedState {
     base_generation: u64,
     /// Validated declarations.
     declarations: Vec<AllocationDeclaration>,
-    /// Optional binary/runtime identity for generation diagnostics.
-    runtime_fingerprint: Option<String>,
 }
 
 impl ValidatedAllocations {
-    pub(crate) fn new(
-        base_generation: u64,
-        declarations: Vec<AllocationDeclaration>,
-        runtime_fingerprint: Option<String>,
-    ) -> Self {
+    pub(crate) fn new(base_generation: u64, declarations: Vec<AllocationDeclaration>) -> Self {
         Self {
             inner: Arc::new(ValidatedState {
                 base_generation,
                 declarations,
-                runtime_fingerprint,
             }),
         }
     }
@@ -58,12 +51,6 @@ impl ValidatedAllocations {
     #[must_use]
     pub fn declarations(&self) -> &[AllocationDeclaration] {
         &self.inner.declarations
-    }
-
-    /// Borrow the optional runtime fingerprint.
-    #[must_use]
-    pub fn runtime_fingerprint(&self) -> Option<&str> {
-        self.inner.runtime_fingerprint.as_deref()
     }
 
     /// Find a validated slot by stable key.
@@ -129,12 +116,6 @@ impl CommittedAllocations {
         self.validated.declarations()
     }
 
-    /// Borrow the optional runtime fingerprint.
-    #[must_use]
-    pub fn runtime_fingerprint(&self) -> Option<&str> {
-        self.validated.runtime_fingerprint()
-    }
-
     /// Find a committed slot by stable key.
     #[must_use]
     pub fn slot_for(&self, key: &StableKey) -> Option<&MemoryManagerSlot> {
@@ -168,7 +149,6 @@ mod tests {
                 .unwrap(),
                 AllocationDeclaration::memory_manager("app.rows.v1", 100, "rows").unwrap(),
             ],
-            Some("host".to_string()),
         );
         let committed = validated.clone().confirm_persisted(2);
         let filtered = committed.clone().into_application_allocations();
@@ -181,9 +161,5 @@ mod tests {
             "app.rows.v1"
         );
         assert_eq!(filtered.generation(), committed.generation());
-        assert_eq!(
-            filtered.runtime_fingerprint(),
-            committed.runtime_fingerprint()
-        );
     }
 }

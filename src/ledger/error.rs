@@ -8,7 +8,7 @@ use crate::{
 ///
 /// LedgerIntegrityError
 ///
-/// Decoded ledger violates structural allocation-history invariants.
+/// Decoded ledger violates current ownership invariants.
 ///
 
 #[non_exhaustive]
@@ -20,156 +20,15 @@ pub enum LedgerIntegrityError {
         resource: &'static str,
         limit: usize,
     },
-    /// Stable key appears in more than one allocation record.
+    /// Stable key appears in more than one retained allocation record.
     #[error("stable key '{stable_key}' appears in more than one allocation record")]
-    DuplicateStableKey {
-        /// Duplicate stable key.
-        stable_key: StableKey,
-    },
-    /// Allocation slot appears in more than one allocation record.
+    DuplicateStableKey { stable_key: StableKey },
+    /// Memory ID appears in more than one retained allocation record.
     #[error("allocation slot '{slot:?}' appears in more than one allocation record")]
-    DuplicateSlot {
-        /// Duplicate allocation slot.
-        slot: MemoryManagerSlot,
-    },
-    /// Allocation record generation ordering is invalid.
-    #[error("stable key '{stable_key}' has first_generation after last_seen_generation")]
-    InvalidRecordGenerationOrder {
-        /// Stable key whose record is invalid.
-        stable_key: StableKey,
-        /// First generation in the record.
-        first_generation: u64,
-        /// Last seen generation in the record.
-        last_seen_generation: u64,
-    },
-    /// Allocation record points past the current generation.
-    #[error(
-        "stable key '{stable_key}' references generation {generation} after current generation {current_generation}"
-    )]
-    FutureRecordGeneration {
-        /// Stable key whose record is invalid.
-        stable_key: StableKey,
-        /// Generation referenced by the record.
-        generation: u64,
-        /// Current ledger generation.
-        current_generation: u64,
-    },
-    /// Retired generation predates the allocation record.
-    #[error("stable key '{stable_key}' was retired before first_generation")]
-    RetiredBeforeFirstGeneration {
-        /// Stable key whose record is invalid.
-        stable_key: StableKey,
-        /// First generation in the record.
-        first_generation: u64,
-        /// Retired generation in the record.
-        retired_generation: u64,
-    },
-    /// Retirement does not occur after the record's final observation.
-    #[error("stable key '{stable_key}' was retired at or before last_seen_generation")]
-    RetirementNotAfterLastSeen {
-        /// Stable key whose record is invalid.
-        stable_key: StableKey,
-        /// Latest generation that observed the allocation.
-        last_seen_generation: u64,
-        /// Generation that retired the allocation.
-        retired_generation: u64,
-    },
-    /// Allocation record has no schema metadata history.
-    #[error("stable key '{stable_key}' has empty schema metadata history")]
-    EmptySchemaHistory {
-        /// Stable key whose record is invalid.
-        stable_key: StableKey,
-    },
-    /// First schema metadata record does not begin with the allocation record.
-    #[error(
-        "stable key '{stable_key}' has schema metadata that does not begin at first_generation"
-    )]
-    SchemaHistoryStartMismatch {
-        /// Stable key whose record is invalid.
-        stable_key: StableKey,
-        /// Allocation's first committed generation.
-        first_generation: u64,
-        /// First schema metadata generation.
-        schema_generation: u64,
-    },
-    /// Schema metadata generation history is not strictly increasing.
-    #[error("stable key '{stable_key}' has non-increasing schema metadata generation history")]
-    NonIncreasingSchemaHistory {
-        /// Stable key whose record is invalid.
-        stable_key: StableKey,
-    },
-    /// Schema metadata generation is outside the allocation record lifetime.
-    #[error("stable key '{stable_key}' has schema metadata generation outside the ledger bounds")]
-    SchemaHistoryOutOfBounds {
-        /// Stable key whose record is invalid.
-        stable_key: StableKey,
-        /// Schema metadata generation.
-        generation: u64,
-    },
-    /// Schema metadata was recorded after the allocation was last observed.
-    #[error("stable key '{stable_key}' has schema metadata after last_seen_generation")]
-    SchemaHistoryAfterLastSeen {
-        /// Stable key whose record is invalid.
-        stable_key: StableKey,
-        /// Schema metadata generation.
-        generation: u64,
-        /// Latest generation that observed the allocation.
-        last_seen_generation: u64,
-    },
-    /// Generation record appears more than once.
-    #[error("generation {generation} appears more than once")]
-    DuplicateGeneration {
-        /// Duplicate generation.
-        generation: u64,
-    },
-    /// Generation record points past the current generation.
-    #[error("generation {generation} is after current generation {current_generation}")]
-    FutureGeneration {
-        /// Generation record value.
-        generation: u64,
-        /// Current ledger generation.
-        current_generation: u64,
-    },
-    /// Generation parent does not precede the child generation.
-    #[error("generation {generation} has invalid parent generation {parent_generation}")]
-    InvalidParentGeneration {
-        /// Generation record value.
-        generation: u64,
-        /// Invalid parent generation.
-        parent_generation: u64,
-    },
-    /// Current ledger generation has no committed generation record.
-    #[error("current generation {current_generation} has no committed generation record")]
-    MissingCurrentGenerationRecord {
-        /// Current ledger generation.
-        current_generation: u64,
-    },
-    /// Generation records are not strictly increasing in durable order.
-    #[error("generation records are not strictly increasing at generation {generation}")]
-    NonIncreasingGenerationRecords {
-        /// Non-increasing generation.
-        generation: u64,
-    },
-    /// Generation record parent does not match the previous committed generation.
-    #[error(
-        "generation {generation} does not link to previous committed generation {expected_parent}"
-    )]
-    BrokenGenerationChain {
-        /// Generation whose parent link is invalid.
-        generation: u64,
-        /// Expected parent generation.
-        expected_parent: u64,
-        /// Actual parent generation.
-        actual_parent: u64,
-    },
-    /// Allocation record refers to a generation absent from committed history.
-    #[error("stable key '{stable_key}' references unknown generation {generation}")]
-    UnknownRecordGeneration {
-        /// Stable key whose record is invalid.
-        stable_key: StableKey,
-        /// Unknown generation.
-        generation: u64,
-    },
+    DuplicateSlot { slot: MemoryManagerSlot },
+    /// Commit counter zero is reserved for empty genesis.
+    #[error("genesis ledger contains allocation records")]
+    NonemptyGenesis,
 }
 
 ///
@@ -198,7 +57,7 @@ pub enum LedgerCommitError {
     /// Built-in ledger decoding failed.
     #[error("allocation ledger codec failed: {0}")]
     Codec(String),
-    /// Decoded ledger violates structural allocation-history invariants.
+    /// Decoded ledger violates current ownership invariants.
     #[error(transparent)]
     Integrity(LedgerIntegrityError),
 }
@@ -212,6 +71,9 @@ pub enum LedgerCommitError {
 #[non_exhaustive]
 #[derive(Clone, Debug, Eq, thiserror::Error, PartialEq)]
 pub enum AllocationStageError {
+    /// The commit counter cannot advance without overflow.
+    #[error("ledger generation {generation} cannot be advanced without overflow")]
+    GenerationOverflow { generation: u64 },
     #[error(transparent)]
     Integrity(#[from] LedgerIntegrityError),
     /// Validated declarations were produced against a different ledger generation.

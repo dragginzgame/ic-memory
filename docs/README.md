@@ -22,6 +22,9 @@ distinguish current integration guidance from historical engineering evidence.
 
 ## Current focused guides
 
+- [Current ownership ledger](current-ledger.md) explains the 0.27.0 hard cut,
+  retained ownership, bounded metadata and deployment requirements.
+
 - [Operations and diagnostics](operations.md) explains allocation reports,
   bucket configuration, doctor reports, and growth failures.
 - [Troubleshooting](troubleshooting.md) maps common symptoms and typed errors
@@ -50,6 +53,8 @@ promise that a later consumer graph or deployment was requalified.
 - [Issue reconciliation](issue-reconciliation.md)
 - [Runtime IO and maintainer improvements qualification](runtime-io-qualification.md)
 - [Bounded ledger codec qualification](ledger-codec-qualification.md)
+- [Current ownership-ledger qualification](current-ledger-qualification.md)
+- [Allocation diagnostics buffer qualification](allocation-diagnostics-qualification.md)
 - [Shared release workflow qualification](release-workflow-qualification.md)
 - [Canic checked-slot qualification for 0.25.0](consumer-qualification-0.25.0-canic.md)
 - [Canic memory qualification for 0.24.6](consumer-qualification-0.24.6-canic.md)
@@ -73,6 +78,7 @@ link to them.
 
 ## Maintainers
 
+- [Detailed 0.27 release notes](changelog/0.27.md)
 - [Detailed 0.26 release notes](changelog/0.26.md)
 - [Detailed 0.25 release notes](changelog/0.25.md)
 - [Release guide](../RELEASING.md)

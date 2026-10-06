@@ -96,18 +96,13 @@ impl<'a> BootstrapAdmission<'a> {
         &self,
     ) -> impl ExactSizeIterator<Item = RecoveredAllocationMetadata<'_>> {
         self.ledger
-            .allocation_history()
             .records()
             .iter()
             .map(|record| RecoveredAllocationMetadata {
                 stable_key: record.stable_key(),
                 slot: record.slot(),
                 state: record.state(),
-                schema: record
-                    .schema_history()
-                    .last()
-                    .expect("validated schema history")
-                    .schema(),
+                schema: record.schema(),
             })
     }
 
@@ -163,12 +158,11 @@ impl<'a> BootstrapAdmission<'a> {
         }
         let record = self
             .ledger
-            .allocation_history()
             .records()
             .iter()
             .find(|r| r.stable_key() == key)
             .ok_or_else(|| BootstrapAdmissionError::Unknown(key.clone()))?;
-        if matches!(record.state(), AllocationState::Retired { .. }) {
+        if matches!(record.state(), AllocationState::Retired) {
             return Err(BootstrapAdmissionError::Retired(key.clone()));
         }
         self.declarations
@@ -179,16 +173,8 @@ impl<'a> BootstrapAdmission<'a> {
                 authority: authority.to_string(),
                 source,
             })?;
-        self.selected.push(
-            request.with_schema(
-                record
-                    .schema_history()
-                    .last()
-                    .expect("validated schema history")
-                    .schema()
-                    .clone(),
-            ),
-        );
+        self.selected
+            .push(request.with_schema(record.schema().clone()));
         Ok(())
     }
 

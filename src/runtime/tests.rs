@@ -772,8 +772,7 @@ fn diagnostics_reject_invalid_persisted_slots_before_measuring_sizes() {
     let record = runtime.ledger_record_from_memory().unwrap();
     let ledger = record.store().recover().unwrap().into_ledger();
     let mut value = serde_json::to_value(&ledger).unwrap();
-    value["allocation_history"]["records"][0]["slot"]["slot"]["MemoryManagerId"] =
-        serde_json::json!(255);
+    value["records"][0]["slot"]["slot"]["MemoryManagerId"] = serde_json::json!(255);
     let payload = crate::LedgerPayloadEnvelope::current(crate::test_cbor::to_vec(&value).unwrap())
         .try_encode()
         .unwrap();
@@ -897,7 +896,7 @@ fn doctor_uses_genesis_only_for_empty_commit_storage() {
 
     // A present invalid physical slot must never be treated as empty storage.
     let mut record = runtime.ledger_record_from_memory().unwrap();
-    let genesis = crate::AllocationLedger::new(0, crate::AllocationHistory::default()).unwrap();
+    let genesis = crate::AllocationLedger::new(0, Vec::new()).unwrap();
     record
         .store_mut()
         .write_corrupt_inactive_ledger(&genesis)
@@ -926,7 +925,7 @@ fn doctor_uses_genesis_only_for_empty_commit_storage() {
 fn validation_diagnostic_preserves_unsupported_format_code() {
     let recovered = Err(LedgerCommitError::PayloadEnvelope(
         LedgerPayloadEnvelopeError::UnsupportedFormat {
-            marker: *b"ICMF",
+            marker: *b"ICMS",
             version: Some(crate::LEDGER_PAYLOAD_FORMAT_VERSION + 1),
         },
     ));
