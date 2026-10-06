@@ -1,6 +1,6 @@
 # Changelog
 
-## [0.27.3]
+## [0.27.3] - 2026-10-06
 
 - Restore publication network access by keeping helper compilation offline without
   forcing its child commands offline. Explicit caller network settings remain
