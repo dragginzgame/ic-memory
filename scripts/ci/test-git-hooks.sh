@@ -9,7 +9,17 @@ root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd -P)"
 # Keep inherited hook/index variables from redirecting fixture Git operations.
 while IFS= read -r variable; do unset "$variable"; done < <(git rev-parse --local-env-vars)
 fixture="$(mktemp -d "${TMPDIR:-/tmp}/ic-memory-hooks.XXXXXX")"
-trap 'rm -rf -- "$fixture"' EXIT
+cleanup_fixture() {
+    local fixture_status="$1" fixture_command="$2"
+    if [[ "$fixture_status" == 0 ]]; then
+        rm -rf -- "$fixture"
+    else
+        printf 'Hook fixture failed in %s: %s\nRetained fixture: %s\n' "$PWD" "$fixture_command" "$fixture" >&2
+        if [[ -f output ]]; then cat output >&2; fi
+    fi
+    return "$fixture_status"
+}
+trap 'cleanup_fixture "$?" "$BASH_COMMAND"' EXIT
 source_commit="$(git -C "$root" rev-parse HEAD)"
 source_objects="$(git -C "$root" rev-parse --git-path objects)"
 case "$source_objects" in /*) ;; *) source_objects="$root/$source_objects" ;; esac
@@ -26,6 +36,9 @@ new_fixture() {
     git update-ref HEAD "$source_commit"
     git read-tree HEAD
     git checkout-index --all
+    # Synthetic manifests have their own dependency graph. Remove inherited
+    # consumer locks so the formatter check still detects accidental creation.
+    git rm --quiet --ignore-unmatch -- Cargo.lock testing/runtime-qualification/Cargo.lock
     mkdir -p .githooks scripts/dev testing/runtime-qualification/src
     for path in Makefile ci-tool-versions.env rust-toolchain.toml .githooks/pre-commit scripts/dev/install-git-hooks.sh; do
         cp -p "$root/$path" "$path"

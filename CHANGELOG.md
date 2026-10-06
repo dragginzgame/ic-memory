@@ -4,6 +4,8 @@
 
 - Preserve tracked dependency selections in CI and release preparation; check
   dependency/action pins using the locally reviewed Shared Tooling checker.
+- Keep hook checks working with tracked lockfiles and retain failed fixtures
+  with diagnostics.
 - Include the root lockfile in exact release metadata and interruption recovery,
   including a retry after its write precedes the manifest. Reject dependency
   drift and arbitrary staging. Library APIs and durable formats are unchanged.

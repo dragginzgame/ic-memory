@@ -139,6 +139,40 @@ without a tracked root lock cannot satisfy the new source binding: complete any
 earlier unfinished release with its qualified source/tooling before adoption,
 preserving its plans and evidence. See [maintainer steps](../RELEASING.md).
 
+### Committed-lock hook fixture correction
+
+On 2026-10-06 the maintainer's gate on source
+`03e25c5ce1bc7bdf1af48d3a2e6b1993fffed26b` stopped in `test-hooks`, before
+version preparation. The saved log remains at
+`target/release-validation/attempts/verify.8TNLkL`. A focused trace reproduced
+the failure at the no-lockfile assertion: the fixture exported HEAD's newly
+tracked root and independent lockfiles before replacing their manifests with
+synthetic packages. The earlier fixture pass used HEAD without tracked locks
+and did not prove this committed-source case.
+
+The consumer-owned fixture now removes only its inherited locks from its own
+working tree/index before constructing synthetic manifests. The check that
+formatting creates no locks or build output remains. The vendored hook and
+installer are unchanged. Unexpected fixture failures report the failed command
+and working directory, print captured output and retain the fixture.
+
+Linux focused checks pass for hook selection/refresh, partial-stage refusal,
+formatter-failure isolation, installation and logical path aliases, including
+parent Make release selections and unrelated logger identities. Snapshot
+verification, strict tooling lint and both-workspace formatting checks pass.
+An intentional formatter refusal preserves status 2, diagnostics and fixture
+files; a before/after checksum proves the real index is untouched. Both actual
+lock hashes remain those recorded above. Logs and failed fixtures are retained
+under `target/qualification/hook-tracked-locks/`, including the pre-fix trace,
+initial lint failure and corrected checks. Qualified fixture script SHA-256:
+`b097f44f230fff2628bf46a2bd7e005d69e5ab943a7e4b2d8d2ffd0592299856`.
+
+This is a compatible correction within pending 0.27.2. No function, method or
+type was removed. No full gate, release, publication or native macOS execution
+was run by the agent; committed-source and matching CI qualification remain
+maintainer steps. The real index, source/dependency versions and failed gate
+logs are preserved.
+
 ## 0.27.1 selected-commit recovery
 
 Local Linux x86-64 working-tree qualification on 2026-10-06, based on released
