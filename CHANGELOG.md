@@ -1,6 +1,6 @@
 # Changelog
 
-## [0.28.4]
+## [0.28.4] - 2026-10-06
 
 - Repair portable host-tool fixtures by restoring authenticated archive bytes,
   avoiding false checksum failures when archive headers change on macOS.
