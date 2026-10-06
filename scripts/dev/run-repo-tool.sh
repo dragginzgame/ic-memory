@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 # Keep the Rust adapter reachable between atomic manifest/lockfile replacements.
 set -euo pipefail
-export RUSTUP_AUTO_INSTALL=0 CARGO_NET_OFFLINE=true
+export RUSTUP_AUTO_INSTALL=0
+# Cargo's --offline flags scope helper compilation/discovery. Preserve the
+# caller's network setting for commands the helper dispatches, such as publish.
 if [[ $# -lt 2 ]]; then
     echo 'usage: run-repo-tool.sh <toolchain> <command> [arguments]' >&2
     exit 2

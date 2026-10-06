@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.27.3]
+
+- Restore publication network access by keeping helper compilation offline without
+  forcing its child commands offline. Explicit caller network settings remain
+  respected; library APIs and durable formats are unchanged.
+
+[Detailed notes](docs/changelog/0.27.md) ·
+[Qualification](docs/release-workflow-qualification.md#0273-publication-network-scope)
+
 ## [0.27.2] - 2026-10-06
 
 - Preserve tracked dependency selections in CI and release preparation; check

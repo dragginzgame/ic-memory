@@ -1,5 +1,43 @@
 # Shared release workflow qualification
 
+## 0.27.3 publication network scope
+
+Prepared separately from clean released source
+`c1e7dc657c0994421258f9924255f4d0349067ad` (0.27.2), on Linux x86-64,
+2026-10-06. The main checkout remains clean for completion of the maintainer's
+0.27.2 publication; the fix is reviewable as a patch and isolated checkout.
+Pending notes select compatible 0.27.3; neither manifest nor lock is bumped.
+
+The 0.27.2 launcher exported `CARGO_NET_OFFLINE=true` into the helper. Its
+`cargo publish --locked --registry crates-io` subprocess inherited that setting
+and refused an HTTP request. This is a consumer implementation error. Shared
+Tooling requires offline validation and separately authorized publication; it
+does not require an offline publication process.
+
+The correction keeps `RUSTUP_AUTO_INSTALL=0` and all existing Cargo
+`--locked --offline` compilation/discovery flags, while preserving the caller's
+network environment. Current Rust evidence/tag/source checks and publication
+arguments are unchanged. No implicit network retry, dependency selection,
+format change or replacement qualification evidence is introduced.
+
+Focused Make substitutes check that normal and bootstrap Cargo invocations
+remain locked/offline and disabled for toolchain auto-installation, while
+publication children receive the caller's unset/false/true setting. Make adapter
+checks, strict tooling lint, both-workspace formatting and the 28-file snapshot
+verification pass. A native minimal Cargo/helper control reproduces inherited
+`true` through the original launcher and proves `false` through the direct Cargo
+retry. The corrected launcher preserves all three caller states on both paths
+and both Rust 1.99.0/1.88.0 (12 cases). The control only prints child environment;
+it neither calls real publication nor contacts a registry.
+
+Evidence remains under `target/qualification/publish-offline/`: native original,
+workaround and fixed controls, isolated source and `fix-checks.log`. Qualified
+launcher SHA-256 `e0135368223df5084e416eb153035c5807f9aa3ee8c0d282e9aa56f30cc1302b`; Make fixture SHA-256 `03082062e8bf4e7907c8853aadd19379abcd81d35d18098923045fd010292238`.
+No function, method or type was removed. Library/runtime source, dependency and
+receipt selections are unchanged. No full gate, real publication, commits,
+tags or pushes were executed. Native macOS and matching CI remain outstanding
+for the prepared fix; CI for 0.27.2 cannot qualify these edits.
+
 ## 0.27.2 tracked dependencies and local pinning
 
 Local Linux x86-64 working-tree qualification on 2026-10-06, based on released

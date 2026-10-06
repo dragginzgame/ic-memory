@@ -117,7 +117,7 @@ cat > bin/cargo <<'STUB'
 #!/usr/bin/env bash
 set -euo pipefail
 [[ "$1" == +1.99.0 ]]
-[[ "$RUSTUP_AUTO_INSTALL" == 0 && "$CARGO_NET_OFFLINE" == true ]]
+[[ "$RUSTUP_AUTO_INSTALL" == 0 && "${CARGO_NET_OFFLINE-unset}" == "$CALLER_OFFLINE" ]]
 case "$2" in
     metadata)
         [[ "$*" == '+1.99.0 metadata --locked --offline --no-deps --format-version 1' ]]
@@ -128,7 +128,8 @@ case "$2" in
         [[ "$3" == --locked && "$4" == --offline && "$5" == --quiet ]]
         if [[ "$6" == --manifest-path ]]; then
             [[ "$8" == --target-dir && "$9" == "$BOOTSTRAP_TARGET/repo-tool-bootstrap/build" ]]
-            [[ "${10}" == --example && "${11}" == repo-tool && "${12}" == -- && "${13}" == version ]]
+            [[ "${10}" == --example && "${11}" == repo-tool && "${12}" == -- ]]
+            [[ "${13}" == version || "${13}" == publish ]]
             cmp expected-manifest "$7"
             cmp Cargo.lock "$(dirname "$7")/Cargo.lock"
             cmp README.md "$(dirname "$7")/README.md"
@@ -136,9 +137,11 @@ case "$2" in
             [[ "$(readlink "$(dirname "$7")/examples")" == "$PWD/examples" ]]
             echo bootstrap >> calls
         else
-            [[ "$*" == '+1.99.0 run --locked --offline --quiet --example repo-tool -- version' ]]
+            [[ "$6" == --example && "$7" == repo-tool && "$8" == -- ]]
+            [[ "$9" == version || "$9" == publish ]]
             echo normal >> calls
         fi
+        printf '%s\n' "${CARGO_NET_OFFLINE-unset}" > child-offline
         exit_code="${BOOTSTRAP_STATUS:-0}"
         [[ "$exit_code" == 0 ]] || exit "$exit_code"
         echo 0.12.3
@@ -155,8 +158,27 @@ printf '%s\n' "$BOOTSTRAP_TARGET"
 STUB
 chmod +x bin/cargo bin/yq
 export PATH="$PWD/bin:$PATH" YQ="$PWD/bin/yq" BOOTSTRAP_TARGET="$PWD/custom target"
+unset CARGO_NET_OFFLINE
+export CALLER_OFFLINE=unset
+
+check_publication_environment() {
+    local offline
+    cp calls saved-version-calls
+    for offline in unset false true; do
+        export CALLER_OFFLINE="$offline"
+        if [[ "$offline" == unset ]]; then unset CARGO_NET_OFFLINE
+        else export CARGO_NET_OFFLINE="$offline"; fi
+        make --no-print-directory publish > "publish-$offline.log" 2>&1
+        [[ "$(cat child-offline)" == "$offline" ]]
+    done
+    unset CARGO_NET_OFFLINE
+    export CALLER_OFFLINE=unset
+    cp saved-version-calls calls
+}
+
 [[ "$(make --no-print-directory -s release-version)" == 0.12.3 ]]
 [[ "$(cat calls)" == normal ]]
+check_publication_environment
 cat > expected-manifest <<'MANIFEST'
 [package]
 name = "ic-memory"
@@ -170,6 +192,7 @@ awk '!changed && $0 == "version = \"0.12.3\"" { $0 = "version = \"0.13.0\""; cha
 cp prepared-lock Cargo.lock
 [[ "$(make --no-print-directory -s release-version 2> bootstrap.log)" == 0.12.3 ]]
 [[ "$(cat calls)" == $'normal\nmetadata\nbootstrap' ]]
+check_publication_environment
 cmp original-manifest Cargo.toml
 cmp prepared-lock Cargo.lock
 if BOOTSTRAP_STATUS=7 make --no-print-directory -s release-version > refusal.log 2>&1; then

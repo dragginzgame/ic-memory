@@ -172,6 +172,12 @@ make publish-dry-run
 make publish # Separate network effect; requires crates.io credentials.
 ```
 
+Helper compilation and workspace discovery use explicit `--offline` flags;
+the launcher preserves the caller's `CARGO_NET_OFFLINE` setting for dispatched
+commands. Publication needs network access, including registry inspection in a
+dry run. An explicitly offline caller remains offline; setup/validation never
+change that setting to retry online.
+
 `PUBLISH_DRY_RUN=1 make publish` also selects a dry run. Publication requires the
 exact commit, annotated tag, selected dependencies and qualified archive; it
 never creates replacement evidence. A fresh checkout alone is not qualification.
