@@ -1,6 +1,6 @@
 # Changelog
 
-## [0.27.0]
+## [0.27.0] - 2026-10-06
 
 - **Breaking API and durable format:** retain current ownership and latest schema
   metadata, removing per-upgrade and schema history. Update history/timestamp
