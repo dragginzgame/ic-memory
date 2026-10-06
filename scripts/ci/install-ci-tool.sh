@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Internal implementation of the three reviewed CI-tool entry points.
+# Internal implementation of the reviewed CI-tool entry points.
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 tool="${1:-}"
-case "$tool" in actionlint|gitleaks|shellcheck) shift ;; *) echo 'unknown CI tool' >&2; exit 2 ;; esac
+case "$tool" in actionlint|gitleaks|shellcheck|sccache) shift ;; *) echo 'unknown CI tool' >&2; exit 2 ;; esac
 version=""
 checksum=""
 install_dir="${TOOL_INSTALL_DIR:-$HOME/.local/bin}"
@@ -47,6 +47,16 @@ case "$tool" in
         case "$arch" in amd64) arch=x86_64 ;; arm64) arch=aarch64 ;; esac
         archive="shellcheck-v${version}.${os}.${arch}.tar.xz"
         member="shellcheck-v$version/shellcheck"; format=xz; version_argument=--version ;;
+    sccache)
+        # Preserve Canic's reviewed CI asset scope. Other hosts prepare their
+        # consumer-selected sccache separately; no unqualified asset fallback.
+        [[ "$os:$arch" == linux:amd64 ]] || {
+            echo 'sccache CI installer requires Linux x86_64' >&2; exit 1;
+        }
+        repo=mozilla/sccache
+        package="sccache-v$version-x86_64-unknown-linux-musl"
+        archive="$package.tar.gz"
+        member="$package/sccache"; format=gzip; version_argument=--version ;;
 esac
 mkdir -p "$install_dir"
 [[ ! -d "$install_dir/$tool" ]] || { echo 'tool destination is a directory' >&2; exit 1; }
@@ -75,6 +85,8 @@ version_output="$("$candidate" "$version_argument" 2>&1)" || { printf '%s\n' "$v
 reported_version="$version_output"
 case "$tool" in
     actionlint) reported_version="${version_output%%$'\n'*}" ;;
+    sccache) reported_version="${version_output#sccache }"
+        [[ "$version_output" == "sccache $reported_version" ]] || exit 1 ;;
     shellcheck)
         reported_version=""
         while IFS= read -r line; do

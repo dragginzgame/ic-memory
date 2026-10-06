@@ -40,8 +40,8 @@ new_fixture() {
     # Synthetic manifests have their own dependency graph. Remove inherited
     # consumer locks so the formatter check still detects accidental creation.
     git rm --quiet --ignore-unmatch -- Cargo.lock testing/runtime-qualification/Cargo.lock
-    mkdir -p ci .githooks scripts/dev testing/runtime-qualification/src
-    for path in Makefile ci/tool-versions.env rust-toolchain.toml .githooks/pre-commit scripts/dev/install-git-hooks.sh; do
+    mkdir -p ci .githooks scripts/ci scripts/dev testing/runtime-qualification/src
+    for path in Makefile ci/tool-versions.env rust-toolchain.toml .githooks/pre-commit scripts/dev/install-git-hooks.sh scripts/ci/check-format-tools.sh; do
         cp -p "$root/$path" "$path"
     done
     cat > Cargo.toml <<'CARGO'
@@ -83,7 +83,7 @@ CARGO
             printf 'pub fn fixture() {}\n' > "$workspace/$member/src/lib.rs"
         done
     done
-    git add -- Makefile ci/tool-versions.env rust-toolchain.toml .githooks/pre-commit scripts/dev/install-git-hooks.sh Cargo.toml src/lib.rs alpha zeta testing/runtime-qualification/Cargo.toml testing/runtime-qualification/src/lib.rs testing/runtime-qualification/alpha testing/runtime-qualification/zeta
+    git add -- Makefile ci/tool-versions.env rust-toolchain.toml .githooks/pre-commit scripts/dev/install-git-hooks.sh scripts/ci/check-format-tools.sh Cargo.toml src/lib.rs alpha zeta testing/runtime-qualification/Cargo.toml testing/runtime-qualification/src/lib.rs testing/runtime-qualification/alpha testing/runtime-qualification/zeta
 }
 
 expect_failure() {

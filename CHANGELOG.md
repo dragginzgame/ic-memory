@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.28.4]
+
+- Repair portable host-tool fixtures by restoring authenticated archive bytes,
+  avoiding false checksum failures when archive headers change on macOS.
+  [shared-tooling #17](https://github.com/dragginzgame/shared-tooling/issues/17).
+- Reuse shared offline formatter prerequisites for the pinned cargo-sort and
+  rustfmt, keeping formatting and hook checks across both workspaces.
+  [#14](https://github.com/dragginzgame/ic-memory/issues/14).
+
+[Detailed notes](docs/changelog/0.28.md)
+
 ## [0.28.3] - 2026-10-06
 
 - Check Cargo inheritance in both workspaces and reuse the common CI installers,

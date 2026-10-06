@@ -73,8 +73,7 @@ test-pins:
 	RUSTUP_TOOLCHAIN=$(VALIDATION_TOOLCHAIN) RUSTUP_AUTO_INSTALL=0 CARGO_NET_OFFLINE=true bash scripts/ci/test-cargo-metadata.sh
 
 check-format-tools:
-	@test "$$($(FORMAT_CARGO) sort --version)" = "cargo-sort $(CARGO_SORT_VERSION)" || \
-		{ echo 'Install the pinned cargo-sort from ci/tool-versions.env before formatting.' >&2; exit 1; }
+	RUSTUP_TOOLCHAIN="$(VALIDATION_TOOLCHAIN)" bash scripts/ci/check-format-tools.sh "$(CARGO_SORT_VERSION)"
 
 fmt: check-format-tools
 	$(FORMAT_CARGO) sort --workspace
@@ -103,6 +102,7 @@ test-release-adapters:
 	bash scripts/ci/test-release-adapters.sh
 
 test-hooks: check-format-tools
+	RUSTUP_AUTO_INSTALL=0 CARGO_NET_OFFLINE=true bash scripts/ci/test-format-tools.sh
 	RUSTUP_AUTO_INSTALL=0 CARGO_NET_OFFLINE=true bash scripts/ci/test-git-hooks.sh
 
 test:

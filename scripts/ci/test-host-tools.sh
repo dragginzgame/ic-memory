@@ -2,7 +2,16 @@
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/../.." && pwd -P)"
 fixture="$(mktemp -d "${TMPDIR:-/tmp}/host-tools-test.XXXXXX")"
-trap 'if [[ $? == 0 ]]; then rm -rf "$fixture"; else echo "Host tool fixtures retained: $fixture" >&2; fi' EXIT
+finish() {
+    local status=$?
+    if [[ "$status" == 0 ]]; then rm -rf "$fixture"
+    else
+        echo "Host tool fixtures retained: $fixture" >&2
+        echo "Host tool fixture stopped with status $status" >&2
+        if [[ -f "$fixture/install.log" ]]; then tail -n 80 "$fixture/install.log" >&2; fi
+    fi
+}
+trap finish EXIT
 mkdir "$fixture/bin" "$fixture/assets" "$fixture/consumer"
 export HOST_TOOLS_FIXTURE="$fixture"
 cat > "$fixture/bin/uname" <<'SCRIPT'
@@ -44,7 +53,10 @@ for tool in jq yq; do
     done
 done
 consumer="$fixture/consumer"
-install() { bash "$ROOT/scripts/dev/install-host-tools.sh" --consumer "$consumer" --versions "$pins" "$@"; }
+install() {
+    printf 'install %s for %s\n' "$*" "$consumer" >> "$fixture/install.log"
+    bash "$ROOT/scripts/dev/install-host-tools.sh" --consumer "$consumer" --versions "$pins" "$@" >> "$fixture/install.log" 2>&1
+}
 refuse() { if "$@" > "$fixture/refusal.log" 2>&1; then echo 'host-tool refusal failed' >&2; exit 1; fi; }
 refuse install --check
 [[ ! -e "$consumer/.tools" && ! -e "$fixture/downloads" ]] || exit 1
@@ -129,12 +141,19 @@ echo corrupt >> "$consumer/.tools/host/bin/rg"
 : > "$fixture/executions"
 refuse install --with-ripgrep --check
 [[ ! -s "$fixture/executions" ]] || exit 1
+cp "$fixture/assets/ripgrep-15.2.0-aarch64-apple-darwin.tar.gz" "$fixture/authentic-ripgrep.tar.gz"
 echo corrupt >> "$fixture/assets/ripgrep-15.2.0-aarch64-apple-darwin.tar.gz"
 refuse install --with-ripgrep
 [[ ! -s "$fixture/executions" && "$(readlink "$consumer/.tools/host")" == "$original" ]] || exit 1
-tar -czf "$fixture/assets/ripgrep-15.2.0-aarch64-apple-darwin.tar.gz" -C "$fixture" ripgrep-15.2.0-aarch64-apple-darwin/rg
+# Restore the exact authenticated bytes. Repacking can change gzip/tar headers
+# on native hosts even when the executable payload is unchanged.
+cp "$fixture/authentic-ripgrep.tar.gz" "$fixture/assets/ripgrep-15.2.0-aarch64-apple-darwin.tar.gz"
+: > "$fixture/executions"
 TEST_PCRE2=no refuse install --with-ripgrep
+[[ -s "$fixture/executions" ]] || exit 1
+: > "$fixture/executions"
 TEST_RG_VERSION=15.2.00 refuse install --with-ripgrep
+[[ -s "$fixture/executions" ]] || exit 1
 [[ "$(readlink "$consumer/.tools/host")" == "$original" ]] || exit 1
 install --with-ripgrep > /dev/null 2>&1
 [[ "$(readlink "$consumer/.tools/host")" != "$original" ]] || exit 1

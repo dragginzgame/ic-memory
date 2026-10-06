@@ -635,3 +635,71 @@ containing these changes is required before refreshing the snapshot and wiring
 the formatter caller; matching native CI remains separately required. The
 maintainer's root Cargo edits and both selected workspace lockfiles remain
 unchanged. This qualification does not add a release gate or authorize Git effects.
+
+## 0.28.4 portable fixtures and formatter admission
+
+On 2026-10-06, prepare the compatible tooling batch over released consumer source
+`099dbeab7d63a8255ab59cc5e43129c24c8dd4d1`. The 52-file snapshot selects committed
+Shared Tooling `21f3ec3dd97f2968c9f0b08924451bb2f71770d1` (0.1.10). A clean private
+checkout of that exact commit supplied the canonical refresh helper and exports.
+The live sibling's later uncommitted changes were not copied or attributed to
+that commit. The earlier pending-source evidence above retains its original
+identity; this is a new consumer adoption attempt.
+
+The common host fixture now restores saved authenticated archive bytes rather
+than repacking them, and verifies that its version/PCRE2 refusals execute the
+authenticated payload. The Make formatter prerequisite delegates to the shared
+checker with `RUSTUP_TOOLCHAIN=1.99.0` and cargo-sort 2.1.4. Both maintained
+workspaces keep their actual sort/fmt commands. The shared prerequisite fixture
+runs before the consumer hook fixture; the disposable index includes the newly
+adopted checker. No original-index hook execution or activation was performed.
+The separate Rust changelog-parser consolidation is deferred.
+
+Focused Linux execution passes:
+
+- `make verify-shared-tooling check-pins test-pins test-tools`, including actual
+  two-workspace Cargo inheritance inspection and the repaired host fixture.
+- `make test-hooks fmt-check`, including wrong/failed version probes, missing
+  rustfmt, actual both-workspace sorting and Rust formatting, selected-file
+  refresh, partial staging refusal and unrelated-edit/failure isolation.
+- `make test-release-runner test-release-adapters` with substituted effects,
+  including the refreshed saved-identity/finalized-changelog fixture cases.
+- `make lint-tooling` and the committed upstream installer fixture. The latter
+  uses substituted assets; it does not install official tools into this checkout.
+
+The snapshot, pin, tool, runner, adapter, hook and formatting checks also pass
+with GNU Bash 3.2.57 selected on PATH for child scripts. The upstream installer
+fixture passes under that shell too. These are Linux shell-baseline checks,
+not native macOS execution. Local documentation-path and diff-whitespace checks
+pass. Full logs and the exact dependency-input hashes are retained in
+`target/qualification/portable-tooling-0.28.4.AuXLJb/`. Both manifests and both
+selected lockfiles remain byte-for-byte unchanged. The package remains 0.28.3;
+only the next undated changelog candidate is 0.28.4.
+
+Native evidence is narrower than a complete green gate:
+
+- The released consumer's
+  [run 37490382402](https://github.com/dragginzgame/ic-memory/actions/runs/37490382402)
+  tests `099dbeab`: Linux, lint and all three MSRV jobs pass; both macOS native
+  gates fail at the old host-tool fixture. Hook and Cargo fixtures passed before
+  that failure. The failure remains recorded and does not qualify these edits.
+- Shared Tooling
+  [run 37491682760](https://github.com/dragginzgame/shared-tooling/actions/runs/37491682760)
+  tests the selected `21f3ec3` commit. Both macOS architectures pass the repaired
+  host-tool fixture and formatter prerequisite checks, then fail later in
+  `test-fixture-retention.sh`. That separate fixture is not exported here.
+  Upstream Linux and lint jobs pass; the complete upstream run remains failed.
+
+Matching consumer Linux/macOS CI after the maintainer's commit and push remains
+required for native adoption qualification of
+[#13](https://github.com/dragginzgame/ic-memory/issues/13) and
+[#14](https://github.com/dragginzgame/ic-memory/issues/14). Configured native CI
+already runs the maintained hook and formatting targets; no workflow expansion
+is needed. Shared ownership and native fixture observations do not substitute
+for this consumer's full gate.
+
+No library API, durable layout, dependency selection, product Rust code or
+canister source changes. No functions, methods or types are removed in this
+batch; the replaced Make admission recipe retains its target. No compilation,
+Wasm-size measurement, full gate, live installation, release command, original
+index staging, commit, tag, push, publication or GitHub write was performed.

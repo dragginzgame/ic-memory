@@ -81,6 +81,7 @@ required to run setup. Make targets and CI select this same local parser pair.
 | Release runner | GNU Make, Git, `date`, explicit consumer metadata/check targets, and Bash 3.2 |
 | Rust pre-commit hook and installer | Git, GNU Make, consumer-owned `fmt` prerequisites (Cargo/rustfmt and an exact `cargo-sort` version), Bash 3.2 and standard Unix file utilities |
 | Consumer formatting adoption checker | The hook prerequisites above, Perl-free shell utilities, and reviewed consumer Make inputs; no implicit downloads |
+| Formatter prerequisite checker | Prepared Cargo/rustfmt and the consumer's exact cargo-sort version; optional Cargo executable and `RUSTUP_TOOLCHAIN`; no installation |
 | Local lockfile transformer | Perl core only; the caller separately validates the prepared graph with Cargo |
 | Explicit tag maintenance | Git and Perl core modules; atomic push support for remote deletion; see [tag maintenance](tag-maintenance.md) |
 
@@ -105,6 +106,11 @@ Linux and Darwin on x86-64 and ARM64. Branches not exercised by the repository's
 installer-download CI are install-capable, not support claims.
 
 Consumers own the exact tool versions and platform digests they admit.
+
+The sccache CI installer preserves Canic's Linux x86-64 binary scope. Its
+consumer-supplied pin selects the official musl archive. Other hosts continue
+to use consumer-owned explicit setup (such as a pinned Cargo install); this
+entry point does not claim a macOS or Linux ARM64 binary installation path.
 
 The IC toolset additionally provisions and checks native executables on all
 three CI hosts above. Offline fixtures exercise digest/version refusals, retained

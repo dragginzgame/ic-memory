@@ -73,6 +73,9 @@ CI installs the same cargo-sort 2.1.4 explicitly. `make fmt` sorts manifests and
 formats Rust in both the root workspace and `testing/runtime-qualification`.
 `make fmt-check` checks the same inputs without changing them. Neither command
 builds, installs tools, fetches dependencies or changes selected lockfiles.
+Both first use the shared prerequisite checker to require the exact cargo-sort
+pin and available rustfmt under the selected validation toolchain. Admission is
+offline and probes versions only; unavailable tools fail before formatting.
 Bare `make` prints available commands rather than preparing dependencies.
 
 Prepare the common host and IC tool sets explicitly for the detected host:
@@ -125,7 +128,10 @@ CI and release preparation check formatting independently of hook activation.
 formatter failure isolation and preservation of unrelated edits in disposable
 repositories without creating commits or tags, including setup through a checkout
 path alias. It uses the actual consumer
-formatting targets and runs on every declared native CI host. Linux hook evidence
+formatting targets and includes the shared prerequisite rejection fixture. It
+runs on every declared native CI host. See the
+[0.28.4 focused evidence](release-workflow-qualification.md#0284-portable-fixtures-and-formatter-admission).
+Linux hook evidence
 does not qualify native macOS; record matching native runs separately from the
 historical runtime gates above.
 

@@ -11,7 +11,7 @@ exception to revision-bound policy adoption while the shared rules are being
 developed locally. The sibling remains read-only to agents.
 
 The existing tooling snapshot at revision
-`d957d1f8801885c5b69e4a9ef900155f5f2a8a9d` is recorded in
+`21f3ec3dd97f2968c9f0b08924451bb2f71770d1` is recorded in
 [.shared-tooling.snapshot](.shared-tooling.snapshot). It identifies the vendored
 files, hashes and executable modes; it does not freeze the active local policy.
 Keep its provenance accurate and never edit vendored files in place. Do not
@@ -20,7 +20,7 @@ attribute uncommitted shared files to that recorded revision. The live local
 also applies within its activation scope and is included in this recorded snapshot.
 These instructions are the repository's local overlay.
 
-The 50-file snapshot uses the reviewed local 0.1.8 commit, including the common
+The 52-file snapshot uses the reviewed local 0.1.10 commit, including the common
 audit methods, local host/IC setup, dependency checker, release-command checker
 and linked rules. Cargo inheritance checks cover both approved workspace roots;
 the common metadata fixture also includes its workspace-version reader. Product
@@ -61,7 +61,9 @@ The reviewed hook and installer are vendored unchanged. `make fmt` and
 `make fmt-check` cover both the library and `testing/runtime-qualification`,
 using exactly cargo-sort 2.1.4 before the pinned Rust formatter. Setup is explicit
 in [docs/host-support.md](docs/host-support.md); formatting never installs tools,
-builds, fetches dependencies or changes selected lockfiles.
+builds, fetches dependencies or changes selected lockfiles. The shared formatter
+prerequisite checker owns exact cargo-sort and rustfmt admission; this consumer
+owns the selected pin, toolchain and two-workspace roster.
 
 `make install-hooks` changes only local `core.hooksPath`. The pre-commit hook
 refreshes selected index entries, so agents must not run it on this repository's

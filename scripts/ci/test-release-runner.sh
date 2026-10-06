@@ -3,7 +3,7 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 FIXTURE_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/release-runner-test.XXXXXX")"
-trap 'rm -rf "$FIXTURE_ROOT"' EXIT
+trap 'if [[ $? == 0 ]]; then rm -rf "$FIXTURE_ROOT"; else printf "Failed release-runner fixture retained: %s\n" "$FIXTURE_ROOT" >&2; fi' EXIT
 export REAL_GIT REAL_MAKE
 REAL_GIT="$(command -v git)"
 REAL_MAKE="$(command -v make)"
@@ -609,6 +609,34 @@ sed 's/## \[Draft\]/## [0.1.1] - 2026-10-06/' CHANGELOG.md > expected
 cmp expected prepared
 printf '\n## [0.2.0]\n\n- Competing selection.\n' >> CHANGELOG.md
 if awk -v version=0.1.1 -v date=2026-10-06 -f "$ROOT/scripts/ci/finalize-release-changelog.awk" CHANGELOG.md > prepared 2>/dev/null; then exit 1; fi
+
+# Consumer adapters carry the saved previous version, including after a bump.
+cat > CHANGELOG.md <<'NOTES'
+# Changelog
+
+## [0.1.1]
+
+- Current completed change.
+
+## [0.1.0]
+
+- Imported undated history.
+NOTES
+sed 's/## \[0.1.1\]/## [0.1.1] - 2026-10-06/' CHANGELOG.md > expected
+awk -v version=0.1.1 -v previous=0.1.0 -v date=2026-10-06 \
+    -f "$ROOT/scripts/ci/finalize-release-changelog.awk" CHANGELOG.md > prepared
+cmp expected prepared
+cp prepared CHANGELOG.md
+awk -v version=0.1.1 -v previous=0.1.0 -v date=2026-10-06 -v allow_finalized=1 \
+    -f "$ROOT/scripts/ci/finalize-release-changelog.awk" CHANGELOG.md > prepared
+cmp expected prepared
+for selected_date in 2026-10-06 2026-10-07; do
+    # Reconciliation is opt-in; another date always conflicts.
+    allowed=0
+    [[ "$selected_date" == 2026-10-06 ]] || allowed=1
+    if awk -v version=0.1.1 -v previous=0.1.0 -v date="$selected_date" -v allow_finalized="$allowed" \
+        -f "$ROOT/scripts/ci/finalize-release-changelog.awk" CHANGELOG.md > prepared 2>/dev/null; then exit 1; fi
+done
 
 [[ "$(bash "$ROOT/scripts/ci/next-release-version.sh" 9.8.7 patch)" == 9.8.8 ]]
 [[ "$(bash "$ROOT/scripts/ci/next-release-version.sh" 9.8.7 minor)" == 9.9.0 ]]
