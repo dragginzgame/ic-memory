@@ -1,6 +1,6 @@
 # Changelog
 
-## [0.28.2]
+## [0.28.2] - 2026-10-06
 
 - Keep release and hook fixtures independent of inherited Make includes and
   dry-run settings, preventing misleading failures during nested validation.
