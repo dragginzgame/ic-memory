@@ -1,6 +1,6 @@
 # Changelog
 
-## [0.27.1]
+## [0.27.1] - 2026-10-06
 
 - Update shared release tooling so normal commands can finish an already-qualified
   interrupted release after newer fix commits, then validate the requested next
