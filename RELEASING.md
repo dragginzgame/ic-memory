@@ -49,12 +49,19 @@ pinned `make validate` gate. The branch must already exist remotely, with its
 refreshed remote head an ancestor of local HEAD. Overrides select a remote name
 and branch explicitly; the saved push URL identity must remain unchanged.
 
-Rerun the **same normal target** after interruption. Once preparation may start,
+Rerun a **normal target** after interruption. Once preparation may start,
 the runner selects unfinished intent before computing any new increment. Its
 plan and directory lock live in Git's `release-state` directory; the plan fixes
 kind, previous/candidate versions, source commit, UTC date, branch and destination.
-Matching effects are reconciled without a second bump or commit. Conflicting
-source, payload, index, destination, tag or unfinished intent stops recovery.
+Matching effects are reconciled without a second bump or commit. Before the
+release is committed, preparation remains bound to its saved source and kind.
+After commit, newer descendant fixes can remain at HEAD: late adapters verify
+the exact older `RELEASE_COMMIT`, its saved source and annotated tag. An unchanged
+same-kind retry finishes only that release. A newer descendant or a different
+requested increment first completes it, then runs fresh preflight/full validation
+for the next candidate from the actual local version. Explicit resume completes
+only its selected release. Conflicting payload, history, index, destination, tag
+or unfinished intent stops recovery.
 Inspect a stale lock's recorded owner before manual removal; do not steal it.
 
 Preflight and validation failures restart fresh gates through the normal target,
@@ -70,12 +77,18 @@ reconciled with exact remote identities; a failed remote query stops recovery.
 Success retains plans, logs, receipts and archives. Cleanup and package
 publication are separate operations.
 
-The Rust consumer adapters consume the runner's seven `RELEASE_*` selections.
+The Rust consumer adapters consume the runner's eight `RELEASE_*` selections.
 They validate source/input identities, finalize the root and detail notes with
 the saved UTC date, update Cargo/README metadata and qualify the packages. The
 explicit staged file set is `Cargo.toml`, `README.md`, `CHANGELOG.md` and the
 candidate minor-line detail file. The ignored lockfile is evidence, not a staged
 release file. Git mutations belong exclusively to the common runner.
+
+Preflight checks both working files and the entire index. Restoring a working
+file does not hide unrelated or arbitrary staged content. The same index guard
+runs again before commit admission, including file modes. Committed checks read
+metadata from the selected SHA and require its sole parent, release subject and
+exact prepared metadata to match saved intent.
 
 Metadata writes use same-directory atomic replacement, with `Cargo.toml` last.
 An interrupted earlier write can resume from exact original/prepared files. Once
@@ -88,6 +101,9 @@ independently changed dependency selections are preserved and refused.
 interfaces, not alternative maintainer orchestration. They require the saved
 selection and evidence where applicable. `make qualify-release` can finish final
 package qualification without Git effects, using the original prepared evidence.
+Creating a final receipt requires HEAD to remain the selected release commit
+through packaging. A changed HEAD stops before recording final evidence;
+historical recovery reuses intact existing qualification.
 
 ## Evidence and publication
 
@@ -110,6 +126,16 @@ are checked, never silently repaired. Missing/corrupted prepared evidence stops
 final qualification before packaging; a working archive replaced by failed final
 packaging does not invalidate its intact retained prepared archive. Completed
 prepared/final checks reuse valid evidence without repackaging.
+
+Older-commit recovery requires intact prepared and final receipts and retained
+archives. The replaced working package may belong to newer source; only the
+retained archive for the selected older SHA supplies historical package evidence.
+The selected lockfile, compiler identities, build configuration and qualification
+commands must still match the saved evidence. Changed qualification inputs,
+missing receipts or corrupted archives stop recovery. No receipt schema changes
+or evidence migration are required by the 0.27.1 tooling update. If an older
+release has no final receipt, qualify that exact release commit first using
+`make qualify-release`; the adapter never packages newer source as that release.
 
 Compiler identities include pinned Cargo/rustc and MSRV rustc. Discovered Cargo
 configuration digests and build flags/profile overrides are recorded. Qualification

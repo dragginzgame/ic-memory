@@ -1,5 +1,98 @@
 # Shared release workflow qualification
 
+## 0.27.1 selected-commit recovery
+
+Local Linux x86-64 working-tree qualification on 2026-10-06, based on released
+ic-memory `f2aefd140bc24c7befa6f170c2e2e25df2af667c`. Pending notes select 0.27.1;
+package metadata remains 0.27.0. This section records the new batch separately
+from the historical 0.26.0 adoption evidence below.
+
+The 23-file snapshot exports committed Shared Tooling
+`cb86188c5956866564de4fb6ec6be67b27981ab9` (0.1.4) through a clean temporary local
+clone with the original upstream URL. The live sibling's dirty changelog and
+distribution-test edits are preserved and are not attributed to that revision.
+The maintenance rule is now part of the snapshot. Canonical runner/hook changes
+are vendored unchanged; consumer adapter changes remain local and unstaged.
+
+| Qualified consumer file | SHA-256 |
+| --- | --- |
+| `Makefile` | `a0abe82db42eec9a8d64a32aea96811221ec15cf9eafd35156f410c35142acba` |
+| `examples/repo_tool/mod.rs` | `8a3e4ac97b850a8b4f5ae564023dac0ae63791923a0d8adbb739c1beb43d3f80` |
+| `examples/repo_tool/tests.rs` | `fd9ec01c8562d513c2f3543f87832d2a33da9dbeb732a367098e39a9f3699aea` |
+| `scripts/ci/test-release-adapters.sh` | `f22f4e1fdf87bcb104a5000ff3b72c30b9ca2a28e958e486914359ef5f41077c` |
+
+Selected root lockfile SHA-256:
+`56a2d80654983e476b1ebfec8d640a316649af4df5fd455822e67061cab2b4f6`.
+Independent runtime-qualification lockfile SHA-256:
+`7bc872926fbeddd23706750c6205582ba9eae6c873612794e06e862503bb6be7`.
+No dependency, toolchain, package-version or receipt-schema change was made.
+
+Focused checks pass:
+
+- `make test-tooling` on Rust 1.99.0 and
+  `make test-tooling VALIDATION_TOOLCHAIN=1.88.0`: all 20 adapter tests. The new
+  recovery case keeps a newer committed callback fix at HEAD, verifies the exact
+  older release and retained package, preserves receipt/archive bytes, and
+  dispatches neither replacement packaging nor a full gate. Wrong selected commit,
+  parent, ancestry or tag, corrupted archives and missing final evidence refuse.
+  Compiler/configuration/lock binding and publication rejection tests remain.
+- A follow-up regression first reproduced incorrect acceptance when HEAD moved
+  to a newer descendant during final packaging. The final-package path now
+  rechecks exact HEAD, separately from the ancestor check used for historical
+  recovery. Rejection creates no final receipt or tag and preserves the prepared
+  receipt/archive. This uses substituted effects, without real commits or packaging.
+- The new real-index fixture clones existing local history, initializes only its
+  own index and stages files without creating commits/tags. It rejects unrelated
+  index entries and arbitrary metadata even after restoring working files, admits
+  exact prepared bytes and rejects whitespace-altered bytes and mode changes.
+  The same index guard runs before release commit admission.
+- `make test-release-adapters`: actual consumer Make dispatch, all three release
+  kinds, explicit resume, eight selection variables, distinct historical
+  `RELEASE_COMMIT` forwarding on late callbacks and retained failed/successful gate
+  logs. Its helper and entry-point runner are substitutes.
+- `make test-release-runner`: canonical command-substitute fixtures cover older
+  interrupted minor releases plus descendant fixes, subsequent patch/minor/major,
+  same-kind/explicit retries, lost push replies, fresh validation failure/retry,
+  exact original tag/evidence retention, selected atomic push and real Make callback
+  dispatch. Git effects and consumer receipts are substitutes; this is distinct
+  from the actual Rust adapter evidence above.
+- `make verify-shared-tooling test-hooks fmt-check`, pinned Actionlint/ShellCheck
+  through `make lint-tooling`, and strict
+  `cargo +1.99.0 clippy --locked --offline --example repo-tool --tests -- -D warnings`.
+
+Logs, including failed attempts, remain under
+`target/qualification/shared-tooling-0.27.1/`. Initial strict Clippy caught an
+oversized test; removing a redundant negative assertion fixed it. Extending the
+guard to commit admission exposed missing staged-blob behavior in the command
+substitute and a missing working file in the real-index fixture. Both fixtures
+were corrected; both toolchain suites pass. Combining identical substitute match
+arms then satisfied strict Clippy. No function, method or type was removed or
+renamed in this batch.
+
+The reproduced failure is retained in `head-change-before-fix.log`. After fixing
+the guard, both complete adapter test suites and strict Clippy pass in the
+`head-change-*` logs. Earlier 19-test logs retain their original source scope;
+they are not relabelled as proof of this guard. The table above identifies the
+final guarded adapter/test source.
+
+Older-commit recovery reuses intact final evidence; it never manufactures missing
+qualification from newer source. If the selected older commit lacks its final
+receipt, it must be qualified at that exact source before recovery. Changed
+lockfile/compiler/configuration inputs remain genuine refusal conditions. These
+limits preserve the existing evidence contract; no historical receipt check is
+bypassed and no parallel decoder or new recovery mode is added.
+
+No maintainer release, real-index staging, commit/tag/push, publication, full
+validation/Wasm/package gate or installed IC qualification was executed. Native
+macOS ARM64/Intel and remote CI for these dirty edits still need matching evidence.
+The release-commit and existing CI results do not qualify this working-tree batch.
+This work implements the current local consumer scope of
+[#10](https://github.com/dragginzgame/ic-memory/issues/10) and adopts the correction
+from [Shared Tooling #5](https://github.com/dragginzgame/shared-tooling/issues/5).
+Neither issue was modified. See [RELEASING.md](../RELEASING.md) for recovery and
+the [physical-slot review](current-ledger-qualification.md#post-release-physical-slot-audit)
+for the separate, unimplemented runtime simplification candidate.
+
 ## Source and scope
 
 This record covers unstaged working-tree adoption of the common runner on

@@ -6,6 +6,52 @@ behavior and footprint evidence. The package manifest remains 0.26.2; no release
 publication or retained installation is claimed. The [current contract](current-ledger.md)
 owns consumer API and deployment requirements.
 
+## Post-release physical-slot audit
+
+Read-only implementation review of released 0.27.0 at
+`f2aefd140bc24c7befa6f170c2e2e25df2af667c`, on 2026-10-06. This review changes no
+runtime code or persisted format and does not relabel the earlier measurements.
+
+- `physical.rs::select_authoritative_slot` checks both complete payload checksums
+  and rejects any present invalid slot. It never restores an older valid snapshot
+  after corruption. `commit_payload_with_generation` replaces the inactive slot
+  after checking the predecessor; the old complete payload remains serialized.
+- `runtime/mod.rs::bootstrap_unbootstrapped` synchronously stages the whole record
+  and persists it with one `Cell::new` before confirming/publishing allocations.
+  Upstream Cell 0.7.2 serializes that complete value and writes the header and value;
+  it does not separately commit the two slots. The
+  [IC interface specification](https://docs.internetcomputer.org/references/ic-interface-spec/canister-interface/#entry-points)
+  owns trap rollback, including the complete upgrade sequence. Returning an ordinary
+  error is distinct from trapping, and custom native Memory backends must not be
+  assumed transactional.
+- `stable_cell.rs` reads the entire encoded value and serde owns both payload
+  buffers before authoritative logical recovery. Retaining the predecessor
+  therefore adds serialized bytes, allocation/read work and checksum scanning.
+  The current valid-two-slot fixture is 444 bytes: its predecessor slot value is
+  210 bytes, including a 146-byte logical envelope; its current slot is 211 bytes.
+  These are byte counts from the canonical fixture, not a measured replacement
+  format or a claim of 210 bytes saved by a final design.
+- No distinct atomicity or fallback-recovery benefit for two slots was found in
+  the default runtime. The advanced public DTOs, slot diagnostics and corruption
+  errors remain observable contracts. Arbitrary framework-owned persistence is a
+  separate boundary; a single snapshot would not make partial native writes safe.
+
+The smallest plausible next runtime change is one checksummed current snapshot,
+retaining the checked counter, bounded decoding, logical integrity, permanent
+ownership/tombstones and persistence-before-publication. It would require a
+**0.28.0 hard cut**, current callers/fixtures/diagnostics, an explicit incompatible
+physical-format identity and retained-installation disposition. No dual reader,
+rollback history or configurable slot count is justified.
+
+Before accepting that cut, compare 0/1/64/255-record encode/reopen/commit workloads
+for heap allocations, encoded bytes, stable IO and matched Wasm artifacts; then
+qualify corruption, counter overflow, growth refusal, stale proofs and installed
+upgrade rollback. IC instruction savings still require installed measurements.
+Ordinary small ledgers already fit one virtual page, and manager buckets round
+physical allocation: lower encoded bytes do not establish fewer allocated pages
+or buckets. The existing bounded two-slot implementation remains supported until
+a replacement is separately implemented and qualified.
+
 ## Overengineering review and resulting cut
 
 | Mechanism | Evidence and disposition |

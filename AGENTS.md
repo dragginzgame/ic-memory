@@ -11,13 +11,13 @@ exception to revision-bound policy adoption while the shared rules are being
 developed locally. The sibling remains read-only to agents.
 
 The existing tooling snapshot at revision
-`f52c0e2476aee094359ed21de91c468540d3969f` is recorded in
+`cb86188c5956866564de4fb6ec6be67b27981ab9` is recorded in
 [.shared-tooling.snapshot](.shared-tooling.snapshot). It identifies the vendored
 files, hashes and executable modes; it does not freeze the active local policy.
 Keep its provenance accurate and never edit vendored files in place. Do not
 attribute uncommitted shared files to that recorded revision. The live local
 [user-triggered maintenance rule](../shared-tooling/rules/agent-maintenance.md)
-also applies within its activation scope; it is not part of this recorded snapshot.
+also applies within its activation scope and is included in this recorded snapshot.
 These instructions are the repository's local overlay.
 
 The user-provided ownership rule below is the approved local exception to shared
@@ -62,9 +62,11 @@ aliases work without a consumer setup adapter.
 ## Release recovery policy
 
 Read the current local [release contract](../shared-tooling/docs/releases.md).
-The latest local rule requires a repeated normal release target to select saved
-unfinished intent before computing any new increment, reconcile exact effects,
-and stop on identity, payload, destination or concurrency conflicts. Explicit
+The latest local rule requires a normal release target to select saved unfinished
+intent before computing any new increment, reconcile exact effects on descendant
+history, then run fresh gates for a requested next increment. Late checks bind
+`RELEASE_COMMIT` separately from the validation source and current HEAD. Stop on
+identity, payload, destination, qualification-input or concurrency conflicts. Explicit
 `release-resume` is an optional selection command, not a required recovery step.
 Preflight/validation failures repeat fresh gates while preserving earlier evidence.
 

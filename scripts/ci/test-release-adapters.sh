@@ -16,6 +16,12 @@ case "$1" in
         [[ "$RELEASE_KIND" == minor && "$RELEASE_PREVIOUS" == 0.25.14 && "$RELEASE_VERSION" == 0.26.0 ]]
         [[ "$RELEASE_DATE" == 2026-10-05 && "$RELEASE_SOURCE" == aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa ]]
         [[ "$RELEASE_REMOTE" == fixture && "$RELEASE_BRANCH" == reviewed ]]
+        case "$1" in
+            release-committed-check|release-tagged-check|release-push-check)
+                [[ "$RELEASE_COMMIT" == bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb ]]
+                ;;
+            *) [[ -z "$RELEASE_COMMIT" ]] ;;
+        esac
         printf '%s\n' "$1" >> events
         if [[ "$1" == release-verify ]]; then
             printf 'gate stdout %s\n' "${GATE_STATUS:-0}"
@@ -48,12 +54,17 @@ fi
 cmp saved-dispatch dispatch
 selection=(RELEASE_KIND=minor RELEASE_PREVIOUS=0.25.14 RELEASE_VERSION=0.26.0
     RELEASE_DATE=2026-10-05 RELEASE_SOURCE=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
-    RELEASE_REMOTE=fixture RELEASE_BRANCH=reviewed TOOL=./helper)
+    RELEASE_REMOTE=fixture RELEASE_BRANCH=reviewed RELEASE_COMMIT= TOOL=./helper)
 [[ "$(make --no-print-directory -s release-version TOOL=./helper)" == 0.25.14 ]]
 targets=(release-preflight release-prepare-version release-prepared-check release-files
     release-commit-check release-committed-check release-tagged-check release-push-check)
 for target in "${targets[@]}"; do
-    make --no-print-directory "$target" "${selection[@]}"
+    case "$target" in
+        release-committed-check|release-tagged-check|release-push-check)
+            make --no-print-directory "$target" "${selection[@]}" RELEASE_COMMIT=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+            ;;
+        *) make --no-print-directory "$target" "${selection[@]}" ;;
+    esac
 done
 printf '%s\n' "${targets[@]}" > expected
 cmp expected events

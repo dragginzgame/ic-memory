@@ -23,7 +23,7 @@ help:
 	@echo 'Setup: fetch-dependencies, install-hooks (install pinned tools separately).'
 	@echo 'Focused checks: verify-shared-tooling, test-tooling, test-release-adapters, test-release-runner, test-hooks, fmt-check, lint-tooling.'
 	@echo 'Formatting: fmt. Full gates require explicit qualification: validate, validate-toolchain.'
-	@echo 'Maintainer releases: release-patch, release-minor, release-major; rerun the same target to recover.'
+	@echo 'Maintainer releases: release-patch, release-minor, release-major; normal targets recover unfinished releases.'
 
 install-hooks:
 	bash scripts/dev/install-git-hooks.sh

@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.27.1]
+
+- Update shared release tooling so normal commands can finish an already-qualified
+  interrupted release after newer fix commits, then validate the requested next
+  increment. Preserve the original commit, tag, receipts and archives.
+- Refuse final package qualification if HEAD changes during packaging, preserving
+  prepared evidence instead of recording a package against the wrong commit.
+- Reject unrelated or arbitrary staged changes during release preflight, even
+  when working files have been restored. Library APIs, stable-memory formats and
+  qualification receipts are unchanged.
+  [#10](https://github.com/dragginzgame/ic-memory/issues/10) ·
+  [Shared Tooling #5](https://github.com/dragginzgame/shared-tooling/issues/5)
+
+[Detailed notes](docs/changelog/0.27.md) ·
+[Release qualification](docs/release-workflow-qualification.md#0271-selected-commit-recovery)
+
 ## [0.27.0] - 2026-10-06
 
 - **Breaking API and durable format:** retain current ownership and latest schema

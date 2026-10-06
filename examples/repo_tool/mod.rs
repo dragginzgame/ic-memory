@@ -172,11 +172,7 @@ impl ReleaseSelection {
         version_parts(&selection.version)?;
         require(valid_date(&selection.date), "invalid UTC release date")?;
         require(
-            matches!(selection.source.len(), 40 | 64)
-                && selection
-                    .source
-                    .bytes()
-                    .all(|byte| byte.is_ascii_hexdigit() && !byte.is_ascii_uppercase()),
+            valid_commit_identity(&selection.source),
             "invalid source commit identity",
         )?;
         require(
@@ -194,6 +190,22 @@ impl ReleaseSelection {
         )?;
         Ok(selection)
     }
+}
+
+fn valid_commit_identity(commit: &str) -> bool {
+    matches!(commit.len(), 40 | 64)
+        && commit
+            .bytes()
+            .all(|byte| byte.is_ascii_hexdigit() && !byte.is_ascii_uppercase())
+}
+
+fn release_commit_from_env() -> Result<String> {
+    let commit = env::var("RELEASE_COMMIT")?;
+    require(
+        valid_commit_identity(&commit),
+        "invalid selected release commit",
+    )?;
+    Ok(commit)
 }
 
 fn valid_date(date: &str) -> bool {
@@ -746,6 +758,39 @@ impl<E: Execute> Repository<E> {
             "release candidate has untracked files",
         )
     }
+
+    fn check_index(
+        &self,
+        selection: &ReleaseSelection,
+        surfaces: &BTreeMap<String, String>,
+    ) -> Result<()> {
+        for path in self
+            .git(&["diff", "--cached", "--name-only", &selection.source, "--"])?
+            .lines()
+        {
+            let expected = surfaces
+                .get(path)
+                .ok_or("index contains unrelated release changes")?;
+            require(
+                self.git(&[
+                    "diff",
+                    "--cached",
+                    "--summary",
+                    &selection.source,
+                    "--",
+                    path,
+                ])?
+                .is_empty(),
+                "staged release metadata changes file mode or identity",
+            )?;
+            let actual = self.output("git", &["show", &format!(":{path}")])?;
+            require(
+                actual == *expected || actual == self.text(path, Some(&selection.source))?,
+                "staged release metadata differs from saved intent",
+            )?;
+        }
+        Ok(())
+    }
     fn local_tag(&self, version: &str) -> Result<Option<String>> {
         let refs = self.git(&[
             "for-each-ref",
@@ -812,6 +857,7 @@ impl<E: Execute> Repository<E> {
             "preflight requires the saved base version",
         )?;
         self.check_surfaces(selection, None, true)?;
+        self.check_index(selection, &self.surfaces(selection)?)?;
         let lock = fs::read(self.root.join("Cargo.lock"))?;
         check_lock_update(
             &lock,
@@ -839,7 +885,8 @@ impl<E: Execute> Repository<E> {
             self.git(&["rev-parse", "HEAD"])? == selection.source,
             "source changed during preflight",
         )?;
-        self.check_surfaces(selection, None, true)
+        self.check_surfaces(selection, None, true)?;
+        self.check_index(selection, &self.surfaces(selection)?)
     }
 
     fn verify(&self, selection: &ReleaseSelection) -> Result<()> {
@@ -1112,6 +1159,7 @@ impl<E: Execute> Repository<E> {
 
     fn commit_check(&self, selection: &ReleaseSelection) -> Result<()> {
         self.prepared(selection)?;
+        self.check_index(selection, &self.surfaces(selection)?)?;
         require(
             self.git(&["diff", "--name-only"])?.is_empty(),
             "release metadata has unstaged changes",
@@ -1123,9 +1171,9 @@ impl<E: Execute> Repository<E> {
         )
     }
 
-    fn inspect_release_commit(&self) -> Result<(String, String, ReleaseSelection)> {
+    fn inspect_release_commit(&self, commit: &str) -> Result<(String, String, ReleaseSelection)> {
         self.clean()?;
-        let version = self.version(None)?;
+        let version = self.version(Some(commit))?;
         let prepared: PackageEvidence =
             serde_json::from_slice(&fs::read(self.receipt_path(&version, true)?)?)?;
         let selection = prepared.validation.selection;
@@ -1133,36 +1181,49 @@ impl<E: Execute> Repository<E> {
             selection.version == version,
             "release metadata differs from saved intent",
         )?;
-        let head = self.git(&["rev-parse", "HEAD"])?;
         require(
-            self.git(&["rev-parse", "HEAD^"])? == selection.source,
+            self.git(&["log", "-1", "--format=%P", commit])? == selection.source,
             "release parent differs from validated source",
         )?;
         require(
-            self.git(&["log", "-1", "--format=%s"])? == format!("Release {version}"),
-            "HEAD is not the selected release commit",
+            self.git(&["log", "-1", "--format=%s", commit])? == format!("Release {version}"),
+            "selected commit is not the release commit",
         )?;
-        self.check_surfaces(&selection, Some("HEAD"), false)?;
-        Ok((version, head, selection))
+        self.git(&["merge-base", "--is-ancestor", commit, "HEAD"])?;
+        self.check_surfaces(&selection, Some(commit), false)?;
+        Ok((version, commit.to_owned(), selection))
     }
 
     fn release_commit(&self) -> Result<(String, String, ReleaseSelection)> {
-        let release = self.inspect_release_commit()?;
+        let release = self.inspect_release_commit(&self.git(&["rev-parse", "HEAD"])?)?;
         self.verify_evidence(&release.2, &release.1, false, true)?;
         Ok(release)
     }
 
     fn qualify_release(&self) -> Result<()> {
-        let (version, head, selection) = self.inspect_release_commit()?;
+        self.qualify_release_at(&self.git(&["rev-parse", "HEAD"])?)
+    }
+
+    fn qualify_release_at(&self, commit: &str) -> Result<()> {
+        let (version, head, selection) = self.inspect_release_commit(commit)?;
         let mut evidence = self.verify_evidence(&selection, &selection.source, true, false)?;
+        let current = self.git(&["rev-parse", "HEAD"])? == commit;
         if self.receipt_path(&version, false)?.exists() {
-            self.verify_evidence(&selection, &head, false, true)?;
+            // Recovery verifies the retained archive for the selected commit.
+            // Cargo's working archive may belong to the newer source at HEAD.
+            self.verify_evidence(&selection, &head, false, current)?;
             return Ok(());
         }
+        require(
+            current,
+            "selected older release has no final qualification receipt; qualify that exact commit before recovery",
+        )?;
         let command = self.final_package_command()?;
         self.run_command(&command)?;
         require(
-            self.inspect_release_commit()? == (version.clone(), head.clone(), selection),
+            self.git(&["rev-parse", "HEAD"])? == commit
+                && self.inspect_release_commit(commit)?
+                    == (version.clone(), head.clone(), selection),
             "release changed during final qualification",
         )?;
         self.verify_inputs(&evidence.validation, true)?;
@@ -1176,35 +1237,42 @@ impl<E: Execute> Repository<E> {
         self.write_evidence(&evidence, false)
     }
 
-    fn selected_committed_check(&self, selection: &ReleaseSelection) -> Result<()> {
+    fn selected_committed_check(&self, selection: &ReleaseSelection, commit: &str) -> Result<()> {
         require(
-            self.inspect_release_commit()?.2 == *selection,
+            self.inspect_release_commit(commit)?.2 == *selection,
             "commit identifies another release intent",
         )?;
-        self.qualify_release()
+        self.qualify_release_at(commit)
     }
 
     fn tagged_check(
         &self,
         selection: &ReleaseSelection,
+        commit: &str,
     ) -> Result<(String, String, ReleaseSelection)> {
-        let release = self.release_commit()?;
+        let release = self.inspect_release_commit(commit)?;
         require(
             release.2 == *selection,
             "tagged release identifies another intent",
+        )?;
+        self.verify_evidence(
+            selection,
+            commit,
+            false,
+            self.git(&["rev-parse", "HEAD"])? == commit,
         )?;
         self.check_tag(&release.0, &release.1)?;
         Ok(release)
     }
 
-    fn push_check(&self, selection: &ReleaseSelection) -> Result<()> {
-        let (version, head, actual) = self.tagged_check(selection)?;
+    fn push_check(&self, selection: &ReleaseSelection, commit: &str) -> Result<()> {
+        let release = self.tagged_check(selection, commit)?;
         self.remote_ready(selection)?;
         require(
-            self.release_commit()? == (version.clone(), head.clone(), actual),
+            self.tagged_check(selection, commit)? == release,
             "release changed during remote inspection",
         )?;
-        self.check_tag(&version, &head)
+        Ok(())
     }
     fn check_tag(&self, version: &str, head: &str) -> Result<()> {
         require(self.local_tag(version)?.is_some(), "release tag is missing")?;
@@ -1214,7 +1282,7 @@ impl<E: Execute> Repository<E> {
         )?;
         require(
             self.git(&["rev-parse", &format!("refs/tags/v{version}^{{commit}}")])? == head,
-            "release tag does not identify HEAD",
+            "release tag does not identify the selected commit",
         )
     }
 
@@ -1286,12 +1354,17 @@ pub(super) fn main() -> Result<()> {
         }
         "release-commit-check" => repo.commit_check(&ReleaseSelection::from_env()?)?,
         "release-committed-check" => {
-            repo.selected_committed_check(&ReleaseSelection::from_env()?)?;
+            repo.selected_committed_check(
+                &ReleaseSelection::from_env()?,
+                &release_commit_from_env()?,
+            )?;
         }
         "release-tagged-check" => {
-            repo.tagged_check(&ReleaseSelection::from_env()?)?;
+            repo.tagged_check(&ReleaseSelection::from_env()?, &release_commit_from_env()?)?;
         }
-        "release-push-check" => repo.push_check(&ReleaseSelection::from_env()?)?,
+        "release-push-check" => {
+            repo.push_check(&ReleaseSelection::from_env()?, &release_commit_from_env()?)?;
+        }
         "qualify-release" => repo.qualify_release()?,
         "publish" => {
             let flag = match env::var("PUBLISH_DRY_RUN") {

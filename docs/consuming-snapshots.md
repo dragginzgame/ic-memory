@@ -32,9 +32,14 @@ File paths are intentionally identical in source and consumer. A repository
 that needs a different path or behavior owns an adapter rather than a patched
 shared copy.
 
-The declared destination files will be overwritten. Inspect their current
-contents and preserve unrelated edits before refreshing. Only declare paths
-owned by the shared snapshot; the consumer's `AGENTS.md` remains local.
+Refresh checks every declared destination before replacing any file. It refuses
+to overwrite staged or unstaged changes, deletions, or existing untracked/ignored
+files. Preserve or reconcile those changes before retrying; unrelated dirty paths
+remain allowed. A destination already matching the selected source bytes and
+executable state is safe to retry, including after an interrupted refresh. Only
+declare paths owned by the shared snapshot; the consumer's `AGENTS.md` remains local.
+The manifest is reviewed configuration: an intentional file-set edit is read as
+input and replaced with the resulting manifest, rather than rejected as dirty work.
 
 ## Refresh
 
@@ -96,6 +101,7 @@ the required verifiers, adding any selected tools to the same command:
   --file rules/changelogs.md \
   --file rules/cargo-dependencies.md \
   --file rules/git-hooks.md \
+  --file rules/agent-maintenance.md \
   --file docs/releases.md \
   --file scripts/ci/run-release.sh \
   --file scripts/ci/next-release-version.sh \

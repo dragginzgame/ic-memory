@@ -58,6 +58,7 @@ impl Fixture {
                 calls: Vec::new(),
                 fail: None,
                 tag: false,
+                descendant: None,
             }),
         };
         Self {
@@ -106,7 +107,8 @@ impl Fixture {
                 .calls
                 .push(vec!["shared-runner".to_owned(), "commit".to_owned()]);
         }
-        self.repo.selected_committed_check(&self.selection)?;
+        self.repo
+            .selected_committed_check(&self.selection, "release")?;
         self.repo.exec.state.borrow_mut().tag = true;
         Ok(())
     }
@@ -148,6 +150,7 @@ struct State {
     calls: Vec<Vec<String>>,
     fail: Option<String>,
     tag: bool,
+    descendant: Option<BTreeMap<String, String>>,
 }
 
 struct Substitute {
@@ -231,8 +234,21 @@ impl Execute for Substitute {
             "cargo" if args.get(1) == Some(&"package") => {
                 let directory = target.join("package");
                 fs::create_dir_all(&directory)?;
+                if state.fail.as_deref() == Some("package-head") {
+                    let mut descendant = state.release.clone().ok_or("missing release")?;
+                    descendant.insert(
+                        "source.rs".to_owned(),
+                        "// fix during packaging\n".to_owned(),
+                    );
+                    for (path, text) in &descendant {
+                        fs::write(root.join(path), text)?;
+                    }
+                    state.descendant = Some(descendant);
+                }
                 // Model Cargo's Git metadata changing after the release commit.
-                let bytes = if state.release.is_some() {
+                let bytes = if state.descendant.is_some() {
+                    "descendant-archive"
+                } else if state.release.is_some() {
                     "release-archive"
                 } else {
                     "prepared-archive"
@@ -277,8 +293,16 @@ impl Execute for Substitute {
                 Ok(String::new())
             }
             "git" => match args {
-                ["status", ..] => changed(state.release.as_ref().unwrap_or(&state.source)),
-                ["rev-parse", "HEAD"] => Ok(if state.release.is_some() {
+                ["status", ..] => changed(
+                    state
+                        .descendant
+                        .as_ref()
+                        .or(state.release.as_ref())
+                        .unwrap_or(&state.source),
+                ),
+                ["rev-parse", "HEAD"] => Ok(if state.descendant.is_some() {
+                    "fix"
+                } else if state.release.is_some() {
                     "release"
                 } else {
                     "source"
@@ -289,17 +313,24 @@ impl Execute for Substitute {
                     let (revision, path) =
                         object.split_once(':').ok_or("invalid fixture object")?;
                     match revision {
+                        "" if state.staged => Ok(fs::read_to_string(root.join(path))?),
                         "source" => state
                             .source
                             .get(path)
                             .cloned()
                             .ok_or_else(|| "missing fixture source".into()),
-                        "HEAD" => state
+                        "release" => state
                             .release
                             .as_ref()
                             .and_then(|files| files.get(path))
                             .cloned()
                             .ok_or_else(|| "missing fixture release".into()),
+                        "fix" => state
+                            .descendant
+                            .as_ref()
+                            .and_then(|files| files.get(path))
+                            .cloned()
+                            .ok_or_else(|| "missing fixture descendant".into()),
                         _ => Err("unexpected fixture revision".into()),
                     }
                 }
@@ -331,7 +362,31 @@ impl Execute for Substitute {
                     }
                     Ok(String::new())
                 }
-                ["fetch" | "merge-base" | "ls-files", ..] => Ok(String::new()),
+                ["merge-base", "--is-ancestor", "release", "HEAD"]
+                    if state.fail.as_deref() == Some("history") =>
+                {
+                    Err("fixture unrelated history".into())
+                }
+                ["fetch" | "merge-base" | "ls-files", ..]
+                | ["diff", "--cached", "--summary", "source", "--", _] => Ok(String::new()),
+                ["diff", "--cached", "--name-only", "source", "--"] => {
+                    if state.staged && state.release.is_none() {
+                        changed(&state.source)
+                    } else {
+                        Ok(String::new())
+                    }
+                }
+                ["diff", "--name-only", "source", "release", "--"] => {
+                    let release = state.release.as_ref().ok_or("missing release")?;
+                    Ok(state
+                        .source
+                        .iter()
+                        .filter_map(|(path, original)| {
+                            (release.get(path) != Some(original)).then_some(path.as_str())
+                        })
+                        .collect::<Vec<_>>()
+                        .join("\n"))
+                }
                 ["diff", "--name-only", "source", ..] => changed(&state.source),
                 ["diff", "--name-only"] => {
                     if state.staged {
@@ -347,7 +402,16 @@ impl Execute for Substitute {
                         Ok(String::new())
                     }
                 }
-                ["log", "-1", "--format=%s"] => Ok(if state.release.is_some() {
+                ["log", "-1", "--format=%P", "release"] => {
+                    Ok(if state.fail.as_deref() == Some("parent") {
+                        "wrong-source"
+                    } else {
+                        "source"
+                    }
+                    .to_owned())
+                }
+                ["log", "-1", "--format=%s", "fix"] => Ok("Fix callback".to_owned()),
+                ["log", "-1", "--format=%s", "release"] => Ok(if state.release.is_some() {
                     "Release 0.13.0"
                 } else {
                     "Fixture source"
@@ -355,7 +419,12 @@ impl Execute for Substitute {
                 .to_owned()),
                 ["cat-file", "-t", ..] => Ok("tag".to_owned()),
                 ["rev-parse", reference] if reference.ends_with("^{commit}") => {
-                    Ok("release".to_owned())
+                    Ok(if state.fail.as_deref() == Some("tag-commit") {
+                        "fix"
+                    } else {
+                        "release"
+                    }
+                    .to_owned())
                 }
                 _ => Err(format!("unexpected fixture git command: {args:?}").into()),
             },
@@ -405,7 +474,7 @@ fn compiler_environment_overrides_refuse_preparation_and_release_effects() {
         };
         let call_start = repo.exec.state.borrow().calls.len();
         assert!(repo.qualify_release().is_err());
-        assert!(repo.push_check(&fixture.selection).is_err());
+        assert!(repo.push_check(&fixture.selection, "release").is_err());
         assert!(repo.publish(true).is_err());
         assert!(
             !repo.exec.state.borrow().calls[call_start..]
@@ -549,6 +618,7 @@ fn inherited_compiler_configuration_refuses_preparation() {
                 calls: Vec::new(),
                 fail: None,
                 tag: false,
+                descendant: None,
             }),
         },
     };
@@ -625,7 +695,10 @@ fn preparation_stage_commit_qualification_and_publish_preserve_exact_evidence() 
             .is_file()
     );
     assert_eq!(final_evidence.package_head, "release");
-    fixture.repo.tagged_check(&fixture.selection).unwrap();
+    fixture
+        .repo
+        .tagged_check(&fixture.selection, "release")
+        .unwrap();
     assert!(
         fixture
             .repo
@@ -633,7 +706,10 @@ fn preparation_stage_commit_qualification_and_publish_preserve_exact_evidence() 
             .join("configured output/release-validation/0.13.0-prepared.json")
             .is_file()
     );
-    fixture.repo.push_check(&fixture.selection).unwrap();
+    fixture
+        .repo
+        .push_check(&fixture.selection, "release")
+        .unwrap();
     fixture.repo.publish(true).unwrap();
     let state = fixture.repo.exec.state.borrow();
     assert!(
@@ -977,7 +1053,12 @@ fn changed_missing_and_wrong_source_receipts_never_dispatch_publication() {
             }
         }
         if changed == "tag" {
-            assert!(fixture.repo.tagged_check(&fixture.selection).is_err());
+            assert!(
+                fixture
+                    .repo
+                    .tagged_check(&fixture.selection, "release")
+                    .is_err()
+            );
         }
         assert!(fixture.repo.publish(true).is_err());
         assert!(
@@ -1064,6 +1145,183 @@ fn final_package_failure_is_retryable_without_a_second_commit() {
             .count(),
         1
     );
+}
+
+#[test]
+fn head_change_during_final_packaging_preserves_prepared_evidence() {
+    let fixture = Fixture::new();
+    fixture.prepare().unwrap();
+    fixture.stage().unwrap();
+    let path = fixture.repo.receipt_path("0.13.0", true).unwrap();
+    let prepared_bytes = fs::read(&path).unwrap();
+    let prepared: PackageEvidence = serde_json::from_slice(&prepared_bytes).unwrap();
+    let archive = fixture
+        .repo
+        .retained_package(&prepared.package_sha256)
+        .unwrap();
+    let archive_bytes = fs::read(&archive).unwrap();
+    fixture.fail("package-head");
+    assert!(fixture.commit().is_err());
+    assert!(fixture.repo.exec.state.borrow().descendant.is_some());
+    assert!(!fixture.repo.exec.state.borrow().tag);
+    assert!(!fixture.repo.receipt_path("0.13.0", false).unwrap().exists());
+    assert_eq!(fs::read(&path).unwrap(), prepared_bytes);
+    assert_eq!(fs::read(&archive).unwrap(), archive_bytes);
+}
+
+#[test]
+fn selected_older_release_reuses_exact_receipts_and_archives_after_a_fix() {
+    let fixture = Fixture::new();
+    fixture.release();
+    let prepared_path = fixture.repo.receipt_path("0.13.0", true).unwrap();
+    let final_path = fixture.repo.receipt_path("0.13.0", false).unwrap();
+    let prepared_bytes = fs::read(&prepared_path).unwrap();
+    let final_bytes = fs::read(&final_path).unwrap();
+    let evidence: PackageEvidence = serde_json::from_slice(&final_bytes).unwrap();
+    let archive = fixture
+        .repo
+        .retained_package(&evidence.package_sha256)
+        .unwrap();
+    let archive_bytes = fs::read(&archive).unwrap();
+    let mut descendant = fixture.repo.exec.state.borrow().release.clone().unwrap();
+    descendant.insert(
+        "source.rs".to_owned(),
+        "// committed callback fix\n".to_owned(),
+    );
+    for (path, text) in &descendant {
+        fs::write(fixture.repo.root.join(path), text).unwrap();
+    }
+    fixture.repo.exec.state.borrow_mut().descendant = Some(descendant);
+    fs::write(
+        fixture.repo.package_path("0.13.0").unwrap(),
+        "newer working archive",
+    )
+    .unwrap();
+    let calls = fixture.repo.exec.state.borrow().calls.len();
+    fixture
+        .repo
+        .selected_committed_check(&fixture.selection, "release")
+        .unwrap();
+    fixture
+        .repo
+        .tagged_check(&fixture.selection, "release")
+        .unwrap();
+    fixture
+        .repo
+        .push_check(&fixture.selection, "release")
+        .unwrap();
+    assert!(fixture.repo.release_commit().is_err());
+    assert!(
+        fixture
+            .repo
+            .selected_committed_check(&fixture.selection, "fix")
+            .is_err()
+    );
+    assert_eq!(fs::read(&prepared_path).unwrap(), prepared_bytes);
+    assert_eq!(fs::read(&final_path).unwrap(), final_bytes);
+    assert_eq!(fs::read(&archive).unwrap(), archive_bytes);
+    assert!(
+        !fixture.repo.exec.state.borrow().calls[calls..]
+            .iter()
+            .any(|call| {
+                call[0] == "make"
+                    || call[0] == "cargo"
+                        && call.get(2).is_some_and(|arg| {
+                            matches!(arg.as_str(), "package" | "publish" | "update")
+                        })
+            })
+    );
+
+    for conflict in ["history", "parent", "tag-commit"] {
+        fixture.fail(conflict);
+        assert!(
+            fixture
+                .repo
+                .push_check(&fixture.selection, "release")
+                .is_err(),
+            "{conflict}"
+        );
+        assert_eq!(fs::read(&final_path).unwrap(), final_bytes);
+    }
+    fixture.repo.exec.state.borrow_mut().fail = None;
+    fs::write(&archive, "corrupted retained archive").unwrap();
+    assert!(
+        fixture
+            .repo
+            .push_check(&fixture.selection, "release")
+            .is_err()
+    );
+    fs::write(&archive, archive_bytes).unwrap();
+    fs::remove_file(&final_path).unwrap();
+    let calls = fixture.repo.exec.state.borrow().calls.len();
+    assert!(
+        fixture
+            .repo
+            .selected_committed_check(&fixture.selection, "release")
+            .is_err()
+    );
+    assert!(!final_path.exists());
+    assert!(
+        !fixture.repo.exec.state.borrow().calls[calls..]
+            .iter()
+            .any(|call| call.get(2).is_some_and(|arg| arg == "package"))
+    );
+}
+
+#[test]
+fn real_index_rejects_hidden_staging_and_checks_exact_prepared_bytes() {
+    let fixture = Fixture::new();
+    let checkout = fixture.repo.root.join("index-checkout");
+    Processes
+        .run(
+            &fixture.repo.root,
+            "git",
+            &[
+                "clone",
+                "--quiet",
+                "--shared",
+                "--no-checkout",
+                env!("CARGO_MANIFEST_DIR"),
+                checkout.to_str().unwrap(),
+            ],
+            true,
+        )
+        .unwrap();
+    let repo = Repository {
+        root: checkout,
+        exec: Processes,
+    };
+    let mut selection = fixture.selection.clone();
+    selection.source = repo.git(&["rev-parse", "HEAD"]).unwrap();
+    repo.git(&["read-tree", "HEAD"]).unwrap();
+    let original = repo.text("README.md", Some("HEAD")).unwrap();
+    let expected = format!("{original}\nPrepared release fixture.\n");
+    let surfaces = BTreeMap::from([("README.md".to_owned(), expected.clone())]);
+    repo.check_index(&selection, &surfaces).unwrap();
+
+    fs::write(repo.root.join("README.md"), &original).unwrap();
+    repo.git(&["update-index", "--chmod=+x", "README.md"])
+        .unwrap();
+    assert!(repo.check_index(&selection, &surfaces).is_err());
+    repo.git(&["read-tree", "HEAD"]).unwrap();
+
+    fs::write(repo.root.join("unrelated.rs"), "unrelated index change").unwrap();
+    repo.git(&["add", "--", "unrelated.rs"]).unwrap();
+    fs::remove_file(repo.root.join("unrelated.rs")).unwrap();
+    assert!(repo.check_index(&selection, &surfaces).is_err());
+    repo.git(&["read-tree", "HEAD"]).unwrap();
+
+    for (staged, accepted) in [
+        ("arbitrary staged metadata".to_owned(), false),
+        (expected, true),
+        (format!("{original} "), false),
+    ] {
+        fs::write(repo.root.join("README.md"), staged).unwrap();
+        repo.git(&["add", "--", "README.md"]).unwrap();
+        fs::write(repo.root.join("README.md"), &original).unwrap();
+        assert_eq!(repo.check_index(&selection, &surfaces).is_ok(), accepted);
+        repo.git(&["read-tree", "HEAD"]).unwrap();
+    }
 }
 
 #[test]
