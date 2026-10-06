@@ -1,6 +1,6 @@
 # Changelog
 
-## [0.28.3]
+## [0.28.3] - 2026-10-06
 
 - Check Cargo inheritance in both workspaces and reuse the common CI installers,
   reducing duplicated setup code while preserving tool pins and release policy.
