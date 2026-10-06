@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.28.2]
+
+- Keep release and hook fixtures independent of inherited Make includes and
+  dry-run settings, preventing misleading failures during nested validation.
+
+[Detailed notes](docs/changelog/0.28.md)
+
 ## [0.28.1] - 2026-10-06
 
 - Reuse Shared Tooling’s release-command checker, reducing duplicated fixtures

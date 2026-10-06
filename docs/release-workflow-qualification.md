@@ -514,3 +514,36 @@ The local adapter shrank by 17 lines; added shared exports remain upstream-owned
 Library code and dependency selection are unchanged. No full gate, Wasm-size
 measurement, installed IC qualification or native macOS execution was performed;
 matching remote CI remains separate evidence for the pending edits.
+
+## 0.28.2 independent Make fixtures
+
+Focused Linux evidence uses source
+`086b63a95ab9c5581115f56b68788f961e22c8e4` plus the two fixture environment-reset
+edits and pending documentation. The shared snapshot remains at 0.1.7,
+`47cd2ccaf0e8b428f06e6db0262df76cfc1581de`, matching the clean local checkout and
+the latest observed upstream commit. Its checker already clears all five Make
+controls; no shared-source change is needed.
+
+Before the fix, a dry-run parent Makefile exported `GNUMAKEFLAGS=-n`, `MAKEFILES`
+pointing to a rejecting include, and foreign validation logger identities. Its
+recursive recipe executed the independent fixtures. The shared dispatch checker
+passed, but the local release fixture then read the parent's include and failed.
+The hook fixture likewise reached that include during its disposable hook check.
+Both failures and the hook's retained fixture are preserved.
+
+After clearing the two additional inherited Make controls, these focused checks
+passed:
+
+- Normal `make verify-shared-tooling test-release-adapters` and `make test-hooks`.
+- The same parent Makefile invoking each fixture with dry-run/include/logger
+  contamination; both completed their maintained positive and rejection checks.
+- `make lint-tooling`; selected lockfiles, manifests, snapshot, Makefile, real hook
+  and captured qualification inputs remained unchanged.
+
+The parent fixture, before/after logs and input hashes are retained under
+`target/qualification/make-fixture-isolation-0.28.2.6ank19sr/`. Release effects are
+substitutes; hook/index operations use disposable repositories and existing
+history. No original-index staging, commits, tags, pushes, publication, dependency
+fetching or full gate was performed. No function, method or type was removed.
+Library/Wasm source is unchanged. Native macOS and matching remote CI for these
+pending edits remain separate qualifications.
