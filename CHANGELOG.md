@@ -1,6 +1,6 @@
 # Changelog
 
-## [0.27.2]
+## [0.27.2] - 2026-10-06
 
 - Preserve tracked dependency selections in CI and release preparation; check
   dependency/action pins using the locally reviewed Shared Tooling checker.
