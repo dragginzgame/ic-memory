@@ -139,7 +139,7 @@ inputs. These did not establish a small history or pre-allocation bound.
 | Stable-cell ledger value | 33,558,528 bytes (32 MiB + 4 KiB) | Header check before payload allocation/read; direct record decode before CBOR |
 | Logical ledger CBOR | 16,777,216 bytes (16 MiB) | Envelope decode before payload copy/CBOR; direct ledger writer before any write would cross the byte ceiling, before header finalization or commit mutation |
 | CBOR container depth | 32 nested edges | Allocation-free syntax walk before serde |
-| Advertised CBOR text length | Remaining input bytes | Syntax walk before serde allocation |
+| Advertised CBOR text length | 256 bytes and remaining input bytes | Syntax walk before serde allocation; all current ledger text fits this ceiling |
 | Opaque generation byte string | 16,777,240 bytes (16 MiB + 24-byte envelope) and remaining input bytes | Allocation-free syntax walk before serde; writer checks the same limit |
 | Advertised array/map entries | At least one remaining byte per element (two per map pair) | Syntax walk before serde allocation hints |
 | External fixed + logical declarations | 254 | Snapshot sealing before copying/canonicalizing inputs |
@@ -148,11 +148,11 @@ inputs. These did not establish a small history or pre-allocation bound.
 | Generation records | 65,536 | Bounded serde visitor before vector growth; staging before history clone |
 | Schema records per allocation | 65,536 | Bounded serde visitor before vector growth |
 | Total schema records | 65,536 | Integrity/staging checks; encoded-byte ceiling bounds construction before this aggregate check |
-| Diagnostic strings | 256 bytes | Existing constructor/integrity checks, after bounded decode |
+| Diagnostic strings | 256 bytes | Maintained CBOR length preflight before allocation; constructors and field validation retain printable ASCII and non-empty checks |
 
 The syntax walk accepts the definite-length current writer shape, rejects
-indefinite containers, excessive nesting, truncation and trailing bytes, and
-allocates no temporary tree. It is shared only by maintained ledger/record
+indefinite containers, oversized text, excessive nesting, truncation and trailing
+bytes, and allocates no temporary tree. It is shared only by maintained ledger/record
 production decode owners (plus test helpers), not application data. Direct
 caller-selected serde decoders are outside the recovery contract; decoded DTOs
 are not capabilities. Typed outer payload/envelope errors, codec errors and

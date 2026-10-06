@@ -1,0 +1,11 @@
+variant,phase,generations,iterations,allocations,reallocations,peak_bytes,elapsed_us
+baseline,recover_text_256,1,10,20,0,384,25
+baseline,recover_text_257,1,10,40,30,430,14
+baseline,recover_text_1024,1,10,40,30,1197,18
+baseline,recover_text_1048576,1,10,40,110,1048749,9415
+baseline,recover_text_8388608,1,10,40,140,8388781,79639
+candidate,recover_text_256,1,10,20,0,384,24
+candidate,recover_text_257,1,10,20,40,200,9
+candidate,recover_text_1024,1,10,20,40,200,16
+candidate,recover_text_1048576,1,10,20,40,200,9136
+candidate,recover_text_8388608,1,10,20,40,200,70281

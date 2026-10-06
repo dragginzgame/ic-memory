@@ -68,6 +68,13 @@ fn preflight(bytes: &[u8]) -> Result<(), ciborium::de::Error<std::io::Error>> {
                 if major == 2 && n > crate::constants::MAX_COMMITTED_PAYLOAD_BYTES {
                     return Err(invalid());
                 }
+                // All current ledger text, including fingerprints and field
+                // names, fits the diagnostic ceiling. Enforce it before the
+                // codec allocates an owned String; opaque byte strings retain
+                // their independent payload bound and are not syntax-walked.
+                if major == 3 && n > crate::constants::DIAGNOSTIC_STRING_MAX_BYTES {
+                    return Err(invalid());
+                }
                 *pos = pos
                     .checked_add(n)
                     .filter(|end| *end <= bytes.len())
@@ -180,6 +187,52 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn oversized_text_is_rejected_before_deserialization_in_any_container() {
+        #[derive(Debug)]
+        struct MustNotDecode;
+        impl<'de> Deserialize<'de> for MustNotDecode {
+            fn deserialize<D: Deserializer<'de>>(_: D) -> Result<Self, D::Error> {
+                panic!("text bound must reject before serde can allocate");
+            }
+        }
+
+        let len = crate::constants::DIAGNOSTIC_STRING_MAX_BYTES + 1;
+        let mut text = vec![0x79];
+        text.extend_from_slice(&u16::try_from(len).unwrap().to_be_bytes());
+        // The bound applies to fully backed text, not just truncated lengths.
+        text.resize(3 + len, b'x');
+        for prefix in [&[][..], &[0x81], &[0xa1, 0x61, b'k'], &[0xc0]] {
+            let mut bytes = prefix.to_vec();
+            bytes.extend_from_slice(&text);
+            assert!(from_slice_exact::<MustNotDecode>(&bytes).is_err());
+        }
+        for len in [len as u64, u64::MAX] {
+            let mut bytes = vec![0x7b];
+            bytes.extend_from_slice(&len.to_be_bytes());
+            assert!(from_slice_exact::<MustNotDecode>(&bytes).is_err());
+        }
+    }
+
+    #[test]
+    fn text_ceiling_preserves_valid_text_and_opaque_byte_strings() {
+        for len in [0, 1, crate::constants::DIAGNOSTIC_STRING_MAX_BYTES] {
+            let text = "x".repeat(len);
+            let mut bytes = Vec::new();
+            ciborium::into_writer(&text, &mut bytes).unwrap();
+            assert_eq!(from_slice_exact::<String>(&bytes).unwrap(), text);
+        }
+
+        // Opaque payloads can contain larger logical text: their independent
+        // ledger decode must reject it, not the enclosing record preflight.
+        let mut text = Vec::new();
+        ciborium::into_writer(&"x".repeat(257), &mut text).unwrap();
+        let value = ciborium::Value::Bytes(text);
+        let mut bytes = Vec::new();
+        ciborium::into_writer(&value, &mut bytes).unwrap();
+        assert_eq!(from_slice_exact::<ciborium::Value>(&bytes).unwrap(), value);
+    }
 
     #[test]
     fn definite_collections_admit_the_boundary_and_reject_excess_before_decode() {

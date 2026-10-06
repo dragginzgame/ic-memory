@@ -1,7 +1,8 @@
 //! Explicit native allocation measurements; not IC instruction benchmarks.
 use ic_memory::{
-    AllocationHistory, AllocationLedger, GenerationRecord, LedgerCommitStore,
-    StableCellLedgerRecord, ic_stable_structures::Storable,
+    AllocationHistory, AllocationLedger, DualCommitStore, GenerationRecord, LedgerCommitError,
+    LedgerCommitStore, LedgerPayloadEnvelope, StableCellLedgerRecord,
+    ic_stable_structures::Storable,
 };
 use std::{
     alloc::{GlobalAlloc, Layout, System},
@@ -155,6 +156,54 @@ fn ledger_encoding_and_validation_allocations() {
             let mut store = LedgerCommitStore::default();
             let result = black_box(store.commit(&ledger));
             assert_eq!(result.is_ok(), fingerprint_len == 128);
+        });
+    }
+}
+
+// Only the fingerprint differs from a valid current ledger. The physical store
+// owns a correctly checksummed opaque envelope; text must be checked by logical
+// recovery, not by decoding the enclosing physical DTO.
+fn fingerprint_store(text_bytes: usize) -> LedgerCommitStore {
+    #[derive(serde::Serialize)]
+    struct Store<'a> {
+        physical: &'a DualCommitStore,
+    }
+
+    let mut dto = serde_json::to_value(ledger(1)).unwrap();
+    dto["allocation_history"]["generations"][0]["runtime_fingerprint"] =
+        serde_json::Value::String("x".repeat(text_bytes));
+    let mut payload = Vec::new();
+    ciborium::into_writer(&dto, &mut payload).unwrap();
+    let envelope = LedgerPayloadEnvelope::current(payload)
+        .try_encode()
+        .unwrap();
+    let mut physical = DualCommitStore::default();
+    physical.commit_payload_at_generation(1, envelope).unwrap();
+    let mut record = Vec::new();
+    ciborium::into_writer(
+        &Store {
+            physical: &physical,
+        },
+        &mut record,
+    )
+    .unwrap();
+    ciborium::from_reader(record.as_slice()).unwrap()
+}
+
+#[test]
+#[ignore = "explicit matched text recovery allocation measurement, run in release mode with one test thread"]
+fn ledger_text_recovery_allocations() {
+    println!("phase,generations,iterations,allocations,reallocations,peak_bytes,elapsed_us");
+    for text_bytes in [256, 257, 1024, 1024 * 1024, 8 * 1024 * 1024] {
+        let store = fingerprint_store(text_bytes);
+        let phase = format!("recover_text_{text_bytes}");
+        measure(&phase, 1, 10, || {
+            let result = black_box(store.recover());
+            if text_bytes <= 256 {
+                assert_eq!(result.unwrap().current_generation(), 1);
+            } else {
+                assert!(matches!(result, Err(LedgerCommitError::Codec(_))));
+            }
         });
     }
 }

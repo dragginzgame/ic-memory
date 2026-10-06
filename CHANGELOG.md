@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.26.2]
+
+- Reject oversized ledger text during CBOR preflight, before allocating owned
+  strings. Corrupt storage still fails closed; APIs and persisted bytes are
+  unchanged.
+
+[Detailed notes](docs/changelog/0.26.md) ·
+[Codec qualification](docs/ledger-codec-qualification.md#0262-text-preflight-follow-up)
+
 ## [0.26.1] - 2026-10-05
 
 - Bound ledger serialization while writing, so oversized commits return the

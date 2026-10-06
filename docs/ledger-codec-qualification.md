@@ -134,3 +134,102 @@ running these commands twice against the candidate is not a matched baseline.
 Do not infer a published release or a native macOS qualification from local
 Linux passes. See the [host support contract](host-support.md) and the
 [release guide](../RELEASING.md) for the remaining native and full-gate checks.
+
+## 0.26.2 text preflight follow-up
+
+Baseline: released `2988c827ea1f0b5f98b2402fa471ae2e4c8a8395` (0.26.1).
+The candidate adds one text-length check to the existing allocation-free CBOR
+walk. Current ledger fields and identifiers fit the existing 256-byte diagnostic
+ceiling; stable-key grammar is stricter. Previously, the syntax walk only checked
+that advertised text fit the input. Ciborium could then grow an owned `String`
+before the fingerprint validator refused its length.
+
+Reject oversized text before entering serde, even inside arrays, maps and tags.
+Do not walk inside opaque byte strings: their protected-record decode and inner
+logical-ledger decode remain separate trust boundaries. Physical checksum,
+envelope and generation checks retain their ordering. Malformed logical text
+still produces `LedgerCommitError::Codec`, refuses initialization over existing
+state and leaves both slots unchanged. Direct caller-selected serde readers keep
+their field validators; they do not acquire the maintained CBOR preflight.
+
+No accepted durable shape, public API, byte ceiling, dependency selection or
+toolchain changes. Valid recovery adds a text-length comparison to the existing
+walk; its IC instruction and Wasm-size impact are unmeasured. The raw input and
+opaque payload buffers still exist. This improvement bounds additional logical
+decoding allocations on the malformed-text failure path, rather than removing
+the input buffer or eliminating all recovery allocations.
+
+### Matched native measurement
+
+Use the same Linux x86-64, Rust 1.99.0, release-profile, ten-iteration and
+single-thread counting method above. The new ignored
+`ledger_text_recovery_allocations` test constructs a current one-generation
+ledger with a correctly checksummed physical slot and envelope. Only its
+fingerprint length varies. The 256-byte control recovers; the larger values
+refuse with the same codec error category. Fixture construction, existing input
+buffers and physical-store construction are outside the counting window.
+Checksums still scan the protected payload during each measured recovery.
+
+| Fingerprint bytes | Baseline peak requested heap | Candidate peak requested heap |
+| ---: | ---: | ---: |
+| 256 (valid control) | 384 | 384 |
+| 257 | 430 | 200 |
+| 1,024 | 1,197 | 200 |
+| 1,048,576 | 1,048,749 | 200 |
+| 8,388,608 | 8,388,781 | 200 |
+
+The failure still allocates small error objects/formatting buffers. The CSV
+retains allocation and reallocation counts too; the small 257-byte case has more
+error-buffer reallocations despite its lower peak heap. No universal reduction
+in allocation calls or native speedup is claimed. No IC instruction, cycle,
+Wasm-size, stable-memory, installed upgrade or native macOS measurement was run.
+
+Results:
+[`ledger-text-native-allocations.csv`](measurements/ledger-text-native-allocations.csv).
+Local logs: `/tmp/ic-memory-0.26.2-text-baseline.log` and
+`/tmp/ic-memory-0.26.2-text-candidate.log`. The failing-before regression log and
+the initial test-helper compilation failure are retained under the same prefix.
+The helper call was corrected to reuse the existing canonical envelope fixture
+encoder. The earlier 0.26.1 measurements above are unchanged.
+
+SHA-256 bindings for this measurement:
+
+| Input | SHA-256 |
+| --- | --- |
+| Root `Cargo.toml` | `f76ddda751d33dfed621e81d3dea21f018e9e7b585046279127e3c0c686e4f44` |
+| Selected root `Cargo.lock` | `92a9d55aadc78ae619e76793bfeac696a25330675ad534456da37f01a3310e23` |
+| Baseline `src/cbor.rs` | `c61b33d85395dfc6f822922bcba8049540ca0550fc56943c5f510589627e43f7` |
+| Candidate `src/cbor.rs` | `7535dd7cf5f937dd3a7fbb918cfa6cfe66be5c077ae9b0283d02454abd98b5e0` |
+| Candidate measurement harness | `06b6f85d3d198d3a312de7de6c017bee7bf6fb50c25c52bad48bb113d83cd4a4` |
+| Baseline native measurement binary | `2086312626a821d732d9dfad012b7b5b22406071fd5ef482f285c0746de6f72d` |
+| Candidate native measurement binary | `1918b0393f479a560a30e3e7fb0e788ea74c3599f2d8af31f1c9d9025990a5cb` |
+
+Both variants use the same added measurement operations and logical input fields.
+Formatting the harness between runs does not change their logic. The baseline
+binary hash was saved before compiling the candidate.
+
+### Focused checks
+
+- The early-text regression fails against 0.26.1 before the guard is added and
+  passes afterward. It rejects fully backed text as well as truncated/maximal
+  length advertisements before a panic-on-entry deserializer can run.
+- Boundary tests admit 256-byte text and opaque byte strings containing longer
+  inner text. A protected-record regression decodes that opaque data unchanged,
+  then refuses logical recovery and initialization without mutating slots.
+- Rust 1.99.0 passes five CBOR, 95 ledger, 65 runtime, 11 stable-cell and 11
+  diagnostic-metadata tests. Current fixtures, field-error behavior in direct
+  serde readers, corrupt-state rejection, persistence failure and retry pass.
+- Rust 1.88.0 passes the five CBOR and 95 ledger tests and checks the library and
+  measurement target offline. Strict Rust 1.99.0 library/test Clippy and library
+  compilation for `wasm32-unknown-unknown` pass.
+
+Reproduce the specific measurement with:
+
+```bash
+cargo +1.99.0 test --locked --offline --release --test allocation_measurements \
+  ledger_text_recovery_allocations -- --ignored --test-threads=1 --nocapture
+```
+
+For a matched baseline, add the same measurement harness to released 0.26.1
+production source. The full release gates and native macOS qualification were
+not run during this focused pass.

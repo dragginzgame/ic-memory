@@ -180,6 +180,7 @@ mod tests {
         schema::SchemaMetadata,
         slot::MemoryManagerSlot,
     };
+    use ic_stable_structures::Storable;
     fn declaration(key: &str, id: u8, schema_version: Option<u32>) -> AllocationDeclaration {
         AllocationDeclaration::new(
             key,
@@ -2444,5 +2445,34 @@ mod tests {
             LedgerPayloadEnvelope::decode(&envelope),
             Err(LedgerPayloadEnvelopeError::PayloadTooLarge { .. })
         ));
+    }
+
+    #[test]
+    fn oversized_logical_text_remains_opaque_to_record_decode_and_fails_closed() {
+        for len in [257, 8192] {
+            let mut malformed = committed_ledger(1);
+            malformed.allocation_history.generations[0].runtime_fingerprint = Some("x".repeat(len));
+            let mut store = LedgerCommitStore::default();
+            store
+                .physical
+                .commit_payload_at_generation(1, enveloped_payload(&malformed))
+                .unwrap();
+            let record = crate::StableCellLedgerRecord::new(store);
+            let bytes = record.to_bytes();
+            let mut decoded = crate::decode_stable_cell_ledger_record(&bytes).unwrap();
+            assert_eq!(decoded, record);
+            let before = decoded.clone();
+            assert!(matches!(
+                decoded.store().recover(),
+                Err(LedgerCommitError::Codec(_))
+            ));
+            assert!(matches!(
+                decoded
+                    .store_mut()
+                    .recover_or_initialize(&AllocationLedger::empty_genesis()),
+                Err(LedgerCommitError::Codec(_))
+            ));
+            assert_eq!(decoded, before);
+        }
     }
 }
