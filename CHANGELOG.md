@@ -1,6 +1,6 @@
 # Changelog
 
-## [0.31.2]
+## [0.31.2] - 2026-10-07
 
 - Preserve native archive-copy errors and verify owned staging and parent
   identities through IC Host 0.4.5
