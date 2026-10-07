@@ -10,7 +10,7 @@ upgrades cannot silently mix up stored data.
 
 [Package guide and quick start](crates/ic-memory/README.md) ·
 [Advanced integration](ADVANCED.md) · [Safety contract](SAFETY.md) ·
-[Documentation](docs/README.md)
+[Documentation](docs/README.md) · [Contributing](rules/contributions.md)
 
 The virtual root workspace owns the library's metadata, dependencies and
 `Cargo.lock`; the package lives in `crates/ic-memory/`. Run the existing Make

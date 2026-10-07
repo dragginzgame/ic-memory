@@ -556,8 +556,7 @@ impl<E: Execute> Repository<E> {
         let retained = self.retained_package(&digest)?;
         if !retained.exists() {
             self.exec.write_with(&retained, |staging| {
-                let copied = copy_reader(fs::File::open(&package)?, staging, u64::MAX)
-                    .map_err(std::io::Error::other)?;
+                let copied = copy_reader(fs::File::open(&package)?, staging, u64::MAX)?;
                 if copied.sha256.to_string() != digest {
                     return Err(std::io::Error::other(
                         "package changed while retaining evidence",

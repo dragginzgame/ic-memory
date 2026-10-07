@@ -4,9 +4,11 @@
 
 # Releasing ic-memory
 
-This guide is for maintainers. The maintainer owns all commits, tags and pushes.
-Agents leave source, documentation and focused checks unstaged and uncommitted;
-see [AGENTS.md](AGENTS.md). The Rust `repo-tool` example is development tooling,
+This guide covers explicitly authorized release work. Ordinary fixes and release
+preparation leave edits unstaged; an explicit commit or PR request authorizes its
+scoped contribution workflow, and an explicit standard release request authorizes
+its documented commit/tag/push effects. See [contribution rules](rules/contributions.md)
+and [AGENTS.md](AGENTS.md). The Rust `repo-tool` example is development tooling,
 not canister runtime code. Prerequisites and native host evidence are in
 [host support](docs/host-support.md).
 
@@ -18,8 +20,9 @@ uses a patch. Maintain one numbered, undated pending entry, `## [X.Y.Z]`, in bot
 without changing package versions. Preparation refuses mismatched or duplicate
 identities and preserves historical entries.
 
-The maintainer commits implementation and pending notes before releasing. The
-selected source must be clean, on the selected branch, with no active build.
+Implementation and pending notes must be committed through an authorized
+contribution workflow before releasing. The selected source must be clean, on
+the selected branch, with no active build.
 Preserve the tracked dependency selections and prepare their cache:
 
 ```sh
@@ -32,8 +35,9 @@ checks the selected cache with `cargo fetch --locked --offline`; it never retrie
 online or regenerates the lockfile. Validation, version refresh and packaging
 remain offline. A root-version refresh may change only the `ic-memory` entry,
 never dependency selection. Cache preparation is a separate network operation.
-Prepare the checksum-pinned local jq/yq pair with `make install-host-tools`, as described in
-[host support](docs/host-support.md). `make check-pins` checks declarations and
+Prepare the complete checksum-pinned jq/yq/ripgrep/cloc host set with
+`make install-host-tools`, as described in [host support](docs/host-support.md).
+`make check-pins` checks declarations and
 tracked locks; `make validate` includes it and the canonical pinning fixtures.
 Commit the initial tracked-lock adoption before running those gates. Complete
 any earlier unfinished release using its qualified source/tooling first: old

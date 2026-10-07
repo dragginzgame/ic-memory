@@ -99,9 +99,10 @@ and failed candidates stay under `.tools/`. `install-host-tools` and
 `install-ic-tools` can prepare either set separately, with offline checks through
 `host-tools-check` and `ic-tools-check`. Ordinary validation never installs tools.
 CI explicitly installs and checks both sets on each declared native test host;
-configured jobs alone do not qualify this adoption. The pin checker requires locks already tracked
-by Git: agents leave new locks unstaged, so the maintainer must commit their
-adoption before the real-checkout declaration/release gate can pass.
+configured jobs alone do not qualify this adoption. The pin checker requires locks
+already tracked by Git. Adopt new locks through an explicitly authorized commit
+or PR before the real-checkout declaration/release gate can pass; qualification
+alone does not authorize staging them.
 
 `make cloc` reports the root library workspace by default using locked, offline
 Cargo metadata; it neither builds nor installs tools. Select the independent
@@ -119,7 +120,7 @@ identities; explicit `--snapshot-root` selection handles other nested layouts.
 It does not infer ownership from matching hashes. See the correction in
 [Shared Tooling #39](https://github.com/dragginzgame/shared-tooling/issues/39).
 
-The reviewed 0.1.18 LOC fixtures select their own manifests and build output,
+The reviewed LOC fixtures select their own manifests and build output,
 including with scratch inside an enclosing Git/Cargo workspace. Consumer
 `make test-tools` passes inherited target settings through to those fixtures;
 their context admission check verifies enclosing workspace/configuration
@@ -143,6 +144,10 @@ Make adds `.tools/rust/bin` to PATH; interactive use can add that path to the
 shell export. See [Rust setup](local-setup.md#rust-development-tools). Fixture
 qualification substitutes Cargo installation; it does not prove a native tool
 build or implicitly prepare this optional set.
+The installer rejects symlinked or wrong-type installation/build directories,
+executables and Cargo receipts before probing tools, and checks those paths again
+after Cargo returns. Existing host/IC bundle links retain their separate setup
+contract ([Shared Tooling #54](https://github.com/dragginzgame/shared-tooling/issues/54)).
 
 `make check-pins` also checks Cargo inheritance against each manifest's owning
 workspace catalog. The independent runtime-qualification root keeps its approved

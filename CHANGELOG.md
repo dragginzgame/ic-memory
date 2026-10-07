@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.31.2]
+
+- Preserve native archive-copy errors and verify owned staging and parent
+  identities through IC Host 0.4.5
+  ([Host #14](https://github.com/dragginzgame/ic-host-tooling/issues/14)).
+- Fix macOS compilation of the durable release-file writer
+  ([Host #18](https://github.com/dragginzgame/ic-host-tooling/issues/18)).
+- Guard optional Rust-tool installation against redirected paths and fix
+  tool-command fixtures under trailing-slash or aliased temporary roots.
+  [#23](https://github.com/dragginzgame/ic-memory/issues/23),
+  [Shared Tooling #54](https://github.com/dragginzgame/shared-tooling/issues/54),
+  [#56](https://github.com/dragginzgame/shared-tooling/issues/56).
+- Allow explicitly requested agent commits and pull-request contributions,
+  preserving separate merge, integration-branch push and release authority.
+  [#24](https://github.com/dragginzgame/ic-memory/issues/24).
+
+[Detailed notes](docs/changelog/0.31.md)
+
 ## [0.31.1] - 2026-10-07
 
 - Keep LOC fixtures independent of enclosing Cargo workspaces and inherited

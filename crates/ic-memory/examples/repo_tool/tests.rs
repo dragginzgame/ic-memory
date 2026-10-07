@@ -277,10 +277,16 @@ impl Execute for Substitute {
             state
                 .calls
                 .push(vec!["stream-write".to_owned(), path.display().to_string()]);
+            let phase = state.fail.clone();
             if let Some(source) = state.archive_change.take() {
-                fs::write(source, b"changed after digest admission")?;
+                if phase.as_deref() == Some("archive-read") {
+                    fs::remove_file(&source)?;
+                    fs::create_dir(source)?;
+                } else {
+                    fs::write(source, b"changed after digest admission")?;
+                }
             }
-            state.fail.clone()
+            phase
         };
         if phase.as_deref() == Some("archive-before") {
             return Err("fixture failure before archive publication".into());
@@ -1348,6 +1354,31 @@ fn archive_publication_errors_preserve_validation_and_reconcile_visible_bytes() 
         assert!(fixture.repo.record_package("0.13.0").is_err());
         assert_eq!(fs::read(&retained).unwrap(), b"corrupted retained archive");
     }
+}
+
+#[test]
+fn archive_copy_io_failure_preserves_native_error_and_unpublished_state() {
+    let fixture = Fixture::new();
+    let package = fixture.repo.package_path("0.13.0").unwrap();
+    fs::create_dir_all(package.parent().unwrap()).unwrap();
+    fs::write(&package, b"archive").unwrap();
+    let digest = Sha256Digest::compute(b"archive").to_string();
+    let retained = fixture.repo.retained_package(&digest).unwrap();
+    fs::create_dir_all(retained.parent().unwrap()).unwrap();
+    let foreign = retained.with_extension("crate.tmp");
+    fs::write(&foreign, b"unrelated evidence").unwrap();
+    fixture.repo.exec.state.borrow_mut().archive_change = Some(package.clone());
+    fixture.fail("archive-read");
+
+    let error = fixture.repo.record_package("0.13.0").unwrap_err();
+    let actual = error.downcast_ref::<std::io::Error>().unwrap();
+    let expected = fs::read(&package).unwrap_err();
+    assert_eq!(actual.kind(), expected.kind());
+    assert_eq!(actual.raw_os_error(), expected.raw_os_error());
+    assert!(!retained.exists());
+    assert_eq!(fs::read(&foreign).unwrap(), b"unrelated evidence");
+    assert_eq!(fs::read_dir(retained.parent().unwrap()).unwrap().count(), 1);
+    assert!(!fixture.repo.receipt_path("0.13.0", true).unwrap().exists());
 }
 
 #[test]

@@ -11,7 +11,7 @@ exception to revision-bound policy adoption while the shared rules are being
 developed locally. The sibling remains read-only to agents.
 
 The existing tooling snapshot at revision
-`a3430b34b32a60f3b245a2b4f7e2f5321556fe56` is recorded in
+`3ecc48e579f6cf6e6ab01a6645d8a250fc8c6934` is recorded in
 [.shared-tooling.snapshot](.shared-tooling.snapshot). It identifies the vendored
 files, hashes and executable modes; it does not freeze the active local policy.
 Keep its provenance accurate and never edit vendored files in place. Do not
@@ -20,7 +20,7 @@ attribute uncommitted shared files to that recorded revision. The live local
 also applies within its activation scope and is included in this recorded snapshot.
 These instructions are the repository's local overlay.
 
-The 68-file snapshot uses the reviewed local 0.1.18 commit, including the common
+The 70-file snapshot uses the reviewed local 0.1.20 commit, including the common
 audit methods, local host/IC setup, dependency checker, release-command checker
 and linked rules, including the standard Rust workspace layout. Cargo inheritance
 checks cover both approved workspace roots. The unchanged `make/tools.mk`
@@ -33,6 +33,9 @@ build paths; consumer dispatch needs no target workaround. The shared Rust-tool
 installer and fixtures are available through explicit `install-rust-tools` and
 `rust-tools-check`; the existing required host/IC aggregate and separate exact
 cargo-sort formatter setup remain unchanged.
+The Rust installer refuses redirected install/build/receipt paths before tool
+execution and after Cargo returns. Tool-command fixtures normalize their physical
+scratch root; the IC installer uses the included canonical pin parser.
 The canister audit addendum is linked guidance; product limits remain local.
 The common metadata fixture also includes its workspace-version reader. Product
 version parsing stays in the Rust release adapter. The linked tag-maintenance
@@ -56,10 +59,11 @@ validation adapter before gate dispatch. It refuses inherited Make modes that
 skip execution or ignore failures, preserving ordinary selections and jobserver
 settings. Qualify rejection through real Make with substituted release effects.
 
-The user-provided ownership rule below is the approved local exception to shared
-tag/push authority: commits, tags and pushes always belong to the maintainer,
-including when an agent is asked to prepare a release. This preserves the
-maintainer's review of source and release identity before external effects.
+Follow the shared [contribution rules](rules/contributions.md). Ordinary fixes
+remain local; an explicit commit or PR request authorizes its scoped Git workflow.
+Merge, integration-branch push, release, publication and deployment effects retain
+their separate target/effect authorization. The maintainer-approved live-local
+policy exception above remains; there is no blanket agent-commit prohibition.
 
 The virtual repository-root workspace owns shared package metadata and the
 dependency catalog. The library package is `crates/ic-memory/`; its source,
@@ -82,8 +86,10 @@ and prerequisites are declared in [docs/host-support.md](docs/host-support.md).
   Both maintained workspaces track their existing selected lockfiles.
   Validation and release preparation require those lockfiles and populated
   cache, and run offline without changing dependency selection.
-- Do not run maintainer release commands or tests that create commits/tags/pushes,
-  including in disposable repositories. Tooling tests substitute command effects.
+- Release commands require an explicit request for the selected repository,
+  release and destination. Never invoke them merely to qualify adoption.
+  Tooling tests substitute Git effects; do not create commits/tags/pushes to
+  satisfy fixture prerequisites, including in disposable repositories.
 
 ## Formatting and Git hooks
 
@@ -97,8 +103,9 @@ prerequisite checker owns exact cargo-sort and rustfmt admission; this consumer
 owns the selected pin, toolchain and two-workspace roster.
 
 `make install-hooks` changes only local `core.hooksPath`. The pre-commit hook
-refreshes selected index entries, so agents must not run it on this repository's
-real index. Exercise it only in disposable fixtures without commits or tags.
+refreshes selected index entries. Exercise it only in disposable fixtures during
+qualification; explicitly authorized commits may invoke it on their selected
+real index entries. Preserve partial-staging refusal and unrelated work.
 Source adoption, local activation and native host qualification are distinct.
 The recorded installer resolves physical checkout paths, so logical checkout
 aliases work without a consumer setup adapter.
@@ -122,23 +129,29 @@ pass proves a native or live release. Preserve failed gate logs, earlier receipt
 and retained archives across retries. Never invoke a maintainer release command
 to prove adoption.
 
-## User-Owned Commits and Pushes
+## Contributions and Git authority
 
-The user exclusively owns committing and pushing. LLM agents must never create,
-amend, or rewrite commits, push branches or tags, or invoke scripts that perform
-those actions. Requests to prepare a release or push changes do not authorize an
-agent to perform these user-owned actions.
+People and agents use topic branches and pull requests under the shared
+[contribution rules](rules/contributions.md), with normal repository/fork
+permissions, required reviews, checks and branch protections.
 
-- Leave edits unstaged and uncommitted for the user to review.
-- Do not create, move, or delete release tags.
-- Do not run `make release-minor`, `make release-patch`, `make release-major`
-  or `make release-resume`; these
-  commands commit, tag, or push.
-- Prepare source, documentation, and validation within the working tree, then
-  report the result and any commands the user needs to run.
-- If a workflow requires committed source or a clean working tree, stop before
-  that prerequisite and explain the required user action. Never commit or push
-  merely to satisfy a workflow's preconditions.
+- Ordinary fixes, continuation and release preparation leave edits unstaged and
+  uncommitted unless the user also requests the relevant Git effect.
+- An explicit commit request authorizes staging the scoped work and creating its
+  commit; it does not implicitly authorize a push.
+- An explicit PR request includes the necessary topic branch, scoped commits,
+  branch push and PR creation/update. Do not require the maintainer to commit
+  first or ask for the same authorization again at each step.
+- A PR request does not authorize merging, direct integration-branch pushes,
+  rewriting shared history, unrelated work or sibling edits.
+- A selected standard release request authorizes its documented commit/tag/push
+  effects. Package publication, deployment and cleanup need separate requests.
+  Preparing a release or changing these rules is not a request to execute one.
+- The current release runner uses direct delivery. PR contributions do not
+  select PR release delivery or bypass protected branches.
+- Review the entire index before an authorized commit and stage only the scoped
+  changes. If committed source is a prerequisite without Git authorization,
+  report that boundary; never commit merely to satisfy a check.
 
 ## Pre-1.0 Hard-Cut Policy
 
