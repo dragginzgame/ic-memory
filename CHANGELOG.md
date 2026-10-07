@@ -1,6 +1,6 @@
 # Changelog
 
-## [0.31.0]
+## [0.31.0] - 2026-10-07
 
 - **Breaking developer setup:** require the complete pinned jq/yq/ripgrep/cloc
   set. Run `make install-host-tools` to refresh existing installations before
