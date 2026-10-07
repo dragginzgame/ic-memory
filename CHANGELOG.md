@@ -1,6 +1,6 @@
 # Changelog
 
-## [0.29.0]
+## [0.29.0] - 2026-10-07
 
 - **Breaking developer setup:** use the shared pinned jq/yq/ripgrep set for
   local checks and CI. Run `make install-host-tools` to refresh an existing
