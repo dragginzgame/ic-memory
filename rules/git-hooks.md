@@ -19,6 +19,9 @@ the independent, non-mutating formatting gate.
   `cargo fmt --all -- --check`. This sorts the root and every member's Cargo.toml,
   including the root dependency catalog and inherited child tables. Explicitly
   cover standalone/excluded manifests outside that workspace's member set.
+  Independent workspaces and their locations follow the
+  [workspace layout rules](rust-workspaces.md); formatter coverage does not
+  itself grant a layout exception.
 - Use the `cargo-sort` tool for manifest ordering. Record an exact reviewed
   version in the consumer's developer and CI setup and use the same version in
   both; Shared Tooling's fixtures use `2.1.4`, matching Canic's reviewed selection.

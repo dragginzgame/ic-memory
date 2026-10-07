@@ -21,6 +21,8 @@ use std::{
 mod tests;
 
 type Result<T> = std::result::Result<T, Box<dyn Error>>;
+const PACKAGE_MANIFEST: &str = "crates/ic-memory/Cargo.toml";
+const PACKAGE_README: &str = "crates/ic-memory/README.md";
 const PROBES: [(&str, u64); 5] = [
     ("core", 260_000),
     ("diagnostics", 315_000),
@@ -259,34 +261,35 @@ fn version_parts(version: &str) -> Result<[u64; 3]> {
 
 fn toml_string(text: &str, section: &str, field: &str) -> Result<String> {
     let value: toml::Value = toml::from_str(text)?;
-    value
-        .get(section)
+    section
+        .split('.')
+        .try_fold(&value, |value, key| value.get(key))
         .and_then(|value| value.get(field))
         .and_then(toml::Value::as_str)
         .map(str::to_owned)
         .ok_or_else(|| format!("missing {section}.{field}").into())
 }
 
-fn replace_package_version(text: &str, previous: &str, version: &str) -> Result<String> {
+fn replace_workspace_version(text: &str, previous: &str, version: &str) -> Result<String> {
     require(
-        toml_string(text, "package", "version")? == previous,
+        toml_string(text, "workspace.package", "version")? == previous,
         "unexpected package version",
     )?;
-    let mut in_package = false;
+    let mut in_workspace_package = false;
     let mut count = 0;
     let mut result = String::new();
     for line in text.split_inclusive('\n') {
         if line.trim_start().starts_with('[') {
-            in_package = line.trim() == "[package]";
+            in_workspace_package = line.trim() == "[workspace.package]";
         }
-        if in_package
+        if in_workspace_package
             && line
                 .split_once('=')
                 .is_some_and(|(key, _)| key.trim() == "version")
         {
             let start = line
                 .find('"')
-                .ok_or("package.version must use a quoted string")?
+                .ok_or("workspace.package.version must use a quoted string")?
                 + 1;
             let end = start
                 + line[start..]
@@ -304,7 +307,10 @@ fn replace_package_version(text: &str, previous: &str, version: &str) -> Result<
             result.push_str(line);
         }
     }
-    require(count == 1, "expected one package.version assignment")?;
+    require(
+        count == 1,
+        "expected one workspace.package.version assignment",
+    )?;
     Ok(result)
 }
 
@@ -443,11 +449,19 @@ impl<E: Execute> Repository<E> {
 
     fn version(&self, revision: Option<&str>) -> Result<String> {
         let text = self.text("Cargo.toml", revision)?;
+        let package_text = self.text(PACKAGE_MANIFEST, revision)?;
+        let package: toml::Value = toml::from_str(&package_text)?;
         require(
-            toml_string(&text, "package", "name")? == "ic-memory",
-            "expected the ic-memory package",
+            toml_string(&package_text, "package", "name")? == "ic-memory"
+                && package
+                    .get("package")
+                    .and_then(|value| value.get("version"))
+                    .and_then(|value| value.get("workspace"))
+                    .and_then(toml::Value::as_bool)
+                    == Some(true),
+            "expected the ic-memory package with an inherited workspace version",
         )?;
-        let version = toml_string(&text, "package", "version")?;
+        let version = toml_string(&text, "workspace.package", "version")?;
         version_parts(&version)?;
         Ok(version)
     }
@@ -461,7 +475,11 @@ impl<E: Execute> Repository<E> {
     }
 
     fn msrv(&self) -> Result<String> {
-        toml_string(&self.text("Cargo.toml", None)?, "package", "rust-version")
+        toml_string(
+            &self.text("Cargo.toml", None)?,
+            "workspace.package",
+            "rust-version",
+        )
     }
 
     fn clean(&self) -> Result<()> {
@@ -658,7 +676,7 @@ impl<E: Execute> Repository<E> {
         let source = &selection.source;
         let previous = &selection.previous;
         let version = &selection.version;
-        let readme = self.text("README.md", Some(source))?;
+        let readme = self.text(PACKAGE_README, Some(source))?;
         let old = format!("ic-memory = \"{previous}\"");
         require(
             readme.lines().filter(|line| *line == old).count() == 1,
@@ -673,14 +691,14 @@ impl<E: Execute> Repository<E> {
             ),
             (
                 "Cargo.toml".to_owned(),
-                replace_package_version(
+                replace_workspace_version(
                     &self.text("Cargo.toml", Some(source))?,
                     previous,
                     version,
                 )?,
             ),
             (
-                "README.md".to_owned(),
+                PACKAGE_README.to_owned(),
                 readme.replacen(&old, &format!("ic-memory = \"{version}\""), 1),
             ),
             (

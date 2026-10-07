@@ -1,8 +1,10 @@
 # Installed runtime qualification
 
-This standalone, unpublished host package keeps PocketIC dependencies out of
+This independent virtual workspace contains the unpublished host package
+`crates/ic-memory-runtime-qualification/` and owns its separate `Cargo.lock`.
+The package keeps PocketIC dependencies out of
 the library's normal graph. It installs the supplied
-[`wasm-io-qualification`](../../examples/wasm_io_qualification.rs) fixture in a
+[`wasm-io-qualification`](../../crates/ic-memory/examples/wasm_io_qualification.rs) fixture in a
 caller-owned PocketIC 16.0.0 server. It never starts or downloads a server.
 
 Use the [qualification record](../../docs/runtime-io-qualification.md) for

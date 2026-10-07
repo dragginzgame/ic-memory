@@ -10,7 +10,7 @@ preparation. Current-cut evidence belongs to [ledger qualification](current-ledg
 
 ## Scope and tradeoff
 
-[`layout::read`](../src/runtime/layout.rs) validates the current pinned
+[`layout::read`](../crates/ic-memory/src/runtime/layout.rs) validates the current pinned
 ic-stable-structures 0.7.2 manager layout for reopen and allocation diagnostics.
 It previously allocated a 32 KiB `Vec` for the bucket table on each call. A fixed
 local array now replaces that temporary allocation. Iteration borrows the array,
@@ -34,7 +34,7 @@ The focused raw Wasm comparison below qualifies one existing probe only.
 Linux x86-64, Rust 1.99.0 (`b940084d7eb6a299eb4bfeb8e34901bc051e7ac4`, LLVM
 23.1.1), unchanged root lockfile, standard Cargo release profile, one test thread.
 Both variants used the same then-current
-[`allocation_diagnostics_allocations` harness](../tests/allocation_measurements.rs).
+[`allocation_diagnostics_allocations` harness](../crates/ic-memory/tests/allocation_measurements.rs).
 Baseline production source is released 0.26.2; candidate differs in the validator
 above. Fixtures are prepared outside counting: one-page buckets, an empty manager
 or two two-page allocations at IDs 100 and 254, then the same manager after an

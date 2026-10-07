@@ -9,9 +9,9 @@ distinguish current integration guidance from historical engineering evidence.
 
 ## Start here
 
-- [Project overview and quick start](../README.md) explains in plain language
+- [Project overview and quick start](../crates/ic-memory/README.md) explains in plain language
   what `ic-memory` protects, when it is useful, and how to integrate it.
-- [Frequently asked questions](../README.md#frequently-asked-questions) answers
+- [Frequently asked questions](../crates/ic-memory/README.md#frequently-asked-questions) answers
   common scope, lifecycle, retirement, and allocation-style questions.
 - [Advanced integration](../ADVANCED.md) covers runtime ownership, custom
   policies, range authority, recovery, and manual bootstrap.
@@ -88,7 +88,7 @@ link to them.
 - [Detailed 0.26 release notes](changelog/0.26.md)
 - [Detailed 0.25 release notes](changelog/0.25.md)
 - [Release guide](../RELEASING.md)
-- [Current wire fixtures](../fixtures/current/README.md)
+- [Current wire fixtures](../crates/ic-memory/fixtures/current/README.md)
 
 ### Documentation release checklist
 

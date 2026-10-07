@@ -7,8 +7,23 @@ use std::{
 };
 
 static NEXT_FIXTURE: AtomicU64 = AtomicU64::new(0);
-const MANIFEST: &str = "[package]\nname = \"ic-memory\"\nversion = \"0.12.3\"\nrust-version = \"1.88.0\"\n[dependencies]\nother = \"0.12.3\"\n";
+const MANIFEST: &str = "[workspace]\nmembers = [\"crates/ic-memory\"]\n[workspace.package]\nversion = \"0.12.3\"\nrust-version = \"1.88.0\"\n[workspace.dependencies]\nother = \"0.12.3\"\n";
+const PACKAGE: &str = "[package]\nname = \"ic-memory\"\nversion.workspace = true\n";
 const LOCK: &str = "version = 4\n[[package]]\nname = \"ic-memory\"\nversion = \"0.12.3\"\n[[package]]\nname = \"other\"\nversion = \"0.12.3\"\n";
+
+#[test]
+fn release_version_requires_the_named_package_to_inherit_the_workspace_identity() {
+    let fixture = Fixture::new();
+    assert_eq!(fixture.repo.version(None).unwrap(), "0.12.3");
+    for package in [
+        "[package]\nname = \"another-package\"\nversion.workspace = true\n",
+        "[package]\nname = \"ic-memory\"\nversion = \"0.12.3\"\n",
+    ] {
+        fs::write(fixture.repo.root.join(PACKAGE_MANIFEST), package).unwrap();
+        assert!(fixture.repo.version(None).is_err());
+        assert_eq!(fixture.repo.version(Some("source")).unwrap(), "0.12.3");
+    }
+}
 
 struct Fixture {
     repo: Repository<Substitute>,
@@ -26,8 +41,9 @@ impl Fixture {
         let source = BTreeMap::from([
             ("Cargo.lock".to_owned(), LOCK.to_owned()),
             ("Cargo.toml".to_owned(), MANIFEST.to_owned()),
+            (PACKAGE_MANIFEST.to_owned(), PACKAGE.to_owned()),
             (
-                "README.md".to_owned(),
+                PACKAGE_README.to_owned(),
                 "# Fixture\n\nic-memory = \"0.12.3\"\n".to_owned(),
             ),
             (
@@ -290,7 +306,7 @@ impl Execute for Substitute {
         let version = || {
             toml_string(
                 &fs::read_to_string(root.join("Cargo.toml"))?,
-                "package",
+                "workspace.package",
                 "version",
             )
         };
@@ -305,7 +321,12 @@ impl Execute for Substitute {
                 .join("\n"))
         };
         match program {
-            "bash" => Processes.run(Path::new(env!("CARGO_MANIFEST_DIR")), program, args, true),
+            "bash" => Processes.run(
+                &Path::new(env!("CARGO_MANIFEST_DIR")).join("../.."),
+                program,
+                args,
+                true,
+            ),
             "rustc" => Ok(format!("fixture-rustc {}\n", args[0])),
             "cargo"
                 if args
@@ -769,7 +790,7 @@ fn release_versions_and_pending_notes_preserve_dependency_versions_and_history()
     for invalid in ["0.01.3", "0.12", "0.12.3-dev", "0.12.+3"] {
         assert!(version_parts(invalid).is_err());
     }
-    let updated = replace_package_version(MANIFEST, "0.12.3", "0.13.0").unwrap();
+    let updated = replace_workspace_version(MANIFEST, "0.12.3", "0.13.0").unwrap();
     assert!(updated.contains("other = \"0.12.3\""));
     let current = "# Changelog\n\n## [0.13.0]\n\nChanges.\n\n## 0.12.3\n\nHistory.\n";
     assert_eq!(
@@ -914,7 +935,7 @@ fn metadata_publication_failures_reconcile_visible_bytes_and_retry_saved_intent(
         for path in [
             "Cargo.lock",
             "CHANGELOG.md",
-            "README.md",
+            PACKAGE_README,
             "docs/changelog/0.13.md",
             "Cargo.toml",
         ] {
@@ -1036,7 +1057,7 @@ fn interrupted_preparation_finishes_saved_candidate_without_revalidating() {
         let expected = fixture.repo.surfaces(&fixture.selection).unwrap();
         for (path, text) in &expected {
             if match interruption {
-                "partial" => path == "README.md",
+                "partial" => path == PACKAGE_README,
                 "partial-lock" => path.as_str() <= "Cargo.lock",
                 _ => true,
             } {
@@ -1147,7 +1168,7 @@ fn preparation_recovery_preserves_conflicting_inputs_and_corrupted_evidence() {
         let evidence: PackageEvidence =
             serde_json::from_slice(&fs::read(&receipt).unwrap()).unwrap();
         let path = match conflict {
-            "metadata" => fixture.repo.root.join("README.md"),
+            "metadata" => fixture.repo.root.join(PACKAGE_README),
             "lock" => fixture.repo.root.join("Cargo.lock"),
             "receipt" => receipt,
             "archive" => fixture
@@ -1203,7 +1224,7 @@ fn all_release_kinds_finalize_root_and_detail_notes_at_saved_date() {
                 "CHANGELOG.md",
                 "Cargo.lock",
                 "Cargo.toml",
-                "README.md",
+                PACKAGE_README,
                 detail
             ],
         );
@@ -1223,7 +1244,7 @@ fn all_release_kinds_finalize_root_and_detail_notes_at_saved_date() {
 #[test]
 fn dirty_sources_and_changed_validation_inputs_prevent_version_edits() {
     let fixture = Fixture::new();
-    fs::write(fixture.repo.root.join("README.md"), "unfinished").unwrap();
+    fs::write(fixture.repo.root.join(PACKAGE_README), "unfinished").unwrap();
     assert!(fixture.prepare().is_err());
     assert_eq!(
         fs::read_to_string(fixture.repo.root.join("Cargo.toml")).unwrap(),
@@ -1557,7 +1578,10 @@ fn real_index_rejects_hidden_staging_and_checks_exact_prepared_bytes() {
                 "--quiet",
                 "--shared",
                 "--no-checkout",
-                env!("CARGO_MANIFEST_DIR"),
+                Path::new(env!("CARGO_MANIFEST_DIR"))
+                    .join("../..")
+                    .to_str()
+                    .unwrap(),
                 checkout.to_str().unwrap(),
             ],
             true,

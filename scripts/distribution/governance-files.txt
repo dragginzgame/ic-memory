@@ -1,6 +1,7 @@
 DRAGGINZGAME.md
 rules/changelogs.md
 rules/cargo-dependencies.md
+rules/rust-workspaces.md
 rules/dependency-pinning.md
 rules/git-hooks.md
 rules/agent-maintenance.md

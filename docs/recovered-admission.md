@@ -69,7 +69,7 @@ contract.
 
 ## Usage and errors
 
-[`examples/recovered_admission.rs`](../examples/recovered_admission.rs) is the
+[`examples/recovered_admission.rs`](../crates/ic-memory/examples/recovered_admission.rs) is the
 runnable example. Run `cargo run --example recovered_admission`. A host calls
 its generated consumers from its policy's `prepare_bootstrap` method. Existing
 `bootstrap_default_memory_manager_with_policy`, configured default bootstrap and

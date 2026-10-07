@@ -183,3 +183,22 @@ GH_REPO=dragginzgame/ic-memory bash scripts/dev/gh-ci.sh --commit HEAD --all-wor
 This requires an authenticated GitHub CLI session. The bounded listing is evidence
 for the resolved commit; apply the [maintenance rule](../rules/agent-maintenance.md)
 before claiming complete workflow coverage. Uncommitted edits have no CI result.
+
+## Rust workspace locations
+
+The repository root is a virtual Cargo workspace. Shared package metadata,
+dependencies, profiles and the selected lockfile remain there; the library
+package, examples, tests, current wire fixtures and full package guide live in
+`crates/ic-memory/`. Existing root Make/Cargo commands select this sole default
+member. A checkout path dependency must point to `crates/ic-memory`, for example
+`ic-memory = { path = "../ic-memory/crates/ic-memory" }`.
+
+The approved independent root remains `testing/runtime-qualification/`, with
+its own lockfile and sole package at
+`crates/ic-memory-runtime-qualification/`. Its locked fetch/run commands and
+caller-owned PocketIC server requirements retain that root. Layout adoption
+does not merge or update either dependency graph. Package archives contain the
+library source, examples, tests, fixtures, package guide and root-owned MIT
+license, copied unchanged from the repository-owned `LICENSE`; repository CI,
+governance and operational evidence remain outside the
+crate archive.

@@ -25,7 +25,7 @@ Logical ledgers contain a commit counter and current ownership records only.
 Opaque committed payloads use definite-length CBOR byte strings. The 0.27.0
 hard cut replaces the former logical layout and discriminator; retained
 installations require explicit disposition before deployment. See
-[the current ledger contract](../../docs/current-ledger.md).
+[the current ledger contract](https://github.com/dragginzgame/ic-memory/blob/main/docs/current-ledger.md).
 The logical format version remains `1`; there is no old-shape reader.
 
 Fixture groups:

@@ -1,0 +1,74 @@
+[package]
+name = "ic-memory"
+edition.workspace = true
+rust-version.workspace = true
+version.workspace = true
+license.workspace = true
+authors.workspace = true
+description.workspace = true
+readme.workspace = true
+documentation.workspace = true
+homepage.workspace = true
+repository.workspace = true
+keywords.workspace = true
+categories.workspace = true
+publish = true
+
+[target.'cfg(not(target_arch = "wasm32"))'.dev-dependencies]
+ic-host-artifacts.workspace = true
+ic-host-fs.workspace = true
+
+[dependencies]
+ciborium.workspace = true
+ctor.workspace = true
+ic-stable-structures.workspace = true
+serde.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+serde_json.workspace = true
+toml.workspace = true
+trybuild.workspace = true
+
+[[example]]
+name = "composed_host"
+path = "examples/composed_host.rs"
+test = true
+
+[[example]]
+name = "repo-tool"
+path = "examples/repo-tool.rs"
+test = true
+
+[[example]]
+name = "wasm-core-size-probe"
+path = "examples/wasm_core_size_probe.rs"
+crate-type = ["cdylib"]
+
+[[example]]
+name = "wasm-diagnostics-size-probe"
+path = "examples/wasm_diagnostics_size_probe.rs"
+crate-type = ["cdylib"]
+
+[[example]]
+name = "wasm-key-only-size-probe"
+path = "examples/wasm_key_only_size_probe.rs"
+crate-type = ["cdylib"]
+
+[[example]]
+name = "wasm-admission-size-probe"
+path = "examples/wasm_admission_size_probe.rs"
+crate-type = ["cdylib"]
+
+[[example]]
+name = "wasm-runtime-integration-size-probe"
+path = "examples/wasm_runtime_integration_size_probe.rs"
+crate-type = ["cdylib"]
+
+[[example]]
+name = "wasm-io-qualification"
+path = "examples/wasm_io_qualification.rs"
+crate-type = ["cdylib"]
+
+[lints]
+workspace = true

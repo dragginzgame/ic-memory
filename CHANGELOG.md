@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.30.0]
+
+- **Breaking checkout layout:** move Rust packages under `crates/` with virtual
+  workspace roots. Point library path dependencies and package-specific manifest
+  commands at `crates/ic-memory/`; existing root Make/Cargo commands retain their
+  selection. The independent runtime qualification graph and lockfile stay separate.
+  [#19](https://github.com/dragginzgame/ic-memory/issues/19).
+
+[Detailed notes](docs/changelog/0.30.md)
+
 ## [0.29.0] - 2026-10-07
 
 - **Breaking developer setup:** use the shared pinned jq/yq/ripgrep set for

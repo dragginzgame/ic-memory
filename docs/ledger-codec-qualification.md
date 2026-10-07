@@ -7,7 +7,7 @@ execution. The manifest remains 0.26.0 until maintainer release preparation.
 
 ## Scope and tradeoffs
 
-[`LedgerPayloadEnvelope::encode_ledger`](../src/ledger/payload.rs) previously
+[`LedgerPayloadEnvelope::encode_ledger`](../crates/ic-memory/src/ledger/payload.rs) previously
 serialized into a growing `Vec` and checked its byte length afterward. A
 structurally valid ledger with 65,536 generations and 256-byte fingerprints
 exceeds the existing 16 MiB encoded limit. Its eventual refusal did not prevent
@@ -20,7 +20,7 @@ there is no extra size-counting traversal or intermediate payload copy. The
 writer supplies an all-or-error `write_all` implementation for Ciborium's IO
 adapter. The same typed ledger-byte error returns before physical mutation.
 
-[`deserialize_bounded_vec`](../src/cbor.rs) previously ignored admitted sequence
+[`deserialize_bounded_vec`](../crates/ic-memory/src/cbor.rs) previously ignored admitted sequence
 length hints. It now reserves the definite collection length after checking its
 ceiling. Non-empty collections below the ceiling have one spare entry, so the
 owned bootstrap staging path can append its next generation without immediately
@@ -51,7 +51,7 @@ the candidate uses the source hashes below and that same harness. Logical input
 fields and ten-iteration operations match. Inputs and the two protected slots
 used by record encoding/recovery are constructed before counting begins.
 
-The [`measurement harness`](../tests/allocation_measurements.rs) counts this
+The [`measurement harness`](../crates/ic-memory/tests/allocation_measurements.rs) counts this
 thread's requested allocations through `System`, not RSS or transient internal
 allocator copying. Every measured operation releases its measured allocations.
 Commit measurements start from an empty store and include encoding, protected

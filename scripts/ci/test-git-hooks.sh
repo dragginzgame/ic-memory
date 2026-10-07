@@ -40,50 +40,45 @@ new_fixture() {
     # Synthetic manifests have their own dependency graph. Remove inherited
     # consumer locks so the formatter check still detects accidental creation.
     git rm --quiet --ignore-unmatch -- Cargo.lock testing/runtime-qualification/Cargo.lock
-    mkdir -p ci .githooks scripts/ci scripts/dev testing/runtime-qualification/src
+    mkdir -p ci .githooks scripts/ci scripts/dev
     for path in Makefile ci/tool-versions.env rust-toolchain.toml .githooks/pre-commit scripts/dev/install-git-hooks.sh scripts/ci/check-format-tools.sh; do
         cp -p "$root/$path" "$path"
     done
-    cat > Cargo.toml <<'CARGO'
-[workspace]
-exclude = ["testing/runtime-qualification"]
-[package]
-name = "hook-fixture"
-version = "0.0.0"
-edition = "2024"
-autoexamples = false
-autotests = false
-autobenches = false
-autobins = false
-CARGO
-    cat > testing/runtime-qualification/Cargo.toml <<'CARGO'
-[workspace]
-[package]
-name = "hook-host-fixture"
-version = "0.0.0"
-edition = "2024"
-CARGO
-    printf 'pub fn fixture( ){}\n' > src/lib.rs
-    printf 'pub fn fixture( ){}\n' > testing/runtime-qualification/src/lib.rs
     for workspace in . testing/runtime-qualification; do
-        cat >> "$workspace/Cargo.toml" <<'CARGO'
+        mkdir -p "$workspace/crates/hook-fixture/src"
+        cat > "$workspace/Cargo.toml" <<'CARGO'
+[workspace]
+resolver = "3"
+members = ["crates/hook-fixture", "crates/alpha", "crates/zeta"]
+exclude = ["testing/runtime-qualification"]
+
+[workspace.package]
+version = "0.0.0"
+edition = "2024"
 
 [workspace.dependencies]
 # Keep this comment and the selected path/feature policy.
-zeta = { path = "zeta", default-features = false }
-alpha = { path = "alpha" }
+zeta = { path = "crates/zeta", default-features = false }
+alpha = { path = "crates/alpha" }
+CARGO
+        cat > "$workspace/crates/hook-fixture/Cargo.toml" <<'CARGO'
+[package]
+name = "hook-fixture"
+version.workspace = true
+edition.workspace = true
 
 [dependencies]
 zeta.workspace = true
 alpha.workspace = true
 CARGO
+        printf 'pub fn fixture( ){}\n' > "$workspace/crates/hook-fixture/src/lib.rs"
         for member in alpha zeta; do
-            mkdir -p "$workspace/$member/src"
-            printf '[package]\nname = "%s"\nversion = "0.0.0"\nedition = "2024"\n' "$member" > "$workspace/$member/Cargo.toml"
-            printf 'pub fn fixture() {}\n' > "$workspace/$member/src/lib.rs"
+            mkdir -p "$workspace/crates/$member/src"
+            printf '[package]\nname = "%s"\nversion.workspace = true\nedition.workspace = true\n' "$member" > "$workspace/crates/$member/Cargo.toml"
+            printf 'pub fn fixture() {}\n' > "$workspace/crates/$member/src/lib.rs"
         done
     done
-    git add -- Makefile ci/tool-versions.env rust-toolchain.toml .githooks/pre-commit scripts/dev/install-git-hooks.sh scripts/ci/check-format-tools.sh Cargo.toml src/lib.rs alpha zeta testing/runtime-qualification/Cargo.toml testing/runtime-qualification/src/lib.rs testing/runtime-qualification/alpha testing/runtime-qualification/zeta
+    git add -- Makefile ci/tool-versions.env rust-toolchain.toml .githooks/pre-commit scripts/dev/install-git-hooks.sh scripts/ci/check-format-tools.sh Cargo.toml crates/hook-fixture crates/alpha crates/zeta testing/runtime-qualification/Cargo.toml testing/runtime-qualification/crates/hook-fixture testing/runtime-qualification/crates/alpha testing/runtime-qualification/crates/zeta
 }
 
 expect_failure() {
@@ -99,10 +94,10 @@ cp README.md unrelated-before
 printf 'untracked edit\n' > unrelated.rs
 tree="$(git write-tree)"
 expect_failure make --no-print-directory fmt-check
-[[ "$(git write-tree)" == "$tree" && "$(cat src/lib.rs)" == 'pub fn fixture( ){}' ]]
+[[ "$(git write-tree)" == "$tree" && "$(cat crates/hook-fixture/src/lib.rs)" == 'pub fn fixture( ){}' ]]
 CARGO_NET_OFFLINE=true RUSTUP_AUTO_INSTALL=0 bash .githooks/pre-commit > output
-[[ "$(git show :src/lib.rs)" == 'pub fn fixture() {}' ]]
-[[ "$(git show :testing/runtime-qualification/src/lib.rs)" == 'pub fn fixture() {}' ]]
+[[ "$(git show :crates/hook-fixture/src/lib.rs)" == 'pub fn fixture() {}' ]]
+[[ "$(git show :testing/runtime-qualification/crates/hook-fixture/src/lib.rs)" == 'pub fn fixture() {}' ]]
 cmp unrelated-before README.md
 [[ "$(git show :README.md)" == "$(git show HEAD:README.md)" ]]
 [[ "$(cat unrelated.rs)" == 'untracked edit' && -z "$(git ls-files -- unrelated.rs)" ]]
@@ -115,8 +110,8 @@ tree="$(git write-tree)"
 bash .githooks/pre-commit > output
 [[ "$(git write-tree)" == "$tree" ]]
 
-for path in src/lib.rs Cargo.toml Makefile ci/tool-versions.env; do
-    new_fixture "partial-$(basename "$path")"
+for path in crates/hook-fixture/src/lib.rs Cargo.toml crates/hook-fixture/Cargo.toml Makefile ci/tool-versions.env; do
+    new_fixture "partial-${path//\//-}"
     case "$path" in *.rs) comment='//' ;; *) comment='#' ;; esac
     # Every case must select this file even when consumer tooling matches HEAD.
     printf '\n%s staged fixture edit\n' "$comment" >> "$path"
@@ -129,7 +124,7 @@ for path in src/lib.rs Cargo.toml Makefile ci/tool-versions.env; do
     cp "$path" before
     tree="$(git write-tree)"
     expect_failure bash .githooks/pre-commit
-    [[ "$(git write-tree)" == "$tree" && "$(cat testing/runtime-qualification/src/lib.rs)" == 'pub fn fixture( ){}' ]]
+    [[ "$(git write-tree)" == "$tree" && "$(cat testing/runtime-qualification/crates/hook-fixture/src/lib.rs)" == 'pub fn fixture( ){}' ]]
     cmp before "$path"
 done
 
@@ -137,10 +132,10 @@ new_fixture failed-formatter
 printf '.PHONY: fmt\nfmt:\n\t@false\n' > Makefile
 git add -- Makefile
 tree="$(git write-tree)"
-cp src/lib.rs before
+cp crates/hook-fixture/src/lib.rs before
 expect_failure bash .githooks/pre-commit
 [[ "$(git write-tree)" == "$tree" ]]
-cmp before src/lib.rs
+cmp before crates/hook-fixture/src/lib.rs
 
 new_fixture installation
 bash scripts/dev/install-git-hooks.sh > output

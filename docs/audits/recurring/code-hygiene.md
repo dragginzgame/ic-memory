@@ -2,7 +2,7 @@
 
 Use the unchanged [shared code hygiene method](../../../audits/code-hygiene.md)
 and [audit contract](../../../audits/README.md), recorded at Shared Tooling
-`33c2a6f0018a94915f819ff219e270500ed5b73b` in
+`e378671d90afa237ff63a4b0e3b9551eb2c222b6` in
 [the snapshot](../../../.shared-tooling.snapshot). The shared method owns generic
 questions, severity, verdicts, evidence and repair authority. This overlay owns
 the crate-specific obligations below. An audit does not authorize fixes.
@@ -12,13 +12,13 @@ the crate-specific obligations below. An audit does not authorize fixes.
 - Current [safety contract](../../../SAFETY.md), [advanced API](../../../ADVANCED.md),
   [current ledger](../../current-ledger.md) and [operations](../../operations.md).
   Review current contracts; historical reports do not establish present behavior.
-- Public API roots: `src/lib.rs`, `src/capability.rs`, `src/declaration.rs`,
-  `src/policy.rs`, `src/slot/`, `src/runtime/`, and `examples/composed_host.rs`.
+- Public API roots: `crates/ic-memory/src/lib.rs`, `crates/ic-memory/src/capability.rs`, `crates/ic-memory/src/declaration.rs`,
+  `crates/ic-memory/src/policy.rs`, `crates/ic-memory/src/slot/`, `crates/ic-memory/src/runtime/`, and `crates/ic-memory/examples/composed_host.rs`.
   Inventory constructors separately from inert/diagnostic DTOs and manual owners.
 - Trust transitions: declarations/decoded DTOs → validation → staged ledger →
   physical persistence → committed capability → runtime publication. Trace
-  `src/cbor.rs`, `src/validation.rs`, `src/ledger/`, `src/physical.rs`,
-  `src/stable_cell.rs`, `src/bootstrap.rs`, `src/registry.rs` and `src/runtime/`.
+  `crates/ic-memory/src/cbor.rs`, `crates/ic-memory/src/validation.rs`, `crates/ic-memory/src/ledger/`, `crates/ic-memory/src/physical.rs`,
+  `crates/ic-memory/src/stable_cell.rs`, `crates/ic-memory/src/bootstrap.rs`, `crates/ic-memory/src/registry.rs` and `crates/ic-memory/src/runtime/`.
   Recovery must reject malformed current-format bytes and corrupt/ambiguous slots
   before issuing authority. Keep constructor/deserialization invariants aligned;
   decoded DTOs and diagnostics never grant memory access.
@@ -37,9 +37,9 @@ the crate-specific obligations below. An audit does not authorize fixes.
 
 ## Focused evidence
 
-Inspect `src`, `tests`, `examples`, `fixtures/current`, `testing/runtime-qualification`,
+Inspect `crates/ic-memory/src`, `crates/ic-memory/tests`, `crates/ic-memory/examples`, `crates/ic-memory/fixtures/current`, `testing/runtime-qualification`,
 Make/CI and maintained guides for the selected scope. Trace the macros in
-`src/lib.rs` through the registry, examples and compile-fail consumers. Runtime,
+`crates/ic-memory/src/lib.rs` through the registry, examples and compile-fail consumers. Runtime,
 host release adapters and the independent PocketIC harness have different contracts;
 name omitted families rather than implying they passed.
 

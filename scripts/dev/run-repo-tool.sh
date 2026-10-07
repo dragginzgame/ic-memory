@@ -11,7 +11,7 @@ fi
 toolchain="$1"
 shift
 manifest_version="$(awk '
-    /^\[package\]$/ { package = 1; next }
+    /^\[workspace\.package\]$/ { package = 1; next }
     /^\[/ { package = 0 }
     package && /^version = "[^"]+"$/ { gsub(/^version = "|"$/, ""); print }
 ' Cargo.toml)"
@@ -35,15 +35,17 @@ target="$(cargo "+$toolchain" metadata --locked --offline --no-deps --format-ver
 mkdir -p "$target/repo-tool-bootstrap"
 scratch="$(mktemp -d "$target/repo-tool-bootstrap/attempt.XXXXXX")"
 echo "Retained repo-tool bootstrap metadata: $scratch" >&2
-cp Cargo.lock README.md "$scratch/"
+cp Cargo.lock LICENSE "$scratch/"
+mkdir -p "$scratch/crates/ic-memory"
+cp crates/ic-memory/Cargo.toml crates/ic-memory/README.md "$scratch/crates/ic-memory/"
 awk -v version="$lock_version" '
-    /^\[package\]$/ { package = 1; print; next }
+    /^\[workspace\.package\]$/ { package = 1; print; next }
     /^\[/ { package = 0 }
     package && /^version = "[^"]+"$/ { print "version = \"" version "\""; next }
     { print }
 ' Cargo.toml > "$scratch/Cargo.toml"
-ln -s "$PWD/src" "$scratch/src"
-ln -s "$PWD/examples" "$scratch/examples"
+ln -s "$PWD/crates/ic-memory/src" "$scratch/crates/ic-memory/src"
+ln -s "$PWD/crates/ic-memory/examples" "$scratch/crates/ic-memory/examples"
 # This only makes compilation metadata coherent; it grants no release authority.
 # The adapter runs in the real checkout and checks source, intent and evidence.
 exec cargo "+$toolchain" run --locked --offline --quiet \

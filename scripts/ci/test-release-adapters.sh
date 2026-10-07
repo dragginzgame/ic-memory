@@ -76,16 +76,16 @@ done
 # The actual Make launcher must reach the adapter while only the root lock is
 # prepared. Cargo/parser substitutes prove isolation and argument propagation.
 mkdir -p "$FIXTURE/bootstrap/scripts/dev" "$FIXTURE/bootstrap/bin" \
-    "$FIXTURE/bootstrap/src" "$FIXTURE/bootstrap/examples" "$FIXTURE/bootstrap/ci"
+    "$FIXTURE/bootstrap/crates/ic-memory/src" "$FIXTURE/bootstrap/crates/ic-memory/examples" "$FIXTURE/bootstrap/ci"
 cp "$ROOT/Makefile" "$ROOT/rust-toolchain.toml" "$FIXTURE/bootstrap/"
 cp "$ROOT/ci/tool-versions.env" "$FIXTURE/bootstrap/ci/"
 cp "$ROOT/scripts/dev/run-repo-tool.sh" "$FIXTURE/bootstrap/scripts/dev/"
 cd "$FIXTURE/bootstrap"
 cat > Cargo.toml <<'MANIFEST'
-[package]
-name = "ic-memory"
-version = "0.12.3"
 [workspace]
+members = ["crates/ic-memory"]
+[workspace.package]
+version = "0.12.3"
 [workspace.dependencies]
 other = "0.12.3"
 MANIFEST
@@ -98,7 +98,13 @@ version = "0.12.3"
 name = "other"
 version = "0.12.3"
 LOCK
-echo fixture > README.md
+echo fixture > crates/ic-memory/README.md
+echo fixture-license > LICENSE
+cat > crates/ic-memory/Cargo.toml <<'MANIFEST'
+[package]
+name = "ic-memory"
+version.workspace = true
+MANIFEST
 cp Cargo.toml original-manifest
 cat > bin/cargo <<'STUB'
 #!/usr/bin/env bash
@@ -119,9 +125,11 @@ case "$2" in
             [[ "${13}" == version || "${13}" == publish ]]
             cmp expected-manifest "$7"
             cmp Cargo.lock "$(dirname "$7")/Cargo.lock"
-            cmp README.md "$(dirname "$7")/README.md"
-            [[ "$(readlink "$(dirname "$7")/src")" == "$PWD/src" ]]
-            [[ "$(readlink "$(dirname "$7")/examples")" == "$PWD/examples" ]]
+            cmp crates/ic-memory/Cargo.toml "$(dirname "$7")/crates/ic-memory/Cargo.toml"
+            cmp crates/ic-memory/README.md "$(dirname "$7")/crates/ic-memory/README.md"
+            cmp LICENSE "$(dirname "$7")/LICENSE"
+            [[ "$(readlink "$(dirname "$7")/crates/ic-memory/src")" == "$PWD/crates/ic-memory/src" ]]
+            [[ "$(readlink "$(dirname "$7")/crates/ic-memory/examples")" == "$PWD/crates/ic-memory/examples" ]]
             echo bootstrap >> calls
         else
             [[ "$6" == --example && "$7" == repo-tool && "$8" == -- ]]
@@ -167,10 +175,10 @@ check_publication_environment() {
 [[ "$(cat calls)" == normal ]]
 check_publication_environment
 cat > expected-manifest <<'MANIFEST'
-[package]
-name = "ic-memory"
-version = "0.13.0"
 [workspace]
+members = ["crates/ic-memory"]
+[workspace.package]
+version = "0.13.0"
 [workspace.dependencies]
 other = "0.12.3"
 MANIFEST

@@ -1,8 +1,8 @@
 # Shared Tooling snapshot v1
 format	1
 source	https://github.com/dragginzgame/shared-tooling
-revision	33c2a6f0018a94915f819ff219e270500ed5b73b
-file	9c4a8524b15ec9beaf3b0ae64323d97b58194e6f9d5b065c14b773a67de2e3e9	-	DRAGGINZGAME.md
+revision	e378671d90afa237ff63a4b0e3b9551eb2c222b6
+file	54d5f831720a559c8afec83cd8f2f39ac3c82bf4a95d3ba336b3d82229d12800	-	DRAGGINZGAME.md
 file	59f6cb0b47fcfa698396776bbb391737292ebf34457ad7c65803fe7b36961499	-	docs/principles/README.md
 file	9315c9faffa4f36cfab496342535bf49d728ddd2111e8e127cbc44b3fac89ce7	-	docs/principles/decision-artifact-discipline.md
 file	56701aba8ce851ac4cce32fb55ce721698a94218b1e46636818f6b43debcb719	-	docs/principles/reviewable-changes.md
@@ -15,8 +15,8 @@ file	b6764190803118331d7441233bcd6a3031c99c0c5219cc4a5c29dfb1a1040e41	x	scripts/
 file	4d460213796a0f22480d91f91fbff68e94d7ce1a06d66b01acc2a437073fc50e	x	scripts/ci/install-actionlint.sh
 file	53e73e70de9d556f58c9fddabf5c4ee2b8a5ae45a1ac7fa9647cd5c9fea0d7e2	x	scripts/ci/install-shellcheck.sh
 file	9c95f254c59a1ef312d37981dcd8af2dadf4eda34cf9026cfeda4092a2716858	-	rules/changelogs.md
-file	b0dfb6f6a1caf0f47f166523a3703bdd88a7667f8b0901e549620eb31adb7a7a	-	rules/cargo-dependencies.md
-file	fcaa0fef984f57853c2672a787fc2ac3c690dcb912ed475c1c4e95453cfdf00f	-	rules/git-hooks.md
+file	f5aca44f12d4f35fa2e5beea63c202eb5d7d8e613f1ded8ecd5de4b650609e01	-	rules/cargo-dependencies.md
+file	c4f38cfef8c601b390b5520a2130f09c2b58be4110f98d424ac1b8b0badc89b5	-	rules/git-hooks.md
 file	cf7aa8f7bcb7c50963e280580710468b3e9de6e8406e91c8dafb3796d8da8163	-	docs/releases.md
 file	6d5bb9cc5ea9a8fdc4b1e075b691f6293d0654483ea3f9e019f2b2f86913ca7c	x	.githooks/pre-commit
 file	c48e767cb16fce756bea55492e33c62fd1e57560310d63bfb8a1adc118be2212	x	scripts/dev/install-git-hooks.sh
@@ -55,4 +55,5 @@ file	1063002468575e2f821cfec71524bde06a64634bf30455d64d2d9fed872969d6	-	docs/tag
 file	a52db278800a9f02d85a6b8a780a9b1eed860c49d5442cef9db1f7f9d7ddee0a	x	scripts/ci/check-format-tools.sh
 file	bf3ac5d22e63798ffe67539b138d277cc3364a4665babff5b494b210b1e140ce	x	scripts/ci/test-format-tools.sh
 file	0d2931071ee28be1025d44caf72c19e4855cb4a934e6491e5457491f837be547	x	scripts/dev/gh-ci.sh
-file	18ed473724f924353b13f212c0fcf049aba67957218e63b25de0c833410096c7	-	scripts/distribution/governance-files.txt
+file	ae7002d8beaa7fa1de84c89b648120e5595b72e516ccf0dff01961aad5dcda5d	-	scripts/distribution/governance-files.txt
+file	b196dba98955516d3cce300cd31dd9e4767da0188aa5da16d0f4b323e43061f5	-	rules/rust-workspaces.md

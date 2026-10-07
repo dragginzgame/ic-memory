@@ -12,7 +12,7 @@ actual inputs used at execution, rather than those later edits.
 
 ## Changes and compatibility
 
-[`RuntimeMemory`](../src/runtime/backing.rs) checks safe reads, raw reads and
+[`RuntimeMemory`](../crates/ic-memory/src/runtime/backing.rs) checks safe reads, raw reads and
 writes against the current virtual byte extent before upstream translation.
 Its short-circuit subtraction avoids offset/length addition overflow. Manager
 layout admission and growth already bound the virtual page count by the bucket
@@ -28,18 +28,18 @@ from `0x6D` to `0xFF`. This is executed corruption evidence. The crate guard
 protects handles opened through `ic-memory`, including its ledger; direct
 upstream `VirtualMemory` users remain outside this protection.
 
-[`serialize_record`](../src/stable_cell.rs) reserves the existing exact encoded
+[`serialize_record`](../crates/ic-memory/src/stable_cell.rs) reserves the existing exact encoded
 size before invoking the canonical encoder. The size counter counts opaque
 payload lengths without rereading every payload byte. Neither codec nor
-persisted bytes changes. [`validate_integrity`](../src/ledger/integrity.rs)
+persisted bytes changes. [`validate_integrity`](../crates/ic-memory/src/ledger/integrity.rs)
 recognizes strictly increasing generations as unique and avoids building the
 generation set. Unordered DTOs retain the original set and refusal order; record
 key uniqueness and committed chain/recovery validation remain in place.
 
-[`DeclarationSnapshot` decoding](../src/declaration.rs) uses the existing bounded
+[`DeclarationSnapshot` decoding](../crates/ic-memory/src/declaration.rs) uses the existing bounded
 visitor to refuse more than 255 declarations before decoding an extra entry.
 Valid wire shape is unchanged; generic serde errors for excess entries may
-occur earlier and use different prose. [`PendingBootstrapCommit`](../src/bootstrap.rs)
+occur earlier and use different prose. [`PendingBootstrapCommit`](../crates/ic-memory/src/bootstrap.rs)
 now warns when discarded even after consuming its enclosing `Result`. Callers
 with warning denial must complete persistence/confirmation or explicitly discard
 the value in an intentional model/test path. It does not add automatic commit,
@@ -67,8 +67,8 @@ format changes. No compatibility readers or aliases were added.
   `into_bytes` output. The pending-commit UI case denies `unused_must_use` after
   consuming the enclosing result and observes the pending type's diagnostic.
 
-The installed [Wasm fixture](../examples/wasm_io_qualification.rs) and
-[host runner](../testing/runtime-qualification/src/main.rs) use the current root
+The installed [Wasm fixture](../crates/ic-memory/examples/wasm_io_qualification.rs) and
+[host runner](../testing/runtime-qualification/crates/ic-memory-runtime-qualification/src/main.rs) use the current root
 dependency graph. PocketIC 16.0.0 passed these executed checks:
 
 - All three IO methods trap for end-plus-one-byte, empty span beyond end,

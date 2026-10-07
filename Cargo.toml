@@ -1,23 +1,22 @@
-[package]
-name = "ic-memory"
+[workspace]
+resolver = "3"
+members = ["crates/ic-memory"]
+default-members = ["crates/ic-memory"]
+exclude = ["testing/runtime-qualification"]
+
+[workspace.package]
 edition = "2024"
 rust-version = "1.88.0"
 version = "0.29.0"
 license = "MIT"
 authors = ["borovan <84897664+borovan@users.noreply.github.com>"]
 description = "Durable stable-memory allocation governance for Internet Computer canisters"
-readme = "README.md"
+readme = "crates/ic-memory/README.md"
 documentation = "https://docs.rs/ic-memory"
 homepage = "https://github.com/dragginzgame/ic-memory"
 repository = "https://github.com/dragginzgame/ic-memory"
 keywords = ["ic-stable-structures", "memory-id", "registry", "canister", "icp"]
 categories = ["wasm", "data-structures"]
-publish = true
-exclude = ["images/dont-overwrite.png"]
-
-[workspace]
-resolver = "3"
-exclude = ["testing/runtime-qualification"]
 
 [workspace.dependencies]
 ciborium = "0.2.2"
@@ -36,71 +35,7 @@ thiserror = "2.0"
 toml = "1.1.6"
 trybuild = "1.0.121"
 
-[dependencies]
-ciborium.workspace = true
-ctor.workspace = true
-ic-stable-structures.workspace = true
-serde.workspace = true
-thiserror.workspace = true
-
-[target.'cfg(not(target_arch = "wasm32"))'.dev-dependencies]
-ic-host-artifacts.workspace = true
-ic-host-fs.workspace = true
-
-[dev-dependencies]
-serde_json.workspace = true
-toml.workspace = true
-trybuild.workspace = true
-
-[[example]]
-name = "composed_host"
-path = "examples/composed_host.rs"
-test = true
-
-[[example]]
-name = "repo-tool"
-path = "examples/repo-tool.rs"
-test = true
-
-[[example]]
-name = "wasm-core-size-probe"
-path = "examples/wasm_core_size_probe.rs"
-crate-type = ["cdylib"]
-
-[[example]]
-name = "wasm-diagnostics-size-probe"
-path = "examples/wasm_diagnostics_size_probe.rs"
-crate-type = ["cdylib"]
-
-[[example]]
-name = "wasm-key-only-size-probe"
-path = "examples/wasm_key_only_size_probe.rs"
-crate-type = ["cdylib"]
-
-[[example]]
-name = "wasm-admission-size-probe"
-path = "examples/wasm_admission_size_probe.rs"
-crate-type = ["cdylib"]
-
-[[example]]
-name = "wasm-runtime-integration-size-probe"
-path = "examples/wasm_runtime_integration_size_probe.rs"
-crate-type = ["cdylib"]
-
-[[example]]
-name = "wasm-io-qualification"
-path = "examples/wasm_io_qualification.rs"
-crate-type = ["cdylib"]
-
-[profile.wasm-size]
-inherits = "release"
-opt-level = "z"
-lto = "fat"
-codegen-units = 1
-panic = "abort"
-strip = "symbols"
-
-[lints.clippy]
+[workspace.lints.clippy]
 all = { level = "warn", priority = -1 }
 pedantic = { level = "warn", priority = -1 }
 nursery = { level = "warn", priority = -1 }
@@ -125,3 +60,11 @@ significant_drop_tightening = "allow"
 struct_field_names = "allow"
 used_underscore_binding = "allow"
 wildcard_imports = "allow"
+
+[profile.wasm-size]
+inherits = "release"
+opt-level = "z"
+lto = "fat"
+codegen-units = 1
+panic = "abort"
+strip = "symbols"

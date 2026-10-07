@@ -194,7 +194,7 @@ Consumers contribute their preparation to the host's single
 do not bootstrap again with their own policy. Verification checks fixed IDs,
 logical keys, current authority and diagnostic metadata without replaying
 admission or changing the host's geometry. See the
-[composed-host example](examples/composed_host.rs) and
+[composed-host example](crates/ic-memory/examples/composed_host.rs) and
 [recovered-admission contract](docs/recovered-admission.md).
 
 ## Declaration-Only Hooks

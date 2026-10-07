@@ -59,9 +59,9 @@ replace policy/configuration. They do not read ownership records or construct an
 default runtime. Verification reports typed missing-key, fixed-ID, current
 authority and diagnostic-metadata mismatches; it does not validate application
 schema semantics or replay admission. The runnable
-[`key_only` example](../examples/key_only.rs) covers standalone ownership and a
+[`key_only` example](../crates/ic-memory/examples/key_only.rs) covers standalone ownership and a
 composed host with automatic requests, a fixed control slot and a prior journal
-reservation. The [composed-host regression](../examples/composed_host.rs) adds
+reservation. The [composed-host regression](../crates/ic-memory/examples/composed_host.rs) adds
 consumer admission, two cold reopens and bootstrap on each native worker.
 
 ## Omitted-store inspection

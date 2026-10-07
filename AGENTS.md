@@ -11,7 +11,7 @@ exception to revision-bound policy adoption while the shared rules are being
 developed locally. The sibling remains read-only to agents.
 
 The existing tooling snapshot at revision
-`33c2a6f0018a94915f819ff219e270500ed5b73b` is recorded in
+`e378671d90afa237ff63a4b0e3b9551eb2c222b6` is recorded in
 [.shared-tooling.snapshot](.shared-tooling.snapshot). It identifies the vendored
 files, hashes and executable modes; it does not freeze the active local policy.
 Keep its provenance accurate and never edit vendored files in place. Do not
@@ -20,9 +20,10 @@ attribute uncommitted shared files to that recorded revision. The live local
 also applies within its activation scope and is included in this recorded snapshot.
 These instructions are the repository's local overlay.
 
-The 54-file snapshot uses the reviewed local 0.1.12 commit, including the common
+The 55-file snapshot uses the reviewed local 0.1.13 commit, including the common
 audit methods, local host/IC setup, dependency checker, release-command checker
-and linked rules. Cargo inheritance checks cover both approved workspace roots;
+and linked rules, including the standard Rust workspace layout. Cargo inheritance
+checks cover both approved workspace roots;
 the common metadata fixture also includes its workspace-version reader. Product
 version parsing stays in the Rust release adapter. The linked tag-maintenance
 guide is documentation only; no tag-maintenance executable is adopted. CI and
@@ -37,6 +38,11 @@ The user-provided ownership rule below is the approved local exception to shared
 tag/push authority: commits, tags and pushes always belong to the maintainer,
 including when an agent is asked to prepare a release. This preserves the
 maintainer's review of source and release identity before external effects.
+
+The virtual repository-root workspace owns shared package metadata and the
+dependency catalog. The library package is `crates/ic-memory/`; its source,
+examples, tests, current wire fixtures and canonical package README live there.
+Follow the [workspace layout rules](rules/rust-workspaces.md).
 
 Product contracts and numeric limits remain owned by this crate. Host support
 and prerequisites are declared in [docs/host-support.md](docs/host-support.md).
@@ -163,8 +169,13 @@ Apply the current local
 
 The maintainer-accepted 0.25.14 qualification design is the local exception for
 `testing/runtime-qualification`: it remains an unpublished independent workspace,
-whose authoritative dependency root is its own `Cargo.toml`. Its package tables
-inherit its own workspace catalog. This keeps PocketIC's host-only graph and
+whose virtual root and authoritative dependency catalog are its own
+`Cargo.toml`. Its sole package is
+`testing/runtime-qualification/crates/ic-memory-runtime-qualification/`, whose
+package metadata and dependency tables inherit that root. The selected lockfile
+is `testing/runtime-qualification/Cargo.lock`; normal library gates exclude this
+graph. Locked metadata/formatting cover it during layout work, and installed
+qualification retains the caller-owned PocketIC server and Wasm requirements. This keeps PocketIC's host-only graph and
 separate selected lockfile outside the library's normal gates and dependencies.
 This exception does not permit other nested workspaces or drifting duplicate
 declarations. It preserves the accepted qualification scope rather than silently

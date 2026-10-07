@@ -848,3 +848,131 @@ and adoption correspond to [#15](https://github.com/dragginzgame/ic-memory/issue
 [#16](https://github.com/dragginzgame/ic-memory/issues/16) and
 [#17](https://github.com/dragginzgame/ic-memory/issues/17). Their committed-source
 or native-qualification acceptance steps remain separate from this local result.
+
+### Committed source and native CI confirmation
+
+On 2026-10-07, inspect released 0.29.0 at
+`7a20c685cc83949b7c0e6af9b16816c3a8e7cdd6` on the verified
+`dragginzgame/ic-memory` main branch. The all-workflow listing for that exact
+commit contains one applicable push run,
+[CI 37580768769](https://github.com/dragginzgame/ic-memory/actions/runs/37580768769),
+attempt 1, completed successfully. All seven jobs pass: tooling lint, full
+pinned-toolchain validation on Ubuntu 24.04 and macOS 15 ARM/Intel, and MSRV
+checks on those same three native hosts.
+
+The job-step observations confirm successful repository-local host/IC setup,
+both-workspace formatting, actual disposable hook isolation and the complete
+configured validation gate on every supported host. That gate includes the
+consumer release adapters, canonical runner substitutes, dependency and
+metadata fixtures, and `repo-tool` tests. These results qualify the committed
+shared-owner adoption and failed-fixture retention changes. They supersede the
+pending native qualification stated above without changing its earlier local
+evidence or implying a live release was exercised.
+
+The adopted Shared Tooling 0.1.12 source at
+`33c2a6f0018a94915f819ff219e270500ed5b73b` also has matching successful
+[CI 37511845192](https://github.com/dragginzgame/shared-tooling/actions/runs/37511845192):
+portable regression on Linux and both native macOS architectures, plus
+lint/security. Upstream qualification and consumer adoption are separately
+observed.
+
+A focused local recheck verifies all 54 snapshot files. Disposable exports
+accept unchanged bytes, reject checksum-helper-only corruption, and reject
+combined checksum-helper/payload corruption without executing the corrupted
+helper. The live checkout and its snapshot remain intact. This completes the
+remaining integrity evidence requested by
+[#18](https://github.com/dragginzgame/ic-memory/issues/18); release destination
+and retry behavior are qualified through the substituted runner in the native
+consumer gates, with no real Git effects.
+
+CI observations and the three snapshot-check logs are retained under
+`target/qualification/ci-adoption-0.29.0-2026-10-07/`. Failure-only artifact
+uploads were skipped in this successful run, so live failure upload remains
+unobserved. Installed PocketIC qualification, publication and deployment are
+outside this evidence. No CI rerun, dispatch, original-index hook, commit, tag,
+push or release command was performed by the agent.
+
+## Workspace layout adoption for #19
+
+On 2026-10-07, prepare the authorized
+[#19](https://github.com/dragginzgame/ic-memory/issues/19) change against released
+0.29.0 source `7a20c685cc83949b7c0e6af9b16816c3a8e7cdd6`. Preserve the preceding
+uncommitted native-CI confirmation. The new numbered pending entry is 0.30.0:
+checkout path dependencies and package-specific manifest references must select
+`crates/ic-memory/`. Package versions remain 0.29.0 and 0.0.0; this preparation
+does not execute a release or change dependency selections.
+
+The maintained manifest inventory contains two approved roots and two packages:
+
+| Owner | Former package manifest | New package manifest | Selected lockfile |
+| --- | --- | --- | --- |
+| Library workspace | `Cargo.toml` | `crates/ic-memory/Cargo.toml` | `Cargo.lock` |
+| Independent installed qualification | `testing/runtime-qualification/Cargo.toml` | `testing/runtime-qualification/crates/ic-memory-runtime-qualification/Cargo.toml` | `testing/runtime-qualification/Cargo.lock` |
+
+Both former manifests become virtual roots with explicit resolver 3, members,
+default members, shared package metadata and dependency catalogs. The library
+root retains its profiles and lint selections. Its source, examples, tests,
+current wire fixtures and full package guide move together; the independent
+binary's source moves under its own package. No old package, source tree or
+maintained symlink alias remains. Repository scripts, operational documentation
+and application identities retain their owners. The package's MIT license is an
+unchanged copy of the repository-owned license for archive inclusion.
+
+The canonical snapshot refresh exports 55 files from reviewed committed Shared
+Tooling 0.1.13 at `e378671d90afa237ff63a4b0e3b9551eb2c222b6`, explicitly adding
+`rules/rust-workspaces.md`. A clean private checkout supplies the export; the
+active sibling's newer uncommitted script changes are excluded. Its matching
+[upstream CI](https://github.com/dragginzgame/shared-tooling/actions/runs/37581058940)
+passed; that observation is separate from consumer qualification.
+
+Product release parsing now selects `[workspace.package]` and requires the
+named member to inherit its version. The private function
+`examples/repo_tool/mod.rs::replace_package_version` is moved with its module and
+renamed `replace_workspace_version`; its replacement edits the root workspace
+field. No Rust function, method or type is otherwise removed. Release metadata
+still publishes the root manifest last, uses the same selected lock/receipts,
+and reconciles visible publication before rollback or retry. The canonical
+dependency example moves to the package guide. A retained bootstrap projects
+both manifests and source paths when the lock already selects the candidate.
+
+Focused Linux x86-64 results:
+
+- Both roots pass locked offline metadata and formatting. Metadata comparison
+  preserves package identities, versions, effective dependencies/features,
+  targets, publication selection, edition/MSRV and owning workspace/target
+  roots. Both selected lockfiles are byte-identical to the initial inputs.
+- All 27 `repo-tool` tests pass on Rust 1.99.0 and 1.88.0, including the named
+  member inheritance boundary and existing interrupted preparation, visible
+  publication failure, rollback, receipt and retry cases. Consumer Make-adapter
+  and actual disposable hook fixtures pass with both virtual-root layouts,
+  including partial-stage refusal for root and member manifests.
+- A real Cargo launcher check with an intentionally advanced fixture lock
+  compiles the projected workspace, returns the caller's 0.29.0 identity and
+  preserves both caller manifest and lock bytes. Git/release effects are absent.
+- Nine current wire-fixture tests and all nine maintained compile-fail cases
+  pass. Library source, ordinary examples, public boundary tests and durable
+  fixture bytes are unchanged by their move. The independent PocketIC binary
+  compiles locked/offline against its separate existing graph.
+- Strict example/test Clippy, focused core-probe/repo-tool Wasm checks, snapshot
+  integrity, dependency inheritance, workflow lint and ShellCheck pass.
+- Package inventories preserve all 96 former package-owned source/example/test/
+  fixture/guide/license inputs. Root invocation selects the same sole package.
+  Repository governance, CI and operational evidence cease to be incidental
+  archive payload. This is inventory/source-path verification, not a full
+  package verification or publication.
+- Current navigation and pending notes pass 235 local link checks across 50
+  documents. The initial whole-ledger check found a historical published link
+  to `examples/composed_host.rs`; its original entry is preserved, and only the
+  new pending ledger section is included in current-navigation qualification.
+
+Inputs, metadata, package inventories, focused logs and the real Cargo bootstrap
+fixture are retained in `target/qualification/workspace-layout-19/`. Current
+navigation follows moved sources; historical release notes and recorded hash
+tables retain their original identities. A sibling-manifest scan finds no
+checkout path dependency on ic-memory requiring an owning-repository update.
+
+The successful 0.29.0 consumer CI above does not qualify this dirty layout
+change. Matching native Linux/macOS CI after the maintainer's commit and push
+remains required before closing #19. No broad local gate, full packaging/release
+qualification, installed PocketIC server, staging, commit, tag, push,
+publication, deployment or maintainer release command is performed.

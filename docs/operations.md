@@ -6,7 +6,7 @@
 
 This guide is for application owners who need to inspect storage allocation,
 choose a `MemoryManager` bucket size, or diagnose a bootstrap failure. Start
-with the [README](../README.md) if you first need the purpose and basic setup of
+with the [README](../crates/ic-memory/README.md) if you first need the purpose and basic setup of
 `ic-memory`.
 
 ## What the reports measure
