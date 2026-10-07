@@ -1,6 +1,6 @@
 # Changelog
 
-## [0.31.1]
+## [0.31.1] - 2026-10-07
 
 - Keep LOC fixtures independent of enclosing Cargo workspaces and inherited
   build output, and allow tooling tests before committing adoption. Remove
