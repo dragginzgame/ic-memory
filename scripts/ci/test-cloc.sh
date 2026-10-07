@@ -16,9 +16,12 @@ for command in cargo cloc jq; do
 done
 
 mkdir -p \
+    "$FIXTURE/.cargo" \
     "$FIXTURE/crates/alpha/src" \
     "$FIXTURE/crates/alpha/tests" \
     "$FIXTURE/crates/beta/src"
+# Cargo also reads ancestor configuration, independently of Git discovery.
+printf '[build]\ntarget-dir = "target"\n' > "$FIXTURE/.cargo/config.toml"
 
 cat >"$FIXTURE/Cargo.toml" <<'TOML'
 [workspace]
@@ -138,6 +141,14 @@ custom_target="$FIXTURE/build [generated]*?"
 # configured identity; Cargo reports one selected target directory at a time.
 mv "$FIXTURE/target" "$custom_target"
 [[ "$(CARGO_TARGET_DIR="$custom_target" bash "$ROOT/scripts/dev/cloc.sh" --manifest "$FIXTURE/Cargo.toml" "$FIXTURE")" == "$nested_output" ]]
+# Existing output selected through a directory alias still has one physical
+# identity. Both direct and ancestor symlinks must exclude those same bytes.
+ln -s "$custom_target" "$FIXTURE/output-link"
+[[ "$(CARGO_TARGET_DIR="$FIXTURE/output-link" bash "$ROOT/scripts/dev/cloc.sh" --manifest "$FIXTURE/Cargo.toml" "$FIXTURE")" == "$nested_output" ]]
+rm "$FIXTURE/output-link"
+ln -s "$FIXTURE" "$FIXTURE/parent-link"
+[[ "$(CARGO_TARGET_DIR="$FIXTURE/parent-link/${custom_target##*/}" bash "$ROOT/scripts/dev/cloc.sh" --manifest "$FIXTURE/Cargo.toml" "$FIXTURE")" == "$nested_output" ]]
+rm "$FIXTURE/parent-link"
 rm -r "$custom_target"
 
 # Checkout ancestors must not affect runtime/test classification. Spaces and
@@ -145,7 +156,7 @@ rm -r "$custom_target"
 relocated="$FIXTURE/tests/checkout [copy]"
 mkdir -p "$relocated"
 cp "$FIXTURE/Cargo.toml" "$relocated/"
-cp -R "$FIXTURE/src" "$FIXTURE/crates" "$relocated/"
+cp -R "$FIXTURE/src" "$FIXTURE/crates" "$FIXTURE/.cargo" "$relocated/"
 mkdir -p "$relocated/tests"
 cp "$FIXTURE/tests/root.rs" "$relocated/tests/"
 relocated_output="$(bash "$ROOT/scripts/dev/cloc.sh" --manifest "$relocated/Cargo.toml" "$relocated")"

@@ -119,17 +119,30 @@ identities; explicit `--snapshot-root` selection handles other nested layouts.
 It does not infer ownership from matching hashes. See the correction in
 [Shared Tooling #39](https://github.com/dragginzgame/shared-tooling/issues/39).
 
-The reviewed 0.1.17 root LOC fixture clears inherited `CARGO_TARGET_DIR` and
-selects its own manifests, including with scratch inside a checkout. Consumer
-`make test-tools` clears the inherited variable only for the still-independent
-sibling LOC fixture. Actual builds/reports retain target selections, and both
-fixtures keep their deliberate per-case overrides. These fixes track
+The reviewed 0.1.18 LOC fixtures select their own manifests and build output,
+including with scratch inside an enclosing Git/Cargo workspace. Consumer
+`make test-tools` passes inherited target settings through to those fixtures;
+their context admission check verifies enclosing workspace/configuration
+isolation. Actual builds/reports retain target selections, and both fixtures
+keep their deliberate per-case overrides. These fixes track
 [Shared Tooling #47](https://github.com/dragginzgame/shared-tooling/issues/47) and
 [#48](https://github.com/dragginzgame/shared-tooling/issues/48) without patching
 reviewed exports. CI continues to retain scratch under `$RUNNER_TEMP`.
-The sibling fixture still needs scratch outside an enclosing Cargo workspace;
-its standalone-package admission gap is tracked in
-[#53](https://github.com/dragginzgame/shared-tooling/issues/53).
+The sibling fixture declares its standalone Cargo workspace, addressing
+[#53](https://github.com/dragginzgame/shared-tooling/issues/53). Tooling inventory
+fixtures use current consumer files without requiring a commit or distribution
+exporter, addressing [#50](https://github.com/dragginzgame/shared-tooling/issues/50).
+
+The shared include also provides explicit `make install-rust-tools` and offline
+`make rust-tools-check` for the optional cargo-sort/cargo-sort-derives/Candid
+extractor set. Its reviewed pins are in `ci/tool-versions.env`, and installation
+uses the already selected Cargo toolchain with retained build output under
+`.tools/rust/build`. These commands are separate from the current required
+host/IC aggregate; the exact cargo-sort formatting prerequisite above remains.
+Make adds `.tools/rust/bin` to PATH; interactive use can add that path to the
+shell export. See [Rust setup](local-setup.md#rust-development-tools). Fixture
+qualification substitutes Cargo installation; it does not prove a native tool
+build or implicitly prepare this optional set.
 
 `make check-pins` also checks Cargo inheritance against each manifest's owning
 workspace catalog. The independent runtime-qualification root keeps its approved

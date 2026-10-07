@@ -11,7 +11,7 @@ exception to revision-bound policy adoption while the shared rules are being
 developed locally. The sibling remains read-only to agents.
 
 The existing tooling snapshot at revision
-`88f1d70cdf671aefb9507d7a81411ed5daa358b3` is recorded in
+`a3430b34b32a60f3b245a2b4f7e2f5321556fe56` is recorded in
 [.shared-tooling.snapshot](.shared-tooling.snapshot). It identifies the vendored
 files, hashes and executable modes; it does not freeze the active local policy.
 Keep its provenance accurate and never edit vendored files in place. Do not
@@ -20,16 +20,19 @@ attribute uncommitted shared files to that recorded revision. The live local
 also applies within its activation scope and is included in this recorded snapshot.
 These instructions are the repository's local overlay.
 
-The 66-file snapshot uses the reviewed local 0.1.17 commit, including the common
+The 68-file snapshot uses the reviewed local 0.1.18 commit, including the common
 audit methods, local host/IC setup, dependency checker, release-command checker
 and linked rules, including the standard Rust workspace layout. Cargo inheritance
 checks cover both approved workspace roots. The unchanged `make/tools.mk`
 owns setup, offline tool checks and LOC commands. Its complete host set includes
 pinned cloc; existing installations must refresh explicitly. Rust LOC defaults
 to the root workspace; `CLOC_MANIFEST` explicitly selects the independent
-qualification manifest without combining graphs. The shared root LOC fixture
-owns target/manifest isolation; consumer dispatch clears inherited
-`CARGO_TARGET_DIR` only for the independent sibling LOC fixture.
+qualification manifest without combining graphs. Both shared LOC fixtures
+own target/manifest isolation, including enclosing Cargo workspaces and aliased
+build paths; consumer dispatch needs no target workaround. The shared Rust-tool
+installer and fixtures are available through explicit `install-rust-tools` and
+`rust-tools-check`; the existing required host/IC aggregate and separate exact
+cargo-sort formatter setup remain unchanged.
 The canister audit addendum is linked guidance; product limits remain local.
 The common metadata fixture also includes its workspace-version reader. Product
 version parsing stays in the Rust release adapter. The linked tag-maintenance
@@ -41,12 +44,12 @@ inspection across workflows; use authenticated GitHub CLI and the shared
 maintenance rule's evidence checks. Owning-repository issue work follows that
 rule's standing authority; inspection still does not authorize source repair.
 
-The tooling inventory fixture includes the canonical distribution exporter but
-currently clones committed source for its cross-owner proof, the upstream gap in
-[Shared Tooling #50](https://github.com/dragginzgame/shared-tooling/issues/50).
-An expanded uncommitted snapshot cannot pass that part until the maintainer
-commits the inputs or a reviewed canonical correction is adopted. Never create
-a fixture commit or alter the real index to satisfy that prerequisite.
+The tooling inventory fixture runs from current consumer exports without
+committed-history or distribution-helper prerequisites, the reviewed correction
+for [Shared Tooling #50](https://github.com/dragginzgame/shared-tooling/issues/50).
+Exporter/verifier integration belongs to the upstream distribution fixture;
+the consumer no longer vendors its unused exporter. Never create a fixture
+commit or alter the real index to satisfy a test prerequisite.
 
 The shared Make execution checker guards the runner, hook and consumer Rust
 validation adapter before gate dispatch. It refuses inherited Make modes that

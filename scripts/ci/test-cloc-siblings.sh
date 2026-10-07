@@ -2,6 +2,8 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/../.." && pwd -P)"
+# Synthetic workspaces own their output paths, not the enclosing consumer.
+unset CARGO_TARGET_DIR
 FIXTURE="$(mktemp -d "${TMPDIR:-/tmp}/shared-tooling-cloc-siblings-test.XXXXXX")"
 trap 'if [[ $? == 0 ]]; then rm -rf "$FIXTURE"; else printf "Failed sibling LOC fixture retained: %s\n" "$FIXTURE" >&2; fi' EXIT
 
@@ -54,8 +56,11 @@ cat >"$zeta/Cargo.toml" <<'TOML'
 name = "zeta"
 version = "0.1.0"
 edition = "2021"
+
+[workspace]
 TOML
-mkdir -p "$zeta/src" "$zeta/scripts/dev"
+mkdir -p "$zeta/src" "$zeta/scripts/dev" "$zeta/.cargo"
+printf '[build]\ntarget-dir = "target"\n' > "$zeta/.cargo/config.toml"
 printf '#[test]\nfn another_test() {}\n' >"$zeta/src/lib.rs"
 cp "$ROOT/scripts/dev/cloc.sh" "$ROOT/scripts/dev/cloc-siblings.sh" "$zeta/scripts/dev/"
 
@@ -112,6 +117,7 @@ output="$(bash "$ROOT/scripts/dev/cloc-siblings.sh" "$FIXTURE/no-rust")"
 mkdir -p "$FIXTURE/empty-rust/empty/src"
 git init -q "$FIXTURE/empty-rust/empty"
 cp "$zeta/Cargo.toml" "$FIXTURE/empty-rust/empty/Cargo.toml"
+cp -R "$zeta/.cargo" "$FIXTURE/empty-rust/empty/"
 : > "$FIXTURE/empty-rust/empty/src/lib.rs"
 output="$(bash "$ROOT/scripts/dev/cloc-siblings.sh" "$FIXTURE/empty-rust")"
 [[ "$(printf '%s\n' "$output" | awk 'END { print $1, $2, $3, $4, $5, $6 }')" == 'TOTAL 0 0 0.0% 0 0' ]]

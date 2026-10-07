@@ -35,9 +35,11 @@ test-tools:
 	bash scripts/ci/test-tool-commands.sh
 	bash scripts/ci/test-host-tools.sh
 	bash scripts/ci/test-ic-tools.sh
+	bash scripts/ci/test-rust-tools.sh
 	bash scripts/ci/test-evidence-checksums.sh
 	RUSTUP_TOOLCHAIN=$(VALIDATION_TOOLCHAIN) RUSTUP_AUTO_INSTALL=0 CARGO_NET_OFFLINE=true bash scripts/ci/test-cloc.sh
-	env -u CARGO_TARGET_DIR RUSTUP_TOOLCHAIN=$(VALIDATION_TOOLCHAIN) RUSTUP_AUTO_INSTALL=0 CARGO_NET_OFFLINE=true bash scripts/ci/test-cloc-siblings.sh
+	RUSTUP_TOOLCHAIN=$(VALIDATION_TOOLCHAIN) RUSTUP_AUTO_INSTALL=0 CARGO_NET_OFFLINE=true bash scripts/ci/test-cloc-siblings.sh
+	RUSTUP_TOOLCHAIN=$(VALIDATION_TOOLCHAIN) RUSTUP_AUTO_INSTALL=0 CARGO_NET_OFFLINE=true bash scripts/ci/test-cloc-fixture-contexts.sh
 	bash scripts/ci/test-cloc-tooling.sh
 
 # Network preparation is separate from offline checks; preserve tracked locks.

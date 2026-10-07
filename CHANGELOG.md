@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.31.1]
+
+- Keep LOC fixtures independent of enclosing Cargo workspaces and inherited
+  build output, and allow tooling tests before committing adoption. Remove
+  the consumer's fixture workaround and unused distribution exporter.
+  [#23](https://github.com/dragginzgame/ic-memory/issues/23),
+  [Shared Tooling #47](https://github.com/dragginzgame/shared-tooling/issues/47),
+  [#50](https://github.com/dragginzgame/shared-tooling/issues/50),
+  [#53](https://github.com/dragginzgame/shared-tooling/issues/53).
+- Exclude aliased Cargo build directories from Rust LOC/test reports and expose
+  explicit optional Rust-tool setup/check commands through the shared include.
+  [Shared Tooling #31](https://github.com/dragginzgame/shared-tooling/issues/31),
+  [#51](https://github.com/dragginzgame/shared-tooling/issues/51).
+
+[Detailed notes](docs/changelog/0.31.md)
+
 ## [0.31.0] - 2026-10-07
 
 - **Breaking developer setup:** require the complete pinned jq/yq/ripgrep/cloc
