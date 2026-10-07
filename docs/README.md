@@ -81,6 +81,7 @@ link to them.
 
 ## Maintainers
 
+- [Detailed 0.29 release notes](changelog/0.29.md)
 - [Detailed 0.28 release notes](changelog/0.28.md)
 - [Local developer setup](local-setup.md) and [product host requirements](host-support.md)
 - [Detailed 0.27 release notes](changelog/0.27.md)

@@ -59,6 +59,11 @@ jobs:
           channel="$(sed -n 's/^channel = "\([^"]*\)"$/\1/p' rust-toolchain.toml)"
           [[ "$channel" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
           echo "channel=$channel" >> "$GITHUB_OUTPUT"
+      - name: Prepare retained fixture directory
+        shell: bash
+        run: |
+          mkdir -p "$RUNNER_TEMP/ic-memory-fixtures"
+          echo "TMPDIR=$RUNNER_TEMP/ic-memory-fixtures" >> "$GITHUB_ENV"
       - uses: dtolnay/rust-toolchain@e97e2d8cc328f1b50210efc529dca0028893a2d9 # reviewed master-history commit
         with:
           toolchain: ${{ steps.pin.outputs.channel }}
@@ -74,31 +79,40 @@ jobs:
       - name: Install and verify repository-local host and IC tools
         shell: bash
         run: |
-          make install-tools tools-check
+          make install-tools tools-check 2>&1 | tee "$RUNNER_TEMP/tools-setup.log"
           echo "$PWD/.tools/host/bin" >> "$GITHUB_PATH"
           echo "$PWD/.tools/ic/bin" >> "$GITHUB_PATH"
-      - name: Install pin and tool fixture bootstrap prerequisite
-        shell: bash
-        run: |
-          if ! command -v rg >/dev/null; then
-            case "$RUNNER_OS" in
-              Linux) sudo apt-get update && sudo apt-get install -y ripgrep ;;
-              macOS) brew install ripgrep ;;
-              *) echo 'Unsupported fixture host' >&2; exit 1 ;;
-            esac
-          fi
-          rg --version
       - name: Check both workspaces without changing files
         run: make fmt-check
       - name: Exercise hook isolation on the native host
         run: make test-hooks
       - name: Prepare tracked dependency inputs
+        shell: bash
         run: |
-          make fetch-dependencies
+          make fetch-dependencies 2>&1 | tee "$RUNNER_TEMP/dependencies.log"
           shasum -a 256 Cargo.lock
           rustc -Vv
           uname -sm
-      - run: make validate-toolchain
+      - name: Qualify pinned toolchain
+        shell: bash
+        run: make validate-toolchain 2>&1 | tee "$RUNNER_TEMP/validation.log"
+      - name: Retain failed validation and installer evidence
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # reviewed Shared Tooling pin, v7
+        with:
+          name: validation-failure-${{ matrix.os }}
+          path: |
+            ${{ runner.temp }}/ic-memory-fixtures
+            ${{ runner.temp }}/tools-setup.log
+            ${{ runner.temp }}/dependencies.log
+            ${{ runner.temp }}/validation.log
+            ${{ github.workspace }}/target/qualification
+            ${{ github.workspace }}/target/release-validation
+            ${{ github.workspace }}/.tools/host-set.*
+            ${{ github.workspace }}/.tools/ic-set.*
+          include-hidden-files: true
+          retention-days: 14
+          if-no-files-found: ignore
 
   msrv:
     strategy:
@@ -130,6 +144,15 @@ jobs:
           rustc -Vv
           uname -sm
       - name: Check all targets with the declared MSRV
+        shell: bash
         env:
           RUSTUP_TOOLCHAIN: ${{ steps.pin.outputs.channel }}
-        run: cargo check --locked --offline --all-targets
+        run: cargo check --locked --offline --all-targets 2>&1 | tee "$RUNNER_TEMP/msrv.log"
+      - name: Retain failed MSRV diagnostics
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # reviewed Shared Tooling pin, v7
+        with:
+          name: msrv-failure-${{ matrix.os }}
+          path: ${{ runner.temp }}/msrv.log
+          retention-days: 14
+          if-no-files-found: ignore

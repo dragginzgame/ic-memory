@@ -42,10 +42,10 @@ tools-check:
 	+$(MAKE) --no-print-directory ic-tools-check
 
 install-host-tools:
-	bash scripts/dev/install-host-tools.sh --versions "$(HOST_TOOL_VERSIONS)"
+	bash scripts/dev/install-host-tools.sh --versions "$(HOST_TOOL_VERSIONS)" --with-ripgrep
 
 host-tools-check:
-	bash scripts/dev/install-host-tools.sh --versions "$(HOST_TOOL_VERSIONS)" --check
+	bash scripts/dev/install-host-tools.sh --versions "$(HOST_TOOL_VERSIONS)" --with-ripgrep --check
 
 install-ic-tools:
 	bash scripts/dev/install-ic-tools.sh --pins "$(IC_TOOL_PINS)"

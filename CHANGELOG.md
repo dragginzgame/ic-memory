@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.29.0]
+
+- **Breaking developer setup:** use the shared pinned jq/yq/ripgrep set for
+  local checks and CI. Run `make install-host-tools` to refresh an existing
+  jq/yq-only installation before offline validation.
+- Guard release destinations and delegate release-file writes to durable host
+  filesystem tooling, preserving recovery when publication reports an error
+  after replacing a file.
+  [#16](https://github.com/dragginzgame/ic-memory/issues/16),
+  [shared-tooling #25](https://github.com/dragginzgame/shared-tooling/issues/25).
+- Add exact-commit CI inspection through the shared GitHub helper.
+  [#17](https://github.com/dragginzgame/ic-memory/issues/17).
+- Preserve failed consumer release-test fixtures and report their locations,
+  keeping receipts and command traces available for diagnosis. Failed native CI
+  also uploads retained fixtures, tool candidates and validation logs.
+  [#15](https://github.com/dragginzgame/ic-memory/issues/15).
+
+[Detailed notes](docs/changelog/0.29.md)
+
 ## [0.28.4] - 2026-10-06
 
 - Repair portable host-tool fixtures by restoring authenticated archive bytes,

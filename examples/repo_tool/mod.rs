@@ -4,14 +4,14 @@
 //! package travel together in one receipt. Publication checks that evidence
 //! before dispatch; it never resolves a replacement lockfile.
 
-use ic_host_tools::artifact::{Sha256Digest, hash_file};
+use ic_host_artifacts::artifact::Sha256Digest;
+use ic_host_fs::read::hash_file;
 use serde::{Deserialize, Serialize};
 use std::{
     collections::BTreeMap,
     env,
     error::Error,
     fs,
-    io::Write,
     path::{Path, PathBuf},
     process::{Command, Stdio},
     time::{SystemTime, UNIX_EPOCH},
@@ -101,11 +101,15 @@ struct Repository<E> {
 ///
 /// Execute
 ///
-/// Process boundary for real commands and deterministic test substitutes.
+/// Process and file-publication boundaries for real effects and test substitutes.
 ///
 
 trait Execute {
     fn run(&self, root: &Path, program: &str, args: &[&str], capture: bool) -> Result<String>;
+
+    fn write_bytes(&self, path: &Path, bytes: &[u8]) -> Result<()> {
+        Ok(ic_host_fs::durable::write_bytes(path, bytes)?)
+    }
 }
 
 ///
@@ -232,33 +236,6 @@ fn valid_date(date: &str) -> bool {
         _ => 0,
     };
     year != 0 && day != 0 && day <= maximum
-}
-
-fn write_atomic(path: &Path, bytes: &[u8]) -> Result<()> {
-    let parent = path.parent().ok_or("metadata has no parent")?;
-    fs::create_dir_all(parent)?;
-    let nonce = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)?
-        .as_nanos();
-    let temporary = parent.join(format!(
-        ".ic-memory-release.{}.{nonce}.tmp",
-        std::process::id()
-    ));
-    let mut file = fs::OpenOptions::new()
-        .write(true)
-        .create_new(true)
-        .open(&temporary)?;
-    let result = (|| -> Result<()> {
-        file.write_all(bytes)?;
-        file.sync_all()?;
-        drop(file);
-        fs::rename(&temporary, path)?;
-        Ok(())
-    })();
-    if result.is_err() {
-        fs::remove_file(temporary)?;
-    }
-    result
 }
 
 fn version_parts(version: &str) -> Result<[u64; 3]> {
@@ -939,9 +916,10 @@ impl<E: Execute> Repository<E> {
                     std::process::id(),
                     SystemTime::now().duration_since(UNIX_EPOCH)?.as_nanos()
                 ));
-            write_atomic(&retained, &fs::read(&path)?)?;
+            self.exec.write_bytes(&retained, &fs::read(&path)?)?;
         }
-        write_atomic(&path, &serde_json::to_vec_pretty(&evidence)?)
+        self.exec
+            .write_bytes(&path, &serde_json::to_vec_pretty(&evidence)?)
     }
 
     fn verify_inputs(&self, evidence: &ValidationEvidence, updated: bool) -> Result<()> {
@@ -1027,7 +1005,7 @@ impl<E: Execute> Repository<E> {
     }
 
     fn write_evidence(&self, evidence: &PackageEvidence, prepared: bool) -> Result<()> {
-        write_atomic(
+        self.exec.write_bytes(
             &self.receipt_path(&evidence.validation.selection.version, prepared)?,
             &serde_json::to_vec_pretty(evidence)?,
         )
@@ -1054,9 +1032,10 @@ impl<E: Execute> Repository<E> {
                 .iter()
                 .filter(|(path, _)| path.as_str() != "Cargo.toml")
             {
-                write_atomic(&self.root.join(path), text.as_bytes())?;
+                self.exec
+                    .write_bytes(&self.root.join(path), text.as_bytes())?;
             }
-            write_atomic(
+            self.exec.write_bytes(
                 &self.root.join("Cargo.toml"),
                 expected["Cargo.toml"].as_bytes(),
             )?;
@@ -1064,6 +1043,8 @@ impl<E: Execute> Repository<E> {
             Ok(())
         })();
         if result.is_err() {
+            // Durable publication may report a parent-sync error after rename.
+            // Inspect current bytes before restoring only owned replacements.
             for (path, bytes) in backups {
                 let current = fs::read(self.root.join(&path))?;
                 let owned = if path == "Cargo.lock" {
@@ -1076,7 +1057,7 @@ impl<E: Execute> Repository<E> {
                     current == expected[&path].as_bytes() || current == bytes
                 };
                 if owned {
-                    write_atomic(&self.root.join(path), &bytes)?;
+                    self.exec.write_bytes(&self.root.join(path), &bytes)?;
                 }
             }
         }

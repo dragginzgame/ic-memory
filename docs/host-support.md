@@ -46,8 +46,8 @@ when recording release qualification; retain failed runs and their limitations.
   separately with `cargo fetch --locked --manifest-path testing/runtime-qualification/Cargo.toml`
   when installed qualification is needed. Preserve both selections; never
   regenerate them to make a check pass.
-- The common jq/yq pair under `.tools/host/bin` for `make check-pins`; ripgrep
-  for `make test-pins`. The reviewed pins live in `ci/tool-versions.env`.
+- The common jq/yq/ripgrep set under `.tools/host/bin` for `make check-pins`
+  and `make test-pins`. The reviewed pins live in `ci/tool-versions.env`.
   Interrupted manifest/lockfile recovery also uses yq to locate Cargo's selected
   target directory. Checks are offline and never install prerequisites.
 - Actionlint and ShellCheck for `make lint-tooling`. CI installs exact
@@ -113,8 +113,11 @@ Rejected checksums or versions preserve the selected executable and retain the
 failed candidate. Snapshot integrity and focused Linux checks are separate from
 native macOS qualification; see the
 [adoption evidence](release-workflow-qualification.md#0283-shared-cargo-and-installer-adoption).
-The common setup guide also describes opt-in pinned ripgrep. This consumer
-continues to select the jq/yq pair; ripgrep remains a separate fixture prerequisite.
+Both host installation and offline verification select the shared
+`--with-ripgrep` option. It authenticates ripgrep 15.2.0 and its PCRE2 support
+alongside jq/yq; CI uses this same set rather than a separate package-manager
+installation. Prepare the expanded host set with `make install-host-tools`
+before offline checks. Previous selections and rejected candidates are retained.
 
 The pre-commit hook formats an export of the exact index and refreshes only the
 selected files. It refuses partial staging and preserves unrelated working
@@ -154,8 +157,29 @@ and evidence checks are shared by the maintainer workflow in
 [RELEASING.md](../RELEASING.md). Live publication and downstream deployment need
 their own authorization and observations.
 
-The repository helper uses the registry `ic-host-tools` development dependency
-for streaming file hashes and digest parsing. It is selected only for native
-targets and is absent from canister dependency graphs. `shasum` remains a setup
+The repository helper uses registry `ic-host-fs` for streaming hashes and
+durable file replacement, and `ic-host-artifacts` for digest parsing. Both
+development dependencies disable unused default features and are selected only
+for native targets. Durable publication synchronizes files and parent directories;
+an error after rename may leave complete replacement bytes visible. Release
+recovery reconciles those bytes against the saved intent before restoring or
+retrying. These dependencies are absent from canister graphs. `shasum` remains a setup
 and CI prerequisite through common scripts, rather than a release adapter
 subprocess. Product receipts, release identities and Wasm budgets stay local.
+
+Native CI routes disposable fixtures into a dedicated runner temporary directory.
+Failed validation uploads those fixtures, setup/gate logs, retained tool candidates
+and qualification receipts for 14 days, including hidden recovery evidence.
+MSRV failures upload their compiler log separately. Logging preserves the failing
+command's status through Bash pipefail; uploads run only after a failed job step.
+Configured uploads and local substitute checks do not prove a live artifact upload.
+
+For interactive CI inspection, use the unchanged shared helper:
+
+```sh
+GH_REPO=dragginzgame/ic-memory bash scripts/dev/gh-ci.sh --commit HEAD --all-workflows --limit 100
+```
+
+This requires an authenticated GitHub CLI session. The bounded listing is evidence
+for the resolved commit; apply the [maintenance rule](../rules/agent-maintenance.md)
+before claiming complete workflow coverage. Uncommitted edits have no CI result.

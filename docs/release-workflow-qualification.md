@@ -703,3 +703,148 @@ canister source changes. No functions, methods or types are removed in this
 batch; the replaced Make admission recipe retains its target. No compilation,
 Wasm-size measurement, full gate, live installation, release command, original
 index staging, commit, tag, push, publication or GitHub write was performed.
+
+## 0.28.5 consumer release-fixture retention
+
+On 2026-10-06, inspect released source
+`d56af42b0bd9ac5a794de2248e31b335945a1e1c` (0.28.4). The consumer shell adapter
+fixture's unconditional EXIT cleanup and Rust `Fixture::drop` both removed
+unsuccessful test inputs. The shared command/runner fixtures already retain
+failure evidence. Change these two local cleanup owners without changing the
+52-file snapshot at `21f3ec3dd97f2968c9f0b08924451bb2f71770d1`.
+
+Rust unwinding now preserves the fixture and attempts to save the already
+serializable substitute state. Borrow/serialization/write errors are reported
+without introducing a second panic; the original failed assertion remains the
+test failure. Successful runs retain their existing scratch cleanup. The shell
+trap preserves nonzero status, retains its fixture and reports its path.
+
+Focused Linux execution passes:
+
+- `make test-tooling`, including the new unwinding regression. It confirms
+  validation receipts, selected lock bytes and substituted command history
+  survive failure; a successfully dropped fixture is removed.
+- `make test-release-adapters` under Bash 5 and GNU Bash 3.2.57. A private Make
+  substitute injects exit status 7 at the consumer committed-check call after
+  earlier calls succeed. Both shells retain the actual fixture and its command
+  trace with the failed status; the uninjected adapter runs pass.
+- Strict Clippy for the repo-tool example and test targets, ShellCheck of the
+  changed consumer adapter script, and formatting checks for both workspaces.
+
+Logs, injected failure fixtures and exact dependency/input hashes are retained
+under `target/qualification/consumer-fixture-retention-0.28.5/`. Both manifests
+and both lockfiles remain byte-for-byte unchanged. The manifest stays at 0.28.4;
+the next undated changelog candidate is 0.28.5. No functions, methods or types are
+removed. This change is confined to test execution and does not affect shipped
+Rust code, Wasm, memory layout or release receipts. No full gate, network setup,
+live release operation, original-index staging, commit, tag, push or publication
+was performed.
+
+The released source's
+[CI run 37498603294](https://github.com/dragginzgame/ic-memory/actions/runs/37498603294)
+tests `d56af42b`, separately from these pending changes. At inspection, Linux
+and ARM macOS full gates, all three MSRV checks and tooling lint pass; Intel
+macOS's hook and formatting checks pass while its full gate is still running.
+This is incomplete native evidence and does not qualify the pending retention
+fix. Earlier failures remain recorded above.
+
+A subsequent inspection on 2026-10-06 confirms that the same run completed
+successfully: all seven jobs pass, including the Intel macOS full gate. This
+qualifies the released 0.28.4 source on all three declared native CI hosts;
+the pending 0.28.5 retention fix still requires its own matching native run.
+The maintainer-authorized report is now
+[#15](https://github.com/dragginzgame/ic-memory/issues/15); no local artifacts or
+filesystem paths were published with it.
+
+## 0.29.0 shared owners and CI diagnostics
+
+On 2026-10-06, qualify source `d56af42b0bd9ac5a794de2248e31b335945a1e1c`
+(released 0.28.4) plus the pre-existing pending fixture-retention changes and
+this maintainer-authorized shared-owner adoption. The earlier 0.28.5 evidence
+above retains its original scope; its unpublished notes now belong to the
+complete pending 0.29.0 batch. The minor candidate reflects the expanded offline
+host-set admission: existing jq/yq-only setups must run `make install-host-tools`.
+The package manifest remains 0.28.4; no release effect is part of qualification.
+
+The canonical refresh exports Shared Tooling 0.1.12 at
+`33c2a6f0018a94915f819ff219e270500ed5b73b` from a clean private checkout. The
+54-file snapshot includes the exact-commit CI helper and the newly linked
+governance roster. The first local-link check found that roster absent from
+the old file selection; adding its committed export resolves the consumer gap.
+The sibling checkout remains read-only. The baseline and maintenance rule are
+refreshed together; the local maintainer-owned Git effects, broad-gate boundary,
+live local-policy exception and independent-workspace scope remain explicit.
+
+The governance walkthrough uses this authorized local repair and focused checks.
+For the upstream-owned finding, the already-reported host-fixture failure and
+[Shared Tooling #17](https://github.com/dragginzgame/shared-tooling/issues/17)
+retain their original source/evidence above; the committed owner correction is
+present in this refreshed snapshot. Issue reporting, upstream acceptance and
+consumer qualification remain distinct. No new upstream finding is invented
+and no sibling repair is performed.
+
+Review width is 30 changed/new files, approximately 1,000 added and 240 removed
+lines including the initial pending retention work. Most width comes from
+canonical snapshot propagation, its new helper/roster, documentation and focused
+fixtures. Local semantic areas are host setup, filesystem effects, dependency
+selection and CI diagnostics. Production orchestration keeps its existing
+state model while delegating file mechanics to their canonical owner.
+
+Host ownership is now split: `ic-host-fs` owns durable file writes and hashing;
+`ic-host-artifacts` owns digest identities. Both selected registry crates are
+0.3.0 with unused default features disabled. The root lock adds those two crates
+and removes the old monolith and eight unused transitive packages. Every retained
+package keeps its version, source, checksum and dependency selection. The
+runtime-qualification manifest and lock are unchanged. The new host crates,
+sha2, rustix, flate2 and wasmparser are absent from the Wasm normal/build/dev graph.
+
+Removed symbol: `examples/repo_tool/mod.rs::write_atomic`. Its staging, write,
+sync, rename and cleanup implementation is replaced by
+`ic_host_fs::durable::write_bytes` through the existing effect boundary. The
+consumer still owns serialization, metadata ordering, saved intent, receipts
+and rollback/retry. The process/file boundary supplies deterministic test
+substitutes without a production test-only filesystem path or new runtime mode.
+
+Focused Linux x86-64 qualification passes:
+
+- Real pinned jq/yq/ripgrep installation and offline verification, including
+  PCRE2 admission. The first sandbox attempt failed at DNS and retained
+  `.tools/host-set.4MBe6V`; the authorized network-capable retry passed. These
+  observations do not qualify native macOS installation.
+- All 26 `repo-tool` tests on Rust 1.99.0 and 1.88.0. Real publication checks
+  prove complete replacement while an open reader retains the old inode,
+  rejected-directory evidence preservation and staging cleanup. Substituted
+  failures before and after visible publication cover each release metadata
+  surface, original-byte rollback, receipt/artifact preservation and retry
+  using the same saved validation intent.
+- Strict Clippy for the example and test targets; both-workspace formatting;
+  actual consumer hook isolation and shared formatter prerequisites.
+- Snapshot integrity, two-workspace dependency declarations and pin/Cargo
+  metadata fixtures; host/IC/evidence fixtures; actual Make release adapters
+  and canonical runner substitutes, including destination-drift refusals.
+- The committed installer fixture and the shared CI-helper fixture executed
+  against the consumer's exact exported helper bytes. These use command and
+  asset substitutes and do not prove live GitHub CI or official installer assets.
+- Workflow lint and ShellCheck. Executing the actual fixture-directory and
+  validation-log steps with a failing Make substitute preserves exit status 23,
+  both output streams and a retained receipt. Structured upload selection checks
+  confirm failure-only collection, hidden evidence and 14-day retention. No live
+  GitHub artifact upload is performed.
+- Locked offline no-deps metadata for both workspaces and focused Wasm checks
+  for `repo-tool` and the core size probe. These are compilation/graph checks,
+  not new Wasm-size or IC instruction measurements.
+
+Input hashes, source/environment identities, initial dirty edits, logs and
+the CI substitute harness are retained under
+`target/qualification/shared-owners-0.28.5.SFQuos/`. The directory retains the
+candidate name used at the start of preparation; the source hashes and complete
+pending notes establish this batch's actual identity.
+
+Full gates, native macOS execution, installed PocketIC, live release/publication,
+original-index hooks, staging, commits, tags and pushes were not performed.
+Matching consumer native CI after the maintainer's commit and push is required
+for the changed source; earlier green runs do not qualify it. Implementation
+and adoption correspond to [#15](https://github.com/dragginzgame/ic-memory/issues/15),
+[#16](https://github.com/dragginzgame/ic-memory/issues/16) and
+[#17](https://github.com/dragginzgame/ic-memory/issues/17). Their committed-source
+or native-qualification acceptance steps remain separate from this local result.

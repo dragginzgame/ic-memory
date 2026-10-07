@@ -90,9 +90,14 @@ for their actual validation commands, not just simulated fixture evidence.
 The common runner uses exactly this push shape with its saved selections:
 
 ```bash
-git push --no-follow-tags --atomic "$remote" \
+git push --no-follow-tags --atomic -- "$destination" \
   "$push_source:refs/heads/$branch" "refs/tags/v$candidate:refs/tags/v$candidate"
 ```
+
+`destination` is the sole push URL captured from the selected remote at entry.
+The runner rechecks that selection after validation and before push, rejecting
+changed or additional URLs. Observation and dispatch both use the captured URL,
+so a later remote-name change cannot redirect the push.
 
 `--no-follow-tags` disables implicit annotated-tag publication, including a
 configured `push.followTags`. Both refspecs are explicit: push the selected branch

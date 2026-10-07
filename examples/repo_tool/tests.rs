@@ -138,8 +138,97 @@ impl Fixture {
 
 impl Drop for Fixture {
     fn drop(&mut self) {
+        if std::thread::panicking() {
+            let saved = (|| -> Result<()> {
+                let state = self.repo.exec.state.try_borrow()?;
+                fs::write(
+                    self.repo.root.join("fixture-state.json"),
+                    serde_json::to_vec_pretty(&*state)?,
+                )?;
+                Ok(())
+            })();
+            if let Err(error) = saved {
+                eprintln!("Could not save fixture command state: {error}");
+            }
+            eprintln!("Release fixture retained: {}", self.repo.root.display());
+            return;
+        }
         fs::remove_dir_all(&self.repo.root).unwrap();
     }
+}
+
+#[test]
+fn failed_release_fixture_retains_receipts_and_command_state() {
+    let mut retained = PathBuf::new();
+    let mut receipt = PathBuf::new();
+    let failure = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let fixture = Fixture::new();
+        retained.clone_from(&fixture.repo.root);
+        fixture.repo.verify(&fixture.selection).unwrap();
+        receipt = fixture
+            .repo
+            .validation_path(&fixture.selection.version)
+            .unwrap();
+        panic!("simulate a failed assertion after validation");
+    }));
+    assert!(failure.is_err());
+    let state: State =
+        serde_json::from_slice(&fs::read(retained.join("fixture-state.json")).unwrap()).unwrap();
+    assert!(
+        state
+            .calls
+            .iter()
+            .any(|call| call.get(2).is_some_and(|arg| arg == "validate"))
+    );
+    assert_eq!(
+        fs::read_to_string(retained.join("Cargo.lock")).unwrap(),
+        LOCK
+    );
+    let evidence: ValidationEvidence = serde_json::from_slice(&fs::read(receipt).unwrap()).unwrap();
+    assert_eq!(evidence.selection.source, "source");
+    fs::remove_dir_all(retained).unwrap();
+
+    let successful = Fixture::new();
+    let root = successful.repo.root.clone();
+    drop(successful);
+    assert!(!root.exists());
+}
+
+#[test]
+fn durable_publication_replaces_complete_files_and_preserves_rejected_targets() {
+    let fixture = Fixture::new();
+    let target = fixture.repo.root.join("durable/release.json");
+    Processes.write_bytes(&target, b"original receipt").unwrap();
+    let mut original = fs::File::open(&target).unwrap();
+    Processes
+        .write_bytes(&target, b"complete replacement")
+        .unwrap();
+    assert_eq!(fs::read(&target).unwrap(), b"complete replacement");
+    let mut original_bytes = Vec::new();
+    std::io::Read::read_to_end(&mut original, &mut original_bytes).unwrap();
+    assert_eq!(original_bytes, b"original receipt");
+
+    let rejected = fixture.repo.root.join("durable/retained-directory");
+    fs::create_dir(&rejected).unwrap();
+    fs::write(rejected.join("evidence"), "keep").unwrap();
+    let entries = || {
+        fs::read_dir(target.parent().unwrap())
+            .unwrap()
+            .map(|entry| entry.unwrap().file_name())
+            .collect::<std::collections::BTreeSet<_>>()
+    };
+    let before = entries();
+    assert!(
+        Processes
+            .write_bytes(&rejected, b"invalid replacement")
+            .is_err()
+    );
+    assert_eq!(
+        fs::read_to_string(rejected.join("evidence")).unwrap(),
+        "keep"
+    );
+    assert_eq!(fs::read(&target).unwrap(), b"complete replacement");
+    assert_eq!(entries(), before);
 }
 
 #[derive(Deserialize, Serialize)]
@@ -158,6 +247,33 @@ struct Substitute {
 }
 
 impl Execute for Substitute {
+    fn write_bytes(&self, path: &Path, bytes: &[u8]) -> Result<()> {
+        let failure = self.state.borrow().fail.clone();
+        let phase = failure
+            .as_deref()
+            .and_then(|failure| failure.split_once(':'))
+            .filter(|(_, target)| path.ends_with(target))
+            .map(|(phase, _)| phase);
+        if phase.is_some() {
+            self.state.borrow_mut().fail = None;
+        }
+        if phase == Some("write-before") {
+            return Err(std::io::Error::other("fixture failure before publication").into());
+        }
+        ic_host_fs::durable::write_bytes(path, bytes)?;
+        if phase == Some("write-after") {
+            // Model the real writer's error-after-rename contract. The consumer
+            // must inspect the visible bytes before rollback or retry.
+            assert_eq!(fs::read(path)?, bytes);
+            self.state.borrow_mut().calls.push(vec![
+                "published-write-error".to_owned(),
+                path.display().to_string(),
+            ]);
+            return Err(std::io::Error::other("fixture failure after publication").into());
+        }
+        Ok(())
+    }
+
     #[expect(
         clippy::too_many_lines,
         reason = "one explicit process substitute records every permitted effect"
@@ -787,6 +903,63 @@ fn version_preparation_failures_restore_files_and_preserve_evidence_and_artifact
                     .calls
                     .iter()
                     .any(|call| { call.get(2).is_some_and(|arg| arg == "package") })
+            );
+        }
+    }
+}
+
+#[test]
+fn metadata_publication_failures_reconcile_visible_bytes_and_retry_saved_intent() {
+    for phase in ["write-before", "write-after"] {
+        for path in [
+            "Cargo.lock",
+            "CHANGELOG.md",
+            "README.md",
+            "docs/changelog/0.13.md",
+            "Cargo.toml",
+        ] {
+            let fixture = Fixture::new();
+            fixture.repo.verify(&fixture.selection).unwrap();
+            let receipt = fixture.repo.validation_path("0.13.0").unwrap();
+            let saved = fs::read(&receipt).unwrap();
+            let sentinel = fixture.repo.target().unwrap().join("consumer-evidence");
+            fs::write(&sentinel, "keep").unwrap();
+            fixture.fail(&format!("{phase}:{path}"));
+            assert!(fixture.repo.prepare_selected(&fixture.selection).is_err());
+            for (path, text) in &fixture.repo.exec.state.borrow().source {
+                assert_eq!(
+                    fs::read(fixture.repo.root.join(path)).unwrap(),
+                    text.as_bytes()
+                );
+            }
+            assert_eq!(fs::read(&receipt).unwrap(), saved);
+            assert_eq!(fs::read_to_string(&sentinel).unwrap(), "keep");
+            let published_errors = fixture
+                .repo
+                .exec
+                .state
+                .borrow()
+                .calls
+                .iter()
+                .filter(|call| call[0] == "published-write-error")
+                .count();
+            assert_eq!(published_errors, usize::from(phase == "write-after"));
+            fixture.repo.prepare_selected(&fixture.selection).unwrap();
+            fixture.repo.prepared(&fixture.selection).unwrap();
+            assert_eq!(fixture.repo.version(None).unwrap(), "0.13.0");
+            assert_eq!(fs::read(receipt).unwrap(), saved);
+            assert_eq!(fs::read_to_string(sentinel).unwrap(), "keep");
+            assert_eq!(
+                fixture
+                    .repo
+                    .exec
+                    .state
+                    .borrow()
+                    .calls
+                    .iter()
+                    .filter(|call| { call.get(2).is_some_and(|argument| argument == "validate") })
+                    .count(),
+                1
             );
         }
     }

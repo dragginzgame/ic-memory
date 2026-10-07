@@ -11,7 +11,7 @@ exception to revision-bound policy adoption while the shared rules are being
 developed locally. The sibling remains read-only to agents.
 
 The existing tooling snapshot at revision
-`21f3ec3dd97f2968c9f0b08924451bb2f71770d1` is recorded in
+`33c2a6f0018a94915f819ff219e270500ed5b73b` is recorded in
 [.shared-tooling.snapshot](.shared-tooling.snapshot). It identifies the vendored
 files, hashes and executable modes; it does not freeze the active local policy.
 Keep its provenance accurate and never edit vendored files in place. Do not
@@ -20,15 +20,18 @@ attribute uncommitted shared files to that recorded revision. The live local
 also applies within its activation scope and is included in this recorded snapshot.
 These instructions are the repository's local overlay.
 
-The 52-file snapshot uses the reviewed local 0.1.10 commit, including the common
+The 54-file snapshot uses the reviewed local 0.1.12 commit, including the common
 audit methods, local host/IC setup, dependency checker, release-command checker
 and linked rules. Cargo inheritance checks cover both approved workspace roots;
 the common metadata fixture also includes its workspace-version reader. Product
 version parsing stays in the Rust release adapter. The linked tag-maintenance
 guide is documentation only; no tag-maintenance executable is adopted. CI and
 release checks use these immutable exports without a sibling checkout. The live
-local policy exception above
-continues to govern subsequent uncommitted rule development.
+local policy exception above continues to govern subsequent uncommitted rule
+development. The read-only `scripts/dev/gh-ci.sh` helper supports exact-commit
+inspection across workflows; use authenticated GitHub CLI and the shared
+maintenance rule's evidence checks. Owning-repository issue work follows that
+rule's standing authority; inspection still does not authorize source repair.
 
 The user-provided ownership rule below is the approved local exception to shared
 tag/push authority: commits, tags and pushes always belong to the maintainer,
