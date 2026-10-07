@@ -2,7 +2,7 @@
 
 Use the unchanged [shared code hygiene method](../../../audits/code-hygiene.md)
 and [audit contract](../../../audits/README.md), recorded at Shared Tooling
-`e378671d90afa237ff63a4b0e3b9551eb2c222b6` in
+`88f1d70cdf671aefb9507d7a81411ed5daa358b3` in
 [the snapshot](../../../.shared-tooling.snapshot). The shared method owns generic
 questions, severity, verdicts, evidence and repair authority. This overlay owns
 the crate-specific obligations below. An audit does not authorize fixes.

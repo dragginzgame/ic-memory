@@ -19,44 +19,26 @@ VALIDATION_TOOLCHAIN ?= $(shell sed -n 's/^channel = "\([^"]*\)"$$/\1/p' rust-to
 TOOL := bash scripts/dev/run-repo-tool.sh $(VALIDATION_TOOLCHAIN)
 FORMAT_CARGO := RUSTUP_AUTO_INSTALL=0 CARGO_NET_OFFLINE=true cargo +$(VALIDATION_TOOLCHAIN)
 CARGO_SORT_VERSION := $(shell sed -n 's/^export SHARED_TOOLING_CARGO_SORT_VERSION=//p' ci/tool-versions.env)
-IC_TOOL_PINS ?= ci/ic-tools.tsv
-HOST_TOOL_VERSIONS ?= ci/tool-versions.env
-export PATH := $(CURDIR)/.tools/host/bin:$(CURDIR)/.tools/ic/bin:$(PATH)
+include make/tools.mk
 
 help:
 	@echo 'Setup: install-tools (host then IC tools), fetch-dependencies, install-hooks; prepare Rust/cargo-sort separately.'
 	@echo 'Focused checks: tools-check, test-tools, verify-shared-tooling, check-pins, test-pins, test-tooling, test-release-adapters, test-release-runner, test-hooks, fmt-check, lint-tooling.'
 	@echo 'Formatting: fmt. Full gates require explicit qualification: validate, validate-toolchain.'
+	@echo 'Reports: cloc (root workspace; CLOC_MANIFEST selects an independent Cargo manifest), cloc-tooling (sibling tooling; CLOC_PARENT selects the parent).'
 	@echo 'Maintainer releases: release-patch, release-minor, release-major; normal targets recover unfinished releases.'
 
 install-hooks:
 	bash scripts/dev/install-git-hooks.sh
 
-# Explicit network setup; ordinary checks never install prerequisites.
-install-tools:
-	+$(MAKE) --no-print-directory install-host-tools
-	+$(MAKE) --no-print-directory install-ic-tools
-
-tools-check:
-	+$(MAKE) --no-print-directory host-tools-check
-	+$(MAKE) --no-print-directory ic-tools-check
-
-install-host-tools:
-	bash scripts/dev/install-host-tools.sh --versions "$(HOST_TOOL_VERSIONS)" --with-ripgrep
-
-host-tools-check:
-	bash scripts/dev/install-host-tools.sh --versions "$(HOST_TOOL_VERSIONS)" --with-ripgrep --check
-
-install-ic-tools:
-	bash scripts/dev/install-ic-tools.sh --pins "$(IC_TOOL_PINS)"
-
-ic-tools-check:
-	bash scripts/dev/install-ic-tools.sh --pins "$(IC_TOOL_PINS)" --check
-
 test-tools:
+	bash scripts/ci/test-tool-commands.sh
 	bash scripts/ci/test-host-tools.sh
 	bash scripts/ci/test-ic-tools.sh
 	bash scripts/ci/test-evidence-checksums.sh
+	RUSTUP_TOOLCHAIN=$(VALIDATION_TOOLCHAIN) RUSTUP_AUTO_INSTALL=0 CARGO_NET_OFFLINE=true bash scripts/ci/test-cloc.sh
+	env -u CARGO_TARGET_DIR RUSTUP_TOOLCHAIN=$(VALIDATION_TOOLCHAIN) RUSTUP_AUTO_INSTALL=0 CARGO_NET_OFFLINE=true bash scripts/ci/test-cloc-siblings.sh
+	bash scripts/ci/test-cloc-tooling.sh
 
 # Network preparation is separate from offline checks; preserve tracked locks.
 fetch-dependencies:

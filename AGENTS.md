@@ -11,7 +11,7 @@ exception to revision-bound policy adoption while the shared rules are being
 developed locally. The sibling remains read-only to agents.
 
 The existing tooling snapshot at revision
-`e378671d90afa237ff63a4b0e3b9551eb2c222b6` is recorded in
+`88f1d70cdf671aefb9507d7a81411ed5daa358b3` is recorded in
 [.shared-tooling.snapshot](.shared-tooling.snapshot). It identifies the vendored
 files, hashes and executable modes; it does not freeze the active local policy.
 Keep its provenance accurate and never edit vendored files in place. Do not
@@ -20,11 +20,18 @@ attribute uncommitted shared files to that recorded revision. The live local
 also applies within its activation scope and is included in this recorded snapshot.
 These instructions are the repository's local overlay.
 
-The 55-file snapshot uses the reviewed local 0.1.13 commit, including the common
+The 66-file snapshot uses the reviewed local 0.1.17 commit, including the common
 audit methods, local host/IC setup, dependency checker, release-command checker
 and linked rules, including the standard Rust workspace layout. Cargo inheritance
-checks cover both approved workspace roots;
-the common metadata fixture also includes its workspace-version reader. Product
+checks cover both approved workspace roots. The unchanged `make/tools.mk`
+owns setup, offline tool checks and LOC commands. Its complete host set includes
+pinned cloc; existing installations must refresh explicitly. Rust LOC defaults
+to the root workspace; `CLOC_MANIFEST` explicitly selects the independent
+qualification manifest without combining graphs. The shared root LOC fixture
+owns target/manifest isolation; consumer dispatch clears inherited
+`CARGO_TARGET_DIR` only for the independent sibling LOC fixture.
+The canister audit addendum is linked guidance; product limits remain local.
+The common metadata fixture also includes its workspace-version reader. Product
 version parsing stays in the Rust release adapter. The linked tag-maintenance
 guide is documentation only; no tag-maintenance executable is adopted. CI and
 release checks use these immutable exports without a sibling checkout. The live
@@ -33,6 +40,18 @@ development. The read-only `scripts/dev/gh-ci.sh` helper supports exact-commit
 inspection across workflows; use authenticated GitHub CLI and the shared
 maintenance rule's evidence checks. Owning-repository issue work follows that
 rule's standing authority; inspection still does not authorize source repair.
+
+The tooling inventory fixture includes the canonical distribution exporter but
+currently clones committed source for its cross-owner proof, the upstream gap in
+[Shared Tooling #50](https://github.com/dragginzgame/shared-tooling/issues/50).
+An expanded uncommitted snapshot cannot pass that part until the maintainer
+commits the inputs or a reviewed canonical correction is adopted. Never create
+a fixture commit or alter the real index to satisfy that prerequisite.
+
+The shared Make execution checker guards the runner, hook and consumer Rust
+validation adapter before gate dispatch. It refuses inherited Make modes that
+skip execution or ignore failures, preserving ordinary selections and jobserver
+settings. Qualify rejection through real Make with substituted release effects.
 
 The user-provided ownership rule below is the approved local exception to shared
 tag/push authority: commits, tags and pushes always belong to the maintainer,
@@ -50,7 +69,7 @@ and prerequisites are declared in [docs/host-support.md](docs/host-support.md).
 ## Development and qualification commands
 
 - Before editing or compiling, check for active Cargo, rustc and rustdoc builds.
-- Focused checks: `make verify-shared-tooling`, `make check-pins`, `make test-pins`, `make test-tooling`,
+- Focused checks: `make verify-shared-tooling`, `make check-pins`, `make test-pins`, `make test-tools`, `make test-tooling`,
   `make test-release-adapters`, `make test-release-runner`, `make test-hooks`,
   `make fmt-check`, `make lint-tooling`, or an appropriately
   selected Rust test.

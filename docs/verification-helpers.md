@@ -70,6 +70,12 @@ point, `install-ci-tool.sh` and `verify-file-checksum.sh` in the same snapshot.
 socket selection for a cache server that outlives one validation invocation.
 It forwards the exact arguments, diagnostics and exit status to `SCCACHE_BIN`;
 it does not select Cargo's compiler wrapper or retry compiler failures.
+It refuses a symlinked repository `.tmp`, selected runtime root or `tmp` child
+before creating runtime directories. An explicit `SCCACHE_RUNTIME_DIR` owns its
+chosen location; its ancestors follow normal filesystem resolution (including
+system `/tmp` aliases on macOS). Choose trusted parents and do not mutate those
+paths concurrently with launch. This is admission ordering, not a race-proof
+filesystem sandbox.
 
 Consumers with an existing cache-failure adapter can select that executable as
 `SCCACHE_BIN`, keeping the actual cache executable under a separate local
@@ -358,10 +364,17 @@ proof. Never add synthetic dependencies to qualify a dependency-free consumer.
 Remaining relative arguments explicitly overlay additional current
 files needed by the consumer's formatter (other manifests, source, lockfiles,
 configuration or Make includes). The checker exports existing HEAD, overlays
-the named inputs plus Makefile/hook/installer, and stages them only in temporary
-repositories. It never creates commits or activates the real checkout's hook.
+the named inputs plus the Makefile, hook, installer and Make execution check,
+and stages them only in temporary repositories. It never creates commits or
+activates the real checkout's hook.
 README.md must exist as an unrelated-edit preservation input. Tracked files must
 be regular files, matching the shared hook's support contract.
+This includes unrelated historical symlinks: the checker rejects them before
+running the formatter. A consumer with an approved hook adapter that exports
+only regular entries must keep its own qualification for that model, including
+selected-symlink refusal and unrelated-evidence preservation. Passing the shared
+fixture cannot qualify that adapter. Do not remove historical links merely to
+make this checker pass. See [#33](https://github.com/dragginzgame/shared-tooling/issues/33).
 
 Review the consumer's Makefile and formatting commands before execution. This
 helper executes those commands; it is not a sandbox for arbitrary Make code.

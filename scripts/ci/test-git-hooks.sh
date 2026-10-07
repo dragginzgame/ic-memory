@@ -40,8 +40,8 @@ new_fixture() {
     # Synthetic manifests have their own dependency graph. Remove inherited
     # consumer locks so the formatter check still detects accidental creation.
     git rm --quiet --ignore-unmatch -- Cargo.lock testing/runtime-qualification/Cargo.lock
-    mkdir -p ci .githooks scripts/ci scripts/dev
-    for path in Makefile ci/tool-versions.env rust-toolchain.toml .githooks/pre-commit scripts/dev/install-git-hooks.sh scripts/ci/check-format-tools.sh; do
+    mkdir -p ci make .githooks scripts/ci scripts/dev
+    for path in Makefile make/tools.mk ci/tool-versions.env rust-toolchain.toml .githooks/pre-commit scripts/dev/install-git-hooks.sh scripts/ci/check-format-tools.sh scripts/ci/check-make-execution.sh; do
         cp -p "$root/$path" "$path"
     done
     for workspace in . testing/runtime-qualification; do
@@ -78,7 +78,7 @@ CARGO
             printf 'pub fn fixture() {}\n' > "$workspace/crates/$member/src/lib.rs"
         done
     done
-    git add -- Makefile ci/tool-versions.env rust-toolchain.toml .githooks/pre-commit scripts/dev/install-git-hooks.sh scripts/ci/check-format-tools.sh Cargo.toml crates/hook-fixture crates/alpha crates/zeta testing/runtime-qualification/Cargo.toml testing/runtime-qualification/crates/hook-fixture testing/runtime-qualification/crates/alpha testing/runtime-qualification/crates/zeta
+    git add -- Makefile make/tools.mk ci/tool-versions.env rust-toolchain.toml .githooks/pre-commit scripts/dev/install-git-hooks.sh scripts/ci/check-format-tools.sh scripts/ci/check-make-execution.sh Cargo.toml crates/hook-fixture crates/alpha crates/zeta testing/runtime-qualification/Cargo.toml testing/runtime-qualification/crates/hook-fixture testing/runtime-qualification/crates/alpha testing/runtime-qualification/crates/zeta
 }
 
 expect_failure() {
@@ -129,13 +129,36 @@ for path in crates/hook-fixture/src/lib.rs Cargo.toml crates/hook-fixture/Cargo.
 done
 
 new_fixture failed-formatter
-printf '.PHONY: fmt\nfmt:\n\t@false\n' > Makefile
+printf '.PHONY: fmt\nfmt:\n\t@printf "changed\\n" > crates/hook-fixture/src/lib.rs\n\t@exit 23\n' > Makefile
 git add -- Makefile
 tree="$(git write-tree)"
 cp crates/hook-fixture/src/lib.rs before
 expect_failure bash .githooks/pre-commit
 [[ "$(git write-tree)" == "$tree" ]]
 cmp before crates/hook-fixture/src/lib.rs
+
+for mode in i n q t v; do
+    new_fixture "make-mode-$mode"
+    printf '.PHONY: fmt\nfmt:\n\t@touch "%s/formatter-%s"\n\t@exit 23\n' "$fixture" "$mode" > Makefile
+    git add -- Makefile
+    tree="$(git write-tree)"
+    cp crates/hook-fixture/src/lib.rs before
+    expect_failure env MAKEFLAGS="$mode" bash .githooks/pre-commit
+    [[ "$(git write-tree)" == "$tree" && ! -e "$fixture/formatter-$mode" ]]
+    cmp before crates/hook-fixture/src/lib.rs
+done
+
+new_fixture make-selection
+# shellcheck disable=SC2016 # Make expands the selected variable in the export.
+printf '.PHONY: fmt\nfmt:\n\t@printf "%%s\\n" "$(HOOK_SELECTION)" > "%s/formatter-selection"\n' "$fixture" > Makefile
+git add -- Makefile
+cat > parent.make <<'MAKE'
+.PHONY: hook
+hook:
+	+@bash .githooks/pre-commit
+MAKE
+make --no-print-directory -j2 -f parent.make hook HOOK_SELECTION=kept > output
+[[ "$(cat "$fixture/formatter-selection")" == kept ]]
 
 new_fixture installation
 bash scripts/dev/install-git-hooks.sh > output

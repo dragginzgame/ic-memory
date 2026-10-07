@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.31.0]
+
+- **Breaking developer setup:** require the complete pinned jq/yq/ripgrep/cloc
+  set. Run `make install-host-tools` to refresh existing installations before
+  offline checks. Reuse common setup commands and add Rust workspace and sibling
+  tooling LOC reports. [#21](https://github.com/dragginzgame/ic-memory/issues/21).
+- Keep LOC test fixtures independent of inherited Cargo build directories, and
+  select the root fixture's own workspace with checkout-local scratch.
+  [Shared Tooling #47](https://github.com/dragginzgame/shared-tooling/issues/47).
+  [#48](https://github.com/dragginzgame/shared-tooling/issues/48).
+- Reject inherited Make modes that skip formatting or release validation, or
+  hide failed gates, preventing false success and validation receipts.
+  [#20](https://github.com/dragginzgame/ic-memory/issues/20).
+- Retain qualified package archives through durable streaming publication,
+  preserving recovery after publication errors and unrelated temporary files.
+  [#22](https://github.com/dragginzgame/ic-memory/issues/22).
+
+[Detailed notes](docs/changelog/0.31.md)
+
 ## [0.30.0] - 2026-10-07
 
 - **Breaking checkout layout:** move Rust packages under `crates/` with virtual

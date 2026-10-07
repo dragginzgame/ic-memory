@@ -8,8 +8,9 @@ the independent, non-mutating formatting gate.
 ## One formatting contract
 
 - Vendor the reviewed Shared Tooling `.githooks/pre-commit` and
-  `scripts/dev/install-git-hooks.sh` unchanged in the
-  [recorded snapshot](../docs/consuming-snapshots.md). Keep both executable.
+  `scripts/dev/install-git-hooks.sh`, with `scripts/ci/check-make-execution.sh`,
+  unchanged in the [recorded snapshot](../docs/consuming-snapshots.md).
+  Keep the hook and installer executable.
   Retire the superseded local formatter hook after reviewing its obligations.
 - Every Rust repository provides `make fmt` and `make fmt-check`. Both cover the
   same maintained Rust workspaces, including standalone nested workspaces,
@@ -17,8 +18,9 @@ the independent, non-mutating formatting gate.
   `fmt` runs `cargo sort --workspace` before `cargo fmt --all` for each workspace;
   `fmt-check` uses `cargo sort --workspace --check` and
   `cargo fmt --all -- --check`. This sorts the root and every member's Cargo.toml,
-  including the root dependency catalog and inherited child tables. Explicitly
-  cover standalone/excluded manifests outside that workspace's member set.
+  including members under `crates/`, `apps/` and approved layout trees, the root
+  dependency catalog and inherited child tables. Explicitly cover
+  standalone/excluded manifests outside that workspace's member set.
   Independent workspaces and their locations follow the
   [workspace layout rules](rust-workspaces.md); formatter coverage does not
   itself grant a layout exception.
@@ -73,6 +75,52 @@ hand-written sort or rewrite dependency declarations to enforce ordering.
 
 ## Selected files and working edits
 
+### Mixed Rust and frontend reference
+
+Vendor `scripts/dev/format-frontend.sh` with the hook for a frontend using
+Prettier's built-in parsers. Explicit setup prepares Node and dependencies with
+the [npm pinning rules](dependency-pinning.md#frontend-and-npm-inputs). Before
+committing, the caller exports `PRETTIER_BIN` as the absolute prepared executable
+path (for example, `$PWD/frontend/node_modules/.bin/prettier`). An isolated index
+export has no `node_modules`; never resolve that path relative to the export or
+install packages inside it. The consumer's Makefile reads the version from the
+selected tracked lockfile, for example:
+
+```make
+PRETTIER_VERSION = $(shell jq -er '.packages["node_modules/prettier"].version' frontend/package-lock.json)
+
+fmt:
+	cargo sort --workspace
+	cargo fmt --all
+	PRETTIER_VERSION="$(PRETTIER_VERSION)" bash scripts/dev/format-frontend.sh --write frontend
+
+fmt-check:
+	cargo sort --workspace --check
+	cargo fmt --all -- --check
+	PRETTIER_VERSION="$(PRETTIER_VERSION)" bash scripts/dev/format-frontend.sh --check frontend
+```
+
+Retain the Rust prerequisite checks and all actual workspace roots described
+above. The hook supplies `SHARED_TOOLING_FORMAT_FILES`, a NUL-delimited selection
+outside the exported worktree. The helper formats matching selected frontend
+paths inside that export; the hook alone refreshes the real index. Outside the
+hook, `--write` and `--check` cover tracked frontend inputs, with `--check` always
+checking the complete tracked scope. JavaScript/TypeScript, JSON, CSS/SCSS, HTML,
+Markdown and YAML are selected; Prettier owns configuration and ignore behavior.
+Generated files may be ignored only when the consumer's generation checks own
+their correctness. Symlink inputs are refused. No Git staging or tool install
+occurs in the helper, and formatter failures propagate.
+
+This is a reference for prepared executables and built-in parsers. A consumer
+needing plugins or additional extensions owns their explicit prepared resolution
+and focused adapter checks. Preserve config, version and lock selections from
+the snapshot; do not make the formatter read unstaged configuration in the real
+checkout. Qualify real Prettier on the declared native hosts before claiming
+adoption; shared command-substitute tests prove wiring and selection only.
+See the [Prettier CLI contract](https://prettier.io/docs/cli).
+
+### Index ownership
+
 - The hook records the selected added/modified/renamed files using NUL-delimited
   paths. It rejects a selected file with unstaged changes before formatting,
   including a partial selection of configuration or formatter inputs. Preserve
@@ -81,6 +129,8 @@ hand-written sort or rewrite dependency declarations to enforce ordering.
   manifests, configuration and Make targets. It does not use unstaged working
   versions. It clears inherited Git repository/index variables for formatters,
   while preserving the original commit index for its own checks and staging.
+  It rejects inherited Make ignore-errors, dry-run, question, touch and version-only modes
+  before dispatch, so a skipped or failed formatter cannot refresh the index.
 - After successful formatting, the hook checks that the index and selected
   working files have not changed, copies formatting back to those selected files
   and refreshes only that selection. Unselected tracked files, untracked files

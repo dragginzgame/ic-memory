@@ -4,7 +4,7 @@
 //! package travel together in one receipt. Publication checks that evidence
 //! before dispatch; it never resolves a replacement lockfile.
 
-use ic_host_artifacts::artifact::Sha256Digest;
+use ic_host_artifacts::artifact::{Sha256Digest, copy_reader};
 use ic_host_fs::read::hash_file;
 use serde::{Deserialize, Serialize};
 use std::{
@@ -111,6 +111,14 @@ trait Execute {
 
     fn write_bytes(&self, path: &Path, bytes: &[u8]) -> Result<()> {
         Ok(ic_host_fs::durable::write_bytes(path, bytes)?)
+    }
+
+    fn write_with(
+        &self,
+        path: &Path,
+        write: impl FnOnce(&mut fs::File) -> std::io::Result<()>,
+    ) -> Result<()> {
+        Ok(ic_host_fs::durable::write_with(path, write)?)
     }
 }
 
@@ -547,14 +555,16 @@ impl<E: Execute> Repository<E> {
         let digest = Self::sha256(&package)?;
         let retained = self.retained_package(&digest)?;
         if !retained.exists() {
-            fs::create_dir_all(retained.parent().ok_or("archive has no parent")?)?;
-            let temporary = retained.with_extension("crate.tmp");
-            fs::copy(package, &temporary)?;
-            require(
-                Self::sha256(&temporary)? == digest,
-                "package changed while retaining evidence",
-            )?;
-            fs::rename(temporary, &retained)?;
+            self.exec.write_with(&retained, |staging| {
+                let copied = copy_reader(fs::File::open(&package)?, staging, u64::MAX)
+                    .map_err(std::io::Error::other)?;
+                if copied.sha256.to_string() != digest {
+                    return Err(std::io::Error::other(
+                        "package changed while retaining evidence",
+                    ));
+                }
+                Ok(())
+            })?;
         }
         require(
             Self::sha256(&retained)? == digest,
@@ -893,6 +903,7 @@ impl<E: Execute> Repository<E> {
     }
 
     fn verify(&self, selection: &ReleaseSelection) -> Result<()> {
+        self.run("bash", &["scripts/ci/check-make-execution.sh"])?;
         self.configuration()?;
         self.check_selection(selection)?;
         self.clean()?;

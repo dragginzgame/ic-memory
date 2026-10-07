@@ -976,3 +976,355 @@ change. Matching native Linux/macOS CI after the maintainer's commit and push
 remains required before closing #19. No broad local gate, full packaging/release
 qualification, installed PocketIC server, staging, commit, tag, push,
 publication, deployment or maintainer release command is performed.
+
+### Native confirmation for released 0.30.0
+
+[Consumer CI run 37587252306, attempt 1](https://github.com/dragginzgame/ic-memory/actions/runs/37587252306)
+completed successfully for exact released source
+`2fdeec4582bbcffcaa09aac625f48a47b29e3194`. All seven jobs pass: tooling lint,
+full validation on Ubuntu 24.04, macOS 15 ARM64 and macOS 15 Intel, and separate
+MSRV checks on those three hosts. This closes the native qualification condition
+for [#19](https://github.com/dragginzgame/ic-memory/issues/19).
+
+The released lock selects `ic-host-artifacts` and `ic-host-fs` 0.3.1, with registry
+checksums matching the official Cargo index. These CI results qualify that actual
+released graph and the recorded 0.1.13 snapshot. The original preparation's
+unchanged-lock comparisons above retain their 0.29.0 input scope. This run does
+not qualify subsequent working-tree changes for #20 or prove publication,
+installed PocketIC qualification or live release effects.
+
+## Make execution adoption for #20
+
+Prepared against released ic-memory 0.30.0 source
+`2fdeec4582bbcffcaa09aac625f48a47b29e3194` for
+[#20](https://github.com/dragginzgame/ic-memory/issues/20). This is local
+working-tree evidence, separate from the native confirmation for #19 above.
+
+The canonical refresh exports 56 files from a clean private checkout of reviewed
+committed Shared Tooling 0.1.14 at
+`25e7ce83149e081e4dcc52c55c33724e44153f2a`, adding
+`scripts/ci/check-make-execution.sh` explicitly. Runner, hook, installer, common
+runner fixtures and linked governance are unchanged upstream exports. Newer dirty
+sibling rules remain active under the approved local exception but are not
+attributed to this recorded revision. The apps/ governance allowance does not
+require moving this consumer's existing crates/ packages.
+
+The consumer hook fixture copies and stages the new helper in its disposable
+source. It tests ignore-errors, dry-run, question, touch and version-only modes
+with real Make, requiring refusal before a formatter marker, index refresh or
+working-file change. A failing formatter writes partial bytes only inside its
+export; original selected bytes and index remain unchanged. A parallel parent
+Make invocation forwards its selected variable through the actual hook. Existing
+both-workspace formatting, partial-stage, unrelated-edit and installation cases
+remain covered without creating commits or tags.
+
+The Rust validation adapter invokes the same shared checker before gate dispatch.
+A substituted refusal test records no later process dispatch, preserves the prior
+validation receipt and creates no archived successful attempt. Receipt schemas,
+identity binding and recovery remain unchanged; the shared helper owns execution
+mode admission rather than a new consumer flag parser.
+
+Focused Linux x86-64 results:
+
+- All 28 repo-tool tests pass locked/offline on Rust 1.99.0 and MSRV 1.88.0.
+  Strict repo-tool/test Clippy passes on 1.99.0.
+- Canonical runner tests use actual GNU Make for all three increments under the
+  five rejected modes, with Git/release effects substituted. Rejection precedes
+  state creation/preparation. Existing failure/recovery tests also pass.
+- Consumer Make adapters and disposable hook fixtures pass on Bash 5 and genuine
+  GNU Bash 3.2.57. The Bash 3.2 checks select that executable for nested shell
+  invocations, including the parent Make hook case.
+- Snapshot verification, pin declarations/inheritance and pin/metadata fixtures,
+  both-workspace formatting, workflow lint and ShellCheck pass. The first lint
+  attempt required a fixture-only annotation for an intentionally literal Make
+  variable; its log is retained alongside the passing final check.
+- Both selected lockfiles, host/IC pins and Rust toolchain bytes match the initial
+  inputs. No manifest/version, package-layout, dependency or product-format
+  change is made. Current changed-document navigation passes 87 local references;
+  published changelog history is preserved.
+
+Inputs, focused logs and released-source CI JSON are retained in
+`target/qualification/make-execution-20/`. The pending changelog selects 0.30.1
+for this compatible correction. Matching native Linux/macOS CI after the
+maintainer's commit and push remains required before closing #20. The successful
+0.30.0 CI run does not qualify this later working tree. No broad local gate,
+full package/release qualification, original-index hook, staging, commit, tag,
+push, publication, deployment or maintainer release command is performed. Sibling
+repository files remain read-only.
+
+## Archive retention adoption for #22
+
+Prepared against released 0.30.0 source
+`2fdeec4582bbcffcaa09aac625f48a47b29e3194`, preserving the #20 working-tree
+adoption above, for [#22](https://github.com/dragginzgame/ic-memory/issues/22).
+The consumer already selects registry `ic-host-fs` and `ic-host-artifacts` 0.3.1
+with unused default features disabled. Their `write_with` and `copy_reader`
+source matches the reviewed clean host 0.3.2 commit
+`c7c0d85765054909c05d86f6d3fd2c9965510335` byte-for-byte; no dependency update
+is required or performed.
+
+`Repository::record_package` delegates unique staging allocation, synchronization
+and atomic archive publication to `ic-host-fs::durable::write_with`.
+`ic-host-artifacts::copy_reader` copies and identifies the accepted stream with
+constant memory. The original source digest is compared inside the producer
+callback before publication, and the retained file is independently hashed
+before the consumer can write a receipt. Existing retained paths are verified
+without replacement. The private `Execute::write_with` boundary forwards to the
+shared owner and permits deterministic command-effect substitution in tests.
+No Rust function, method or type is deleted; the superseded inline parent/
+staging/copy/rename sequence is removed rather than retained as a second path.
+
+Focused Linux x86-64 evidence:
+
+- All 30 repo-tool tests pass locked/offline on Rust 1.99.0 and MSRV 1.88.0,
+  including the current #20 Make admission and existing release recovery tests.
+- New consumer tests inject publication errors before and after complete archive
+  visibility. Saved validation bytes and unrelated temporary-file evidence are
+  unchanged; no prepared receipt is written on refusal. Retry transfers only
+  when the retained file is absent, verifies visible matching bytes without a
+  second transfer, and refuses existing corrupt bytes without repair.
+- A producer-boundary source mutation changes the real fixture archive after
+  initial digest admission. The actual consumer callback refuses before archive
+  publication or receipt creation. The changed source remains available for
+  inspection, original metadata is restored, and a fresh package attempt passes.
+- Actual `Processes` publication uses the shared stream callback in the native
+  file test; an open descriptor continues to observe the former complete bytes.
+  Substituted after-publication errors prove consumer reconciliation, not a new
+  native filesystem sync-failure reproduction. Shared-owner publication contracts
+  retain their separate native qualification.
+- Strict repo-tool/test Clippy, both-workspace formatting, workflow lint,
+  ShellCheck, snapshot integrity and actual Make-adapter fixtures pass.
+  Both lockfiles, host/IC pins and the Rust toolchain are byte-identical to the
+  recorded starting inputs. The initial unsupported `cargo fmt --example`
+  invocation made no edits; formatting used the supported `cargo fmt --all`.
+- Earlier #20 canonical-runner and Bash 3.2 hook/adapter evidence remains scoped
+  to its unchanged shared exports and shell fixtures; it is not another execution
+  attributed to this Rust retention change.
+
+Logs and input hashes are retained in `target/qualification/archive-retention-22/`;
+the separate review prototype remains in `target/qualification/host-reuse-review/`.
+The root and minor-line notes extend the same compatible pending 0.30.1 entry
+for #20 and #22, preserving published history. Manifests remain at released
+0.30.0. The expanded cloc/common-command setup in #21 remains a separate follow-up,
+awaiting a reviewed committed upstream source and compatible release planning.
+
+Matching native Linux/macOS CI after the maintainer's commit and push remains
+required for #20 and #22. Released 0.30.0 CI is green but does not qualify this
+later working tree. No full local gate, live release/package qualification,
+original-index hook, staging, commit, tag, push, publication, deployment or
+sibling file edit was performed.
+
+## Common tool command adoption for #21
+
+Prepared on 2026-10-07 against released consumer HEAD
+`2fdeec4582bbcffcaa09aac625f48a47b29e3194`, carrying the earlier uncommitted
+#20 and #22 repairs. These earlier sections retain their original candidate and
+dependency identities; this batch supersedes their pending-version selection.
+The numbered draft is now **0.31.0**, because existing developers must refresh
+their host installation to add required cloc. Package manifests remain at
+released 0.30.0; neither selected lockfile changed during this adoption.
+
+The 64-file snapshot is a canonical export of reviewed Shared Tooling 0.1.15,
+`bfb50bd0884b5e6c5ee9592056531c6108f96d73`, from a clean private checkout.
+[Exact-source upstream CI](https://github.com/dragginzgame/shared-tooling/actions/runs/37593142226)
+passed Linux, macOS Intel/ARM and lint/security. Dirty sibling reporting,
+finalizer and sccache fixes are not attributed to that revision or exported.
+This upstream evidence does not qualify the consumer working tree.
+
+The unchanged `make/tools.mk` replaces copied installation/check recipes,
+preserves the help default and selects checkout-local host/IC paths. Both host
+setup and offline checks require ripgrep and cloc. Actual consumer release and
+hook fixtures export the include, including the adapter's retained bootstrap.
+CI keeps its existing common setup/check targets and runs the adopted command
+and report fixtures through `test-tools` on each declared native host.
+
+Fresh local Linux evidence:
+
+- The previous jq/yq/ripgrep set fails offline admission without modification.
+  Explicit `make install-host-tools` authenticates the complete pinned set,
+  including cloc 2.10; subsequent `make host-tools-check` passes. The prior set
+  and failed fixture candidates remain retained. Existing pins are unchanged.
+- `make test-tools` passes common Make ordering/path/default/failure dispatch,
+  host/IC installer refusal and old-set preservation, checksum helpers, root
+  Rust reporting, sibling Rust reporting and tooling inventory fixtures.
+  Installer fixtures substitute downloads; actual host setup is recorded
+  separately. No live IC installation was requested or performed.
+- Snapshot integrity, workflow/ShellCheck lint and consumer release-adapter
+  substitutes pass. Pin declarations/metadata, both-workspace formatting,
+  disposable hook isolation, common release-runner substitutes and all 30
+  Rust repo-tool tests pass through the actual consumer Make targets.
+- Common tool/report fixtures, actual release dispatch and hook integration
+  also pass under genuine GNU Bash 3.2.57 selected for nested Bash invocations.
+  This is Linux shell execution, not native macOS qualification.
+- Actual `make cloc` reports only `ic-memory`, using locked offline root Cargo
+  metadata. Actual `make cloc-tooling` reports the current sibling tooling
+  inventory. Counts are snapshots of their declared scopes, not deletion or
+  performance claims. Both selected lockfile hashes remain unchanged.
+
+Logs, original snapshot/notes and input hashes are retained in
+`target/qualification/common-tools-21/`. The current root lock selects host
+filesystem/artifact 0.3.2; separate 30-test runs on Rust 1.99.0 and 1.88.0 and
+strict Clippy for that selection remain in
+`target/qualification/shared-0.1.15-review/`. Earlier 0.3.1 evidence is not
+relabeled. Read-only review of IC Host Tooling 0.3.3 at
+`3d18ca9a9ed0ac5935a16c5bac99694d8e9a7d0a` and its
+[successful native CI](https://github.com/dragginzgame/ic-host-tooling/actions/runs/37595113180)
+found no additional equivalent consumer flow to replace: bounded process capture
+would introduce another dependency and new output/deadline policy for the
+small existing command boundary. Its borrowed error accessors have no current
+consumer here. No host dependency selection changed during this batch.
+
+The current documentation and pending-note links resolve; published root and
+0.30 detail history are byte-identical to HEAD. An initial whole-ledger link
+check also found the pre-existing published `examples/composed_host.rs` reference
+in the historical root changelog, which predates this setup adoption. Its failed
+log is retained; history was not rewritten to repair that unrelated reference.
+
+The reviewed reporting contract excludes the independent runtime-qualification
+workspace and Rust product/example trees from the respective root/tooling
+reports. Independent selection remains tracked in
+[Shared Tooling #41](https://github.com/dragginzgame/shared-tooling/issues/41);
+custom snapshot-manifest and SSH-source reporting defects remain tracked in
+[#39](https://github.com/dragginzgame/shared-tooling/issues/39). This consumer's
+root manifest and HTTPS identity avoid those cases; pending upstream repairs
+are not patched into the immutable snapshot.
+
+[#21](https://github.com/dragginzgame/ic-memory/issues/21) remains open until
+maintainer commit and matching native consumer CI. No full local gate,
+package/release qualification, original-index hook, staging, commit, tag, push,
+publication, deployment or sibling file edit was performed.
+
+## Shared Tooling 0.1.16 adoption and LOC fixture isolation
+
+Prepared on 2026-10-07 against released consumer HEAD
+`2fdeec4582bbcffcaa09aac625f48a47b29e3194`, carrying the earlier #20/#21/#22
+working-tree changes in the same numbered **0.31.0** draft. The preceding
+sections retain their original input identities and qualification scopes.
+Manifests remain at released 0.30.0; both selected lockfiles, existing host/IC
+pins and the Rust toolchain are byte-identical to this batch's starting inputs.
+
+The 66-file snapshot is a canonical export from clean private checkouts of
+reviewed Shared Tooling 0.1.16,
+`b69507367d45e3db9543359e689e1fcba0467ff4`. It includes the newly linked
+canister audit addendum and `scripts/distribution/refresh-consumer.sh`, a required
+dependency of the updated tooling inventory fixture. Every declared payload and
+mode matches the committed source. Dirty 0.1.17 fixture repairs are excluded;
+the sibling remains read-only. Product limits, Rust release receipts and the
+consumer gate roster retain their local ownership.
+
+The consumer Make boundary clears `CARGO_TARGET_DIR` only when invoking the
+independent root and sibling LOC fixtures. Their own explicit custom-target
+cases remain active; actual builds and reports retain caller selections.
+The shared fixture files are unchanged. This addresses the consumer trigger in
+[Shared Tooling #47](https://github.com/dragginzgame/shared-tooling/issues/47).
+
+Fresh focused Linux evidence:
+
+- Actual `make test-tools CARGO_TARGET_DIR="<checkout>/target/qualification/shared-0.1.16-adoption/caller target [selected]"`
+  passes common Make dispatch, host/IC installer fixtures, checksums and both LOC
+  fixtures, including explicit independent-workspace selection. The final tooling
+  inventory fixture stops because current committed consumer HEAD does not yet
+  contain `scripts/ci/check-make-execution.sh`; that file is still an unstaged
+  part of the prepared #20 adoption. The failed suite log and fixture are retained.
+  No commit or real-index mutation was used to manufacture this prerequisite.
+- The canonical inventory fixture passes separately from the clean committed
+  upstream checkout, including real exporter/verifier-backed custom manifest,
+  nested-root and HTTPS/SSH cases. This qualifies the shared behavior, not the
+  consumer's committed-history prerequisite. Adding the canonical exporter fixes
+  the separately identified dependency omission in the consumer snapshot.
+- Snapshot integrity, offline host admission, workflow/ShellCheck lint, actual
+  consumer release dispatch, pins/metadata, both-workspace formatting, disposable
+  hook isolation and canonical release-runner substitutes pass.
+- Root/sibling LOC fixtures, consumer release dispatch/hooks and the canonical
+  upstream inventory fixture also pass under genuine Bash 3.2.57. This is Linux
+  shell-portability evidence, not native macOS qualification.
+- Actual `make cloc` selects only the library root. Actual
+  `make cloc CLOC_MANIFEST=testing/runtime-qualification/Cargo.toml`
+  with a caller-selected target reports only `ic-memory-runtime-qualification`:
+  86 runtime LOC. Graphs remain separate, selected target configuration is kept,
+  and neither lockfile changes. Actual `make cloc-tooling` also completes.
+
+Logs, prior snapshot/notes and input hashes remain in
+`target/qualification/shared-0.1.16-adoption/`. Initial reproductions remain in
+`target/qualification/shared-0.1.16-review/`. Existing Rust example/test source
+and dependency selection are unchanged by this shell/reporting batch; prior
+30-test Rust 1.99/1.88 and strict Clippy evidence remains scoped to its recorded
+0.3.2 host selection, without being relabeled as a fresh run.
+
+The 0.1.16 root LOC fixture still selects the enclosing Git root when scratch
+is placed inside a checkout. This separate cause is tracked in
+[Shared Tooling #48](https://github.com/dragginzgame/shared-tooling/issues/48).
+The configured consumer CI uses runner scratch outside the checkout. Do not
+claim inside-checkout scratch qualification or copy pending upstream manifest
+repairs into the immutable export.
+
+Remaining qualification: after the maintainer commits the prepared files,
+rerun `make test-tools` against that committed history and obtain matching
+native Linux/macOS consumer CI. The shared
+[0.1.16 CI run](https://github.com/dragginzgame/shared-tooling/actions/runs/37598153506)
+has Linux/lint success but queued macOS jobs at inspection; it is not complete
+native evidence. [Consumer #21](https://github.com/dragginzgame/ic-memory/issues/21)
+and upstream #47 remain open for their respective remaining work. No full local
+gate, package/release qualification, original-index hook, staging, commit, tag,
+push, publication, deployment, CI dispatch or sibling file edit was performed.
+
+## Shared Tooling 0.1.17 canonical LOC fixture repair
+
+During the authorized 0.1.16 adoption, the maintainer committed the directly
+relevant canonical root-fixture correction as 0.1.17,
+`88f1d70cdf671aefb9507d7a81411ed5daa358b3`. The final 66-file snapshot now
+records a clean canonical export of that commit. The previous section and its
+logs retain the actual intermediate 0.1.16 evidence rather than being relabeled.
+The pending candidate remains **0.31.0**; manifests stay at released 0.30.0.
+
+The shared root LOC fixture now clears its own inherited target selection and
+uses explicit manifests. The temporary consumer root-fixture guard was removed
+in the same change; `make test-tools` keeps `env -u CARGO_TARGET_DIR` only for
+the independent sibling fixture, whose upstream entrypoint is unchanged.
+Actual build/report selections are preserved. Exported files are not patched.
+
+Fresh final-source evidence in
+`target/qualification/shared-0.1.17-adoption/`:
+
+- The canonical root fixture passes with both an inherited target containing
+  spaces/globs and TMPDIR beneath this actual Cargo/Git checkout, under GNU
+  Bash 5.2 and genuine Bash 3.2.57. Generated-output, root-package, relocated
+  checkout and explicit independent-workspace assertions stay active.
+- The unchanged sibling fixture passes with its inherited target cleared and
+  ordinary outside-checkout scratch. A separate inside-checkout probe fails
+  because its synthetic zeta package sees the consumer's enclosing Cargo
+  workspace, despite having its own Git checkout. The failed log/fixture are
+  retained; this distinct setup gap is reported in
+  [Shared Tooling #53](https://github.com/dragginzgame/shared-tooling/issues/53).
+  Configured consumer CI uses runner scratch outside the checkout.
+- Final snapshot integrity, workflow/ShellCheck lint, both-workspace formatting
+  and bare-Make help pass. Both selected lockfiles, host/IC pins and toolchain
+  remain byte-identical to the recorded starting inputs. Published root and
+  0.30 detail notes remain unchanged; current docs and pending links resolve.
+
+Earlier successful 0.1.16 root/independent report commands, pins/metadata,
+consumer dispatch/hooks, Bash 3.2 and canonical release/inventory checks retain
+their recorded scopes. Their shared implementation bytes did not change in
+0.1.17 except for the separately requalified root fixture. Rust adapter source
+and selected dependencies are also unchanged by this batch; prior Rust test
+evidence is preserved, not presented as a fresh execution.
+
+The consumer tooling-inventory fixture remains blocked on its newly adopted
+checker being absent from committed consumer HEAD. This is the acknowledged
+upstream fixture gap in
+[Shared Tooling #50](https://github.com/dragginzgame/shared-tooling/issues/50),
+not a passing consumer gate. The canonical exporter dependency is now included,
+and the same inventory fixture passes from committed upstream source. An
+eventual reviewed fixture correction or maintainer commit can satisfy the
+remaining consumer prerequisite; agents do neither a real commit nor index
+mutation to manufacture it. Rerun `make test-tools` when that prerequisite is
+satisfied, then bind native CI to the maintainer's actual committed source.
+
+[Exact-source 0.1.17 CI](https://github.com/dragginzgame/shared-tooling/actions/runs/37601115116)
+has Linux/lint success with both macOS jobs queued at inspection. The older
+0.1.16 run was cancelled after the new push; neither is claimed as complete
+supported-host qualification. Consumer released-0.30.0 CI does not qualify this
+later working tree. [#21](https://github.com/dragginzgame/ic-memory/issues/21)
+and the relevant upstream issues remain open for their own remaining work.
+No full gate, package/release qualification, real-index hook, staging, commit,
+tag, push, publication, deployment, CI dispatch or sibling file edit occurred.

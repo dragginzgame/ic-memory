@@ -46,7 +46,8 @@ when recording release qualification; retain failed runs and their limitations.
   separately with `cargo fetch --locked --manifest-path testing/runtime-qualification/Cargo.toml`
   when installed qualification is needed. Preserve both selections; never
   regenerate them to make a check pass.
-- The common jq/yq/ripgrep set under `.tools/host/bin` for `make check-pins`
+- The common jq/yq/ripgrep/cloc set under `.tools/host/bin` for host checks and
+  reports; jq/yq support `make check-pins`
   and `make test-pins`. The reviewed pins live in `ci/tool-versions.env`.
   Interrupted manifest/lockfile recovery also uses yq to locate Cargo's selected
   target directory. Checks are offline and never install prerequisites.
@@ -88,6 +89,9 @@ make check-pins test-pins
 ```
 
 Make selects those local paths automatically. Setup does not edit shell profiles.
+The reviewed `make/tools.mk` owns installation, offline checks and LOC targets.
+Existing jq/yq/ripgrep-only checkouts must run `make install-host-tools` once to
+add pinned cloc 2.10, then `make host-tools-check` before offline qualification.
 See [common local setup](local-setup.md) for system bootstrap packages and
 [IC tools](ic-tools.md) for the selected Quill, ICP CLI, didc, ic-wasm, PocketIC
 and wasm-opt set. Host and IC setup activate independently; previous selections
@@ -99,13 +103,41 @@ configured jobs alone do not qualify this adoption. The pin checker requires loc
 by Git: agents leave new locks unstaged, so the maintainer must commit their
 adoption before the real-checkout declaration/release gate can pass.
 
+`make cloc` reports the root library workspace by default using locked, offline
+Cargo metadata; it neither builds nor installs tools. Select the independent
+qualification graph explicitly with
+`make cloc CLOC_MANIFEST=testing/runtime-qualification/Cargo.toml`. Each report
+uses only the selected workspace and its target configuration; reports do not
+combine the two graphs. `CLOC_ROOT` still selects a containing checkout, rather
+than an independent manifest. The selector is the reviewed fix for
+[Shared Tooling #41](https://github.com/dragginzgame/shared-tooling/issues/41).
+`make cloc-tooling` reports sibling CI and tooling without running sibling Make
+targets; `CLOC_PARENT` selects the parent directory. Its scope excludes product
+Rust/example trees, including the Rust release adapter. The reviewed counter
+supports custom snapshot-manifest locations and equivalent HTTPS/SSH source
+identities; explicit `--snapshot-root` selection handles other nested layouts.
+It does not infer ownership from matching hashes. See the correction in
+[Shared Tooling #39](https://github.com/dragginzgame/shared-tooling/issues/39).
+
+The reviewed 0.1.17 root LOC fixture clears inherited `CARGO_TARGET_DIR` and
+selects its own manifests, including with scratch inside a checkout. Consumer
+`make test-tools` clears the inherited variable only for the still-independent
+sibling LOC fixture. Actual builds/reports retain target selections, and both
+fixtures keep their deliberate per-case overrides. These fixes track
+[Shared Tooling #47](https://github.com/dragginzgame/shared-tooling/issues/47) and
+[#48](https://github.com/dragginzgame/shared-tooling/issues/48) without patching
+reviewed exports. CI continues to retain scratch under `$RUNNER_TEMP`.
+The sibling fixture still needs scratch outside an enclosing Cargo workspace;
+its standalone-package admission gap is tracked in
+[#53](https://github.com/dragginzgame/shared-tooling/issues/53).
+
 `make check-pins` also checks Cargo inheritance against each manifest's owning
 workspace catalog. The independent runtime-qualification root keeps its approved
 scope and lockfile; it is not merged into the library graph. `make test-pins`
 reuses the shared metadata fixture for ordinary/inline dependency tables,
 aliases, target/dev/build declarations, rejected child overrides and independent
 workspace discovery. Its workspace-version reader is a fixture dependency;
-the Rust release adapter still owns this crate's `package.version`.
+the Rust release adapter still owns this crate's `workspace.package.version`.
 
 The actionlint and ShellCheck setup commands delegate to the shared
 `install-ci-tool.sh` implementation. Existing arguments and pins are unchanged.
@@ -127,8 +159,13 @@ than silently replacing them. Reconcile those obligations before activating it.
 The recorded shared installer resolves the physical checkout path, including
 when entered through a logical alias such as macOS temporary paths.
 CI and release preparation check formatting independently of hook activation.
+The shared Make execution check refuses inherited ignore-errors, dry-run,
+question, touch and version-only modes before hook or release validation dispatch.
+Rerun without those modes; ordinary Make selections and jobserver settings remain
+inherited by the real targets.
 `make test-hooks` exercises selected-file refresh, partial source/config staging,
-formatter failure isolation and preservation of unrelated edits in disposable
+formatter failure isolation, inherited Make mode rejection, selection forwarding
+and preservation of unrelated edits in disposable
 repositories without creating commits or tags, including setup through a checkout
 path alias. It uses the actual consumer
 formatting targets and includes the shared prerequisite rejection fixture. It

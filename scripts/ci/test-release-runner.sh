@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# This fixture owns its Make controls; production admission is tested below.
+unset MAKEFLAGS MFLAGS MAKEOVERRIDES GNUMAKEFLAGS MAKEFILES
+
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 FIXTURE_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/release-runner-test.XXXXXX")"
 trap 'if [[ $? == 0 ]]; then rm -rf "$FIXTURE_ROOT"; else printf "Failed release-runner fixture retained: %s\n" "$FIXTURE_ROOT" >&2; fi' EXIT
@@ -12,6 +15,8 @@ mkdir -p "$FIXTURE_ROOT/bin"
 cat > "$FIXTURE_ROOT/bin/make" <<'STUB'
 #!/usr/bin/env bash
 set -euo pipefail
+# Admission uses real GNU Make; all release effects below remain substitutes.
+if [[ "${2:-}" == -f && "${3:-}" == - ]]; then exec "$REAL_MAKE" "$@"; fi
 while [[ "$1" == --no-print-directory || "$1" == -s ]]; do shift; done
 target="$1"
 shift
@@ -201,6 +206,36 @@ expect_failure() {
         exit 1
     fi
 }
+
+for kind in patch minor major; do
+    for flags in '' i n q t v; do
+        new_fixture "make-mode-$kind-${flags:-control}"
+        cat > Makefile <<'MAKE'
+.PHONY: release-version release-preflight release-verify release-prepare-version
+release-version:
+	@cat version
+release-preflight:
+	@echo preflight >> events
+release-verify:
+	@echo validation-failed >> events
+	@exit 23
+release-prepare-version:
+	@echo preparation-started >> events
+	@exit 24
+MAKE
+        MAKEFLAGS="$flags" RELEASE_MAKE="$REAL_MAKE" expect_failure "$kind" origin main
+        [[ "$(cat version)" == 0.1.0 && ! -e .release-state/lock ]]
+        plans=(.release-state/*.plan)
+        [[ ! -e "${plans[0]}" ]]
+        if [[ -z "$flags" ]]; then
+            [[ "$(cat events)" == $'preflight\nvalidation-failed' ]]
+        else
+            [[ ! -e events && ! -e .release-state ]]
+            rg -F 'requires recipe execution and failure propagation' output >/dev/null
+        fi
+        [[ ! -e tag && ! -e commits && ! -e pushes ]]
+    done
+done
 
 for kind in patch minor major; do
     new_fixture "$kind"
@@ -727,4 +762,21 @@ NOTES
             > prepared 2> conflict.log; then exit 1; fi
     done
 done
+# Horizontal heading whitespace is presentation, not a different release identity.
+for heading in '## [Draft]' '## [0.1.1]'; do
+    printf '# Changelog\n\n%s  \t\n\n- Selected notes.\n\n## [0.1.0]\t \n\n- Kept history.\n' "$heading" > whitespace-notes
+    printf '# Changelog\n\n## [0.1.1] - 2026-10-06\n\n- Selected notes.\n\n## [0.1.0]\t \n\n- Kept history.\n' > whitespace-expected
+    awk -v version=0.1.1 -v previous=0.1.0 -v date=2026-10-06 \
+        -f "$ROOT/scripts/ci/finalize-release-changelog.awk" whitespace-notes > whitespace-actual
+    cmp whitespace-expected whitespace-actual
+    printf '\n## [0.1.1]\t\n' >> whitespace-notes
+    if awk -v version=0.1.1 -v previous=0.1.0 -v date=2026-10-06 \
+        -f "$ROOT/scripts/ci/finalize-release-changelog.awk" whitespace-notes > /dev/null 2>&1; then exit 1; fi
+done
+printf '# Changelog\n\n## [0.1.1] - 2026-10-06 \t\n\n- Finalized notes.\n' > whitespace-notes
+awk -v version=0.1.1 -v previous=0.1.0 -v date=2026-10-06 -v allow_finalized=1 \
+    -f "$ROOT/scripts/ci/finalize-release-changelog.awk" whitespace-notes > whitespace-actual
+cmp whitespace-notes whitespace-actual
+if awk -v version=0.1.1 -v previous=0.1.0 -v date=2026-10-07 -v allow_finalized=1 \
+    -f "$ROOT/scripts/ci/finalize-release-changelog.awk" whitespace-notes > /dev/null 2>&1; then exit 1; fi
 echo 'release runner command-stub tests passed'

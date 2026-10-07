@@ -149,6 +149,13 @@ final qualification before packaging; a working archive replaced by failed final
 packaging does not invalidate its intact retained prepared archive. Completed
 prepared/final checks reuse valid evidence without repackaging.
 
+Archive retention streams into the shared durable publisher's private staging
+file and checks the copied digest before publication, then independently hashes
+the retained file. Publication can report an error after complete bytes become
+visible. Retry checks and reuses those bytes; an existing corrupt archive stops
+qualification rather than being replaced. Staging allocation and synchronization
+belong to `ic-host-fs`; release identities and receipts remain local.
+
 Older-commit recovery requires intact prepared and final receipts and retained
 archives. The replaced working package may belong to newer source; only the
 retained archive for the selected older SHA supplies historical package evidence.
@@ -189,6 +196,12 @@ If publication is interrupted, inspect crates.io's exact version before retrying
 a lost reply is not proof of failure. Release targets never publish implicitly.
 
 ## Focused workflow checks
+
+The runner and Rust validation adapter use the shared Make execution check before
+dispatching gates. It rejects inherited ignore-errors, dry-run, question, touch
+and version-only modes; rerun without those modes. Normal release selections and
+jobserver settings remain inherited. A refusal preserves earlier validation
+receipts and does not create a successful validation attempt.
 
 - `make test-tooling`: Rust adapters with substituted Git/Cargo/gate effects;
   recovery, rollback, input binding, artifact refusal and publication checks.

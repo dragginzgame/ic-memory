@@ -73,6 +73,7 @@ impl Fixture {
                 staged: false,
                 calls: Vec::new(),
                 fail: None,
+                archive_change: None,
                 tag: false,
                 descendant: None,
             }),
@@ -217,7 +218,9 @@ fn durable_publication_replaces_complete_files_and_preserves_rejected_targets() 
     Processes.write_bytes(&target, b"original receipt").unwrap();
     let mut original = fs::File::open(&target).unwrap();
     Processes
-        .write_bytes(&target, b"complete replacement")
+        .write_with(&target, |file| {
+            std::io::Write::write_all(file, b"complete replacement")
+        })
         .unwrap();
     assert_eq!(fs::read(&target).unwrap(), b"complete replacement");
     let mut original_bytes = Vec::new();
@@ -254,6 +257,7 @@ struct State {
     staged: bool,
     calls: Vec<Vec<String>>,
     fail: Option<String>,
+    archive_change: Option<PathBuf>,
     tag: bool,
     descendant: Option<BTreeMap<String, String>>,
 }
@@ -263,6 +267,31 @@ struct Substitute {
 }
 
 impl Execute for Substitute {
+    fn write_with(
+        &self,
+        path: &Path,
+        write: impl FnOnce(&mut fs::File) -> std::io::Result<()>,
+    ) -> Result<()> {
+        let phase = {
+            let mut state = self.state.borrow_mut();
+            state
+                .calls
+                .push(vec!["stream-write".to_owned(), path.display().to_string()]);
+            if let Some(source) = state.archive_change.take() {
+                fs::write(source, b"changed after digest admission")?;
+            }
+            state.fail.clone()
+        };
+        if phase.as_deref() == Some("archive-before") {
+            return Err("fixture failure before archive publication".into());
+        }
+        ic_host_fs::durable::write_with(path, write)?;
+        if phase.as_deref() == Some("archive-after") {
+            return Err("fixture failure after archive publication".into());
+        }
+        Ok(())
+    }
+
     fn write_bytes(&self, path: &Path, bytes: &[u8]) -> Result<()> {
         let failure = self.state.borrow().fail.clone();
         let phase = failure
@@ -321,6 +350,12 @@ impl Execute for Substitute {
                 .join("\n"))
         };
         match program {
+            "bash"
+                if args == ["scripts/ci/check-make-execution.sh"]
+                    && state.fail.as_deref() == Some("make-execution") =>
+            {
+                Err("fixture Make execution refusal".into())
+            }
             "bash" => Processes.run(
                 &Path::new(env!("CARGO_MANIFEST_DIR")).join("../.."),
                 program,
@@ -767,6 +802,7 @@ fn inherited_compiler_configuration_refuses_preparation() {
                 staged: false,
                 calls: Vec::new(),
                 fail: None,
+                archive_change: None,
                 tag: false,
                 descendant: None,
             }),
@@ -984,6 +1020,24 @@ fn metadata_publication_failures_reconcile_visible_bytes_and_retry_saved_intent(
             );
         }
     }
+}
+
+#[test]
+fn validation_refuses_make_modes_before_gates_and_preserves_evidence() {
+    let fixture = Fixture::new();
+    fixture.repo.verify(&fixture.selection).unwrap();
+    let receipt = fixture.repo.validation_path("0.13.0").unwrap();
+    let previous = fs::read(&receipt).unwrap();
+    fixture.fail("make-execution");
+    fixture.repo.exec.state.borrow_mut().calls.clear();
+    assert!(fixture.repo.verify(&fixture.selection).is_err());
+    assert_eq!(fs::read(&receipt).unwrap(), previous);
+    assert_eq!(
+        fixture.repo.exec.state.borrow().calls,
+        vec![vec!["bash", "scripts/ci/check-make-execution.sh"]]
+    );
+    assert!(!receipt.parent().unwrap().join("attempts").exists());
+    fixture.assert_original();
 }
 
 #[test]
@@ -1239,6 +1293,90 @@ fn all_release_kinds_finalize_root_and_detail_notes_at_saved_date() {
                 .contains("name = \"other\"\nversion = \"0.12.3\"")
         );
     }
+}
+
+#[test]
+fn archive_publication_errors_preserve_validation_and_reconcile_visible_bytes() {
+    for phase in ["archive-before", "archive-after"] {
+        let fixture = Fixture::new();
+        fixture.repo.verify(&fixture.selection).unwrap();
+        let validation = fixture.repo.validation_path("0.13.0").unwrap();
+        let validation_bytes = fs::read(&validation).unwrap();
+        let digest = Sha256Digest::compute(b"prepared-archive").to_string();
+        let retained = fixture.repo.retained_package(&digest).unwrap();
+        fs::create_dir_all(retained.parent().unwrap()).unwrap();
+        let foreign = retained.with_extension("crate.tmp");
+        fs::write(&foreign, b"unrelated evidence").unwrap();
+        fixture.fail(phase);
+        assert!(fixture.repo.prepare_selected(&fixture.selection).is_err());
+        fixture.assert_original();
+        assert_eq!(fs::read(&validation).unwrap(), validation_bytes);
+        assert!(!fixture.repo.receipt_path("0.13.0", true).unwrap().exists());
+        assert_eq!(fs::read(&foreign).unwrap(), b"unrelated evidence");
+        if phase == "archive-after" {
+            assert_eq!(fs::read(&retained).unwrap(), b"prepared-archive");
+        } else {
+            assert!(!retained.exists());
+        }
+        let transfers = || {
+            fixture
+                .repo
+                .exec
+                .state
+                .borrow()
+                .calls
+                .iter()
+                .filter(|call| {
+                    call.first()
+                        .is_some_and(|command| command == "stream-write")
+                })
+                .count()
+        };
+        let before_retry = transfers();
+        fixture.repo.exec.state.borrow_mut().fail = None;
+        fixture.repo.prepare_selected(&fixture.selection).unwrap();
+        let evidence = fixture.repo.prepared(&fixture.selection).unwrap();
+        assert_eq!(evidence.package_sha256, digest);
+        assert_eq!(fs::read(&retained).unwrap(), b"prepared-archive");
+        assert_eq!(fs::read(&validation).unwrap(), validation_bytes);
+        assert_eq!(fs::read(&foreign).unwrap(), b"unrelated evidence");
+        assert_eq!(
+            transfers() - before_retry,
+            usize::from(phase == "archive-before")
+        );
+        fs::write(&retained, b"corrupted retained archive").unwrap();
+        assert!(fixture.repo.record_package("0.13.0").is_err());
+        assert_eq!(fs::read(&retained).unwrap(), b"corrupted retained archive");
+    }
+}
+
+#[test]
+fn changed_archive_source_stops_before_publication_or_receipt() {
+    let fixture = Fixture::new();
+    fixture.repo.verify(&fixture.selection).unwrap();
+    let validation = fixture.repo.validation_path("0.13.0").unwrap();
+    let validation_bytes = fs::read(&validation).unwrap();
+    let package = fixture.repo.package_path("0.13.0").unwrap();
+    fixture.repo.exec.state.borrow_mut().archive_change = Some(package.clone());
+    assert!(fixture.repo.prepare_selected(&fixture.selection).is_err());
+    fixture.assert_original();
+    let digest = Sha256Digest::compute(b"prepared-archive").to_string();
+    assert!(!fixture.repo.retained_package(&digest).unwrap().exists());
+    assert!(!fixture.repo.receipt_path("0.13.0", true).unwrap().exists());
+    assert_eq!(fs::read(&validation).unwrap(), validation_bytes);
+    assert_eq!(
+        fs::read(&package).unwrap(),
+        b"changed after digest admission"
+    );
+    fixture.repo.prepare_selected(&fixture.selection).unwrap();
+    assert_eq!(
+        fixture
+            .repo
+            .prepared(&fixture.selection)
+            .unwrap()
+            .package_sha256,
+        digest
+    );
 }
 
 #[test]

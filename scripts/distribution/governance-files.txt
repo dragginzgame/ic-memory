@@ -6,6 +6,7 @@ rules/dependency-pinning.md
 rules/git-hooks.md
 rules/agent-maintenance.md
 audits/README.md
+audits/ic-canister-applications.md
 audits/code-hygiene.md
 audits/flow-convergence-and-duplication.md
 audits/complexity-and-technical-debt.md
@@ -13,6 +14,7 @@ audits/module-surface-hardening.md
 audits/module-cleanup.md
 docs/releases.md
 scripts/ci/run-release.sh
+scripts/ci/check-make-execution.sh
 scripts/ci/next-release-version.sh
 scripts/ci/finalize-release-changelog.awk
 scripts/ci/check-dependency-pins.sh
