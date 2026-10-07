@@ -1,6 +1,6 @@
 # Changelog
 
-## [0.30.0]
+## [0.30.0] - 2026-10-07
 
 - **Breaking checkout layout:** move Rust packages under `crates/` with virtual
   workspace roots. Point library path dependencies and package-specific manifest
