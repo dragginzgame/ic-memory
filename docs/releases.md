@@ -352,6 +352,18 @@ outside immutable shared snapshots until adopting a reviewed upstream revision.
 ### Fixture ownership
 
 Consumer adoption runs the canonical `scripts/ci/test-release-runner.sh` suite.
+It simulates repository and release effects; its native Git delegate accepts only
+`hash-object --stdin`, without object writes. Any attempted real Git operation
+fails the suite even if a negative case consumes its immediate failure status.
+
+`scripts/ci/test-release-tracking.sh` separately owns real-Git tracking and lock
+races in disposable repositories, including commits, tags and local bare pushes.
+The complete Shared Tooling portable suite runs both entrypoints on Linux and
+both macOS hosts. Consumers whose fixture authority excludes those effects can
+select the simulation suite without vendoring or invoking the native suite.
+The PR and metadata owner fixtures also use real disposable Git histories; this
+split does not make the entire portable suite simulation-only.
+
 Keep consumer tests for their own contracts, using this ownership map before
 deleting duplicate scenarios or extracting test support:
 

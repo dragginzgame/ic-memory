@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.31.7]
+
+- Keep native hook qualification working under inherited `CDPATH`, and adopt
+  committed installer path corrections with explicit fixture dependencies.
+  [#30](https://github.com/dragginzgame/ic-memory/issues/30),
+  [Shared Tooling #67](https://github.com/dragginzgame/shared-tooling/issues/67),
+  [#73](https://github.com/dragginzgame/shared-tooling/issues/73).
+- Reject malformed active host/IC tool links and keep consumer release-runner
+  qualification simulation-only.
+  [Shared Tooling #75](https://github.com/dragginzgame/shared-tooling/issues/75),
+  [#70](https://github.com/dragginzgame/shared-tooling/issues/70).
+- Show Git status entries when clean-source checks refuse package or release
+  qualification, making staged, working and untracked paths visible.
+  [#31](https://github.com/dragginzgame/ic-memory/issues/31).
+- Refresh host-side release-file dependencies to IC Host 0.8.1, preserving
+  receipt and archive behavior.
+
+[Detailed notes](docs/changelog/0.31.md)
+
 ## [0.31.6] - 2026-10-08
 
 - Refresh host-side release-file dependencies to IC Host 0.7.1, preserving

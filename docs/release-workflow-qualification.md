@@ -2357,3 +2357,222 @@ their matching native CI remains pending in
 transport evidence. Library contracts, compiler/tool pins
 and the independent runtime graph are unchanged. No broad consumer gate, network
 preparation, installation, staging, release or CI dispatch occurred.
+
+
+## 0.31.7 committed installer follow-ups and hook bootstrap
+
+Released source is `15cfca2c575ad9708902c5abf828bf36f55356d3`, matching remote main
+and `v0.31.6`. The matching run 37788652605 is queued at initial inspection;
+publication alone does not complete native acceptance for
+[#29](https://github.com/dragginzgame/ic-memory/issues/29).
+
+A clean private checkout of committed Shared follow-up
+`db039347d2372b877c1c46dcdd2b5c3aa9412009` canonically refreshes the same 76-file
+selection. It imports the reviewed installer operand corrections, fixture
+companion declarations and documented selection behavior. Shared's corrected
+workflow oracle is part of that owning source but is not a consumer workflow
+export. No dirty sibling bytes or vendored patch are used.
+
+The consumer-owned hook fixture separately reproduces exit 128 before source
+lookup under inherited `CDPATH`. Its relative initial cd printed an extra path
+into ROOT. Anchoring BASH_SOURCE and preserving physical directory bytes repairs
+that entry point. The native matrix now explicitly exercises the existing hook
+suite with CDPATH; no new fixture framework or Git delivery effect is added.
+The suite borrows an existing committed object graph read-only and touches only
+its disposable index, not the real repository index/history.
+
+Fresh `verify-shared-tooling`, `check-pins`, `lint-tooling`, `test-tools`,
+`test-release-adapters` and `test-hooks` all pass with inherited CDPATH. The
+actual hook suite also passes with genuine Bash 3.2.57 selected for nested scripts.
+Tool downloads and installations in the installer fixtures are substitutes;
+hook formatting uses the prepared Rust/cargo-sort tools. No real provisioning,
+native Git release fixture, full Memory gate, dependency fetch, stage/commit/push
+or CI dispatch occurred. Both manifests/lockfiles retain their initial hashes.
+Evidence is retained in `target/qualification/0.31.7-tooling-review/`.
+
+The compatible pending notes select 0.31.7 without changing package version
+0.31.6. No function, method or type is removed. Direct release delivery, receipt
+contracts and the independent runtime graph remain unchanged. Consumer delivery
+and matching native checks are tracked in
+[#30](https://github.com/dragginzgame/ic-memory/issues/30); the future consumer
+release-fixture profile remains owned by
+[Shared #70](https://github.com/dragginzgame/shared-tooling/issues/70).
+
+The post-batch exact-source inspection confirms Memory 0.31.6's Linux native,
+MSRV and lint jobs pass in run 37788652605; macOS ARM native is running, with
+Intel native and macOS MSRV queued. Shared db039's Linux native job in run
+37787910279 passes the corrected compact upload/download/payload control;
+both macOS jobs remain queued. Concurrent dirty Shared profile/budget edits
+are excluded from this export. Host 0.7.2 source
+`8236b506307d33f7c34f56d6e0ba9db4300792d7` changes no selected filesystem/artifact
+code from 0.7.1; its run 37789259299 is queued and Memory's lock stays at 0.7.1.
+
+A separate read-only installer review reproduces false success for a literal
+newline-bearing active host link in a private copy of the authentic installed
+bundle. Shared's direct checker trims that link while reconstructing its bundle
+path, even though the active bin path is missing. The selector's literal-link
+guard keeps full evidence for this case. The owning finding and smallest repair
+are recorded in [Shared #75](https://github.com/dragginzgame/shared-tooling/issues/75);
+no installer source or real active tool set was changed. Original inputs/logs
+remain in `/tmp/shared-literal-active-link.hhJ9Yv/`.
+
+
+## 0.31.7 clean-source diagnostics
+
+The existing pending 0.31.7 batch remains based on released consumer
+`15cfca2c575ad9708902c5abf828bf36f55356d3`. Before this change, actual
+`make ensure-clean` returned a generic refusal that omitted every changed path.
+The same read-only command now refuses with the actual Git porcelain entries,
+preserving staged/working columns and quoted unusual names. `Repository::clean`
+uses its existing command output directly; no path parser, new observation or
+shared state owner is introduced. Failed Git observations propagate unchanged.
+The separate prepared-version-surface guards retain their own behavior.
+
+The new boundary fixture clones an existing committed graph locally and changes
+only its private working files/index. It admits a clean checkout, reports staged
+Cargo.lock, unstaged Cargo.toml and a newline-bearing untracked path, and preserves
+the staging tree and file bytes on refusal. Fault injection verifies that status
+observation failure dispatches no other process and changes no package version.
+No commit, tag or push is used, including in the fixture. All 33 repo-tool tests
+and strict example/test Clippy pass offline on Rust 1.99.0; `make fmt-check`
+passes for both maintained workspaces. Original/final command status and logs are
+retained in `target/qualification/0.31.7-source-admission/`.
+
+The change is tracked in [#31](https://github.com/dragginzgame/ic-memory/issues/31)
+and reported as consumer evidence to the related
+[Shared #74](https://github.com/dragginzgame/shared-tooling/issues/74). It does not
+claim an upstream guidance fix or a new diagnostic path for every preflight guard.
+Package version remains 0.31.6; one compatible pending 0.31.7 entry includes this
+work. Both dependency graphs, compiler/tool pins, library contracts and durable
+formats are unchanged. No function, method or type is removed. No broad gate,
+network preparation, sibling edit, real index/history mutation, release or
+publication occurred. Native qualification remains tied to future candidate CI.
+At the post-batch inspection, released 0.31.6 Linux and Apple Silicon native jobs,
+Linux MSRV and lint pass in run 37788652605. Intel native and both macOS MSRV jobs
+remain queued, so #29 remains open. These observations do not qualify the dirty
+candidate's source-admission change.
+
+The maintainer subsequently changed the root catalog/lock from Host 0.7.1 to
+0.8.0 during this turn, after the first test/Clippy logs were complete. Those
+earlier logs remain 0.7.1 evidence. New input hashes and separate `*-host080.log`
+checks bind fresh qualification to the selected 0.8.0 graph; this agent performed
+no dependency selection or fetch. Exact Host source
+`fc74f679c7503ef9dd2db8fbd893c5c5907c72c4` has identical filesystem/artifact code to
+released 0.7.1. Its breaking process cleanup/error changes are outside the selected
+host-only development crates/features, so public Memory contracts stay compatible.
+
+Fresh 33-test tooling, strict example/test Clippy, both-workspace formatter and
+pin checks pass offline with 0.8.0. Locked offline metadata projection succeeds
+for both maintained workspaces; this is declaration/metadata evidence, not a
+runtime-qualification build. The independent qualification manifest/lock remain
+unchanged, and the new root manifest/lock hashes are recorded in
+`host080-inputs.sha256`. Host's exact-source run 37792592340 is queued; new native
+consumer acceptance remains pending. The compatible pending version stays 0.31.7.
+
+## 0.31.7 Host 0.8.1 consumer review
+
+The maintainer-selected root lock now uses published `ic-host-fs` and
+`ic-host-artifacts` 0.8.1. Host release tag and remote main identify
+`973f00a029dd873c242a4d06e9f8d2d5172ff0df`. Review of its committed changes from
+0.8.0 found bounded geometric growth for owned artifact reads/chunk digests and
+an additive nonblocking regular-file lock API. Memory uses streaming copying,
+hashing and the existing durable publishers; those called implementations are
+unchanged. No consumer API adaptation, new lock protocol or allocation-performance
+claim follows from this review. The selected graph contains only the two Host
+crates with empty feature sets, excluding process and IC-report mechanics.
+
+Fresh locked/offline checks on Rust 1.99.0 pass: all 33 repo-tool tests, strict
+example/test Clippy, both-workspace formatting, declaration pins and the 76-file
+snapshot verifier. Root full-graph metadata and independent qualification
+workspace metadata projection also pass offline. The latter is not a runtime
+build. Inputs and separate `*-host081.log`/metadata files remain under
+`target/qualification/0.31.7-source-admission/`; all recorded manifest, lock,
+source and snapshot hashes remain unchanged after checks. Earlier 0.7.1 and
+0.8.0 evidence is preserved with its original selection. No dependency fetch or
+reselection, package-version change, sibling edit or full local gate occurred.
+
+Host's sole active CI workflow returned no run for the exact 0.8.1 release SHA
+at inspection. The preceding 0.8.0 run
+[37792592340](https://github.com/dragginzgame/ic-host-tooling/actions/runs/37792592340)
+passes Linux/MSRV but fails both macOS native jobs when its cleanup fixture
+spawns absent `/bin/true`. The released 0.8.1 fixture retains that operand;
+the concurrent dirty 0.8.2 replacement with `/bin/sh -c 'exit 0'` is separately
+owned under [Host #5](https://github.com/dragginzgame/ic-host-tooling/issues/5).
+It was neither edited nor qualified here. This process-test failure is outside
+Memory's selected graph, and absent exact-source CI does not qualify 0.8.1.
+
+Released Memory 0.31.6's sole CI workflow now completes successfully at
+`15cfca2c575ad9708902c5abf828bf36f55356d3`, attempt 1 of
+[37788652605](https://github.com/dragginzgame/ic-memory/actions/runs/37788652605).
+Linux and both macOS native/MSRV jobs plus lint pass. Each native job's hook
+isolation and failure-evidence archive/upload/download/payload steps pass,
+completing [#29](https://github.com/dragginzgame/ic-memory/issues/29). That source
+still selects Host 0.7.1; it does not qualify the dirty 0.31.7 changes or Host
+0.8.1. Pending 0.31.7 remains compatible and requires matching native acceptance.
+
+## 0.31.7 Shared 0.1.28 adoption
+
+The pending consumer batch canonically adopts committed Shared Tooling
+`1872ed2c20f6c70689bb2249050b1d673c60bfa0` from a clean private checkout. The
+previous 76 files remain selected; fourteen explicit additions complete the
+baseline's linked maintenance catalog, optional coordinator and scheduler
+templates. The resulting 90-file snapshot verifies exact hashes and modes.
+The common MSRV and std/no_std guidance is recorded without changing compiler
+selection. No task, live agent, schedule or installation is activated by copying
+these inputs. Shared's real checkout remains unchanged.
+
+Host/IC installers now admit literal active-link bytes, rejecting malformed
+newline-bearing targets before any probe, download, lock or replacement.
+[Shared #75](https://github.com/dragginzgame/shared-tooling/issues/75) owns this
+repair. Consumer release-runner qualification is simulation-only again:
+its native Git delegate accepts only non-writing `hash-object --stdin`, and a
+sticky record detects attempted repository-operation escapes even in negative
+cases. The real-Git tracking suite retains its existing owner scenarios but is
+not selected or executed here
+([Shared #70](https://github.com/dragginzgame/shared-tooling/issues/70)). No prior
+fixture-effect exception is reused, and no commit, tag or push is created.
+
+Focused snapshot, pin, action/shell lint, consumer Make/release adapters and
+simulation-runner checks pass. Host/IC suites pass under CDPATH on Bash 5 and
+genuine Bash 3.2.57, including nested Bash 3.2 calls and literal one/two-newline
+refusal with unchanged link bytes and no tool/setup effects. The simulation
+runner also passes under nested Bash 3.2. The immutable owner's optional
+coordinator fixture passes on both shells with a substitute CLI, covering due
+admission and failed/empty reports; that is not live agent or timer evidence.
+Consumer tooling LOC/source/snapshot ownership checks pass for the expanded
+selection. Inputs and separate logs remain in
+`target/qualification/0.31.7-shared028-review/`.
+
+All 67 catalog/AGENTS/minor-note local references pass. The wider full-root
+changelog check fails at an already released 0.15.4 example link, which still
+points to its pre-workspace path. Its failed log is retained, and
+[#32](https://github.com/dragginzgame/ic-memory/issues/32) owns the proposed
+historical-link correction. Both published changelog suffixes remain byte-for-byte
+unchanged; no historical text or redirect file was introduced. Current root and
+detail entries, snapshot provenance and the existing
+[#30](https://github.com/dragginzgame/ic-memory/issues/30) adoption tracker agree.
+
+Both workspace manifests/locks, tool pin inventories and repo-tool Rust sources
+match their pre-adoption hashes. Earlier Host 0.8.1 Rust tests/Clippy retain
+their original scope rather than being relabeled as new script qualification.
+Package version stays 0.31.6, with compatible pending notes at 0.31.7. No public
+API, durable format or production release-runner behavior changes; no function,
+method or type is removed. The native tracking block moved to its canonical
+upstream fixture rather than being discarded. No broad local gate, dependency
+fetch/reselection, real index/history mutation, release or publication occurred.
+
+At exact-source inspection,
+[Shared CI 37799837183](https://github.com/dragginzgame/shared-tooling/actions/runs/37799837183),
+attempt 1, passes Linux portable regression and lint/security. Linux native
+failure-evidence and compact-tool upload/download/payload controls pass; both
+macOS native jobs remain queued. The preceding db039 owner run now succeeds
+across its full matrix, but does not qualify this new source. Released Memory
+0.31.6's completed matrix remains distinct from dirty 0.31.7; this adoption
+requires matching native candidate acceptance after delivery.
+
+Concurrent dirty Shared policy edits observed at final inspection narrow standing
+issue authority to `dragginzgame/*`, requiring explicit authority for external
+GitHub writes. The live-local exception applies that rule now; local overlay
+wording reflects the scope. Those uncommitted bytes are excluded from the
+1872ed2 snapshot. All issue actions in this batch used verified `dragginzgame`
+owners, and no external destination or schedule was activated.

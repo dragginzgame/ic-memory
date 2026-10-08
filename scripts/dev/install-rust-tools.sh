@@ -22,7 +22,9 @@ while [[ $# -gt 0 ]]; do
         *) usage; exit 2 ;;
     esac
 done
-consumer="$(cd "$consumer" && pwd -P)"
+[[ "$consumer" == /* ]] || consumer="$PWD/$consumer"
+consumer="$(cd -P "$consumer" && printf '%s/.' "$PWD")"
+consumer="${consumer%/.}"
 # Reviewed executable configuration, just like the host-tool versions file.
 # shellcheck source=/dev/null
 source "$versions_file"

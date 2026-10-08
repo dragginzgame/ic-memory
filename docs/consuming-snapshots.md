@@ -233,6 +233,12 @@ nor verifies consumer adoption; broad validation authority stays unchanged.
 Consumers using the maintenance rule's exact-commit CI inspection command also
 refresh `scripts/dev/gh-ci.sh` from that reviewed revision. It remains a read-only
 interactive helper using the consumer checkout and authenticated GitHub CLI.
+When adopting the repeatable task commands, include the `tasks/` catalog,
+definitions, prompt and schedule guidance plus linked companions from the
+governance file list. Shared Tooling coordinates central runs; consumers retain
+their focused commands and product scope. Copying those files never installs a
+timer, activates an agent, grants sibling edit authority or requires Codex/systemd
+on every consumer host. Enable one local scheduler separately when requested.
 The portable-suite prerequisite check is Shared Tooling's own test setup, not a
 required consumer gate. If vendoring the complete portable suite, include its
 new `scripts/ci/check-portable-prerequisites.sh`, `scripts/ci/test-portable-prerequisites.sh`
@@ -255,6 +261,11 @@ instructions and checks with the [release contract](releases.md), including
 artifact retention and the exact atomic branch/tag push. A passing snapshot
 check alone does not verify those behaviors. Explicit PR adopters instead qualify
 the exact branch push, review boundary, merged-source validation and tag-only push.
+The direct release runner's consumer fixture, `scripts/ci/test-release-runner.sh`,
+simulates Git effects. Real-Git tracking qualification is independently selected
+as `scripts/ci/test-release-tracking.sh`; the owner portable suite always runs it.
+Select fixtures according to their documented effects and local authority rather
+than editing vendored tests or invoking an unauthorized broader suite.
 Pinning adoption also requires the checker and its jq module, prepared Git/jq/yq
 tools (and Cargo for Rust workspaces), a CI/release invocation, and consumer-owned
 qualification for locked builds and external inputs. Consumers may also vendor

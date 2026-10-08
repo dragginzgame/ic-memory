@@ -510,10 +510,13 @@ impl<E: Execute> Repository<E> {
     }
 
     fn clean(&self) -> Result<()> {
+        let status = self.output("git", &["status", "--porcelain", "--untracked-files=all"])?;
         require(
-            self.git(&["status", "--porcelain", "--untracked-files=all"])?
-                .is_empty(),
-            "commit source and changelog first; working tree/index must be clean",
+            status.trim().is_empty(),
+            &format!(
+                "working tree/index must be clean; review these Git status entries:\n{}",
+                status.trim_end()
+            ),
         )
     }
 

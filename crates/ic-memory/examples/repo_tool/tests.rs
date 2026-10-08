@@ -514,6 +514,9 @@ impl Execute for Substitute {
                 Ok(String::new())
             }
             "git" => match args {
+                ["status", ..] if state.fail.as_deref() == Some("status") => {
+                    Err("fixture Git status observation failure".into())
+                }
                 ["status", ..] => changed(
                     state
                         .descendant
@@ -1456,6 +1459,79 @@ fn changed_archive_source_stops_before_publication_or_receipt() {
             .package_sha256,
         digest
     );
+}
+
+#[test]
+fn source_admission_reports_actual_status_and_preserves_git_failures() {
+    let fixture = Fixture::new();
+    let checkout = fixture.repo.root.join("status-checkout");
+    Processes
+        .run(
+            &fixture.repo.root,
+            "git",
+            &[
+                "clone",
+                "--quiet",
+                "--shared",
+                Path::new(env!("CARGO_MANIFEST_DIR"))
+                    .join("../..")
+                    .to_str()
+                    .unwrap(),
+                checkout.to_str().unwrap(),
+            ],
+            true,
+        )
+        .unwrap();
+    let repo = Repository {
+        root: checkout,
+        exec: Processes,
+    };
+    repo.clean().unwrap();
+    let lock = format!(
+        "{}\n# staged fixture\n",
+        repo.text("Cargo.lock", None).unwrap()
+    );
+    fs::write(repo.root.join("Cargo.lock"), &lock).unwrap();
+    repo.git(&["add", "--force", "--", "Cargo.lock"]).unwrap();
+    let manifest = format!(
+        "{}\n# working fixture\n",
+        repo.text("Cargo.toml", None).unwrap()
+    );
+    fs::write(repo.root.join("Cargo.toml"), &manifest).unwrap();
+    let untracked = "untracked\nfile";
+    fs::write(repo.root.join(untracked), b"untracked fixture").unwrap();
+    let tree = repo.git(&["write-tree"]).unwrap();
+    let status = repo
+        .output("git", &["status", "--porcelain", "--untracked-files=all"])
+        .unwrap();
+    assert!(status.contains("M  Cargo.lock"));
+    assert!(status.contains(" M Cargo.toml"));
+    assert!(status.contains("?? \"untracked\\nfile\""));
+    let error = repo.clean().unwrap_err().to_string();
+    assert!(error.ends_with(status.trim_end()));
+    assert_eq!(repo.git(&["write-tree"]).unwrap(), tree);
+    assert_eq!(repo.text("Cargo.lock", None).unwrap(), lock);
+    assert_eq!(repo.text("Cargo.toml", None).unwrap(), manifest);
+    assert_eq!(
+        fs::read(repo.root.join(untracked)).unwrap(),
+        b"untracked fixture"
+    );
+
+    fixture.fail("status");
+    assert_eq!(
+        fixture.repo.clean().unwrap_err().to_string(),
+        "fixture Git status observation failure"
+    );
+    assert_eq!(
+        fixture.repo.exec.state.borrow().calls,
+        [vec![
+            "git",
+            "status",
+            "--porcelain",
+            "--untracked-files=all"
+        ]]
+    );
+    assert_eq!(fixture.repo.version(None).unwrap(), "0.12.3");
 }
 
 #[test]

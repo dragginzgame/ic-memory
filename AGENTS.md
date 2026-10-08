@@ -11,7 +11,7 @@ exception to revision-bound policy adoption while the shared rules are being
 developed locally. The sibling remains read-only to agents.
 
 The existing tooling snapshot at revision
-`b866d41041a1986eeec95bde9af4c6ba0853d2e3` is recorded in
+`1872ed2c20f6c70689bb2249050b1d673c60bfa0` is recorded in
 [.shared-tooling.snapshot](.shared-tooling.snapshot). It identifies the vendored
 files, hashes and executable modes; it does not freeze the active local policy.
 Keep its provenance accurate and never edit vendored files in place. Do not
@@ -20,7 +20,7 @@ attribute uncommitted shared files to that recorded revision. The live local
 also applies within its activation scope and is included in this recorded snapshot.
 These instructions are the repository's local overlay.
 
-The single 76-file snapshot uses reviewed committed Shared Tooling 0.1.27,
+The single 90-file snapshot uses reviewed committed Shared Tooling 0.1.28,
 including the archiver, tool-evidence selector, their fixtures and the shared
 retention action. It replaces the supplemental archive manifest and its duplicate
 verifier records. The consumer collector owns product log selection and calls
@@ -28,6 +28,13 @@ the shared selector; full tool retention remains the command default, while CI
 explicitly selects compact retention for freshly verified complete active sets.
 Failed, unknown and unselected bundles remain full. Never attribute subsequent
 dirty sibling fixes to this committed export.
+This revision includes the reviewed installer operand corrections, explicit
+fixture companion declarations and literal host/IC active-link admission.
+The consumer release-runner fixture is simulation-only; the real-Git tracking
+fixture remains upstream-owned and is not selected. Fourteen explicit additions
+complete the linked maintenance catalog, optional coordinator and scheduler
+templates. Their adoption activates no task, agent or schedule. The current
+MSRV and std/no_std guidance is included without changing compiler selection.
 
 The snapshot includes the common
 audit methods, local host/IC setup, dependency checker, release-command checker
@@ -58,8 +65,10 @@ release checks use these immutable exports without a sibling checkout. The live
 local policy exception above continues to govern subsequent uncommitted rule
 development. The read-only `scripts/dev/gh-ci.sh` helper supports exact-commit
 inspection across workflows; use authenticated GitHub CLI and the shared
-maintenance rule's evidence checks. Owning-repository issue work follows that
-rule's standing authority; inspection still does not authorize source repair.
+maintenance rule's evidence checks. Relevant issue work in GitHub repositories
+owned by `dragginzgame` follows that rule's standing authority; issue actions in
+other GitHub repositories require explicit destination/action authorization.
+Inspection still does not authorize source repair.
 
 The tooling inventory fixture runs from current consumer exports without
 committed-history or distribution-helper prerequisites, the reviewed correction

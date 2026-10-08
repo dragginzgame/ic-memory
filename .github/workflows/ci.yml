@@ -85,7 +85,7 @@ jobs:
       - name: Check both workspaces without changing files
         run: make fmt-check
       - name: Exercise hook isolation on the native host
-        run: make test-hooks
+        run: CDPATH="$PWD" make test-hooks
       - name: Prepare tracked dependency inputs
         shell: bash
         run: |

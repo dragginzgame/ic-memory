@@ -145,18 +145,18 @@ checksum = "ed5909b6e89a2db4456e54cd5f673791d7eca6732202bbf2a9cc504fe2f9b84a"
 
 [[package]]
 name = "ic-host-artifacts"
-version = "0.7.1"
+version = "0.8.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "583dce23ad5266462397a777b927050a7884c9e87a23cad29a1fa8b80af0c0ca"
+checksum = "c3196c5569767acf25884ce33e9fe1f094a9968021e31cd0fc3830cc0c4d34ff"
 dependencies = [
  "sha2",
 ]
 
 [[package]]
 name = "ic-host-fs"
-version = "0.7.1"
+version = "0.8.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "16e31ff78c4411397e95ea9c35978f42084e4fb7d949b78a8ea52c6139482b28"
+checksum = "913dbf065a1c86294fa30a7b883098f7810fd14626a3132fadc6e438f462f9f6"
 dependencies = [
  "ic-host-artifacts",
  "rustix",
