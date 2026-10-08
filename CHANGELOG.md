@@ -1,6 +1,6 @@
 # Changelog
 
-## [0.31.8]
+## [0.31.8] - 2026-10-08
 
 - Refresh host-side release-file dependencies to IC Host 0.8.2, preserving
   receipt and archive behavior.
