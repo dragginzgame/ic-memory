@@ -1,6 +1,6 @@
 # Changelog
 
-## [0.31.4]
+## [0.31.4] - 2026-10-08
 
 - Refresh release-file support to IC Host 0.5.1, preserving streamed archive
   hashes and streaming receipt JSON through its durable publisher.
