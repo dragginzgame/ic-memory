@@ -34,10 +34,9 @@ that needs a different path or behavior owns an adapter rather than a patched
 shared copy.
 
 Refresh checks every declared destination before replacing any file. It refuses
-to overwrite staged or unstaged changes, deletions, or existing untracked/ignored
-files. Preserve or reconcile those changes before retrying; unrelated dirty paths
-remain allowed. A destination already matching the selected source bytes and
-executable state is safe to retry, including after an interrupted refresh. Only
+to overwrite consumer edits, deletions, or unrelated untracked/ignored files.
+Unrelated dirty paths remain allowed. A destination already matching the selected
+source bytes and executable state is safe to retry, including after an interrupted refresh. Only
 declare paths owned by the shared snapshot; the consumer's `AGENTS.md` remains local.
 The manifest is reviewed configuration: an intentional file-set edit is read as
 input and replaced with the resulting manifest, rather than rejected as dirty work.
@@ -55,6 +54,21 @@ set:
 Review the resulting consumer diff normally. Refresh never deletes a file and
 does not commit, stage, or push changes.
 
+A previous export need not be committed before refreshing it again. An unchanged
+file may advance when its bytes and executable mode match both the previous
+manifest and that manifest's exact source commit. The old commit must be available
+in the selected source checkout; refresh never fetches it or trusts edited hashes
+without that proof. A selected file that would change must have no staged changes;
+preserve or reconcile those index changes before retrying. Files already matching
+the new source keep the existing interrupted-refresh behavior.
+
+Preparation captures consumer file identities, bytes, modes, selected index
+entries and the manifest, then rechecks them before replacement. Changed paths,
+parents redirected through symlinks, index conflicts and concurrent manifest edits
+are refused. These checks do not lock out editors or make the whole file set
+atomic; stop other edits/validation of selected paths during refresh. A late
+conflict can leave an incomplete refresh, with the same recovery procedure below.
+
 The source remote must continue to match the manifest exactly. Switching
 between SSH, HTTPS, or a fork is an explicit provenance change and requires a
 reviewed manifest recreation.
@@ -69,10 +83,31 @@ an atomic replacement of the whole file set. If interrupted, stop consumer
 validation, inspect the partial diff, and refresh again from the same reviewed
 source revision. Verify the completed snapshot before resuming validation.
 
-To change the declared file set, edit or recreate the manifest as an explicit
-reviewed consumer change; ordinary refresh does not silently widen it.
+To extend an existing selection, repeat `--add-file` for each reviewed addition:
 
-The release runner, validation logger and formatting hook require
+```bash
+/path/to/shared-tooling/scripts/distribution/refresh-consumer.sh \
+  --consumer /path/to/consumer \
+  --add-file scripts/ci/archive-evidence.sh
+```
+
+An already selected addition is harmless. Use the same `--manifest` for a custom
+location. Existing source, provenance and destination checks still apply, and
+all additions are admitted before any destination is replaced. Ordinary refresh
+preserves the selection. Removing records remains an explicit reviewed manifest
+edit; refresh never deletes the corresponding consumer files.
+
+Selected committed files can declare unconditional shared dependencies on their
+second line as `# Shared companions: relative/path another/path`. Refresh checks
+those declarations in the exported blobs, including companions' own declarations,
+and refuses an incomplete selection with the missing path before replacing files.
+Add the named companions explicitly; refresh never silently expands the selection.
+These declarations belong to the selected source revision. Older files without
+them retain integrity checks but provide no dependency-completeness guarantee.
+Conditional features and consumer configuration still need adoption review.
+
+The release runner requires `scripts/ci/next-release-version.sh`. The runner,
+validation logger and formatting hook also require
 `scripts/ci/check-make-execution.sh`. Include it when adding or refreshing any of
 those entrypoints; existing manifests need that explicit file-set addition.
 
@@ -165,8 +200,8 @@ the isolated consumer. The source checkout's link check alone cannot establish
 that exported documentation is complete. Keep the list current when adding guides.
 It is an initial selection, not hidden inheritance or automatic manifest widening.
 
-For an existing snapshot, update its declared file set through the reviewed
-manifest procedure above, including all shared rule files. Include
+For an existing snapshot, add missing paths with the reviewed `--add-file`
+procedure above, including all shared rule files. Include
 `docs/releases.md`, the release runner and its version/changelog helpers when
 adopting the release command contract. The local `AGENTS.md` must direct contributors to
 `DRAGGINZGAME.md`, identify `.shared-tooling.snapshot` as its source record, and
@@ -327,6 +362,14 @@ Qualify explicit installation and offline checking on the consumer's declared
 native hosts, plus relevant product checks for changed tool selections. Do not
 claim deployment or PocketIC client/server compatibility from `--version` alone.
 Snapshot integrity and consumer adoption remain separate from upstream fixtures.
+
+The evidence archiver can be adopted independently as
+`scripts/ci/archive-evidence.sh`; see its
+[selection and retention contract](verification-helpers.md#evidence-archives).
+Vendoring `.github/actions/retain-failure-evidence/action.yml` requires that helper
+at its canonical relative path. Downloaded artifacts from this action contain
+`evidence.tar.gz`; extract it before inspecting the retained files. Consumers
+with their own evidence layouts keep their collector and call the helper directly.
 
 The evidence-manifest helper can also be adopted independently with the existing
 checksum verifier. The nonempty Cargo test helper and exact release-tag checker

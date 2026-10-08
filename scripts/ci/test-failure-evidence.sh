@@ -61,6 +61,16 @@ retry="$(bash "$ROOT/scripts/ci/collect-failure-evidence.sh" "$temp_root" "$repo
 cmp "$archive" "$fixture/saved.tar.gz"
 [[ "$(cat "$temp_root/validation.log")" == original_status=1 ]]
 
+# Compact selection keeps unknown/unverified bundles and the primary failure.
+compact="$(bash "$ROOT/scripts/ci/collect-failure-evidence.sh" "$temp_root" "$repository_root" compact)"
+cp "$fixture/archive.sha256" "$fixture/original.sha256"
+bash "$ROOT/scripts/ci/verify-file-checksum.sh" --print sha256 "$compact" > "$fixture/archive.sha256"
+bash "$ROOT/scripts/ci/verify-failure-evidence.sh" "$fixture" "$compact"
+mv "$fixture/original.sha256" "$fixture/archive.sha256"
+if bash "$ROOT/scripts/ci/collect-failure-evidence.sh" "$temp_root" "$repository_root" invalid > "$fixture/invalid-mode.log" 2>&1; then
+    echo 'expected invalid selection refusal' >&2; exit 1
+fi
+
 # An early failure with no selected inputs produces no artifact, not an empty tar.
 mkdir "$fixture/empty-temp" "$fixture/empty-repository"
 [[ -z "$(bash "$ROOT/scripts/ci/collect-failure-evidence.sh" "$fixture/empty-temp" "$fixture/empty-repository")" ]]

@@ -128,7 +128,7 @@ jobs:
           EVIDENCE_TEMP_ROOT: ${{ runner.temp }}
           EVIDENCE_REPOSITORY_ROOT: ${{ github.workspace }}
         run: |
-          archive="$(bash scripts/ci/collect-failure-evidence.sh "$EVIDENCE_TEMP_ROOT" "$EVIDENCE_REPOSITORY_ROOT")"
+          archive="$(bash scripts/ci/collect-failure-evidence.sh "$EVIDENCE_TEMP_ROOT" "$EVIDENCE_REPOSITORY_ROOT" compact)"
           if [[ -n "$archive" ]]; then
             printf 'path=%s\n' "$archive" >> "$GITHUB_OUTPUT"
           fi

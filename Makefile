@@ -58,7 +58,6 @@ fetch-dependencies:
 
 verify-shared-tooling:
 	bash scripts/ci/verify-shared-tooling-snapshot.sh
-	bash scripts/ci/verify-shared-tooling-snapshot.sh --manifest .shared-tooling.archives.snapshot
 
 check-pins:
 	RUSTUP_TOOLCHAIN=$(VALIDATION_TOOLCHAIN) RUSTUP_AUTO_INSTALL=0 CARGO_NET_OFFLINE=true bash scripts/ci/check-dependency-pins.sh --cargo-inheritance

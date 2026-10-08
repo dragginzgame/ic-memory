@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
-ROOT="$(cd "$(dirname "$0")/../.." && pwd -P)"
+ROOT="$0"
+[[ "$ROOT" == /* ]] || ROOT="$PWD/$ROOT"
+ROOT="$(cd -P "${ROOT%/*}/../.." && printf '%s/.' "$PWD")"
+ROOT="${ROOT%/.}"
 fixture="$(mktemp -d "${TMPDIR:-/tmp}/host-tools-test.XXXXXX")"
 finish() {
     local status=$?
@@ -182,6 +185,7 @@ for host in Linux:x86_64 Linux:arm64 Darwin:x86_64 Darwin:arm64; do
     install --with-ripgrep --with-cloc --check
     install --with-ripgrep --with-cloc
     [[ "$(wc -l < "$fixture/downloads")" == "$before" ]] || exit 1
+    bash "$ROOT/scripts/ci/test-tool-evidence.sh" "$consumer" host "$pins"
 done
 original="$(readlink "$consumer/.tools/host")"
 TEST_CLOC_STATUS=9 refuse install --with-ripgrep --with-cloc --check

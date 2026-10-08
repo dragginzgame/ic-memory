@@ -5,7 +5,11 @@ set -euo pipefail
 unset MAKEFLAGS MFLAGS MAKEOVERRIDES GNUMAKEFLAGS MAKEFILES
 unset VALIDATION_REPOSITORY_ROOT VALIDATION_RUNNER_SNAPSHOT_PATH
 export RELEASE_DELIVERY=direct
-ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+# Resolve relative script entry points without CDPATH output or newline loss.
+ROOT="${BASH_SOURCE[0]}"
+[[ "$ROOT" == /* ]] || ROOT="$PWD/$ROOT"
+ROOT="$(cd -P "${ROOT%/*}/../.." && printf '%s/.' "$PWD")"
+ROOT="${ROOT%/.}"
 bash "$ROOT/scripts/ci/check-release-commands.sh" "$ROOT" rust-toolchain.toml ci/tool-versions.env make/tools.mk
 FIXTURE="$(mktemp -d "${TMPDIR:-/tmp}/ic-memory-release-adapters.XXXXXX")"
 trap 'if [[ $? == 0 ]]; then rm -rf "$FIXTURE"; else printf "Consumer release-adapter fixture retained: %s\n" "$FIXTURE" >&2; fi' EXIT

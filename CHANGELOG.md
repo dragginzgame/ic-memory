@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.31.6]
+
+- Refresh host-side release-file dependencies to IC Host 0.7.1, preserving
+  durable receipt and archive behavior.
+- Keep release-adapter qualification working under inherited `CDPATH`.
+  [Shared Tooling #67](https://github.com/dragginzgame/shared-tooling/issues/67).
+- Reduce failed CI archives by retaining diagnostics for freshly verified active
+  tool sets, while preserving failed and unselected bundles. Consolidate shared
+  tooling into one snapshot.
+  [#29](https://github.com/dragginzgame/ic-memory/issues/29),
+  [Shared Tooling #66](https://github.com/dragginzgame/shared-tooling/issues/66).
+- Refresh shared release tracking and tooling LOC handling.
+  [Shared Tooling #62](https://github.com/dragginzgame/shared-tooling/issues/62),
+  [#69](https://github.com/dragginzgame/shared-tooling/issues/69).
+
+[Detailed notes](docs/changelog/0.31.md)
+
 ## [0.31.5] - 2026-10-08
 
 - Archive failed CI evidence before upload, preserving Unix filenames, modes

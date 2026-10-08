@@ -11,7 +11,7 @@ exception to revision-bound policy adoption while the shared rules are being
 developed locally. The sibling remains read-only to agents.
 
 The existing tooling snapshot at revision
-`0ba0ad00ed94848e54ecc82629b6b7873b7284c0` is recorded in
+`b866d41041a1986eeec95bde9af4c6ba0853d2e3` is recorded in
 [.shared-tooling.snapshot](.shared-tooling.snapshot). It identifies the vendored
 files, hashes and executable modes; it does not freeze the active local policy.
 Keep its provenance accurate and never edit vendored files in place. Do not
@@ -20,20 +20,16 @@ attribute uncommitted shared files to that recorded revision. The live local
 also applies within its activation scope and is included in this recorded snapshot.
 These instructions are the repository's local overlay.
 
-The independent four-record [archive snapshot](.shared-tooling.archives.snapshot)
-exports the archiver and its fixture from reviewed committed Shared Tooling
-`eeb72e741199bd8574280eacb3542d8379b912f6`. Its unchanged checksum and snapshot
-verifiers share the same physical files and hashes as the primary snapshot.
-Both manifests use the existing canonical format and verifier; there is no
-mixed-revision attribution. This scoped export retains the primary 0.1.23
-runner while [Shared #62](https://github.com/dragginzgame/shared-tooling/issues/62)
-remains unresolved. No newer release runner or real-Git release fixture is adopted.
-Refresh the archive selection with the canonical exporter's
-`--manifest .shared-tooling.archives.snapshot`, from a clean reviewed source.
-The selected commit message says 0.1.25, but its VERSION remains 0.1.24; the exact
-revision owns provenance. Never attribute subsequent dirty sibling fixes to it.
+The single 76-file snapshot uses reviewed committed Shared Tooling 0.1.27,
+including the archiver, tool-evidence selector, their fixtures and the shared
+retention action. It replaces the supplemental archive manifest and its duplicate
+verifier records. The consumer collector owns product log selection and calls
+the shared selector; full tool retention remains the command default, while CI
+explicitly selects compact retention for freshly verified complete active sets.
+Failed, unknown and unselected bundles remain full. Never attribute subsequent
+dirty sibling fixes to this committed export.
 
-The 71-file snapshot uses the reviewed local 0.1.23 commit, including the common
+The snapshot includes the common
 audit methods, local host/IC setup, dependency checker, release-command checker
 and linked rules, including the standard Rust workspace layout. Cargo inheritance
 checks cover both approved workspace roots. The unchanged `make/tools.mk`

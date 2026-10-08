@@ -1,7 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-ROOT="$(cd "$(dirname "$0")/../.." && pwd -P)"
+ROOT="$0"
+[[ "$ROOT" == /* ]] || ROOT="$PWD/$ROOT"
+ROOT="$(cd -P "${ROOT%/*}/../.." && printf '%s/.' "$PWD")"
+ROOT="${ROOT%/.}"
 FIXTURE="$(mktemp -d "${TMPDIR:-/tmp}/dependency-pins-test.XXXXXX")"
 trap 'if [[ $? == 0 ]]; then rm -rf "$FIXTURE"; else printf "Failed dependency-pins fixture retained: %s\n" "$FIXTURE" >&2; fi' EXIT
 FIXTURE="$(cd "$FIXTURE" && pwd -P)"

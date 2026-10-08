@@ -6,6 +6,41 @@ policy. They require Perl core modules or Bash 3.2+, as noted below, and run on
 Linux and macOS. The portable regression suite includes offline fixtures;
 native CI qualifies each supported host separately.
 
+## Evidence archives
+
+```bash
+bash scripts/ci/archive-evidence.sh "$RUNNER_TEMP/evidence.tar.gz" \
+  "$RUNNER_TEMP" portable-fixtures "$PWD" .tools/ic-set.failed
+```
+
+The Bash 3.2 helper takes a new output path followed by explicit root/relative-path
+pairs. Relative roots and output paths resolve from the caller's current directory,
+independently of `CDPATH` or option-like names. It requires tar and gzip.
+Select only existing evidence; the caller decides
+which optional paths exist. The output parent must exist and the output must stay
+outside every selected input. Creation refuses an occupied output, including a
+symlink or a named pipe. Failed creation retains any partial archive and all original inputs.
+Success prints the archive's absolute path and leaves the inputs intact.
+
+Each path becomes an archive member relative to its supplied root. Paths must
+be canonical and relative; `.` selects a complete root. Duplicate or overlapping
+member paths are refused, including across different roots. Parent-directory
+symlinks are refused; final symlinks are archived without following their targets.
+Git metadata named `.git` is excluded. If release-state evidence is needed,
+select the specific evidence directory as a root rather than archiving `.git`.
+
+Upload the resulting single `.tar.gz` file to preserve filenames, modes and links
+that a raw artifact upload cannot reliably represent. The archive supports Unix
+filenames containing spaces, colons and newlines; it does not widen line-oriented
+checksum-manifest formats. Callers retain ownership of selection, source and run
+identity, command outcomes, manifests, upload and retention. Archiving alone
+does not qualify evidence or prove a hosted upload/download round trip.
+
+Adopt `scripts/ci/archive-evidence.sh` through a reviewed snapshot; it has no
+shared-script dependencies. Shared Tooling's failure-collection action uses this
+helper too. Consumers can replace their tar mechanics while preserving their
+product-specific collection and identity records.
+
 ## Runner disk capacity
 
 ```bash

@@ -2261,3 +2261,99 @@ recorded on [#28](https://github.com/dragginzgame/ic-memory/issues/28).
 Native consumer acceptance remains pending CI for these dirty bytes. No broad
 gate, Rust build, dependency change, real installation, staging, commit, push,
 release or CI dispatch occurred in this follow-up.
+
+
+## 0.31.6 Host 0.7 and shared tooling qualification
+
+Consumer base is released 0.31.5 `5cc8c6dc817843bd453b01a34b76159eb8d6797d`.
+The maintainer selected registry Host 0.7.0 in the root manifest/lock, together
+with the existing selected zerocopy refresh. Both `ic-host-fs` and
+`ic-host-artifacts` remain host-only development dependencies with disabled default
+features. Exact Host source `491fc0e231b9650526f5f57b9ab7b1f62f02218c` changes no
+filesystem/artifact source relative to the qualified Host 0.5.1 revision. The new
+process communication and cancellation contracts are outside this graph; the
+consumer retains its configured inherited IO and command execution policy.
+
+Fresh selected `make test-tooling` runs all 32 repo-tool tests successfully and
+strict example/test Clippy passes offline with Rust 1.99.0. The consumer-owned
+release-adapter fixture also reproduced a helper bootstrap failure under inherited
+`CDPATH`; anchoring its script path and preserving directory bytes fixes the
+relative entry point. Fresh fixture executions pass with Bash 5 and genuine
+Bash 3.2.57 selected on PATH for nested scripts. They substitute release effects;
+no real consumer Git effect or full gate was executed. No function, method or
+type was removed. Evidence is retained in
+`target/qualification/0.31.6-host-review/`.
+
+The maintainer explicitly authorized Shared Tooling source repairs for
+[#67](https://github.com/dragginzgame/shared-tooling/issues/67) and
+[#66](https://github.com/dragginzgame/shared-tooling/issues/66), overriding the
+sibling read-only rule only for those fixes. A second explicit one-time exception
+permitted commits/tags/local pushes solely in disposable Shared test repositories.
+Future policy conflicts are to be reported through owning GitHub issues; this
+record does not extend either exception to future work or real delivery.
+The Shared portable suite passed with Bash 5 and genuine Bash 3.2.57, inherited
+CDPATH and real isolated Git
+recovery fixtures. An external commit advanced Shared to
+`b866d41041a1986eeec95bde9af4c6ba0853d2e3` during qualification, including the prepared
+fixes and other owner's #7/#68/#69 work. No real-repository commit was performed by
+this agent. Consumer adoption subsequently uses a clean private checkout of
+that exact commit and its canonical exporter. The first export refused a remote
+URL mismatch before mutation; matching the existing manifest URL allowed the
+76-file export. Its one manifest replaces the supplemental archive manifest,
+including both former duplicate verifier records. No vendored byte was patched.
+
+Shared selection qualification uses actual synthetic host/IC installations and
+the real action collector. Failed checks and changed/unknown active selections
+retain full bundles; successful complete active sets retain caller pins/check
+logs and IC receipts. A single local Linux measurement using the already installed
+Shared bundles produced 398,794,175 bytes in 21 seconds with full retention and
+25,591,711 bytes in 2 seconds with compact retention. This is one sequential sample,
+including verification/collection, rather than a portable performance guarantee.
+Tiny synthetic host bundles grew because their diagnostic metadata exceeded the
+omitted payload. The Shared native upload/download control remains separate from
+these local observations. Source-bound Linux CI at the selected committed source
+uploaded and downloaded the compact archive, then failed its final stale comparison
+to `portable-regression.log`. The current producer writes four IC/Rust install/check
+logs. A scoped dirty Shared follow-up now compares those actual logs; a regression
+executes the actual downloaded-payload verifier and rejects corruption of each.
+Missing fixture companion declarations are also added at their source owners.
+These follow-ups are not attributed to the committed consumer snapshot.
+The fresh full Bash 5/CDPATH portable suite passes after the follow-ups, with
+focused retention also passing in Bash 3.2. ShellCheck and actionlint pass.
+A separate disposable Shared exporter fixture proves both installer fixtures
+refuse missing evidence helpers before consumer mutation; the helper refuses its
+missing selector, and the explicit complete 76-file selection passes. Its private
+fixture commit is covered only by the one-time test exception and is not upstream
+delivery. Logs are retained in `/tmp/shared-66-followup-portable.log`,
+`/tmp/shared-66-followup-bash32-retention.log` and
+`/tmp/shared-66-export-edges.ww5ikF/`.
+
+Package version remains 0.31.5; one undated compatible 0.31.6 notes entry covers
+this completed consumer batch. The maintainer's lockfile subsequently selected
+Host 0.7.1; source `410fee7c309e781edf6a361f0e480d71b7c11e5a` changes no selected
+filesystem/artifact code from 0.7.0. Fresh 32-test repo-tool and strict offline
+Clippy checks pass against 0.7.1. The root manifest and independent qualification
+manifest/lock retain their recorded input hashes; the new root lock hash is
+`493c669a8976f7c9c2776508a3845cba5f851abc7eac8f873f86a092cf6f14d6`.
+
+Consumer `verify-shared-tooling`, `check-pins`, `lint-tooling`, `test-tools`,
+`test-pins`, `test-release-adapters` and `test-hooks` pass. Archive selection also
+passes with genuine Bash 3.2.57; compact unknown bundles remain complete and an
+invalid mode refuses collection. Product log selection stays local; the shared
+selector owns fresh tool verification and classification. Full retention remains
+the command default, with explicit compact selection in CI. The exported native
+tracking fixture is qualified by the Shared suite; its real disposable Git
+effects were not executed again through Memory. The stricter consumer fixture
+boundary remains an upstream follow-up in
+[Shared #70](https://github.com/dragginzgame/shared-tooling/issues/70).
+
+Released Memory 0.31.5 native archive/upload/download/payload steps all pass on
+Linux, macOS Intel and Apple Silicon in run 37772779312. Host 0.7.0 run
+37773664766 is green; 0.7.1 run 37776708008 remains queued at inspection.
+Those results do not qualify this dirty Memory batch or dirty Shared follow-ups;
+their matching native CI remains pending in
+[#29](https://github.com/dragginzgame/ic-memory/issues/29). Released
+[#28](https://github.com/dragginzgame/ic-memory/issues/28) is closed after matching
+transport evidence. Library contracts, compiler/tool pins
+and the independent runtime graph are unchanged. No broad consumer gate, network
+preparation, installation, staging, release or CI dispatch occurred.

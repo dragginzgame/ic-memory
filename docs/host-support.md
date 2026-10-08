@@ -245,8 +245,13 @@ offline. They are also part of `test-tools`. For CI transport qualification,
 fixture and emits its archive path to `GITHUB_OUTPUT` when set. Verify a downloaded
 archive with `bash scripts/ci/verify-failure-evidence.sh FIXTURE ARCHIVE`; digest
 refusal happens before extraction. Existing fixture destinations are refused.
-The independently recorded [archive exports](../.shared-tooling.archives.snapshot)
-preserve the primary runner snapshot; `make verify-shared-tooling` checks both.
+The archiver and tool selector share the single recorded
+[tooling snapshot](../.shared-tooling.snapshot); `make verify-shared-tooling`
+checks all 76 exports. The collector's optional third argument is `full` (default)
+or `compact`. CI selects `compact`: complete active host/IC sets that pass fresh
+offline checks retain caller pins, check logs and IC receipts; failed, unknown
+and unselected bundles remain complete. Concurrent tool-set mutation must stop
+before evidence collection. Product logs and recovery evidence remain selected.
 
 For interactive CI inspection, use the unchanged shared helper:
 

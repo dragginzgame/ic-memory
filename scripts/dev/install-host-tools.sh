@@ -1,8 +1,12 @@
 #!/usr/bin/env bash
+# Shared companions: scripts/ci/verify-file-checksum.sh
 set -euo pipefail
 
 # Explicit local provisioning of the parsers and optional source-analysis tools.
-ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd -P)"
+ROOT="${BASH_SOURCE[0]}"
+[[ "$ROOT" == /* ]] || ROOT="$PWD/$ROOT"
+ROOT="$(cd -P "${ROOT%/*}/../.." && printf '%s/.' "$PWD")"
+ROOT="${ROOT%/.}"
 consumer="$ROOT"
 versions=""
 check=false
