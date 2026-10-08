@@ -1,6 +1,6 @@
 # Changelog
 
-## [0.31.5]
+## [0.31.5] - 2026-10-08
 
 - Archive failed CI evidence before upload, preserving Unix filenames, modes
   and symlinks. Keep evidence scripts working under inherited `CDPATH` and
