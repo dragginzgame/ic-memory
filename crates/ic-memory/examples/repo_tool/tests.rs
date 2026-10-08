@@ -250,6 +250,47 @@ fn durable_publication_replaces_complete_files_and_preserves_rejected_targets() 
     assert_eq!(entries(), before);
 }
 
+#[test]
+fn streamed_receipts_preserve_json_and_reject_partial_serialization() {
+    let fixture = Fixture::new();
+    fixture.release();
+    let path = fixture.repo.validation_path("0.13.0").unwrap();
+    let original = fs::read(&path).unwrap();
+    let validation: ValidationEvidence = serde_json::from_slice(&original).unwrap();
+    Processes.write_json(&path, &validation).unwrap();
+    assert_eq!(fs::read(&path).unwrap(), original);
+    for prepared in [true, false] {
+        let path = fixture.repo.receipt_path("0.13.0", prepared).unwrap();
+        let original = fs::read(&path).unwrap();
+        let evidence: PackageEvidence = serde_json::from_slice(&original).unwrap();
+        Processes.write_json(&path, &evidence).unwrap();
+        assert_eq!(fs::read(path).unwrap(), original);
+    }
+
+    struct RejectedValue;
+    impl Serialize for RejectedValue {
+        fn serialize<S: serde::Serializer>(&self, _: S) -> std::result::Result<S::Ok, S::Error> {
+            Err(serde::ser::Error::custom("reject after the receipt prefix"))
+        }
+    }
+    let entries = || fs::read_dir(path.parent().unwrap()).unwrap().count();
+    let before = entries();
+    let error = Processes
+        .write_json(&path, &(&validation, RejectedValue))
+        .unwrap_err();
+    assert!(matches!(
+        error
+            .downcast_ref::<ic_host_fs::durable::NamedWriteError<serde_json::Error>>()
+            .unwrap(),
+        ic_host_fs::durable::NamedWriteError::Producer {
+            source,
+            cleanup_error: None,
+        } if source.is_data()
+    ));
+    assert_eq!(fs::read(&path).unwrap(), original);
+    assert_eq!(entries(), before);
+}
+
 #[derive(Deserialize, Serialize)]
 struct State {
     source: BTreeMap<String, String>,
@@ -267,6 +308,12 @@ struct Substitute {
 }
 
 impl Execute for Substitute {
+    fn write_json(&self, path: &Path, value: &impl Serialize) -> Result<()> {
+        // Reuse the fixture's before/after-publication fault injection. The
+        // native streaming boundary is exercised separately below.
+        self.write_bytes(path, &serde_json::to_vec_pretty(value)?)
+    }
+
     fn write_with(
         &self,
         path: &Path,

@@ -109,15 +109,17 @@ pr_query() {
     response="$(mktemp "$plan.github.XXXXXX")"
     gh api --hostname github.com --method GET "repos/$pr_repository/pulls" \
         -f state=all -f "head=${pr_repository%/*}:$pr_branch" -f "base=$branch" \
-        --paginate --slurp > "$response"
-    jq -e 'type == "array" and all(.[]; type == "array")' "$response" >/dev/null || fail 'invalid PR list response'
-    count="$(jq '[.[][]] | length' "$response")"
+        --paginate > "$response"
+    # jq owns page aggregation; packaged gh versions need not support --slurp.
+    # Require a successful query and at least one array page before any effect.
+    jq -se 'length > 0 and all(.[]; type == "array")' "$response" >/dev/null || fail 'invalid PR list response'
+    count="$(jq -s '[.[][]] | length' "$response")"
     [[ "$count" == 0 || "$count" == 1 ]] || fail 'multiple release PRs require reconciliation'
     if [[ "$count" == 0 ]]; then
         [[ -z "$pr_number" ]] || fail 'saved release PR disappeared from its selected repository/base/head'
         return
     fi
-    observed="$(jq -er '[.[][]][0].number | select(type == "number" and . > 0 and floor == .) | tostring' "$response")"
+    observed="$(jq -ser '[.[][]][0].number | select(type == "number" and . > 0 and floor == .) | tostring' "$response")"
     [[ -z "$pr_number" || "$pr_number" == "$observed" ]] || fail 'release PR identity changed'
     pr_number="$observed"
     pr_details="$(mktemp "$plan.github.XXXXXX")"
@@ -258,13 +260,14 @@ pr_push() {
     pr_assert_merged
     pr_worktree
     assert_release_tag
+    local tag
+    tag="$(git rev-parse "refs/tags/v$candidate")"
     hook release-push-check
     pr_worktree
     assert_release_tag
+    [[ "$(git rev-parse "refs/tags/v$candidate")" == "$tag" ]] || fail 'release tag changed during its final check'
     assert_destination
     read_remote_refs
-    local tag
-    tag="$(git rev-parse "refs/tags/v$candidate")"
     if [[ "$remote_tag" != "$tag" ]]; then
         [[ -z "$remote_tag" ]] || fail 'remote tag conflicts with the merged release'
         git push --no-follow-tags --atomic -- "$destination" "refs/tags/v$candidate:refs/tags/v$candidate"

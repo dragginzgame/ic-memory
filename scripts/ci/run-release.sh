@@ -212,6 +212,7 @@ assert_release_commit() {
     [[ "$index_tree" =~ ^[0-9a-f]{40,64}$ && "$(git rev-parse "$release_commit^{tree}")" == "$index_tree" ]] || fail 'release commit tree differs from the exact staged release'
     git merge-base --is-ancestor "$release_commit" HEAD || fail 'release commit is not an ancestor of the selected branch'
     [[ "$("$make_bin" --no-print-directory -s release-version)" == "$candidate" ]] || fail 'release metadata no longer matches the candidate'
+    git diff --cached --quiet HEAD -- || fail 'release index differs from the committed payload'
     git diff --quiet HEAD -- || fail 'release worktree differs from the committed payload'
     untracked="$(git ls-files --others --exclude-standard)" || fail 'cannot inventory untracked release source'
     [[ -z "$untracked" ]] || fail 'release worktree has untracked source'
@@ -339,10 +340,13 @@ while true; do
             push)
                 assert_release_commit
                 assert_release_tag
+                local_tag="$(git rev-parse "refs/tags/v$candidate")"
                 hook release-push-check
+                assert_release_commit
+                assert_release_tag
+                [[ "$(git rev-parse "refs/tags/v$candidate")" == "$local_tag" ]] || fail 'release tag changed during its final check'
                 assert_destination
                 local_head="$release_commit"
-                local_tag="$(git rev-parse "refs/tags/v$candidate")"
                 read_remote_refs
                 # A confirmed descendant already includes this release. Preserve that
                 # branch tip when publishing a missing tag; never rewind it.
@@ -373,6 +377,13 @@ while true; do
         [[ "$remote_tag" == "$(git rev-parse "refs/tags/v$candidate")" ]] || fail 'completed PR release tag no longer matches its destination'
     else
         assert_release_commit
+        assert_release_tag
+        assert_destination
+        read_remote_refs
+        [[ "$remote_tag" == "$(git rev-parse "refs/tags/v$candidate")" ]] || fail 'completed release tag no longer matches its destination'
+        if [[ -z "$remote_head" ]] || ! git merge-base --is-ancestor "$release_commit" "$remote_head"; then
+            fail 'completed release is absent from the observed branch history; fetch and reconcile'
+        fi
     fi
     printf 'Release %s completed; retained plan: %s\n' "$candidate" "$plan"
     [[ "$delivery" == direct && "$followup" == yes ]] || break

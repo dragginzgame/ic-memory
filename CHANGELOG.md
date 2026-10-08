@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.31.4]
+
+- Refresh release-file support to IC Host 0.5.1, preserving streamed archive
+  hashes and streaming receipt JSON through its durable publisher.
+  [#27](https://github.com/dragginzgame/ic-memory/issues/27).
+- Recheck release integrity after the final push hook and verify tags and
+  destination history on completed retries.
+  [#25](https://github.com/dragginzgame/ic-memory/issues/25),
+  [Shared Tooling #58](https://github.com/dragginzgame/shared-tooling/issues/58).
+
+[Detailed notes](docs/changelog/0.31.md)
+
 ## [0.31.3] - 2026-10-08
 
 - Fix sibling LOC checks under trailing-slash and aliased temporary roots.

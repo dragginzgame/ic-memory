@@ -12,6 +12,7 @@ use std::{
     env,
     error::Error,
     fs,
+    io::{BufWriter, Write as _},
     path::{Path, PathBuf},
     process::{Command, Stdio},
     time::{SystemTime, UNIX_EPOCH},
@@ -111,6 +112,24 @@ trait Execute {
 
     fn write_bytes(&self, path: &Path, bytes: &[u8]) -> Result<()> {
         Ok(ic_host_fs::durable::write_bytes(path, bytes)?)
+    }
+
+    fn write_json(&self, path: &Path, value: &impl Serialize) -> Result<()> {
+        // Keep receipt encoding local; the shared engine owns staging and
+        // publication, including original producer and cleanup failures.
+        Ok(ic_host_fs::durable::write_typed_with(
+            path,
+            ic_host_fs::durable::WriteOptions {
+                mode: ic_host_fs::durable::PublicationMode::Replace,
+                permissions: 0o666,
+            },
+            |file| {
+                let mut writer = BufWriter::new(file);
+                serde_json::to_writer_pretty(&mut writer, value)?;
+                // Flush the fixed-size buffer before the engine may publish.
+                writer.flush().map_err(serde_json::Error::io)
+            },
+        )?)
     }
 
     fn write_with(
@@ -946,8 +965,7 @@ impl<E: Execute> Repository<E> {
                 ));
             self.exec.write_bytes(&retained, &fs::read(&path)?)?;
         }
-        self.exec
-            .write_bytes(&path, &serde_json::to_vec_pretty(&evidence)?)
+        self.exec.write_json(&path, &evidence)
     }
 
     fn verify_inputs(&self, evidence: &ValidationEvidence, updated: bool) -> Result<()> {
@@ -1033,9 +1051,9 @@ impl<E: Execute> Repository<E> {
     }
 
     fn write_evidence(&self, evidence: &PackageEvidence, prepared: bool) -> Result<()> {
-        self.exec.write_bytes(
+        self.exec.write_json(
             &self.receipt_path(&evidence.validation.selection.version, prepared)?,
-            &serde_json::to_vec_pretty(evidence)?,
+            evidence,
         )
     }
 

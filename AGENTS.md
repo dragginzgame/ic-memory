@@ -11,7 +11,7 @@ exception to revision-bound policy adoption while the shared rules are being
 developed locally. The sibling remains read-only to agents.
 
 The existing tooling snapshot at revision
-`2687f26317952c43c685f7f799ed09288dc10a67` is recorded in
+`0ba0ad00ed94848e54ecc82629b6b7873b7284c0` is recorded in
 [.shared-tooling.snapshot](.shared-tooling.snapshot). It identifies the vendored
 files, hashes and executable modes; it does not freeze the active local policy.
 Keep its provenance accurate and never edit vendored files in place. Do not
@@ -20,7 +20,7 @@ attribute uncommitted shared files to that recorded revision. The live local
 also applies within its activation scope and is included in this recorded snapshot.
 These instructions are the repository's local overlay.
 
-The 71-file snapshot uses the reviewed local 0.1.22 commit, including the common
+The 71-file snapshot uses the reviewed local 0.1.23 commit, including the common
 audit methods, local host/IC setup, dependency checker, release-command checker
 and linked rules, including the standard Rust workspace layout. Cargo inheritance
 checks cover both approved workspace roots. The unchanged `make/tools.mk`
@@ -125,6 +125,10 @@ history, then run fresh gates for a requested next increment. Late checks bind
 identity, payload, destination, qualification-input or concurrency conflicts. Explicit
 `release-resume` is an optional selection command, not a required recovery step.
 Preflight/validation failures repeat fresh gates while preserving earlier evidence.
+The runner rechecks the payload, index, working files and exact annotated tag
+after the final push hook. Completed direct resume observes the local/remote tag
+and branch ancestry without replaying effects; known descendants remain valid.
+Missing or conflicting refs and unavailable observations stop completion.
 
 The common vendored runner owns release ordering, locks, saved intent and Git
 effects; Rust consumer adapters own metadata and qualification receipts. See

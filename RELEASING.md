@@ -94,6 +94,15 @@ reconciled with exact remote identities; a failed remote query stops recovery.
 Success retains plans, logs, receipts and archives. Cleanup and package
 publication are separate operations.
 
+The runner rechecks the committed payload, index, working files and exact
+annotated tag object after the final push hook. Explicit resume of a completed
+direct release verifies that local and remote tag objects agree and that the
+observed remote branch contains the release commit. A known descendant tip is
+valid. Missing or replaced tags, missing or diverged branches and failed remote
+queries stop completion without recreating or pushing refs. Fetch unknown branch
+history and reconcile conflicts before retrying; retain the completed plan and
+its evidence.
+
 The Rust consumer adapters consume the runner's eight `RELEASE_*` selections.
 They validate source/input identities, finalize the root and detail notes with
 the saved UTC date, update Cargo/README metadata and qualify the packages. The
@@ -153,9 +162,12 @@ Under Cargo's actual target directory (including configured overrides),
 - `attempts/verify.*`: unique stdout/stderr logs, including failed full gates.
   Replaced successful validation receipts are also archived here before replacement.
 
-Receipts are written atomically. Existing prepared/final receipts and archives
-are checked, never silently repaired. Missing/corrupted prepared evidence stops
-final qualification before packaging; a working archive replaced by failed final
+Receipt JSON streams into the shared typed durable publisher with the same
+pretty JSON format and replacement permissions. Serialization must finish before
+publication; a failed producer preserves the previous receipt and retains its
+original error and any staging cleanup failure. Existing prepared/final receipts
+and archives are checked, never silently repaired. Missing/corrupted prepared
+evidence stops final qualification before packaging; a working archive replaced by failed final
 packaging does not invalidate its intact retained prepared archive. Completed
 prepared/final checks reuse valid evidence without repackaging.
 

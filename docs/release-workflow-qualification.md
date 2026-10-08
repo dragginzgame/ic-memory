@@ -1896,3 +1896,246 @@ now reports success for released 0.31.2 `df01ac27f47fa46ebcab3a43665c81bb58c22e4
 Linux and both macOS full gates, all three MSRV jobs and tooling lint pass. This
 supersedes the preceding running/queued observation for that release. It confirms
 delivery of the earlier 0.1.20 baseline, not the still-uncommitted 0.31.3 refresh.
+
+## 0.31.3 released snapshot acceptance
+
+The maintainer pushed/tagged 0.31.3 at
+`692fbc81d698f4b8253565ff3036f3ad3fb42cd2`, following source commit `c9866b3`.
+Remote annotated tag identity and committed 71-file snapshot provenance agree.
+[Exact-release CI](https://github.com/dragginzgame/ic-memory/actions/runs/37743519477)
+passes Linux and both macOS full gates, all three MSRV jobs and tooling lint.
+This completes [#23](https://github.com/dragginzgame/ic-memory/issues/23), which
+is closed. Earlier failed/incomplete observations retain their source identities.
+The subsequently selected Host dependency changes are separate dirty inputs.
+
+## IC Host 0.5.0 selected dependency review
+
+Reviewed released IC Host 0.5.0
+`db637fac8b7a9ef62301e1d9009ffeb5ffcd0be7` against 0.4.6 and the maintainer's
+existing dirty root selection. The annotated tag names that exact source.
+Registry artifact/filesystem packages record the same VCS commit and have
+byte-identical source trees and original manifests. Their archive SHA-256 values
+match the root lock: artifacts
+`872fa46c90cf915d7414be4ac7bbe0955b0934ffa1e8ac883fad122637dbc981`, filesystem
+`96578ba90b978f0bafc48454f87f2869f74f3b6d6b3d06790cff47f9c95c7f98`.
+
+Both requirements are compatible 0.5 ranges with defaults disabled and remain
+non-Wasm development dependencies. The actual graph selects only these two
+Host crates, each with no features. Existing `copy_reader`, `hash_file`,
+`durable::write_bytes` and `durable::write_with` contracts remain applicable.
+The common publication engine adds optional closed-writer admission while
+preserving existing no-admission staging, identity, sync and cleanup behavior.
+The consumer still hashes raw retained archives independently and preserves
+native copy errors; executable admission does not apply to its archive files.
+
+Reviewed the other new library surfaces without adopting them: owned-child
+cleanup retains explicit caller IO/lifecycle obligations; IC reports compare
+caller-selected, revision-bound resources rather than proving installability;
+gzip/Wasm argument, field and error changes are breaking upstream contracts
+outside this feature selection. The consumer has no matching process-group,
+executable-installer or IC-limit policy to migrate. No duplicate mechanism was
+introduced, and product Wasm budgets remain local.
+
+[Exact Host release CI](https://github.com/dragginzgame/ic-host-tooling/actions/runs/37744999108)
+passes Linux, both Macs and MSRV. Both retained native Mac logs execute actual
+closed-writer probes, rejection/identity/race/phase tests, all six child cleanup
+cases and resource-report tests. Host #14/#20/#10 are resolved; #5 retains its
+remaining consumer integration contracts. Draft PR #21 remains separate from
+the subsequently tagged/published implementation and was not merged or closed.
+
+Fresh Linux evidence in `target/qualification/host-0.5.0-review/` passes locked
+offline cache admission, full metadata for both maintained graphs, all 31
+repo-tool tests on Rust 1.99 and MSRV 1.88, strict selected Clippy, the focused
+compile-fail trust/capability target, snapshot, pins and both-workspace formatting.
+The current root lock also contains the maintainer-selected `serde_spanned`,
+`toml`, `toml_datetime`, `toml_parser`, `toml_writer` and `trybuild` updates;
+they are preserved and included in this actual qualification, not attributed to
+Host or silently reverted. The independent manifest/lock, Rust source/tests,
+compiler/tool pins, snapshot and real index hashes remain unchanged.
+
+Pending notes select compatible 0.31.4 while package versions remain 0.31.3.
+No public library, format or release-receipt change is part of this batch.
+Current dirty dependency inputs still require committed delivery and matching
+consumer native CI; released 0.31.3 and upstream green runs do not qualify them.
+No broad gate, package/release qualification, installation, network fetch,
+staging, commit, tag, push, publication, CI dispatch or sibling edit occurred.
+No function, method or type was removed. Published note bytes remain preserved;
+this review removes no prior evidence. Active/detail and pending links pass.
+The earlier export's source-path record was unavailable, so the documentation
+checker was recovered from exact committed Shared Tooling 0.1.22; the initial
+setup failure is retained separately. The known old root example-link failure
+remains distinct from active and pending documentation admission.
+
+## Shared Tooling 0.1.23 direct release integrity adoption
+
+Continued compatible 0.31.4 work from released consumer 0.31.3
+`692fbc81d698f4b8253565ff3036f3ad3fb42cd2`, preserving the separately selected
+Host 0.5.0 and TOML/trybuild dependency changes. Reviewed committed Shared
+Tooling 0.1.23 `0ba0ad00ed94848e54ecc82629b6b7873b7284c0` against the selected
+0.1.22 snapshot. Its canonical exporter, executed from an isolated clean local
+clone at that exact revision, refreshed the existing 71-file roster. The runner,
+PR helper, direct fixture and release guidance are the only changed exported
+files. No vendored bytes were edited locally and the sibling stayed read-only.
+
+[Shared #58](https://github.com/dragginzgame/shared-tooling/issues/58) owns the
+confirmed runner gaps: final-hook mutations escaped its last common check, and
+completed direct resume did not observe tags or destination ancestry. The
+consumer Rust push hook already checks receipts, payload and tag before returning,
+but completed recovery still requires the common destination checks. No incorrect
+live IC Memory release was observed. The adopted runner now independently checks
+the index, payload and exact annotated tag after the final hook, then verifies
+local/remote tag objects and branch ancestry on completed resume. Known
+descendants remain valid; conflicts or unavailable observations refuse completion
+without replaying effects. Existing receipt ownership and direct-only Make
+dispatch remain intact; no duplicate recovery engine or PR adapter was added.
+
+[Matching upstream CI](https://github.com/dragginzgame/shared-tooling/actions/runs/37746567888)
+passes Linux, Intel, Apple Silicon and lint/security at the selected commit.
+Retained native logs explicitly pass the direct command-substitute fixture and
+the upstream PR merge/squash/rebase, recovery and conflict fixture. This also
+qualifies the committed pagination correction tracked by
+[Shared #42](https://github.com/dragginzgame/shared-tooling/issues/42), replacing
+the earlier dirty-source observation. IC Memory exports the canonical helper
+without selecting PR delivery. Its real-Git PR fixture was not executed locally
+under the consumer overlay; native upstream fixtures remain separately attributed
+and do not prove a live consumer release.
+
+Fresh Linux evidence is retained in
+`target/qualification/shared-0.1.23-adoption/`. The canonical direct fixture
+passes final-hook tag-target, tag-object, index and working-file mutation
+refusals, exact-version repair/retry, completed local/remote tag and branch
+conflicts, remote-query failure, no-effect clean resume and known descendants.
+Actual consumer Make dispatch passes unsupported-delivery refusal, selection
+forwarding, launcher isolation and attempt retention. Both fixtures pass under
+Bash 5 and genuine Bash 3.2.57; the final 3.2 run selects that interpreter on
+PATH for nested scripts too. An earlier outer-interpreter-only run is retained
+separately and is not used to claim nested 3.2 qualification.
+
+All 31 Rust repo-tool tests pass on the selected Rust 1.99 inputs, including
+receipt/archive corruption, older-release recovery and isolated real-index
+admission. Release effects are substituted; the isolated index fixture reuses
+existing history without commits or tags. Snapshot integrity, dependency pins,
+ShellCheck, actionlint and 150 local references across 31 selected documents
+pass. Root dependency inputs, the independent manifest/lock, compiler/tool pins,
+Make dispatch, Rust adapter source/tests and the real checkout index retain their
+captured hashes. Earlier Host/MSRV/Clippy evidence applies only to its unchanged
+recorded inputs, rather than being presented as a fresh run.
+
+Pending notes and recovery guidance now cover the full compatible 0.31.4 batch;
+package versions remain 0.31.3. [Consumer #25](https://github.com/dragginzgame/ic-memory/issues/25)
+owns committed delivery and matching native consumer CI. The current adoption
+is unstaged and uncommitted; upstream and released-consumer green runs do not
+qualify these dirty consumer bytes. No broad gate, live release, package
+qualification, installation, network dependency fetch, real checkout staging,
+commit, tag, push, publication, CI dispatch or sibling edit occurred. No function,
+method or type was removed. Published notes and prior review records remain
+preserved with their original source and evidence identities.
+
+Post-batch inspection confirms the sole active consumer workflow still passes at
+released 0.31.3; this is not CI for the current edits. Shared #58/#42 are resolved
+at the reviewed committed/native acceptance boundary. Concurrent duplicate
+[consumer #26](https://github.com/dragginzgame/ic-memory/issues/26) is consolidated
+onto the already evidenced #25, which remains open for consumer delivery and CI.
+
+## 0.31.4 streamed receipt publication
+
+The requested simplification review traced receipt publication, archive retention,
+process execution and Cargo/release metadata against sibling Host and Shared
+Tooling. The current flow-convergence method and local overlay retain their
+0.1.23 identities; this is a selected source review and focused qualification,
+not a whole-library or performance audit. Consumer source remains released
+0.31.3 with the pending 0.31.4 edits recorded above.
+
+Validation and package receipts previously created separate complete encoded JSON
+buffers. They now share `Execute::write_json`, using the existing Host typed
+durable publisher, a fixed-size output buffer and explicit flush before production
+success. Serde owns pretty encoding; Host owns staging, synchronization,
+publication and typed producer/cleanup failures; the Rust consumer still owns
+receipt fields and recovery admission. No mode, dependency, schema or recovery
+axis was added. Original lock bytes remain part of the receipt; this removes an
+additional complete encoded-document allocation, not every in-memory receipt value.
+
+Intentional separations remain: historical receipt backups copy exact bytes,
+archive identity checks before/during/after copying protect distinct boundaries,
+and product version/lock/surface checks bind release intent. Host's admitted
+process runner uses cleared environments, null stdin and bounded capture, so it
+does not replace the adapter's caller-environment and inherited-IO execution.
+IC resource reports do not own local raw-Wasm probe budgets. The approved
+independent PocketIC workspace retains its separate graph. No further equivalent
+shared owner justified a source change in this selected review.
+
+During verification, a concurrent root-lock update selected Host 0.5.1. The
+initial input-hash mismatch and earlier test logs are retained, rather than
+attributing them to one stable dependency selection. Host 0.5.1 at
+`81f9809861159def2fd0987fcb7961cda4afd969` changes release tooling only; its
+crate source is unchanged from 0.5.0. Selected registry sources and original
+manifests match the sibling, their VCS identities name that release, and archive
+checksums match the root lock. Full locked metadata confirms only artifact/fs
+Host dependencies with no features. The concurrent selection was preserved;
+no dependency upgrade or fetch was executed by this review.
+
+Final evidence in `target/qualification/0.31.4-receipt-streaming/` captures one
+stable source/lock selection. All 32 repo-tool tests pass on Rust 1.99 and MSRV
+1.88, including native filesystem comparison of all three receipt encodings,
+partial-serialization rejection with the original typed producer error, unchanged
+prior receipt and owned-stage cleanup. Existing publication-error, corruption,
+rollback and older-release recovery proofs still pass. Strict selected Clippy,
+both-workspace formatting, pins and snapshot integrity pass. Independent graph,
+compiler/tool pins, snapshot and real-index hashes remain unchanged.
+
+[Host 0.5.1 CI](https://github.com/dragginzgame/ic-host-tooling/actions/runs/37750135927)
+passes for its exact source, separately from local consumer execution.
+[Consumer #27](https://github.com/dragginzgame/ic-memory/issues/27) tracks delivery
+and native acceptance of the receipt change alongside #25. Pending notes remain
+compatible 0.31.4; package version remains 0.31.3 and published history is preserved.
+Current edits remain unstaged/uncommitted. No function, method or type was removed,
+and no broad gate, package/release qualification, real release effect, publication,
+CI dispatch or sibling edit occurred. Dirty consumer macOS qualification remains
+outstanding; no memory or speed improvement was measured.
+
+## 0.31.4 failure-evidence archive preparation
+
+[Consumer #28](https://github.com/dragginzgame/ic-memory/issues/28) tracks the
+requested correction for retained host-tool paths such as `Linux:x86_64`, which
+the pinned upload action rejects. The consumer-owned selection adapter and
+fixture are applied under `scripts/ci/`, but are not connected to CI or Make
+gates yet: their canonical shared archive helper remains uncommitted beside
+Shared Tooling 0.1.23. The immutable 71-file snapshot is unchanged by this batch.
+No incomplete workflow or dirty shared executable was activated.
+
+Captured source and evidence remain in
+`target/qualification/0.31.4-failure-upload-adoption/`, including exact source
+hashes, original upstream status, a prepared workflow, failure logs and an isolated
+proposed correction. The shared helper and consumer fixture pass Bash 5 on Linux.
+Genuine Bash 3.2.57, also selected on PATH for nested scripts, exposes an initial
+empty-array expansion under `set -u`. The isolated one-line portable-array
+correction passes the complete common fixture and final consumer fixture under
+Bash 3.2; the final consumer fixture also passes Bash 5. This correction was
+[reported to Shared #59](https://github.com/dragginzgame/shared-tooling/issues/59#issuecomment-6056660308),
+without editing sibling source or attributing dirty bytes to a committed revision.
+The shared owner subsequently applied that exact correction in the working tree;
+byte comparison binds the corrected dirty helper and unchanged common fixture to
+the qualified proposal. This still does not establish a committed export.
+
+The consumer fixture deliberately fails the actual exported host-tool fixture
+with substitute downloads and tool versions. Its retained colon-bearing tree
+round-trips through a real tar/gzip archive, together with the exact selected
+temporary logs, qualification and release-validation trees, and host/IC candidate
+bundles. Checks preserve original log bytes and nonzero gate status, newline/colon
+filenames, permissions, executable files and unfollowed symlinks. Unrelated paths
+stay outside the selection. Separate retry archives preserve prior output;
+no-input collection produces no artifact, and a substituted failed tar retains
+its partial output and original evidence. ShellCheck, the prepared workflow's
+actionlint check, current tooling lint and current snapshot verification pass.
+The pinned uploader's inspected pure validator accepts the actual collected
+`evidence.tar.gz` filename, whose contents include the retained colon/newline
+paths. No live upload was performed. The real index remains unchanged.
+
+Activation still requires a reviewed corrected shared commit and canonical export,
+then connecting the fixtures and prepared workflow, updating supported retention
+guidance and the pending 0.31.4 notes, and rerunning focused checks against the
+actual exports. Native macOS and actual upload/download acceptance remain
+outstanding. No full gate, real tool installation, live CI dispatch, release,
+publication, commit, tag, push or sibling edit occurred. No function, method or
+type was removed. This is prepared consumer integration, not a completed CI fix;
+existing compatible 0.31.4 release notes retain their previously completed scope.
