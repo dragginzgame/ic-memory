@@ -53,6 +53,10 @@ The table describes the intended CI contract. Passing qualification for a
 revision requires its matching workflow run; adding a matrix entry does not
 establish that the run passed.
 
+The portable job allows 25 minutes including native setup and evidence upload.
+Its regression step has a separate 15-minute limit, leaving time for the failure
+collector after an overlong suite. Lint/security retains its 10-minute limit.
+
 All three jobs also run real Prettier/Rust hook qualification and a native
 installer failure-artifact round trip, described below. These are separate
 from the offline portable suite.
@@ -88,6 +92,7 @@ required to run setup. Make targets and CI select this same local tool set.
 | Dependency pin checker | Git, jq, Mike Farah yq v4.47.2+; Cargo when Cargo manifests exist |
 | Workspace-version reader | Prepared Cargo, jq and Mike Farah yq v4.47.2+; explicit Cargo.toml input; no dependency resolution |
 | Release runner | GNU Make, Git, `date`, explicit consumer metadata/check targets, and Bash 3.2 |
+| PR release delivery | The release runner prerequisites, authenticated GitHub CLI with `gh api --paginate --slurp`, jq, and Git supporting `switch`, `worktree` and `fetch --no-write-fetch-head`; see the [PR contract](releases.md#pr-delivery) |
 | Changelog finalizer | System awk with regular-expression `RS` (the declared Linux/macOS hosts); preserves historical EOF bytes without GNU `RT` |
 | Rust pre-commit hook and installer | Git, GNU Make, consumer-owned `fmt` prerequisites (Cargo/rustfmt and an exact `cargo-sort` version), Bash 3.2 and standard Unix file utilities |
 | Consumer formatting adoption checker | The hook prerequisites above, Perl-free shell utilities, and reviewed consumer Make inputs; no implicit downloads |

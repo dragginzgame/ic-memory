@@ -11,7 +11,7 @@ exception to revision-bound policy adoption while the shared rules are being
 developed locally. The sibling remains read-only to agents.
 
 The existing tooling snapshot at revision
-`3ecc48e579f6cf6e6ab01a6645d8a250fc8c6934` is recorded in
+`2687f26317952c43c685f7f799ed09288dc10a67` is recorded in
 [.shared-tooling.snapshot](.shared-tooling.snapshot). It identifies the vendored
 files, hashes and executable modes; it does not freeze the active local policy.
 Keep its provenance accurate and never edit vendored files in place. Do not
@@ -20,7 +20,7 @@ attribute uncommitted shared files to that recorded revision. The live local
 also applies within its activation scope and is included in this recorded snapshot.
 These instructions are the repository's local overlay.
 
-The 70-file snapshot uses the reviewed local 0.1.20 commit, including the common
+The 71-file snapshot uses the reviewed local 0.1.22 commit, including the common
 audit methods, local host/IC setup, dependency checker, release-command checker
 and linked rules, including the standard Rust workspace layout. Cargo inheritance
 checks cover both approved workspace roots. The unchanged `make/tools.mk`
@@ -36,6 +36,11 @@ cargo-sort formatter setup remain unchanged.
 The Rust installer refuses redirected install/build/receipt paths before tool
 execution and after Cargo returns. Tool-command fixtures normalize their physical
 scratch root; the IC installer uses the included canonical pin parser.
+Sibling LOC fixtures also normalize physical scratch paths and qualify
+trailing-slash and aliased temporary roots inside enclosing workspaces.
+The release runner and its PR helper are exported unchanged. This consumer
+selects direct delivery and rejects other delivery selections before dispatch;
+PR release adapters and their real-Git qualification fixture are not adopted.
 The canister audit addendum is linked guidance; product limits remain local.
 The common metadata fixture also includes its workspace-version reader. Product
 version parsing stays in the Rust release adapter. The linked tag-maintenance

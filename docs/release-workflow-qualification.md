@@ -1787,3 +1787,112 @@ both workspace selections, consumer Rust inputs, snapshot and real index remain
 unchanged. Consumer released-HEAD CI remains green at `40773d7`; dirty work has
 no remote result. No broad gate, tool install, compilation, sibling edit, staging,
 commit, tag, push, release or CI dispatch occurred.
+
+## Shared Tooling 0.1.22 consumer adoption for #23
+
+The maintainer pushed/tagged ic-memory 0.31.2 at
+`df01ac27f47fa46ebcab3a43665c81bb58c22e40`, then requested continuation.
+The committed contribution authority resolves
+[#24](https://github.com/dragginzgame/ic-memory/issues/24); its earlier reports
+retain their original review identities. Continued
+[#23](https://github.com/dragginzgame/ic-memory/issues/23) with committed Shared
+Tooling 0.1.22 `2687f26317952c43c685f7f799ed09288dc10a67`.
+
+A clean private clone at that exact revision supplied the canonical exporter.
+The reviewed manifest adds the canonical PR helper, matching the updated shared
+governance roster, and refreshes all 71 declared files together. The exporter
+verifies hashes/modes and preserves the real index. No sibling file or vendored
+file was patched. The LOC fixture hashes match the previously captured #57
+candidate; the existing consumer context fixture receives the expanded admission.
+
+The new runner supports an explicitly selected PR policy, but this consumer's
+receipt adapters remain direct. Make exports the direct default and refuses
+other selections for release targets before dispatch. A disposable copy of the
+actual Makefile tests environment and command-line refusal for patch/minor/major
+and resume with a substitute runner; no runner effect occurs on refusal, and
+ordinary direct dispatch succeeds. Existing adapter forwarding and unique failed
+gate retention remain covered. The canonical direct fixture owns its delivery
+selection. No PR merged-source receipt contract is claimed or selected.
+
+Fresh Linux evidence in `target/qualification/shared-0.1.22-adoption/` passes:
+
+- Complete focused `make test-tools` with physical trailing-slash TMPDIR under
+  Bash 5, then aliased trailing-slash TMPDIR under genuine Bash 3.2.57. This
+  repeats the earlier failing consumer reproduction against actual exports.
+- Consumer release adapters and canonical direct runner command substitutes;
+  the consumer adapter fixture also passes Bash 3.2 with enclosing PR selection.
+- Snapshot integrity, dependency pins, both-workspace formatting, shell/workflow
+  lint, 168 local references across 34 active documents, pending-note links,
+  whitespace and published-note preservation. The whole historical root ledger
+  still fails on its previously recorded `examples/composed_host.rs` link;
+  `documentation-links-history.log` retains that failure without rewriting history.
+- Input hashes for both workspace selections, Rust adapter/tests, toolchains,
+  pins, shared Make include and hook, plus the unchanged real index.
+
+Installer/Cargo and release dispatch in fixtures are substitutes. Rust source,
+the hook and selected dependency graphs are unchanged; prior compiled evidence
+is not relabelled, and no new compilation or full local gate ran. The PR fixture
+is not adopted or run because its real disposable Git effects conflict with the
+local qualification overlay. Package versions remain 0.31.2; compatible pending
+notes select 0.31.3 and preserve every published root/detail entry.
+
+At inspection, [0.31.2 consumer CI](https://github.com/dragginzgame/ic-memory/actions/runs/37661144098)
+passes Linux full-gate/MSRV, tooling lint and Apple Silicon MSRV, with remaining
+macOS checks queued. [Shared 0.1.22 CI](https://github.com/dragginzgame/shared-tooling/actions/runs/37659875012)
+passes Linux, Apple Silicon and lint/security; Intel is running. Neither is
+claimed fully green. This dirty consumer adoption still needs committed delivery
+and matching native CI. No tool installation, build, full gate, real-index hook,
+staging, commit, tag, push, release, publication, CI dispatch or sibling edit
+occurred. No function, method or type was removed.
+
+## 0.31.3 issue and shared PR-query follow-up
+
+The maintainer requested continued 0.31.3 issue/tooling work on consumer HEAD
+`df01ac27f47fa46ebcab3a43665c81bb58c22e40` with the pending canonical 71-file
+0.1.22 adoption. The snapshot, Make delivery selection/refusal and adapter fixture
+hashes still match the preceding qualification; its passing tests are reused
+only for those unchanged inputs, not presented as fresh executions. Pending
+notes remain compatible 0.31.3 and package versions remain 0.31.2.
+
+[Shared 0.1.22 CI](https://github.com/dragginzgame/shared-tooling/actions/runs/37659875012)
+at `2687f26317952c43c685f7f799ed09288dc10a67` is now successful across Linux,
+Apple Silicon, Intel and lint/security. The retained Intel log explicitly records
+the expanded LOC contexts, direct/PR runner fixtures and native artifact checks.
+This supersedes the earlier incomplete observation and establishes upstream
+acceptance of [#57](https://github.com/dragginzgame/shared-tooling/issues/57),
+which is closed. [Consumer #23](https://github.com/dragginzgame/ic-memory/issues/23)
+still owns committed delivery and matching CI of its actual adoption.
+
+Separately reviewed the dirty 0.1.23 PR-query correction on
+[Shared #42](https://github.com/dragginzgame/shared-tooling/issues/42), using the
+code-hygiene boundary questions from the unchanged shared audit method. The
+canonical `pr_query` owns paginated observation and identity admission;
+`pr_publish`/`pr_review` consume its admitted identity before release effects.
+Real gh 2.45.0 rejects the committed `--slurp` invocation with status 1. A real
+GET-only query using `--paginate` and jq page aggregation succeeds. No remote PR
+or release effect was attempted.
+
+Captured dirty helper/fixture bytes in `target/qualification/0.31.3-followup/`
+pass a narrow `pr_query` API-substitute harness under Bash 5 and genuine Bash
+3.2.57. Both interpreters accept empty array pages and a matching later-page PR;
+they reject missing/malformed/non-array pages, partial-query failure, duplicate
+PRs across pages, disappearance, changed saved identity and invalid details.
+Failures retain raw replies without publishing the identity sidecar. ShellCheck
+passes the captured upstream helper/fixture. The known CLI defect is a bounded
+upstream release blocker; the candidate has component proof, while full recovery
+and native qualification remain with its owner. These results do not qualify
+uncommitted bytes as 0.1.22 or a native/live PR release.
+
+The full real-Git PR fixture remains unexecuted under this overlay, and direct
+consumer delivery does not need that correction. Shared files remain read-only;
+the actual snapshot is unchanged. Captured owner hashes, both workspace
+selections and the real index remain stable. No Rust symbols were removed, and
+no compilation, broad gate, installation, staging, commit, tag, push, release,
+publication or CI dispatch occurred. Earlier failed and native-incomplete
+observations remain preserved at their original evidence identities.
+
+Final post-batch [consumer CI inspection](https://github.com/dragginzgame/ic-memory/actions/runs/37661144098)
+now reports success for released 0.31.2 `df01ac27f47fa46ebcab3a43665c81bb58c22e40`:
+Linux and both macOS full gates, all three MSRV jobs and tooling lint pass. This
+supersedes the preceding running/queued observation for that release. It confirms
+delivery of the earlier 0.1.20 baseline, not the still-uncommitted 0.31.3 refresh.

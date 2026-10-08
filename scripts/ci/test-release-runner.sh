@@ -3,6 +3,7 @@ set -euo pipefail
 
 # This fixture owns its Make controls; production admission is tested below.
 unset MAKEFLAGS MFLAGS MAKEOVERRIDES GNUMAKEFLAGS MAKEFILES
+export RELEASE_DELIVERY=direct
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 FIXTURE_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/release-runner-test.XXXXXX")"

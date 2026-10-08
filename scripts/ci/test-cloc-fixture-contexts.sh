@@ -3,6 +3,7 @@ set -euo pipefail
 # Independent fixture admission, with all enclosing consumer selectors present.
 ROOT="$(cd "$(dirname "$0")/../.." && pwd -P)"
 fixture="$(mktemp -d "${TMPDIR:-/tmp}/cloc-fixture-contexts.XXXXXX")"
+fixture="$(cd "$fixture" && pwd -P)"
 trap 'if [[ $? == 0 ]]; then rm -rf "$fixture"; else printf "Failed LOC context fixture retained: %s\n" "$fixture" >&2; fi' EXIT
 mkdir -p "$fixture/enclosing/.cargo" "$fixture/enclosing/scratch" "$fixture/output"
 git init -q "$fixture/enclosing"
@@ -12,4 +13,11 @@ for script in test-cloc.sh test-cloc-siblings.sh; do
     TMPDIR="$fixture/enclosing/scratch" CARGO_TARGET_DIR="$fixture/output" \
         bash "$ROOT/scripts/ci/$script" > "$fixture/$script.log" 2>&1
 done
-echo 'LOC fixtures passed inside an enclosing Git/Cargo workspace with inherited output selection'
+ln -s "$fixture/enclosing/scratch" "$fixture/scratch-alias"
+for context in trailing-slash directory-alias; do
+    selected_tmp="$fixture/enclosing/scratch/"
+    if [[ "$context" == directory-alias ]]; then selected_tmp="$fixture/scratch-alias/"; fi
+    TMPDIR="$selected_tmp" CARGO_TARGET_DIR="$fixture/output" \
+        bash "$ROOT/scripts/ci/test-cloc-siblings.sh" > "$fixture/siblings-$context.log" 2>&1
+done
+echo 'LOC fixtures passed with enclosing Git/Cargo configuration, inherited outputs and physical/aliased TMPDIR roots'

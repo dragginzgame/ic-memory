@@ -4,6 +4,7 @@ set -euo pipefail
 # This independent fixture owns its selections, not the invoking release's.
 unset MAKEFLAGS MFLAGS MAKEOVERRIDES GNUMAKEFLAGS MAKEFILES
 unset VALIDATION_REPOSITORY_ROOT VALIDATION_RUNNER_SNAPSHOT_PATH
+export RELEASE_DELIVERY=direct
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 bash "$ROOT/scripts/ci/check-release-commands.sh" "$ROOT" rust-toolchain.toml ci/tool-versions.env make/tools.mk
 FIXTURE="$(mktemp -d "${TMPDIR:-/tmp}/ic-memory-release-adapters.XXXXXX")"
@@ -12,6 +13,28 @@ mkdir -p "$FIXTURE/ci" "$FIXTURE/make"
 cp "$ROOT/Makefile" "$ROOT/rust-toolchain.toml" "$FIXTURE/"
 cp "$ROOT/ci/tool-versions.env" "$FIXTURE/ci/"
 cp "$ROOT/make/tools.mk" "$FIXTURE/make/"
+mkdir -p "$FIXTURE/scripts/ci"
+cat > "$FIXTURE/scripts/ci/run-release.sh" <<'STUB'
+#!/usr/bin/env bash
+set -euo pipefail
+[[ "$RELEASE_DELIVERY" == direct ]]
+printf '%s\n' "$*" >> runner-events
+STUB
+for target in release-patch release-minor release-major release-resume; do
+    for delivery in pr invalid; do
+        if (cd "$FIXTURE"; make --no-print-directory "$target" RELEASE_DELIVERY="$delivery") \
+            > "$FIXTURE/command-$target-$delivery.log" 2>&1; then
+            echo 'unsupported release delivery accepted' >&2; exit 1
+        fi
+        if (cd "$FIXTURE"; RELEASE_DELIVERY="$delivery" make --no-print-directory "$target") \
+            > "$FIXTURE/environment-$target-$delivery.log" 2>&1; then
+            echo 'inherited unsupported release delivery accepted' >&2; exit 1
+        fi
+        [[ ! -e "$FIXTURE/runner-events" ]] || exit 1
+    done
+done
+(cd "$FIXTURE"; make --no-print-directory release-patch)
+[[ "$(cat "$FIXTURE/runner-events")" == 'patch origin main' ]] || exit 1
 mkdir -p "$FIXTURE/custom target"
 cat > "$FIXTURE/helper" <<'STUB'
 #!/usr/bin/env bash
@@ -20,6 +43,7 @@ case "$1" in
     target) printf '%s/custom target\n' "$PWD" ;;
     version) echo 0.25.14 ;;
     release-*)
+        [[ "$RELEASE_DELIVERY" == direct ]]
         [[ "$RELEASE_KIND" == minor && "$RELEASE_PREVIOUS" == 0.25.14 && "$RELEASE_VERSION" == 0.26.0 ]]
         [[ "$RELEASE_DATE" == 2026-10-05 && "$RELEASE_SOURCE" == aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa ]]
         [[ "$RELEASE_REMOTE" == fixture && "$RELEASE_BRANCH" == reviewed ]]

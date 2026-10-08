@@ -5,6 +5,7 @@ ROOT="$(cd "$(dirname "$0")/../.." && pwd -P)"
 # Synthetic workspaces own their output paths, not the enclosing consumer.
 unset CARGO_TARGET_DIR
 FIXTURE="$(mktemp -d "${TMPDIR:-/tmp}/shared-tooling-cloc-siblings-test.XXXXXX")"
+FIXTURE="$(cd "$FIXTURE" && pwd -P)"
 trap 'if [[ $? == 0 ]]; then rm -rf "$FIXTURE"; else printf "Failed sibling LOC fixture retained: %s\n" "$FIXTURE" >&2; fi' EXIT
 
 parent="$FIXTURE/parent [projects]"

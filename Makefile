@@ -9,6 +9,12 @@
 
 RELEASE_REMOTE ?= origin
 RELEASE_BRANCH ?= main
+export RELEASE_DELIVERY ?= direct
+ifneq ($(filter release-%,$(MAKECMDGOALS)),)
+ifneq ($(RELEASE_DELIVERY),direct)
+$(error ic-memory release adapters support only RELEASE_DELIVERY=direct)
+endif
+endif
 ifneq ($(word 2,$(filter release-patch release-minor release-major release-resume,$(MAKECMDGOALS))),)
 $(error Select exactly one release target)
 endif

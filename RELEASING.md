@@ -12,6 +12,12 @@ and [AGENTS.md](AGENTS.md). The Rust `repo-tool` example is development tooling,
 not canister runtime code. Prerequisites and native host evidence are in
 [host support](docs/host-support.md).
 
+This repository selects `RELEASE_DELIVERY=direct`: the authorized release pushes
+the selected branch and tag atomically. Other delivery selections are refused
+before runner dispatch. The shared runner's PR path requires separately adopted
+merged-source preparation and receipt adapters; ordinary contribution PRs do not
+select that release policy.
+
 ## Source and dependency preparation
 
 Before 1.0, breaking consumer contracts require a minor release; compatible work

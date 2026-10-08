@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.31.3]
+
+- Fix sibling LOC checks under trailing-slash and aliased temporary roots.
+  Keep direct release delivery explicit when refreshing the shared runner.
+  [#23](https://github.com/dragginzgame/ic-memory/issues/23),
+  [Shared Tooling #57](https://github.com/dragginzgame/shared-tooling/issues/57).
+
+[Detailed notes](docs/changelog/0.31.md)
+
 ## [0.31.2] - 2026-10-07
 
 - Preserve native archive-copy errors and verify owned staging and parent
