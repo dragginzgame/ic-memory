@@ -223,11 +223,30 @@ and CI prerequisite through common scripts, rather than a release adapter
 subprocess. Product receipts, release identities and Wasm budgets stay local.
 
 Native CI routes disposable fixtures into a dedicated runner temporary directory.
-Failed validation uploads those fixtures, setup/gate logs, retained tool candidates
-and qualification receipts for 14 days, including hidden recovery evidence.
+Failed validation archives those fixtures, setup/gate logs, retained tool candidates
+and qualification receipts before uploading them for 14 days. The artifact contains
+`evidence.tar.gz`; extract it to inspect legal Unix filenames, permissions and
+symlinks. Hidden recovery evidence is included; Git metadata is excluded and
+symlinks are retained without following their targets. Archive failures preserve
+original inputs and partial output. No selected inputs produce no artifact.
 MSRV failures upload their compiler log separately. Logging preserves the failing
-command's status through Bash pipefail; uploads run only after a failed job step.
-Configured uploads and local substitute checks do not prove a live artifact upload.
+command's status through Bash pipefail; failure collectors run only after a failed
+job step.
+The native matrix also runs a controlled host-tool fixture failure with substitute
+downloads/binaries, archives it through this same collector, uploads/downloads the
+exact returned artifact ID and verifies the archive digest against an oracle kept
+outside the upload. Payload checks preserve original status/logs, unusual names,
+modes and unfollowed links. There is no artifact-name fallback or retry of the
+producing failure. Configured coverage and local tests do not prove a live upload.
+
+`make test-failure-evidence` runs the common archive and consumer selection fixtures
+offline. They are also part of `test-tools`. For CI transport qualification,
+`bash scripts/ci/test-failure-evidence.sh NEW-ROUNDTRIP-DIRECTORY` retains a new
+fixture and emits its archive path to `GITHUB_OUTPUT` when set. Verify a downloaded
+archive with `bash scripts/ci/verify-failure-evidence.sh FIXTURE ARCHIVE`; digest
+refusal happens before extraction. Existing fixture destinations are refused.
+The independently recorded [archive exports](../.shared-tooling.archives.snapshot)
+preserve the primary runner snapshot; `make verify-shared-tooling` checks both.
 
 For interactive CI inspection, use the unchanged shared helper:
 

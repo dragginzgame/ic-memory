@@ -1,10 +1,25 @@
 #!/usr/bin/env bash
 set -euo pipefail
 shopt -s nullglob
-ROOT="$(cd "$(dirname "$0")/../.." && pwd -P)"
-fixture="$(mktemp -d "${TMPDIR:-/tmp}/failure-evidence.XXXXXX")"
-trap 'if [[ $? == 0 ]]; then rm -rf "$fixture"; else printf "Failure-evidence fixture retained: %s\n" "$fixture" >&2; fi' EXIT
-mkdir -p "$fixture/temp/ic-memory-fixtures" "$fixture/repository" "$fixture/unpacked"
+# Anchor the script path before cd so inherited CDPATH cannot enter ROOT.
+# The sentinel keeps command substitution from trimming pathname newlines.
+ROOT="$0"
+[[ "$ROOT" == /* ]] || ROOT="$PWD/$ROOT"
+ROOT="$(cd -P "${ROOT%/*}/../.." && printf '%s/.' "$PWD")"
+ROOT="${ROOT%/.}"
+[[ $# -le 1 ]] || { echo 'usage: test-failure-evidence.sh [NEW-ROUNDTRIP-DIRECTORY]' >&2; exit 2; }
+retained=false
+if [[ $# == 1 ]]; then
+    [[ ! -e "$1" && ! -L "$1" ]] || { echo 'round-trip directory must be new' >&2; exit 1; }
+    mkdir -- "$1"
+    fixture="$1"
+    [[ "$fixture" == /* ]] || fixture="$PWD/$fixture"
+    retained=true
+else
+    fixture="$(mktemp -d "${TMPDIR:-/tmp}/failure-evidence.XXXXXX")"
+fi
+trap 'if [[ $? == 0 && "$retained" == false ]]; then rm -rf "$fixture"; else printf "Failure-evidence fixture retained: %s\n" "$fixture" >&2; fi' EXIT
+mkdir -p "$fixture/temp/ic-memory-fixtures" "$fixture/repository"
 temp_root="$fixture/temp"
 repository_root="$fixture/repository"
 
@@ -33,19 +48,11 @@ printf 'unselected target\n' > "$repository_root/target/unrelated/file"
 ln -s ../unrelated/file "$repository_root/target/qualification/link"
 ln -s host-set.test "$repository_root/.tools/host"
 
-archive="$(bash "$ROOT/scripts/ci/collect-failure-evidence.sh" "$temp_root" "$repository_root")"
+# Relative entry points must ignore inherited CDPATH when locating helpers.
+archive="$(cd "$ROOT" && CDPATH="$ROOT" bash scripts/ci/collect-failure-evidence.sh "$temp_root" "$repository_root")"
 [[ -f "$archive" && "${archive##*/}" == evidence.tar.gz ]]
-tar -xzf "$archive" -C "$fixture/unpacked"
-retained=("$fixture/unpacked/ic-memory-fixtures"/host-tools-test.*/Linux:x86_64/.tools/host-set.*/bin/yq)
-[[ ${#retained[@]} == 1 && -x "${retained[0]}" ]]
-for path in tools-setup.log dependencies.log validation.log; do cmp "$temp_root/$path" "$fixture/unpacked/$path"; done
-cmp "$repository_root/target/qualification/"$'line\nbreak:payload' "$fixture/unpacked/target/qualification/"$'line\nbreak:payload'
-[[ "$(perl -e 'printf "%o", (stat($ARGV[0]))[2] & 0777' "$fixture/unpacked/target/qualification/"$'line\nbreak:payload')" == 640 ]]
-[[ -x "$fixture/unpacked/.tools/host-set.test/bin/tool" && -f "$fixture/unpacked/.tools/ic-set.test/receipt" ]]
-cmp "$repository_root/target/release-validation/attempt.log" "$fixture/unpacked/target/release-validation/attempt.log"
-[[ -L "$fixture/unpacked/target/qualification/link" && ! -e "$fixture/unpacked/target/qualification/link" ]]
-[[ "$(readlink "$fixture/unpacked/target/qualification/link")" == ../unrelated/file ]]
-[[ ! -e "$fixture/unpacked/.git" && ! -e "$fixture/unpacked/unrelated" && ! -e "$fixture/unpacked/target/unrelated" && ! -e "$fixture/unpacked/.tools/host" ]]
+bash "$ROOT/scripts/ci/verify-file-checksum.sh" --print sha256 "$archive" > "$fixture/archive.sha256"
+(cd "$ROOT" && CDPATH="$ROOT" bash scripts/ci/verify-failure-evidence.sh "$fixture" "$archive")
 
 # Retries create separate archives and preserve original evidence and gate status.
 cp "$archive" "$fixture/saved.tar.gz"
@@ -59,6 +66,14 @@ mkdir "$fixture/empty-temp" "$fixture/empty-repository"
 [[ -z "$(bash "$ROOT/scripts/ci/collect-failure-evidence.sh" "$fixture/empty-temp" "$fixture/empty-repository")" ]]
 empty_entries=("$fixture/empty-temp"/*)
 [[ ${#empty_entries[@]} == 0 ]]
+
+# Caller selection must not trim a newline from a root before shared admission.
+mkdir "$fixture/selection" "$fixture/selection"$'\n' "$fixture/selection-repo" "$fixture/selection-unpacked"
+printf 'selected root\n' > "$fixture/selection"$'\n/validation.log'
+printf 'wrong root\n' > "$fixture/selection/validation.log"
+selected_archive="$(bash "$ROOT/scripts/ci/collect-failure-evidence.sh" "$fixture/selection"$'\n' "$fixture/selection-repo")"
+tar -xzf "$selected_archive" -C "$fixture/selection-unpacked"
+cmp "$fixture/selection"$'\n/validation.log' "$fixture/selection-unpacked/validation.log"
 
 # A failed archiver reports failure and retains both its partial output and inputs.
 mkdir "$fixture/bin"
@@ -75,4 +90,19 @@ for path in "$temp_root"/ic-memory-evidence.*/evidence.tar.gz; do
     if cmp -s "$path" "$fixture/partial-content"; then partial=$((partial + 1)); fi
 done
 [[ "$partial" == 1 && "$(cat "$temp_root/validation.log")" == original_status=1 ]]
+# The hosted verifier must reject wrong/corrupt payloads before extracting them.
+printf 'wrong archive\n' > "$fixture/corrupt.tar.gz"
+unpacked_before=("$fixture"/unpacked.*)
+if bash "$ROOT/scripts/ci/verify-failure-evidence.sh" "$fixture" "$fixture/corrupt.tar.gz" > "$fixture/corrupt.log" 2>&1; then
+    echo 'expected checksum refusal' >&2; exit 1
+fi
+unpacked_after=("$fixture"/unpacked.*)
+(( ${#unpacked_before[@]} == ${#unpacked_after[@]} ))
+if bash "$ROOT/scripts/ci/test-failure-evidence.sh" "$fixture" > "$fixture/occupied.log" 2>&1; then
+    echo 'expected occupied fixture refusal' >&2; exit 1
+fi
+[[ "$(cat "$temp_root/validation.log")" == original_status=1 ]]
+if [[ "$retained" == true && -n "${GITHUB_OUTPUT:-}" ]]; then
+    printf 'path=%s\n' "$archive" >> "$GITHUB_OUTPUT"
+fi
 echo 'Consumer evidence selections, retained host failure, archive round trip and retry/failure preservation passed'

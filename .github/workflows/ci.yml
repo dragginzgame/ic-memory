@@ -96,23 +96,50 @@ jobs:
       - name: Qualify pinned toolchain
         shell: bash
         run: make validate-toolchain 2>&1 | tee "$RUNNER_TEMP/validation.log"
-      - name: Retain failed validation and installer evidence
+      - name: Qualify native failure-evidence archive
+        id: evidence
+        shell: bash
+        run: bash scripts/ci/test-failure-evidence.sh "$RUNNER_TEMP/ic-memory-fixtures/native-upload"
+      - name: Upload native failure-evidence archive
+        id: evidence-upload
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # reviewed Shared Tooling pin, v7
+        with:
+          name: native-failure-evidence-${{ matrix.os }}-${{ github.run_attempt }}
+          path: ${{ steps.evidence.outputs.path }}
+          retention-days: 14
+          if-no-files-found: error
+      - name: Download native failure-evidence archive
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # reviewed Shared Tooling pin, v8
+        with:
+          artifact-ids: ${{ steps.evidence-upload.outputs.artifact-id }}
+          path: ${{ runner.temp }}/ic-memory-evidence-downloaded
+          merge-multiple: true
+      - name: Verify downloaded native failure evidence
+        shell: bash
+        run: |
+          bash scripts/ci/verify-failure-evidence.sh \
+            "$RUNNER_TEMP/ic-memory-fixtures/native-upload" \
+            "$RUNNER_TEMP/ic-memory-evidence-downloaded/evidence.tar.gz"
+      - name: Archive failed validation and installer evidence
         if: failure()
+        id: failure-evidence
+        shell: bash
+        env:
+          EVIDENCE_TEMP_ROOT: ${{ runner.temp }}
+          EVIDENCE_REPOSITORY_ROOT: ${{ github.workspace }}
+        run: |
+          archive="$(bash scripts/ci/collect-failure-evidence.sh "$EVIDENCE_TEMP_ROOT" "$EVIDENCE_REPOSITORY_ROOT")"
+          if [[ -n "$archive" ]]; then
+            printf 'path=%s\n' "$archive" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Retain failed validation and installer evidence
+        if: ${{ failure() && steps.failure-evidence.outputs.path != '' }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # reviewed Shared Tooling pin, v7
         with:
           name: validation-failure-${{ matrix.os }}
-          path: |
-            ${{ runner.temp }}/ic-memory-fixtures
-            ${{ runner.temp }}/tools-setup.log
-            ${{ runner.temp }}/dependencies.log
-            ${{ runner.temp }}/validation.log
-            ${{ github.workspace }}/target/qualification
-            ${{ github.workspace }}/target/release-validation
-            ${{ github.workspace }}/.tools/host-set.*
-            ${{ github.workspace }}/.tools/ic-set.*
-          include-hidden-files: true
+          path: ${{ steps.failure-evidence.outputs.path }}
           retention-days: 14
-          if-no-files-found: ignore
+          if-no-files-found: error
 
   msrv:
     strategy:

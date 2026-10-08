@@ -1,6 +1,6 @@
 .DEFAULT_GOAL := help
 .PHONY: help test version ensure-clean fetch-dependencies verify-shared-tooling check-pins test-pins \
-        install-tools tools-check install-host-tools host-tools-check install-ic-tools ic-tools-check test-tools \
+        install-tools tools-check install-host-tools host-tools-check install-ic-tools ic-tools-check test-tools test-failure-evidence \
         fmt fmt-check check-format-tools install-hooks lint-tooling test-hooks test-tooling validate validate-toolchain wasm-size \
         test-release-runner test-release-adapters release-patch release-minor release-major release-resume \
         release-version release-preflight release-verify release-prepare-version \
@@ -29,7 +29,7 @@ include make/tools.mk
 
 help:
 	@echo 'Setup: install-tools (host then IC tools), fetch-dependencies, install-hooks; prepare Rust/cargo-sort separately.'
-	@echo 'Focused checks: tools-check, test-tools, verify-shared-tooling, check-pins, test-pins, test-tooling, test-release-adapters, test-release-runner, test-hooks, fmt-check, lint-tooling.'
+	@echo 'Focused checks: tools-check, test-tools, test-failure-evidence, verify-shared-tooling, check-pins, test-pins, test-tooling, test-release-adapters, test-release-runner, test-hooks, fmt-check, lint-tooling.'
 	@echo 'Formatting: fmt. Full gates require explicit qualification: validate, validate-toolchain.'
 	@echo 'Reports: cloc (root workspace; CLOC_MANIFEST selects an independent Cargo manifest), cloc-tooling (sibling tooling; CLOC_PARENT selects the parent).'
 	@echo 'Maintainer releases: release-patch, release-minor, release-major; normal targets recover unfinished releases.'
@@ -37,7 +37,11 @@ help:
 install-hooks:
 	bash scripts/dev/install-git-hooks.sh
 
-test-tools:
+test-failure-evidence:
+	bash scripts/ci/test-evidence-archive.sh
+	bash scripts/ci/test-failure-evidence.sh
+
+test-tools: test-failure-evidence
 	bash scripts/ci/test-tool-commands.sh
 	bash scripts/ci/test-host-tools.sh
 	bash scripts/ci/test-ic-tools.sh
@@ -54,6 +58,7 @@ fetch-dependencies:
 
 verify-shared-tooling:
 	bash scripts/ci/verify-shared-tooling-snapshot.sh
+	bash scripts/ci/verify-shared-tooling-snapshot.sh --manifest .shared-tooling.archives.snapshot
 
 check-pins:
 	RUSTUP_TOOLCHAIN=$(VALIDATION_TOOLCHAIN) RUSTUP_AUTO_INSTALL=0 CARGO_NET_OFFLINE=true bash scripts/ci/check-dependency-pins.sh --cargo-inheritance

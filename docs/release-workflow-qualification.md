@@ -2157,3 +2157,107 @@ repo-tool --tests -- -D warnings`, the selected streaming-receipt test, and
 removed; the two local items were moved within their existing scope. Pending
 0.31.4 notes retain their compatible scope. No full gate or Git delivery effect
 was executed.
+
+## 0.31.5 archived CI failure evidence
+
+Prepared locally on Linux from released consumer 0.31.4
+`bb61562cd00ba96651d975bd166ccd5181a5d2e0` for
+[#28](https://github.com/dragginzgame/ic-memory/issues/28). The production failure
+collector now uploads one archive instead of exposing retained Unix filenames to
+the pinned artifact transport. It retains the same selected roots, failure
+condition, artifact name and 14-day policy. The separate MSRV log route is unchanged.
+
+The canonical exporter ran from a clean isolated checkout of exact Shared source
+`eeb72e741199bd8574280eacb3542d8379b912f6`. Its commit message says 0.1.25, while
+VERSION remains 0.1.24; neither dirty sibling changes nor a finalized version are
+attributed to this source. The existing custom-manifest option records the common
+archiver and fixture in `.shared-tooling.archives.snapshot`, together with the
+two unchanged bootstrap helpers. Those bootstrap records refer to the same
+physical files/hashes already declared in the primary snapshot. Both independent
+manifests verify without a sibling checkout. This adds two shared files, without
+changing the 71 primary exports or importing the unresolved newer tracking runner
+and real-Git fixture from [Shared #62](https://github.com/dragginzgame/shared-tooling/issues/62).
+
+Fresh consumer fixtures pass with Bash 5 and genuine Bash 3.2.57 selected on PATH
+for nested scripts. They force the actual exported host-tool fixture to fail
+using substituted downloads/tool versions, then verify its retained colon-bearing
+tree, exact selection/logs/nonzero status, unusual names, permissions, executable
+files and unfollowed links through real tar/gzip. The committed common fixture
+also refuses overlapping/missing inputs, symlink parents, occupied regular/link/
+FIFO outputs, and archives inside their selection; newline/option-like root and
+output boundaries round-trip correctly. The consumer preserves a newline-ending
+root during selection instead of undoing the shared correction.
+
+Retries retain separate outputs; missing selections produce no archive, and a
+substituted failed tar retains partial output and original inputs. The consumer
+payload verifier checks a separately retained archive digest before
+extraction, then compares original logs and selected bytes/modes/links. Corrupted
+payloads refuse before creating an extraction directory. Existing retained-fixture
+destinations refuse before overwriting their evidence. No named function, method
+or type was removed; payload assertions moved into the verifier used by local
+and hosted checks.
+
+The native CI matrix now prepares a retained fixture, uploads its archive with
+the existing pinned uploader, downloads only the returned artifact ID with the
+reviewed pinned downloader, and runs that same verifier. A locally executed
+retained-fixture/output-file control and copied-file verification pass; the copy
+is explicitly not a hosted transport result. Consumer native upload/download
+acceptance remains pending matching CI for these unstaged/uncommitted edits.
+[Exact shared CI](https://github.com/dragginzgame/shared-tooling/actions/runs/37762726615)
+passes at the selected source, separately from this consumer's source acceptance.
+
+Evidence is retained under `target/qualification/0.31.5-failure-evidence/`, with
+clean source identity, exporter logs, before/final input hashes, both shell fixture
+logs, retained control/oracle and copy-verification logs. An initial ShellCheck
+array-comparison warning was corrected; its failure log is preserved. Final
+snapshot checks, ShellCheck, actionlint and declaration/Cargo-inheritance pins pass.
+Current guidance and pending-entry links resolve. The full root changelog scan
+finds a pre-existing published link to the retired `examples/composed_host.rs`;
+the base commit has the same missing target. Its result is recorded separately,
+and published history is preserved.
+Primary exports, runner/fixture bytes, both lockfiles/manifests and toolchain/tool
+pins retain their initial hashes. The raw index hash changed during final Git
+inspection, after earlier identical-hash checks; indexed blobs/modes still equal
+the unchanged HEAD and the cached diff is empty. No staging command was used,
+and the initial hash/mismatch observation is preserved rather than reset.
+Published 0.31.4-and-earlier notes
+are preserved; one undated compatible 0.31.5 entry describes the completed change.
+No Rust build, broad gate, real tool installation, dependency selection/fetch,
+commit/tag/push, release, publication, CI dispatch or sibling edit was performed.
+
+
+## 0.31.5 evidence wrapper path admission
+
+Follow-up review at consumer base `bb61562cd00ba96651d975bd166ccd5181a5d2e0`
+reproduced exit 127 before archive creation when a relative collector entry
+inherited `CDPATH`. Its `cd` printed a directory into command substitution before
+`pwd`, corrupting the helper root. Original failure logs remained untouched.
+
+The collector, retained-fixture producer and payload verifier now anchor their
+script operand before physical `cd`, using a non-newline suffix to preserve path
+bytes. Relative retained destinations are anchored to their caller before the
+fixture changes directory. No new helper library, mode or fallback is introduced.
+The consumer owns script bootstrap and evidence selection; the unchanged common
+archiver owns archive admission/creation; the verifier owns digest admission and
+payload assertions. Existing failure, retry and retention responsibilities remain
+at those boundaries.
+
+Fresh Bash 5 and genuine Bash 3.2.57 runs with inherited `CDPATH` pass; the fixture
+uses relative collector/verifier entry points. A relative retained destination
+passes, as does a copied collector/verifier in a physical checkout ending in a
+newline. `make test-failure-evidence verify-shared-tooling lint-tooling check-pins`
+passes. Before/final hashes and reproduction/qualification logs are retained in
+`target/qualification/0.31.5-wrapper-paths/`. The three consumer wrappers change;
+no named function, method or type is removed. Library contracts and the compatible
+pending 0.31.5 identity remain unchanged.
+
+The canonical shared archive fixture has the same bootstrap defect at reviewed
+Shared source `672ab4b8af50c75ed21a359ca5968682de83be94`, with bytes identical to
+the selected archival export. Its relative invocation under inherited `CDPATH`
+also exits 127; this is reported in
+[Shared #67](https://github.com/dragginzgame/shared-tooling/issues/67).
+Immutable exports and sibling source remain untouched. Consumer progress is
+recorded on [#28](https://github.com/dragginzgame/ic-memory/issues/28).
+Native consumer acceptance remains pending CI for these dirty bytes. No broad
+gate, Rust build, dependency change, real installation, staging, commit, push,
+release or CI dispatch occurred in this follow-up.

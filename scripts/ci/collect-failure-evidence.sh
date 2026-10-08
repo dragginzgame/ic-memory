@@ -2,11 +2,20 @@
 set -euo pipefail
 
 # Consumer policy only: the shared helper owns archive creation and path safety.
-# CI activation requires the helper's reviewed, committed snapshot export.
 [[ $# == 2 ]] || { echo 'usage: collect-failure-evidence.sh TEMP-ROOT REPOSITORY-ROOT' >&2; exit 2; }
-ROOT="$(cd "$(dirname "$0")/../.." && pwd -P)"
-temp_root="$(cd "$1" && pwd -P)"
-repository_root="$(cd "$2" && pwd -P)"
+# Anchor the script path before cd so inherited CDPATH cannot enter ROOT.
+# The sentinel keeps command substitution from trimming pathname newlines.
+ROOT="$0"
+[[ "$ROOT" == /* ]] || ROOT="$PWD/$ROOT"
+ROOT="$(cd -P "${ROOT%/*}/../.." && printf '%s/.' "$PWD")"
+ROOT="${ROOT%/.}"
+temp_root="$1"
+repository_root="$2"
+# Preserve operand bytes; physical resolution and path admission belong to the
+# shared archiver. Anchoring avoids interpreting relative roots as cd options.
+[[ "$temp_root" == /* ]] || temp_root="$PWD/$temp_root"
+[[ "$repository_root" == /* ]] || repository_root="$PWD/$repository_root"
+[[ -d "$temp_root" && -d "$repository_root" ]] || { echo 'evidence roots must be existing directories' >&2; exit 1; }
 inputs=()
 shopt -s nullglob
 for path in "$temp_root/ic-memory-fixtures" "$temp_root/tools-setup.log" \

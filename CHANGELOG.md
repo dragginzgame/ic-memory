@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.31.5]
+
+- Archive failed CI evidence before upload, preserving Unix filenames, modes
+  and symlinks. Keep evidence scripts working under inherited `CDPATH` and
+  unusual checkout paths. Add native upload/download coverage for retained failures.
+  [#28](https://github.com/dragginzgame/ic-memory/issues/28),
+  [Shared Tooling #59](https://github.com/dragginzgame/shared-tooling/issues/59).
+
+[Detailed notes](docs/changelog/0.31.md)
+
 ## [0.31.4] - 2026-10-08
 
 - Refresh release-file support to IC Host 0.5.1, preserving streamed archive

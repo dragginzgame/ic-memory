@@ -20,6 +20,19 @@ attribute uncommitted shared files to that recorded revision. The live local
 also applies within its activation scope and is included in this recorded snapshot.
 These instructions are the repository's local overlay.
 
+The independent four-record [archive snapshot](.shared-tooling.archives.snapshot)
+exports the archiver and its fixture from reviewed committed Shared Tooling
+`eeb72e741199bd8574280eacb3542d8379b912f6`. Its unchanged checksum and snapshot
+verifiers share the same physical files and hashes as the primary snapshot.
+Both manifests use the existing canonical format and verifier; there is no
+mixed-revision attribution. This scoped export retains the primary 0.1.23
+runner while [Shared #62](https://github.com/dragginzgame/shared-tooling/issues/62)
+remains unresolved. No newer release runner or real-Git release fixture is adopted.
+Refresh the archive selection with the canonical exporter's
+`--manifest .shared-tooling.archives.snapshot`, from a clean reviewed source.
+The selected commit message says 0.1.25, but its VERSION remains 0.1.24; the exact
+revision owns provenance. Never attribute subsequent dirty sibling fixes to it.
+
 The 71-file snapshot uses the reviewed local 0.1.23 commit, including the common
 audit methods, local host/IC setup, dependency checker, release-command checker
 and linked rules, including the standard Rust workspace layout. Cargo inheritance
@@ -83,7 +96,7 @@ and prerequisites are declared in [docs/host-support.md](docs/host-support.md).
 - Before editing or compiling, check for active Cargo, rustc and rustdoc builds.
 - Focused checks: `make verify-shared-tooling`, `make check-pins`, `make test-pins`, `make test-tools`, `make test-tooling`,
   `make test-release-adapters`, `make test-release-runner`, `make test-hooks`,
-  `make fmt-check`, `make lint-tooling`, or an appropriately
+  `make test-failure-evidence`, `make fmt-check`, `make lint-tooling`, or an appropriately
   selected Rust test.
 - Full gates: `make validate`, `make validate-toolchain`, `make wasm-size` and
   package/release qualification. Run these only on explicit request or in CI.

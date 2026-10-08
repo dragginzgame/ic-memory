@@ -1,0 +1,8 @@
+# Shared Tooling snapshot v1
+format	1
+source	https://github.com/dragginzgame/shared-tooling
+revision	eeb72e741199bd8574280eacb3542d8379b912f6
+file	4c981184847462ab3c01cac087e28309f8e054253fd95c7bbe56f643877aa708	x	scripts/ci/verify-file-checksum.sh
+file	b6764190803118331d7441233bcd6a3031c99c0c5219cc4a5c29dfb1a1040e41	x	scripts/ci/verify-shared-tooling-snapshot.sh
+file	5be336cb3e8045b2d2d536542a94944b376ee812b03f786a90b9d962ab697f13	x	scripts/ci/archive-evidence.sh
+file	a3a654d1b16ff28463bc6379b210af3771016defa25e27fe4ff943e78a64ba02	x	scripts/ci/test-evidence-archive.sh
