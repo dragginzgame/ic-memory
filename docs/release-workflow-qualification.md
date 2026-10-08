@@ -2576,3 +2576,59 @@ GitHub writes. The live-local exception applies that rule now; local overlay
 wording reflects the scope. Those uncommitted bytes are excluded from the
 1872ed2 snapshot. All issue actions in this batch used verified `dragginzgame`
 owners, and no external destination or schedule was activated.
+
+## 0.31.8 Host 0.8.2 and example-link review
+
+The maintainer delivered Memory 0.31.7 at
+`bcb908ff6e29ab541cd4bf95b2f7ec0744ad6c33`, matching GitHub main and annotated
+tag `v0.31.7`. Its exact-source
+[CI 37802948348](https://github.com/dragginzgame/ic-memory/actions/runs/37802948348),
+attempt 1, passes Linux native/MSRV and lint, including native CDPATH hook
+isolation and archive/upload/download/payload controls. Both macOS native/MSRV
+selections remain queued at inspection. Delivery is recorded separately from
+complete native acceptance for
+[#30](https://github.com/dragginzgame/ic-memory/issues/30) and
+[#31](https://github.com/dragginzgame/ic-memory/issues/31).
+
+The maintainer's new root lock selects registry `ic-host-fs` and
+`ic-host-artifacts` 0.8.2 with empty feature sets. Their published Rust sources
+match Host release `92bd2fecc71124b562e227a32a67644e1e5e34b7` and are identical
+to 0.8.1. The only Host Rust change is the portable process cleanup fixture's
+`/bin/sh -c 'exit 0'` replacement, outside Memory's selected graph. No consumer
+API adaptation, new buffer or lock owner is justified. Host's new
+[#27](https://github.com/dragginzgame/ic-host-tooling/issues/27) concerns Testkit's
+shared/observed locking composition; Memory does not use that path and no sibling
+repair was attempted.
+
+Fresh locked/offline checks pass on Rust 1.99.0: all 33 actual repo-tool tests,
+strict example/test Clippy, both-workspace formatting, declaration pins and the
+90-file snapshot verifier. Root full-graph metadata and independent qualification
+workspace metadata projection pass; the latter is not a runtime build. Both
+workspace manifests/locks, Rust sources, snapshot and pin inventories retain
+their recorded pre-check hashes. The already-selected root lock remains 0.8.2;
+this agent performed no dependency selection or fetch. Separate inputs/logs are
+in `target/qualification/0.31.8-host-review/`.
+
+Under the request to work through issues,
+[#32](https://github.com/dragginzgame/ic-memory/issues/32) is fixed locally by
+changing only the published 0.15.4 example hyperlink's destination to
+`crates/ic-memory/examples/composed_host.rs`. No historical prose, version,
+date or order changed. Before the correction, the canonical committed Shared
+local-link checker refuses the old destination; afterwards all root/detail note
+links pass. The failed result remains in `links-before.log` with its status.
+History comparison admits exactly this one destination correction in root and
+requires the entire released detail suffix to remain byte-for-byte unchanged.
+No obsolete example copy or compatibility redirect is added.
+
+The new compatible pending 0.31.8 root/detail notes cover this lock selection and
+link correction. Package version stays 0.31.7; public APIs, stable-memory formats,
+compiler/tool pins and independent runtime qualification inputs are unchanged.
+No function, method or type is removed. No broad local gate, real index/history
+mutation, release, publication or CI rerun/dispatch occurred.
+
+Host's exact 0.8.2
+[CI 37801871391](https://github.com/dragginzgame/ic-host-tooling/actions/runs/37801871391)
+passes Linux native and Rust 1.88; both macOS native jobs remain queued. That does
+not yet prove native acceptance of the repaired process fixture or nonblocking
+locks. The new Memory candidate's local qualification is separate from released
+0.31.7 CI and requires matching native evidence after delivery.

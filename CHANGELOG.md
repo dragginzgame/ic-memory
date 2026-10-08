@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.31.8]
+
+- Refresh host-side release-file dependencies to IC Host 0.8.2, preserving
+  receipt and archive behavior.
+- Restore the composed-host example link after the workspace relocation.
+  [#32](https://github.com/dragginzgame/ic-memory/issues/32).
+
+[Detailed notes](docs/changelog/0.31.md)
+
 ## [0.31.7] - 2026-10-08
 
 - Keep native hook qualification working under inherited `CDPATH`, and adopt
@@ -1489,7 +1498,7 @@
 
 ## 0.15.4
 
-- Add the runnable [composed-host example](examples/composed_host.rs) requested
+- Add the runnable [composed-host example](crates/ic-memory/examples/composed_host.rs) requested
   by Canic. Two cold reopens over the same backing retain fixed/logical IDs,
   authority and stored data with unchanged declarations and 16-page buckets.
   Cold attempts run host and consumer admission; warm adoption preserves the
