@@ -2139,3 +2139,21 @@ outstanding. No full gate, real tool installation, live CI dispatch, release,
 publication, commit, tag, push or sibling edit occurred. No function, method or
 type was removed. This is prepared consumer integration, not a completed CI fix;
 existing compatible 0.31.4 release notes retain their previously completed scope.
+
+## 0.31.4 example-test Clippy correction
+
+The maintainer's check of committed consumer source
+`304839ff34160473e9c3ac29dd25b64034b0693d` exposed two
+`clippy::items_after_statements` errors in the streaming-receipt test. The earlier
+selected example Clippy command covered its executable, not its test target.
+Move the existing `RejectedValue` struct and serialization implementation to the
+start of the test scope. This preserves the same assertions and typed rejection,
+without adding a lint allowance or changing runtime behavior.
+
+Fresh Rust 1.99 focused checks pass: `cargo clippy --locked --offline --example
+repo-tool --tests -- -D warnings`, the selected streaming-receipt test, and
+`make fmt-check`. Evidence is retained in
+`target/qualification/0.31.4-test-item-order/`. No function, method or type was
+removed; the two local items were moved within their existing scope. Pending
+0.31.4 notes retain their compatible scope. No full gate or Git delivery effect
+was executed.

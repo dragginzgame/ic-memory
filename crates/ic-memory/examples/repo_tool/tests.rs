@@ -252,6 +252,13 @@ fn durable_publication_replaces_complete_files_and_preserves_rejected_targets() 
 
 #[test]
 fn streamed_receipts_preserve_json_and_reject_partial_serialization() {
+    struct RejectedValue;
+    impl Serialize for RejectedValue {
+        fn serialize<S: serde::Serializer>(&self, _: S) -> std::result::Result<S::Ok, S::Error> {
+            Err(serde::ser::Error::custom("reject after the receipt prefix"))
+        }
+    }
+
     let fixture = Fixture::new();
     fixture.release();
     let path = fixture.repo.validation_path("0.13.0").unwrap();
@@ -267,12 +274,6 @@ fn streamed_receipts_preserve_json_and_reject_partial_serialization() {
         assert_eq!(fs::read(path).unwrap(), original);
     }
 
-    struct RejectedValue;
-    impl Serialize for RejectedValue {
-        fn serialize<S: serde::Serializer>(&self, _: S) -> std::result::Result<S::Ok, S::Error> {
-            Err(serde::ser::Error::custom("reject after the receipt prefix"))
-        }
-    }
     let entries = || fs::read_dir(path.parent().unwrap()).unwrap().count();
     let before = entries();
     let error = Processes
