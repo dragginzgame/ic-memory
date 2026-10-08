@@ -1,6 +1,6 @@
 # Changelog
 
-## [0.31.3]
+## [0.31.3] - 2026-10-08
 
 - Fix sibling LOC checks under trailing-slash and aliased temporary roots.
   Keep direct release delivery explicit when refreshing the shared runner.
