@@ -1,6 +1,6 @@
 # Changelog
 
-## [0.31.7]
+## [0.31.7] - 2026-10-08
 
 - Keep native hook qualification working under inherited `CDPATH`, and adopt
   committed installer path corrections with explicit fixture dependencies.
