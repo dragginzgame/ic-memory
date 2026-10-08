@@ -1,6 +1,6 @@
 # Changelog
 
-## [0.31.6]
+## [0.31.6] - 2026-10-08
 
 - Refresh host-side release-file dependencies to IC Host 0.7.1, preserving
   durable receipt and archive behavior.
