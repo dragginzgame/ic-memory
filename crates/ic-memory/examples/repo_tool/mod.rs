@@ -22,6 +22,37 @@ use std::{
 mod tests;
 
 type Result<T> = std::result::Result<T, Box<dyn Error>>;
+
+///
+/// PreparationError
+///
+/// Original preparation failure together with failed metadata restorations.
+///
+/// Successful restorations and retained evidence remain available for recovery.
+///
+
+#[derive(Debug)]
+struct PreparationError {
+    source: Box<dyn Error>,
+    rollback_errors: Vec<(String, Box<dyn Error>)>,
+}
+
+impl std::fmt::Display for PreparationError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(formatter, "{}", self.source)?;
+        for (path, error) in &self.rollback_errors {
+            write!(formatter, "; could not restore {path}: {error}")?;
+        }
+        Ok(())
+    }
+}
+
+impl Error for PreparationError {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        Some(self.source.as_ref())
+    }
+}
+
 const PACKAGE_MANIFEST: &str = "crates/ic-memory/Cargo.toml";
 const PACKAGE_README: &str = "crates/ic-memory/README.md";
 const PROBES: [(&str, u64); 5] = [
@@ -1102,26 +1133,50 @@ impl<E: Execute> Repository<E> {
             self.prepared(selection)?;
             Ok(())
         })();
-        if result.is_err() {
+        if let Err(source) = result {
             // Durable publication may report a parent-sync error after rename.
             // Inspect current bytes before restoring only owned replacements.
+            // A failed restoration must not hide the preparation error or stop
+            // restoration of other independent, owned metadata files.
+            let mut rollback_errors = Vec::new();
             for (path, bytes) in backups {
-                let current = fs::read(self.root.join(&path))?;
-                let owned = if path == "Cargo.lock" {
-                    current == bytes
-                        || std::str::from_utf8(&current).is_ok_and(|text| {
-                            check_lock_update(&bytes, text, &selection.previous, &selection.version)
+                let restored = (|| -> Result<()> {
+                    let current = fs::read(self.root.join(&path))?;
+                    let owned = if path == "Cargo.lock" {
+                        current == bytes
+                            || std::str::from_utf8(&current).is_ok_and(|text| {
+                                check_lock_update(
+                                    &bytes,
+                                    text,
+                                    &selection.previous,
+                                    &selection.version,
+                                )
                                 .is_ok()
-                        })
-                } else {
-                    current == expected[&path].as_bytes() || current == bytes
-                };
-                if owned {
-                    self.exec.write_bytes(&self.root.join(path), &bytes)?;
+                            })
+                    } else {
+                        current == expected[&path].as_bytes() || current == bytes
+                    };
+                    if owned {
+                        self.exec.write_bytes(&self.root.join(&path), &bytes)?;
+                    }
+                    Ok(())
+                })();
+                if let Err(error) = restored {
+                    rollback_errors.push((path, error));
                 }
             }
+            if rollback_errors.is_empty() {
+                Err(source)
+            } else {
+                Err(PreparationError {
+                    source,
+                    rollback_errors,
+                }
+                .into())
+            }
+        } else {
+            result
         }
-        result
     }
 
     fn verify_evidence(

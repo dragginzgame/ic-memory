@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.31.11]
+
+- Preserve the original release-preparation failure and all restoration errors,
+  while continuing to restore other owned metadata and preserving concurrent edits.
+  [#36](https://github.com/dragginzgame/ic-memory/issues/36).
+- Refresh host-side release-file dependencies to IC Host 0.8.9.
+
+[Detailed notes](docs/changelog/0.31.md)
+
 ## [0.31.10] - 2026-10-09
 
 - Prepare locked dependency caches during releases before compiling the helper,

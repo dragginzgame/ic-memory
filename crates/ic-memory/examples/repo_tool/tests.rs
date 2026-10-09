@@ -1026,6 +1026,85 @@ fn version_preparation_failures_restore_files_and_preserve_evidence_and_artifact
 }
 
 #[test]
+fn preparation_retains_primary_and_rollback_errors_and_restores_other_owned_files() {
+    struct RollbackFailures<'a>(&'a Substitute);
+
+    impl Execute for RollbackFailures<'_> {
+        fn run(&self, root: &Path, program: &str, args: &[&str], capture: bool) -> Result<String> {
+            let result = self.0.run(root, program, args, capture)?;
+            if program == "cargo" && args.get(1) == Some(&"package") {
+                // A missing surface models failed inspection during restoration.
+                fs::rename(root.join("CHANGELOG.md"), root.join("retained-changelog"))?;
+                // A foreign replacement must never be overwritten by rollback.
+                fs::write(root.join(PACKAGE_README), b"concurrent edit")?;
+                return Err(std::io::Error::from(std::io::ErrorKind::UnexpectedEof).into());
+            }
+            Ok(result)
+        }
+
+        fn write_bytes(&self, path: &Path, bytes: &[u8]) -> Result<()> {
+            if path.ends_with("Cargo.lock") && bytes == LOCK.as_bytes() {
+                return Err(std::io::Error::from(std::io::ErrorKind::PermissionDenied).into());
+            }
+            self.0.write_bytes(path, bytes)
+        }
+    }
+
+    let fixture = Fixture::new();
+    fixture.repo.verify(&fixture.selection).unwrap();
+    let validation = fixture.repo.validation_path("0.13.0").unwrap();
+    let saved = fs::read(&validation).unwrap();
+    let repo = Repository {
+        root: fixture.repo.root.clone(),
+        exec: RollbackFailures(&fixture.repo.exec),
+    };
+    let error = repo.prepare_selected(&fixture.selection).unwrap_err();
+    let failure = error.downcast_ref::<PreparationError>().unwrap();
+    assert_eq!(
+        failure
+            .source
+            .downcast_ref::<std::io::Error>()
+            .unwrap()
+            .kind(),
+        std::io::ErrorKind::UnexpectedEof
+    );
+    let failures: BTreeMap<_, _> = failure
+        .rollback_errors
+        .iter()
+        .map(|(path, error)| {
+            (
+                path.as_str(),
+                error.downcast_ref::<std::io::Error>().unwrap().kind(),
+            )
+        })
+        .collect();
+    assert_eq!(
+        failures,
+        BTreeMap::from([
+            ("CHANGELOG.md", std::io::ErrorKind::NotFound),
+            ("Cargo.lock", std::io::ErrorKind::PermissionDenied),
+        ])
+    );
+    assert_eq!(repo.version(None).unwrap(), "0.12.3");
+    assert_eq!(
+        fs::read(repo.root.join(PACKAGE_README)).unwrap(),
+        b"concurrent edit"
+    );
+    assert_eq!(
+        fs::read_to_string(repo.root.join("docs/changelog/0.13.md")).unwrap(),
+        fixture.repo.exec.state.borrow().source["docs/changelog/0.13.md"]
+    );
+    assert_eq!(fs::read(validation).unwrap(), saved);
+    assert!(repo.package_path("0.13.0").unwrap().exists());
+    assert!(!repo.receipt_path("0.13.0", true).unwrap().exists());
+    assert!(failure.source().unwrap().is::<std::io::Error>());
+    let diagnostic = failure.to_string();
+    for path in failures.keys() {
+        assert!(diagnostic.contains(path));
+    }
+}
+
+#[test]
 fn metadata_publication_failures_reconcile_visible_bytes_and_retry_saved_intent() {
     for phase in ["write-before", "write-after"] {
         for path in [

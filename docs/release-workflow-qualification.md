@@ -2898,3 +2898,66 @@ At the final inspection, delivered Host 0.8.6
 passes Linux/Intel macOS/ARM macOS native jobs and MSRV. Released Memory 0.31.9
 still has its complete matching CI success; neither run tests this dirty
 0.31.10 fixture selection. All 100 selected documentation references resolve.
+
+## 0.31.10 released source and Host 0.8.8
+
+Remote main and the peeled annotated `v0.31.10` agree with Memory release
+`b42cc73a1a848bea509e7a5ad4791877d984ba3e`. Its actual root lock selects Host
+filesystem/artifact 0.8.8. Earlier notes and qualification above describe the
+0.8.6 preparation; they are retained as historical evidence, rather than relabelled
+as qualification of the subsequently selected release inputs.
+
+Fresh locked/offline metadata selects both Host crates without enabled features.
+Their cached Cargo VCS identities and 18 filesystem/19 artifact source files
+match Host release `ccfd7724dd31c14cfbb8ae434f683babfeabf906`. All 34 repo-tool
+tests and strict example/test Clippy pass against Memory's released selection.
+Input hashes and logs are retained under `target/qualification/0.31.10-host088/`;
+both manifests, both locks and the 87-file snapshot remain unchanged. This is
+focused Linux consumer qualification, not installed PocketIC qualification.
+
+Host's matching [CI](https://github.com/dragginzgame/ic-host-tooling/actions/runs/37901415314)
+has passed. Memory's separate exact-source
+[CI](https://github.com/dragginzgame/ic-memory/actions/runs/37903537053) owns native
+consumer acceptance for the delivered cache bootstrap, concurrency and fixture
+selection. Neither prior consumer runs nor native Host results replace it.
+
+## 0.31.11 preparation restoration failures
+
+Local pending correction for [#36](https://github.com/dragginzgame/ic-memory/issues/36),
+on released source `b42cc73a1a848bea509e7a5ad4791877d984ba3e` plus the adapter
+and regression changes. The common release runner and both selected lockfiles
+are unchanged. The root graph still selects Host filesystem/artifact 0.8.8 with
+empty feature sets. The correction belongs to Memory's metadata-restoration
+boundary; individual durable writes remain owned by Host.
+
+A substituted package failure (`UnexpectedEof`), restoration-write failure
+(`PermissionDenied`) and restoration-read failure (`NotFound`) reproduce the
+old early exit and lost preparation error. The corrected result retains each
+native error and failed path, completes the other owned restorations and
+preserves a foreign README edit, validation receipt and package artifact.
+No fixture commits, tags, pushes or package publication occur.
+
+Focused evidence is retained in `target/qualification/0.31.11-rollback/`:
+`before-isolated.log` records the reproduced defect, `tests.log` records all 35
+adapter tests passing, and `clippy.log` records strict example/test Clippy with
+Rust 1.99.0. `before.log` is an earlier inconclusive fixture-directory collision;
+its retained directory was preserved, and subsequent checks use a fresh private
+`TMPDIR`. These are local Linux checks with substituted release effects, not
+full-gate, release or native macOS qualification. Matching CI is pending delivery.
+
+## 0.31.11 Host 0.8.9
+
+The maintainer-selected root lockfile now selects `ic-host-fs` and
+`ic-host-artifacts` 0.8.9. Locked offline metadata confirms empty features for
+both crates. All 37 packaged Rust source files match released Host commit
+`0464db5146be910a0f078447831fa2807072c75a` and are unchanged from 0.8.8;
+Host's release-adapter change is outside Memory's library dependency surface.
+Memory's compatible requirements, both manifests, independent runtime lockfile
+and Shared Tooling snapshot remain unchanged.
+
+`target/qualification/0.31.11-host089/` retains input hashes, metadata, feature
+selection and source inventories, plus passing logs for all 35 adapter tests,
+strict Rust 1.99.0 example/test Clippy and a focused Rust 1.88.0 example check.
+These qualify the local pending recovery correction with the new selected
+libraries on Linux. They do not replace complete release gates or native macOS
+qualification; the preceding 0.8.8 recovery evidence retains its original scope.
