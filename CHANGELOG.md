@@ -1,6 +1,6 @@
 # Changelog
 
-## [0.31.11]
+## [0.31.11] - 2026-10-09
 
 - Preserve the original release-preparation failure and all restoration errors,
   while continuing to restore other owned metadata and preserving concurrent edits.
