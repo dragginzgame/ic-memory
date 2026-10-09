@@ -3123,3 +3123,71 @@ admission, formatting, tooling lint and local documentation checks pass. Evidenc
 product source, build evidence or Git history changes. The minor candidate
 reflects removal of the local fleet-report offering; package versions stay at
 the released value. New consumer native CI and complete gates remain unrun.
+
+## 0.33.1 untouched metadata rollback
+
+On released 0.33.0 `1cbecf601fd24afc64d1fcfccb29609537be36be`, a focused
+Linux regression for [#39](https://github.com/dragginzgame/ic-memory/issues/39)
+reproduces untouched-file replacement after failure before the first metadata
+publication. The original rollback changes file identities and broadens `0600`
+permissions to `0644`. The correction skips publication when current bytes
+already equal the backup; changed-file ownership and restoration-error handling
+remain in the existing consumer transaction.
+
+All 37 release-adapter tests and strict example/test Clippy pass with locked,
+offline Rust 1.99.0 and the existing Host filesystem/artifact 0.9.1 selection.
+Their registry VCS identities match Host release
+`4a016053525fa710bc13f3aedbe85a471b78f6ed`. Formatting checks cover both
+maintained workspaces. Evidence, including the failed regression and initial
+zero-test filter attempt, is retained in
+`target/qualification/0.33.1-untouched-rollback/`; the failed fixture remains
+`/tmp/ic-memory-tooling-14-0`. These tests substitute release effects; no fixture
+commit/tag/push or live release occurs. The compatible 0.33.1 correction is local
+and uncommitted. Both dependency graphs, manifests, tool selections, snapshot and
+product contracts stay unchanged. Full gates and new native CI remain unrun.
+
+## 0.33.1 Shared 0.2.3 and Host 0.9.2
+
+The maintainer's updated root lock selects Host filesystem/artifact 0.9.2;
+the prior 0.9.1 rollback evidence above retains its original identity. Their
+37 Rust sources are unchanged from 0.9.1. All 74 files across the two cached
+copies match Host release `c5decaefd17809829bfa969966729d672f609c49`, including
+registry VCS identity. Locked/offline metadata confirms empty feature sets.
+All 37 adapter tests, strict Rust 1.99.0 example/test Clippy, declarations and
+both-workspace formatting pass with the new selection.
+
+The exact 86-file snapshot advances to clean, committed Shared 0.2.3
+`ac4549c5ebde497f7db0da5d05d32835112e51de`. Only four selected documentation
+files change, covering optional installer companions and CI queue diagnosis.
+All selected executable bytes and modes remain unchanged; the optional CI
+installer suite and its extra wrappers are not added. Canonical refresh and
+snapshot admission pass. Evidence: `target/qualification/0.33.1-shared0203-host092/`.
+No further dependency selection or source repair was needed. The independent
+workspace inputs and both manifests are unchanged during this review.
+
+[Host CI](https://github.com/dragginzgame/ic-host-tooling/actions/runs/37924013633)
+passes Linux native/MSRV; [Shared CI](https://github.com/dragginzgame/shared-tooling/actions/runs/37925303425)
+passes Linux portable/lint/security. Both macOS pairs remain queued at inspection.
+The optional, manually dispatched Shared Cargo-install workflow has no matching
+run and was not invoked during this review.
+This review does not run full gates or qualify the dirty consumer batch on macOS.
+
+## 0.33.1 note content and release identity
+
+The consumer regression for [#40](https://github.com/dragginzgame/ic-memory/issues/40)
+reproduces an `empty changelog entry` refusal before metadata preparation on
+released 0.33.0 `1cbecf601fd24afc64d1fcfccb29609537be36be`, with the earlier
+pending fixes and selected Host 0.9.2 retained. Removing the prose-only guard
+lets correctly numbered root and detail entries pass simulated preparation,
+commit qualification and dry-run publication admission. Historical bytes,
+including a missing final newline, remain unchanged. Existing version/date,
+duplicate identity, actual-heading replacement, source/index/payload and receipt
+checks stay active. No function or type is removed.
+
+All 38 adapter tests, strict Rust 1.99.0 example/test Clippy and both-workspace
+formatting pass with the locked/offline selection. Evidence and the failed
+regression remain in `target/qualification/0.33.1-note-content/` and
+`/tmp/ic-memory-tooling-221-0`. Both manifests/locks and the 86-file snapshot
+are unchanged during this correction. These are local Linux checks with
+substituted release effects, not native macOS or live release qualification.
+The compatible 0.33.1 batch remains uncommitted; full gates remain unrun.

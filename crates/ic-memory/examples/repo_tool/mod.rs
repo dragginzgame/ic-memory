@@ -402,14 +402,7 @@ fn release_changelog(text: &str, version: &str, date: &str) -> Result<String> {
         "selected version already exists",
     )?;
     let heading = format!("## {first}\n");
-    let entry = text
-        .split_once(&heading)
-        .ok_or("invalid changelog heading")?
-        .1
-        .split("\n## ")
-        .next()
-        .unwrap_or_default();
-    require(!entry.trim().is_empty(), "empty changelog entry")?;
+    require(text.contains(&heading), "invalid changelog heading")?;
     Ok(text.replacen(&heading, &format!("## [{version}] - {date}\n"), 1))
 }
 
@@ -1142,19 +1135,18 @@ impl<E: Execute> Repository<E> {
             for (path, bytes) in backups {
                 let restored = (|| -> Result<()> {
                     let current = fs::read(self.root.join(&path))?;
+                    if current == bytes {
+                        // No replacement needs undoing. Preserve the existing
+                        // file identity and permissions without another write.
+                        return Ok(());
+                    }
                     let owned = if path == "Cargo.lock" {
-                        current == bytes
-                            || std::str::from_utf8(&current).is_ok_and(|text| {
-                                check_lock_update(
-                                    &bytes,
-                                    text,
-                                    &selection.previous,
-                                    &selection.version,
-                                )
+                        std::str::from_utf8(&current).is_ok_and(|text| {
+                            check_lock_update(&bytes, text, &selection.previous, &selection.version)
                                 .is_ok()
-                            })
+                        })
                     } else {
-                        current == expected[&path].as_bytes() || current == bytes
+                        current == expected[&path].as_bytes()
                     };
                     if owned {
                         self.exec.write_bytes(&self.root.join(&path), &bytes)?;

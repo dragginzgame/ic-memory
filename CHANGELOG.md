@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.33.1]
+
+- Preserve untouched metadata files and their permissions when release
+  preparation fails before publication.
+  [#39](https://github.com/dragginzgame/ic-memory/issues/39).
+- Allow empty pending note bodies during release preparation while retaining
+  release identity and qualification checks.
+  [#40](https://github.com/dragginzgame/ic-memory/issues/40).
+
+[Detailed notes](docs/changelog/0.33.md)
+
 ## [0.33.0] - 2026-10-09
 
 ### Breaking

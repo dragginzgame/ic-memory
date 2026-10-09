@@ -929,9 +929,11 @@ fn release_versions_and_pending_notes_preserve_dependency_versions_and_history()
         current.replacen("## [0.13.0]", "## [0.13.0] - 2026-10-05", 1)
     );
     assert!(release_changelog(current, "0.12.4", "2026-10-05").is_err());
-    assert!(
-        release_changelog("## [0.13.0]\n\n## 0.12.3\nHistory", "0.13.0", "2026-10-05").is_err()
+    assert_eq!(
+        release_changelog("## [0.13.0]\n\n## 0.12.3\nHistory", "0.13.0", "2026-10-05").unwrap(),
+        "## [0.13.0] - 2026-10-05\n\n## 0.12.3\nHistory"
     );
+    assert!(release_changelog("## [0.13.0]", "0.13.0", "2026-10-05").is_err());
     for historical in ["0.13.0", "[0.13.0]", "[0.13.0] - 2026-10-05"] {
         let duplicate = format!("{current}\n## {historical}\n\nAlready released.\n");
         assert!(release_changelog(&duplicate, "0.13.0", "2026-10-05").is_err());
@@ -946,6 +948,33 @@ fn release_versions_and_pending_notes_preserve_dependency_versions_and_history()
         assert!(!valid_date(date));
     }
     assert!(valid_date("2024-02-29"));
+}
+
+#[test]
+fn empty_numbered_notes_prepare_without_weakening_release_identity() {
+    let fixture = Fixture::new();
+    for path in ["CHANGELOG.md", "docs/changelog/0.13.md"] {
+        let text =
+            "# Notes\n\n## [0.13.0]\n\n## [0.12.3] - 2026-10-04\n\nHistory without a final newline";
+        fs::write(fixture.repo.root.join(path), text).unwrap();
+        fixture
+            .repo
+            .exec
+            .state
+            .borrow_mut()
+            .source
+            .insert(path.to_owned(), text.to_owned());
+    }
+    fixture.prepare().unwrap();
+    fixture.stage().unwrap();
+    fixture.commit().unwrap();
+    fixture.repo.publish(true).unwrap();
+    for path in ["CHANGELOG.md", "docs/changelog/0.13.md"] {
+        assert_eq!(
+            fs::read_to_string(fixture.repo.root.join(path)).unwrap(),
+            "# Notes\n\n## [0.13.0] - 2026-10-05\n\n## [0.12.3] - 2026-10-04\n\nHistory without a final newline"
+        );
+    }
 }
 
 #[test]
@@ -1137,6 +1166,41 @@ fn preparation_retains_primary_and_rollback_errors_and_restores_other_owned_file
     for path in failures.keys() {
         assert!(diagnostic.contains(path));
     }
+}
+
+#[test]
+fn failed_first_publication_preserves_untouched_metadata_identity_and_permissions() {
+    use std::os::unix::fs::{MetadataExt as _, PermissionsExt as _};
+
+    let fixture = Fixture::new();
+    fixture.repo.verify(&fixture.selection).unwrap();
+    let validation = fixture.repo.validation_path("0.13.0").unwrap();
+    let saved = fs::read(&validation).unwrap();
+    let metadata: BTreeMap<_, _> = fixture
+        .repo
+        .surfaces(&fixture.selection)
+        .unwrap()
+        .into_keys()
+        .map(|path| {
+            let file = fixture.repo.root.join(&path);
+            fs::set_permissions(&file, fs::Permissions::from_mode(0o600)).unwrap();
+            let metadata = fs::metadata(file).unwrap();
+            (path, (metadata.ino(), metadata.mode()))
+        })
+        .collect();
+    fixture.fail("write-before:CHANGELOG.md");
+    let error = fixture
+        .repo
+        .prepare_selected(&fixture.selection)
+        .unwrap_err();
+    assert!(error.is::<std::io::Error>());
+    fixture.assert_original();
+    for (path, identity) in metadata {
+        let actual = fs::metadata(fixture.repo.root.join(path)).unwrap();
+        assert_eq!((actual.ino(), actual.mode()), identity);
+    }
+    assert_eq!(fs::read(validation).unwrap(), saved);
+    assert!(!fixture.repo.receipt_path("0.13.0", true).unwrap().exists());
 }
 
 #[test]
