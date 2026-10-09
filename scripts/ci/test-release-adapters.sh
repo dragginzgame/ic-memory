@@ -11,21 +11,39 @@ ROOT="${BASH_SOURCE[0]}"
 [[ "$ROOT" == /* ]] || ROOT="$PWD/$ROOT"
 ROOT="$(cd -P "${ROOT%/*}/../.." && printf '%s/.' "$PWD")"
 ROOT="${ROOT%/.}"
-bash "$ROOT/scripts/ci/check-release-commands.sh" "$ROOT" rust-toolchain.toml ci/tool-versions.env make/tools.mk make/release.mk
+bash "$ROOT/scripts/ci/check-release-commands.sh" "$ROOT" rust-toolchain.toml ci/tool-versions.env make/tools.mk make/release.mk make/execution.mk scripts/ci/check-make-execution.sh
 FIXTURE="$(mktemp -d "${TMPDIR:-/tmp}/ic-memory-release-adapters.XXXXXX")"
 trap 'if [[ $? == 0 ]]; then rm -rf "$FIXTURE"; else printf "Consumer release-adapter fixture retained: %s\n" "$FIXTURE" >&2; fi' EXIT
 mkdir -p "$FIXTURE/ci" "$FIXTURE/make"
 cp "$ROOT/Makefile" "$ROOT/rust-toolchain.toml" "$FIXTURE/"
 cp "$ROOT/ci/tool-versions.env" "$FIXTURE/ci/"
-cp "$ROOT/make/tools.mk" "$ROOT/make/release.mk" "$FIXTURE/make/"
+cp "$ROOT/make/tools.mk" "$ROOT/make/release.mk" "$ROOT/make/execution.mk" "$FIXTURE/make/"
 mkdir -p "$FIXTURE/scripts/ci"
+cp "$ROOT/scripts/ci/check-make-execution.sh" "$FIXTURE/scripts/ci/"
 cat > "$FIXTURE/scripts/ci/run-release.sh" <<'STUB'
 #!/usr/bin/env bash
 set -euo pipefail
 [[ "$RELEASE_DELIVERY" == direct ]]
 [[ "$RELEASE_CACHE_PREPARE" == 1 ]]
 printf '%s\n' "$*" >> runner-events
+exit "${RELEASE_TEST_STATUS:-0}"
 STUB
+# Actual Make admission must stop before even a failing substitute runner.
+for target in release-patch release-minor release-major release-resume; do
+    for mode in -i -n -t -q; do
+        for source in direct inherited; do
+            status=0
+            if [[ "$source" == direct ]]; then
+                (cd "$FIXTURE"; RELEASE_TEST_STATUS=23 make --no-print-directory "$mode" "$target") \
+                    > "$FIXTURE/mode-$target-$mode-$source.log" 2>&1 || status=$?
+            else
+                (cd "$FIXTURE"; MAKEFLAGS="$mode" RELEASE_TEST_STATUS=23 make --no-print-directory "$target") \
+                    > "$FIXTURE/mode-$target-$mode-$source.log" 2>&1 || status=$?
+            fi
+            [[ "$status" == 2 && ! -e "$FIXTURE/runner-events" ]] || exit 1
+        done
+    done
+done
 for target in release-patch release-minor release-major release-resume; do
     for delivery in pr invalid; do
         if (cd "$FIXTURE"; make --no-print-directory "$target" RELEASE_DELIVERY="$delivery") \
@@ -50,6 +68,11 @@ done
 # An external substitute makes a redirected dispatch harmless and observable.
 external_root="$FIXTURE/external runner"
 mkdir -p "$external_root/scripts/ci"
+cat > "$external_root/scripts/ci/check-make-execution.sh" <<'STUB'
+#!/usr/bin/env bash
+echo escaped >> external-probe-events
+exit 23
+STUB
 cat > "$external_root/scripts/ci/run-release.sh" <<'STUB'
 #!/usr/bin/env bash
 printf '%s\n' "$*" >> external-runner-events
@@ -66,6 +89,19 @@ printf '%s\n' 'patch fixture reviewed' 'patch fixture reviewed' \
     'resume 0.1.1 fixture reviewed' 'resume 0.1.1 fixture reviewed' > "$FIXTURE/expected-runner-events"
 cmp "$FIXTURE/expected-runner-events" "$FIXTURE/runner-events"
 [[ ! -e "$FIXTURE/external-runner-events" ]]
+[[ ! -e "$FIXTURE/external-probe-events" ]]
+cat > "$FIXTURE/overrides.mk" <<'MAKE'
+RELEASE_REMOTE := recursive
+.PHONY: nested
+nested:
+	+@$(MAKE) release-patch
+MAKE
+recursive_make="$(command -v make) --no-print-directory -f Makefile -f overrides.mk"
+rm "$FIXTURE/runner-events"
+(cd "$FIXTURE"; make -j2 --no-print-directory -f Makefile -f overrides.mk nested \
+    "MAKE=$recursive_make" "SHARED_TOOLING_ROOT=$external_root" RELEASE_CACHE_PREPARE=0)
+[[ "$(cat "$FIXTURE/runner-events")" == 'patch recursive main' ]]
+[[ ! -e "$FIXTURE/external-runner-events" && ! -e "$FIXTURE/external-probe-events" ]]
 mkdir -p "$FIXTURE/custom target"
 cat > "$FIXTURE/helper" <<'STUB'
 #!/usr/bin/env bash
@@ -135,7 +171,9 @@ mkdir -p "$FIXTURE/bootstrap/scripts/dev" "$FIXTURE/bootstrap/bin" \
     "$FIXTURE/bootstrap/crates/ic-memory/src" "$FIXTURE/bootstrap/crates/ic-memory/examples" "$FIXTURE/bootstrap/ci" "$FIXTURE/bootstrap/make"
 cp "$ROOT/Makefile" "$ROOT/rust-toolchain.toml" "$FIXTURE/bootstrap/"
 cp "$ROOT/ci/tool-versions.env" "$FIXTURE/bootstrap/ci/"
-cp "$ROOT/make/tools.mk" "$ROOT/make/release.mk" "$FIXTURE/bootstrap/make/"
+cp "$ROOT/make/tools.mk" "$ROOT/make/release.mk" "$ROOT/make/execution.mk" "$FIXTURE/bootstrap/make/"
+mkdir -p "$FIXTURE/bootstrap/scripts/ci"
+cp "$ROOT/scripts/ci/check-make-execution.sh" "$FIXTURE/bootstrap/scripts/ci/"
 cp "$ROOT/scripts/dev/run-repo-tool.sh" "$FIXTURE/bootstrap/scripts/dev/"
 cd "$FIXTURE/bootstrap"
 cat > Cargo.toml <<'MANIFEST'

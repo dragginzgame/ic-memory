@@ -105,6 +105,9 @@ binds the four standard release targets to this checkout's tooling root while
 forcing release-only cache preparation. These target-specific overrides retain
 the previous local routing even with conflicting caller settings. The Rust
 adapters continue to own metadata, qualification and publication.
+The adjacent `make/execution.mk` admits Make before recipes and resolves its
+probe from the reviewed include rather than an ambient tooling root. Memory's
+exported target policies also support GNU Make 3.81.
 
 Push uses `--no-follow-tags --atomic` and exactly the selected branch and candidate
 tag refspecs. There is no force push or non-atomic fallback. A lost push reply is
@@ -246,6 +249,12 @@ dispatching gates. It rejects inherited ignore-errors, dry-run, question, touch
 and version-only modes; rerun without those modes. Normal release selections and
 jobserver settings remain inherited. A refusal preserves earlier validation
 receipts and does not create a successful validation attempt.
+The recorded Shared Make guard still has a reproduced gap when an explicit
+command-line `MAKEFLAGS` replacement hides unsafe invocation modes:
+`make -i release-patch MAKEFLAGS=`
+can report success after a failing runner. Keep normal failure-enforcing Make
+settings; the canonical correction is tracked in
+[Shared #30](https://github.com/dragginzgame/shared-tooling/issues/30).
 
 - `make test-tooling`: Rust adapters with substituted Git/Cargo/gate effects;
   recovery, rollback, input binding, artifact refusal and publication checks.

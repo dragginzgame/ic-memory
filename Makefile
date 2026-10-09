@@ -157,8 +157,14 @@ wasm-size:
 	@$(TOOL) wasm-size
 
 # Preserve checkout-local routing and cache preparation for all caller settings.
-release-patch release-minor release-major release-resume: override export SHARED_TOOLING_ROOT := $(CURDIR)
-release-patch release-minor release-major release-resume: override export RELEASE_CACHE_PREPARE := 1
+# GNU Make 3.81 cannot combine target-specific override and export. Reclassify
+# caller values first so these exported target policies can supersede them.
+override SHARED_TOOLING_ROOT := $(SHARED_TOOLING_ROOT)
+ifneq ($(origin RELEASE_CACHE_PREPARE),undefined)
+override RELEASE_CACHE_PREPARE := $(RELEASE_CACHE_PREPARE)
+endif
+release-patch release-minor release-major release-resume: export SHARED_TOOLING_ROOT := $(CURDIR)
+release-patch release-minor release-major release-resume: export RELEASE_CACHE_PREPARE := 1
 
 release-version:
 	@$(TOOL) version

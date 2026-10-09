@@ -244,6 +244,11 @@ recovery reconciles those bytes against the saved intent before restoring or
 retrying. These dependencies are absent from canister graphs. `shasum` remains a setup
 and CI prerequisite through common scripts, rather than a release adapter
 subprocess. Product receipts, release identities and Wasm budgets stay local.
+Host 0.10's single pathname writer takes explicit replacement options. Byte,
+receipt and archive publication retain complete `NamedWriteError` values through
+the release adapter, including producer/cleanup failures and the distinct
+after-publication state. No raw-source extraction or local compatibility writer
+is used. [Adoption evidence](release-workflow-qualification.md#0334-host-010-adoption).
 
 Native CI routes disposable fixtures into a dedicated runner temporary directory.
 Failed validation archives those fixtures, setup/gate logs, retained tool candidates

@@ -5,6 +5,7 @@
 //! before dispatch; it never resolves a replacement lockfile.
 
 use ic_host_artifacts::artifact::{Sha256Digest, copy_reader};
+use ic_host_fs::durable::{PublicationMode, WriteOptions};
 use ic_host_fs::read::hash_file;
 use serde::{Deserialize, Serialize};
 use std::{
@@ -55,6 +56,10 @@ impl Error for PreparationError {
 
 const PACKAGE_MANIFEST: &str = "crates/ic-memory/Cargo.toml";
 const PACKAGE_README: &str = "crates/ic-memory/README.md";
+const REPLACE_FILE_OPTIONS: WriteOptions = WriteOptions {
+    mode: PublicationMode::Replace,
+    permissions: 0o666,
+};
 const PROBES: [(&str, u64); 5] = [
     ("core", 260_000),
     ("diagnostics", 315_000),
@@ -148,12 +153,9 @@ trait Execute {
     fn write_json(&self, path: &Path, value: &impl Serialize) -> Result<()> {
         // Keep receipt encoding local; the shared engine owns staging and
         // publication, including original producer and cleanup failures.
-        Ok(ic_host_fs::durable::write_typed_with(
+        Ok(ic_host_fs::durable::write_with(
             path,
-            ic_host_fs::durable::WriteOptions {
-                mode: ic_host_fs::durable::PublicationMode::Replace,
-                permissions: 0o666,
-            },
+            REPLACE_FILE_OPTIONS,
             |file| {
                 let mut writer = BufWriter::new(file);
                 serde_json::to_writer_pretty(&mut writer, value)?;
@@ -168,7 +170,11 @@ trait Execute {
         path: &Path,
         write: impl FnOnce(&mut fs::File) -> std::io::Result<()>,
     ) -> Result<()> {
-        Ok(ic_host_fs::durable::write_with(path, write)?)
+        Ok(ic_host_fs::durable::write_with(
+            path,
+            REPLACE_FILE_OPTIONS,
+            write,
+        )?)
     }
 }
 

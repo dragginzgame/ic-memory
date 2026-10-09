@@ -3411,3 +3411,119 @@ to release Make dispatch and fixture isolation, against Memory release
 storage, installed IC behavior and independent Host dependency qualification are
 outside this tooling repair. The local routing defect is corrected; upstream
 admission remains an evidenced adoption gap. No sibling source is changed.
+
+## 0.33.4 Shared 0.2.8 Make admission
+
+The clean canonical exporter refreshes Memory's selection to committed Shared
+0.2.8 `b2646cde9abbc8861857a4379c683a0c19eba43e`, explicitly adding
+`make/execution.mk` (88 files). Uncommitted Shared 0.3.0 changes are excluded.
+Actual consumer Make/index fixtures now include the companion and probe.
+[#42](https://github.com/dragginzgame/ic-memory/issues/42).
+
+The consumer adapter and two-workspace hook suites pass on Linux with Bash 5.2 /
+GNU Make 4.3 and genuine Bash 3.2.57 / GNU Make 3.81. All four release targets
+refuse direct/inherited unsafe modes before substitute-runner dispatch. External
+root selections never invoke an unselected admission probe or runner; parallel
+recursive Make with two Makefiles preserves selected routing/cache settings.
+Exact-source upstream release fixtures pass on both profiles. Snapshot/pins,
+formatting, Actionlint and ShellCheck pass. Real effects are substituted; no
+fixture commit/tag/push, actual hook activation or full gate runs.
+
+GNU Make 3.81 first refuses Memory's combined target-specific `override export`
+syntax with `multiple target patterns`, even for `help`. Reclassifying caller
+values before portable target exports restores parsing while preserving forced
+release-only root/cache settings under conflicting caller values.
+[#45](https://github.com/dragginzgame/ic-memory/issues/45).
+
+A separate retained observation confirms the known command-line `MAKEFLAGS`
+override gap in the unchanged Shared guard on both profiles. A normal failing
+substitute runner gives status 2; `-i` alone refuses before dispatch. With `-i`
+and `MAKEFLAGS=`, it dispatches and gives false success (status 0). Replaced
+flags also admit dispatch under the tested `-n`, `-t` and `-q` invocations.
+Existing passing fixtures do not cover this boundary. No consumer flag parser or
+vendored repair is added. Canonical repair and native acceptance remain under
+[Shared #30](https://github.com/dragginzgame/shared-tooling/issues/30).
+
+Evidence, copied inputs, binary identities and per-profile logs are retained in
+`target/qualification/0.33.4-shared0208/`. The real index/configuration, manifests
+and both incoming locks remain byte-identical. This is uncommitted compatible
+0.33.4 work; Linux portability checks do not qualify native macOS or a live release.
+
+## 0.33.4 Host 0.9.7 review
+
+Preserve the incoming maintainer-selected root lock's `ic-host-fs` and
+`ic-host-artifacts` 0.9.7. Their registry VCS identity is Host release
+`ca62e661918db2f4320743b9042a4993a5fff2aa`; cached archive SHA-256 values match
+the selected lock. Neither selected crate has file changes from Host 0.9.4
+`4e3daebd5df07c6449279535668436024a45c02b`. Host response-streaming changes
+belong to the unselected tools crate.
+
+All 39 repo-tool tests pass locked/offline on Rust 1.99 and MSRV 1.88; strict
+selected example/test Clippy passes on 1.99. Cheap locked/offline metadata admits
+both maintained workspaces. Dependency requirements/features, both lock bytes
+and compiler selection remain unchanged. Separate evidence:
+`target/qualification/0.33.4-host097/`. Native macOS and full gates are unrun.
+
+## 0.33.4 Host 0.10 adoption
+
+The maintainer's subsequent root manifest/lock selection advances only
+`ic-host-fs` and `ic-host-artifacts` to published 0.10.0. Registry VCS identity,
+remote main and peeled annotated `v0.10.0` agree on
+`98562bea26a98993d93b80ed908bea4876c32a91`; archive checksums match the lock.
+The earlier 0.9.7 results remain bound to their original selection.
+[#46](https://github.com/dragginzgame/ic-memory/issues/46).
+
+Initial compilation fails at the retired typed-writer name and two-argument
+streamed calls. Receipt and archive writers now use Host's current three-argument
+`write_with`, with one local replacement/permission selection preserving prior
+defaults. Byte writers retain the complete new error through `?`, as do streamed
+receipts and archives. Substitutes reuse those production boundaries.
+
+The first test run exposes an obsolete direct-I/O assertion for archive-copy
+failure. Its native I/O cause now remains inside `NamedWriteError::Producer`;
+the corrected check verifies its kind, OS identity, absent cleanup failure and
+unpublished destination. Existing native publication checks also assert typed
+byte-write refusal and rejected partial stream production, with prior bytes and
+directory entries preserved. JSON failure and recovery/rollback checks remain.
+
+All 39 repo-tool tests pass locked/offline on Rust 1.99 and MSRV 1.88; strict
+selected example/test Clippy passes on 1.99. Both workspace metadata projections,
+formatting and focused tooling admission pass. Evidence, including both failed
+attempts and corrected logs, stays in `target/qualification/0.33.4-host0100/`.
+Incoming manifests/locks, shared snapshot and real index/configuration remain
+byte-identical. No functions, methods or types are removed; no compatibility
+alias, full gate, real release or Git delivery effect is introduced. The public
+library API, storage and release recovery contracts keep this in compatible 0.33.4.
+
+Host's parent-creation race correction is still uncommitted, pending 0.10.1
+([Host #43](https://github.com/dragginzgame/ic-host-tooling/issues/43)); it is
+excluded from registry qualification. Native macOS and matching delivery CI
+remain outstanding for this working tree.
+
+## 0.33.4 Shared snapshot version metadata
+
+The new upstream main commit `f77fcb1f623c2e5f14b3fbe96ef68d24e0c20771`
+adds source-version recording and fleet-report changes. Memory's clean canonical
+refresh keeps the same 88-file selection, changing only the selected verifier,
+snapshot-consumption guidance and manifest. Fleet reporters/fixtures remain
+upstream-owned. The source's committed `VERSION` is 0.2.8 despite the 0.2.9
+commit label and pending ledger; the exported annotation accurately records
+0.2.8 and the new exact revision. Neither label proves a release/tag.
+
+Retained disposable checks pass on Linux Bash 5 and genuine Bash 3.2: current
+annotations verify, repeated refresh is byte-identical, an unannotated snapshot
+verifies as unrecorded and refresh gains the exact source annotation. Duplicate,
+noncanonical and extra-field annotations refuse in both verifier/exporter before
+changing any selected files. Fixtures reuse existing history without commits,
+tags or pushes. Evidence, including the first fixture-setup refusal, is under
+`target/qualification/0.33.4-shared-f77fcb1/`.
+
+The Make guard, release include, probe and smoke checker have no changes from
+the previously qualified 0.2.8 inputs. Their existing consumer wiring/portability
+evidence remains applicable; the hidden-`MAKEFLAGS` gap remains open under
+[Shared #30](https://github.com/dragginzgame/shared-tooling/issues/30).
+Snapshot/pins, formatting, tooling lint and documentation links pass. Manifests,
+both locks, all incoming consumer Rust/Make/fixture files and real index/config
+remain byte-identical. This extends the same uncommitted compatible 0.33.4 draft.
+No named functions/methods/types are removed, fleet tooling adopted, full gates
+or real release effects run. Matching native CI remains outstanding.

@@ -273,11 +273,36 @@ fn durable_publication_replaces_complete_files_and_preserves_rejected_targets() 
             .collect::<std::collections::BTreeSet<_>>()
     };
     let before = entries();
-    assert!(
-        Processes
-            .write_bytes(&rejected, b"invalid replacement")
-            .is_err()
-    );
+    let error = Processes
+        .write_with(&target, |file| {
+            std::io::Write::write_all(file, b"partial replacement")?;
+            Err(std::io::Error::from(std::io::ErrorKind::PermissionDenied))
+        })
+        .unwrap_err();
+    assert!(matches!(
+        error
+            .downcast_ref::<ic_host_fs::durable::NamedWriteError<std::io::Error>>()
+            .unwrap(),
+        ic_host_fs::durable::NamedWriteError::Producer {
+            source,
+            cleanup_error: None,
+        } if source.kind() == std::io::ErrorKind::PermissionDenied
+    ));
+    assert_eq!(fs::read(&target).unwrap(), b"complete replacement");
+    assert_eq!(entries(), before);
+
+    let error = Processes
+        .write_bytes(&rejected, b"invalid replacement")
+        .unwrap_err();
+    assert!(matches!(
+        error
+            .downcast_ref::<ic_host_fs::durable::NamedWriteError<std::io::Error>>()
+            .unwrap(),
+        ic_host_fs::durable::NamedWriteError::BeforePublication {
+            cleanup_error: None,
+            ..
+        }
+    ));
     assert_eq!(
         fs::read_to_string(rejected.join("evidence")).unwrap(),
         "keep"
@@ -375,7 +400,7 @@ impl Execute for Substitute {
         if phase.as_deref() == Some("archive-before") {
             return Err("fixture failure before archive publication".into());
         }
-        ic_host_fs::durable::write_with(path, write)?;
+        Processes.write_with(path, write)?;
         if phase.as_deref() == Some("archive-after") {
             return Err("fixture failure after archive publication".into());
         }
@@ -395,7 +420,7 @@ impl Execute for Substitute {
         if phase == Some("write-before") {
             return Err(std::io::Error::other("fixture failure before publication").into());
         }
-        ic_host_fs::durable::write_bytes(path, bytes)?;
+        Processes.write_bytes(path, bytes)?;
         if phase == Some("write-after") {
             // Model the real writer's error-after-rename contract. The consumer
             // must inspect the visible bytes before rollback or retry.
@@ -1625,7 +1650,15 @@ fn archive_copy_io_failure_preserves_native_error_and_unpublished_state() {
     fixture.fail("archive-read");
 
     let error = fixture.repo.record_package("0.13.0").unwrap_err();
-    let actual = error.downcast_ref::<std::io::Error>().unwrap();
+    let ic_host_fs::durable::NamedWriteError::Producer {
+        source: actual,
+        cleanup_error: None,
+    } = error
+        .downcast_ref::<ic_host_fs::durable::NamedWriteError<std::io::Error>>()
+        .unwrap()
+    else {
+        panic!("archive read failure must retain its producer error before publication");
+    };
     let expected = fs::read(&package).unwrap_err();
     assert_eq!(actual.kind(), expected.kind());
     assert_eq!(actual.raw_os_error(), expected.raw_os_error());

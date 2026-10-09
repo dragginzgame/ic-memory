@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.33.4]
+
+- Refresh Shared Tooling for checkout-local Make admission, recursive invocation
+  and recorded snapshot version/revision, preserving release routing and cache policy.
+  [#42](https://github.com/dragginzgame/ic-memory/issues/42),
+  [Shared #30](https://github.com/dragginzgame/shared-tooling/issues/30).
+- Restore GNU Make 3.81 parsing for developer and release commands while keeping
+  forced release settings. [#45](https://github.com/dragginzgame/ic-memory/issues/45).
+- Adopt IC Host 0.10's consolidated durable writer while retaining producer,
+  cleanup and publication-state errors in release tooling.
+  [#46](https://github.com/dragginzgame/ic-memory/issues/46).
+
+[Detailed notes](docs/changelog/0.33.md)
+
 ## [0.33.3] - 2026-10-09
 
 - Share standard release-command routing through Shared Tooling 0.2.6 while
