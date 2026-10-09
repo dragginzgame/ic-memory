@@ -1,6 +1,6 @@
 # Changelog
 
-## [0.31.10]
+## [0.31.10] - 2026-10-09
 
 - Prepare locked dependency caches during releases before compiling the helper,
   while preserving explicit offline settings and actionable failure messages.
