@@ -1,6 +1,6 @@
 # Changelog
 
-## [0.33.2]
+## [0.33.2] - 2026-10-09
 
 - Adopt Shared Tooling 0.2.5's required-helper declarations so incomplete reusable
   test selections are rejected before replacing consumer files.
