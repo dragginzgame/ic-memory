@@ -29,7 +29,9 @@ identities and preserves historical entries.
 Implementation and pending notes must be committed through an authorized
 contribution workflow before releasing. The selected source must be clean, on
 the selected branch, with no active build.
-Preserve the tracked dependency selections and prepare their cache:
+Preserve the tracked dependency selections. Release entry points prepare the
+selected cache automatically before compiling the helper; for ordinary offline
+checks, prepare it explicitly:
 
 ```sh
 make fetch-dependencies
@@ -40,7 +42,16 @@ source-bound qualification input. Release preflight
 checks the selected cache with `cargo fetch --locked --offline`; it never retries
 online or regenerates the lockfile. Validation, version refresh and packaging
 remain offline. A root-version refresh may change only the `ic-memory` entry,
-never dependency selection. Cache preparation is a separate network operation.
+never dependency selection. Cache preparation remains a distinct step: the
+documented release command authorizes `cargo fetch --locked` before helper
+compilation, including during resume. Cargo's explicit offline environment and
+configuration settings remain in effect. Ordinary helper calls use a locked,
+offline cache check and never retry online. Preparation failures retain Cargo's
+diagnostics/status and name `make fetch-dependencies` even before preflight.
+Interrupted metadata writes prepare the launcher's coherent scratch workspace;
+the tracked metadata remains unchanged. The internal `RELEASE_CACHE_PREPARE=1`
+selection is scoped to release entry points and removed before dispatching the
+compiled adapter, so its validation children retain offline behavior.
 Prepare the complete checksum-pinned jq/yq/ripgrep/cloc host set with
 `make install-host-tools`, as described in [host support](docs/host-support.md).
 `make check-pins` checks declarations and

@@ -127,10 +127,10 @@ wasm-size:
 
 # Maintainer-only orchestration: these targets commit, tag and push.
 release-patch release-minor release-major:
-	+@bash scripts/ci/run-release.sh "$(@:release-%=%)" "$(RELEASE_REMOTE)" "$(RELEASE_BRANCH)"
+	+@RELEASE_CACHE_PREPARE=1 bash scripts/ci/run-release.sh "$(@:release-%=%)" "$(RELEASE_REMOTE)" "$(RELEASE_BRANCH)"
 
 release-resume:
-	+@bash scripts/ci/run-release.sh resume "$(VERSION)" "$(RELEASE_REMOTE)" "$(RELEASE_BRANCH)"
+	+@RELEASE_CACHE_PREPARE=1 bash scripts/ci/run-release.sh resume "$(VERSION)" "$(RELEASE_REMOTE)" "$(RELEASE_BRANCH)"
 
 release-version:
 	@$(TOOL) version

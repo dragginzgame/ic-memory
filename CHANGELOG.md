@@ -2,6 +2,9 @@
 
 ## [0.31.10]
 
+- Prepare locked dependency caches during releases before compiling the helper,
+  while preserving explicit offline settings and actionable failure messages.
+  [#35](https://github.com/dragginzgame/ic-memory/issues/35).
 - Preserve queued and running native CI for each main commit, while newer PR
   revisions can replace earlier review runs.
   [#33](https://github.com/dragginzgame/ic-memory/issues/33).

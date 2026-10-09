@@ -4,6 +4,7 @@ set -euo pipefail
 # This independent fixture owns its selections, not the invoking release's.
 unset MAKEFLAGS MFLAGS MAKEOVERRIDES GNUMAKEFLAGS MAKEFILES
 unset VALIDATION_REPOSITORY_ROOT VALIDATION_RUNNER_SNAPSHOT_PATH
+unset RELEASE_CACHE_PREPARE
 export RELEASE_DELIVERY=direct
 # Resolve relative script entry points without CDPATH output or newline loss.
 ROOT="${BASH_SOURCE[0]}"
@@ -22,6 +23,7 @@ cat > "$FIXTURE/scripts/ci/run-release.sh" <<'STUB'
 #!/usr/bin/env bash
 set -euo pipefail
 [[ "$RELEASE_DELIVERY" == direct ]]
+[[ "$RELEASE_CACHE_PREPARE" == 1 ]]
 printf '%s\n' "$*" >> runner-events
 STUB
 for target in release-patch release-minor release-major release-resume; do
@@ -142,12 +144,42 @@ set -euo pipefail
 [[ "$1" == +1.99.0 ]]
 [[ "$RUSTUP_AUTO_INSTALL" == 0 && "${CARGO_NET_OFFLINE-unset}" == "$CALLER_OFFLINE" ]]
 case "$2" in
+    fetch)
+        [[ "$3" == --locked ]]
+        offset=4
+        if [[ "${RELEASE_CACHE_PREPARE:-0}" != 1 ]]; then
+            [[ "$4" == --offline ]]
+            offset=5
+        fi
+        if [[ $# -ge "$offset" ]]; then
+            [[ "${!offset}" == --manifest-path ]]
+            offset=$((offset + 1))
+            cmp expected-manifest "${!offset}"
+            cmp Cargo.lock "$(dirname "${!offset}")/Cargo.lock"
+            echo bootstrap-cache >> calls
+        else
+            [[ $# == $((offset - 1)) ]]
+            echo normal-cache >> calls
+        fi
+        if [[ "${CACHE_STATUS:-0}" != 0 ]]; then
+            echo 'simulated offline cache failure' >&2
+            exit "$CACHE_STATUS"
+        fi
+        if [[ "${CACHE_MISSING:-0}" == 1 ]]; then
+            if [[ "${RELEASE_CACHE_PREPARE:-0}" != 1 || "$CALLER_OFFLINE" == true ]]; then
+                echo 'simulated offline cache failure' >&2
+                exit 101
+            fi
+            echo prepared >> preparation-events
+        fi
+        ;;
     metadata)
         [[ "$*" == '+1.99.0 metadata --locked --offline --no-deps --format-version 1' ]]
         echo metadata >> calls
         echo '{"target_directory":"fixture"}'
         ;;
     run)
+        [[ "${RELEASE_CACHE_PREPARE:-0}" == 0 ]]
         [[ "$3" == --locked && "$4" == --offline && "$5" == --quiet ]]
         if [[ "$6" == --manifest-path ]]; then
             [[ "$8" == --target-dir && "$9" == "$BOOTSTRAP_TARGET/repo-tool-bootstrap/build" ]]
@@ -201,9 +233,53 @@ check_publication_environment() {
     cp saved-version-calls calls
 }
 
+check_release_cache_preparation() {
+    local offline status
+    cp calls saved-cache-calls
+    for offline in unset false true; do
+        export CALLER_OFFLINE="$offline"
+        if [[ "$offline" == unset ]]; then unset CARGO_NET_OFFLINE
+        else export CARGO_NET_OFFLINE="$offline"; fi
+        : > calls
+        : > preparation-events
+        status=0
+        CACHE_MISSING=1 RELEASE_CACHE_PREPARE=1 bash scripts/dev/run-repo-tool.sh 1.99.0 version \
+            > "release-cache-$offline.log" 2>&1 || status=$?
+        if [[ "$offline" == true ]]; then
+            [[ "$status" == 101 && ! -s preparation-events ]]
+            grep -F 'Run make fetch-dependencies' "release-cache-$offline.log"
+            if grep -E '^(normal|bootstrap)$' calls; then exit 1; fi
+        else
+            [[ "$status" == 0 && "$(cat preparation-events)" == prepared ]]
+            grep -Fx 0.12.3 "release-cache-$offline.log"
+            grep -E '^(normal|bootstrap)$' calls
+        fi
+    done
+    unset CARGO_NET_OFFLINE
+    export CALLER_OFFLINE=unset
+    : > calls
+    status=0
+    CACHE_STATUS=9 RELEASE_CACHE_PREPARE=1 bash scripts/dev/run-repo-tool.sh 1.99.0 version \
+        > release-network-failure.log 2>&1 || status=$?
+    [[ "$status" == 9 ]]
+    if grep -E '^(normal|bootstrap)$' calls; then exit 1; fi
+    cp saved-cache-calls calls
+}
+
 [[ "$(make --no-print-directory -s release-version)" == 0.12.3 ]]
-[[ "$(cat calls)" == normal ]]
+[[ "$(cat calls)" == $'normal-cache\nnormal' ]]
 check_publication_environment
+check_release_cache_preparation
+cp calls successful-calls
+status=0
+CACHE_STATUS=101 bash scripts/dev/run-repo-tool.sh 1.99.0 version > cache-refusal.log 2>&1 || status=$?
+[[ "$status" == 101 ]]
+grep -F 'simulated offline cache failure' cache-refusal.log
+grep -F 'Run make fetch-dependencies' cache-refusal.log
+printf '%s\n' normal-cache >> successful-calls
+cmp successful-calls calls
+cmp original-manifest Cargo.toml
+cp calls saved-calls
 cat > expected-manifest <<'MANIFEST'
 [workspace]
 members = ["crates/ic-memory"]
@@ -216,8 +292,20 @@ awk '!changed && $0 == "version = \"0.12.3\"" { $0 = "version = \"0.13.0\""; cha
     Cargo.lock > prepared-lock
 cp prepared-lock Cargo.lock
 [[ "$(make --no-print-directory -s release-version 2> bootstrap.log)" == 0.12.3 ]]
-[[ "$(cat calls)" == $'normal\nmetadata\nbootstrap' ]]
+printf '%s\n' metadata bootstrap-cache bootstrap >> saved-calls
+cmp saved-calls calls
 check_publication_environment
+check_release_cache_preparation
+cmp original-manifest Cargo.toml
+cmp prepared-lock Cargo.lock
+cp calls successful-calls
+status=0
+CACHE_STATUS=101 bash scripts/dev/run-repo-tool.sh 1.99.0 version > bootstrap-cache-refusal.log 2>&1 || status=$?
+[[ "$status" == 101 ]]
+grep -F 'simulated offline cache failure' bootstrap-cache-refusal.log
+grep -F 'Run make fetch-dependencies' bootstrap-cache-refusal.log
+printf '%s\n' metadata bootstrap-cache >> successful-calls
+cmp successful-calls calls
 cmp original-manifest Cargo.toml
 cmp prepared-lock Cargo.lock
 if BOOTSTRAP_STATUS=7 make --no-print-directory -s release-version > refusal.log 2>&1; then

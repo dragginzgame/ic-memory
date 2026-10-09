@@ -8,7 +8,12 @@ and guides. This includes uncommitted working-tree changes in `../shared-tooling
 Read the applicable rules again when they change; no upstream commit, clean tree
 or snapshot refresh is required for them to apply. This is the maintainer-approved
 exception to revision-bound policy adoption while the shared rules are being
-developed locally. The sibling remains read-only to agents.
+developed locally. Other repositories, including Shared Tooling, are read-only
+by default. Prefer reporting proposed repairs through issues in their owning
+repository. An explicit maintainer authorization naming the repository and
+intended change permits that scoped exception; carry it through the necessary
+implementation and qualification without asking again. It does not authorize
+unrelated sibling edits, commits, pushes, releases or publication.
 
 The existing tooling snapshot at revision
 `1872ed2c20f6c70689bb2249050b1d673c60bfa0` is recorded in
@@ -110,6 +115,9 @@ and prerequisites are declared in [docs/host-support.md](docs/host-support.md).
   Both maintained workspaces track their existing selected lockfiles.
   Validation and release preparation require those lockfiles and populated
   cache, and run offline without changing dependency selection.
+  The documented release entry points also authorize locked cache preparation
+  before helper compilation. An explicitly offline caller stays offline; ordinary
+  helper commands and validation never fetch online automatically.
 - Release commands require an explicit request for the selected repository,
   release and destination. Never invoke them merely to qualify adoption.
   Tooling tests substitute Git effects; do not create commits/tags/pushes to
