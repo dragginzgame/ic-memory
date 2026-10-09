@@ -39,7 +39,7 @@ help:
 	@echo 'Focused checks: tools-check, test-tools, test-failure-evidence, verify-shared-tooling, check-pins, test-pins, test-tooling, test-release-adapters, test-release-runner, test-hooks, fmt-check, lint-tooling.'
 	@echo 'Formatting: fmt. Full gates require explicit qualification: validate, validate-toolchain.'
 	@echo 'Installed runtime: install-runtime-server (explicit Testkit setup), runtime-server-check (offline), test-runtime (prepared server and locked caches).'
-	@echo 'Reports: cloc (root workspace; CLOC_MANIFEST selects an independent Cargo manifest), cloc-tooling (sibling tooling; CLOC_PARENT selects the parent).'
+	@echo 'Report: cloc (root workspace; CLOC_MANIFEST selects an independent Cargo manifest). Fleet reports run in Shared Tooling.'
 	@echo 'Maintainer releases: release-patch, release-minor, release-major; normal targets recover unfinished releases.'
 
 install-hooks:

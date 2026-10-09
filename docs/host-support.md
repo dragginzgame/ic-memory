@@ -138,13 +138,12 @@ uses only the selected workspace and its target configuration; reports do not
 combine the two graphs. `CLOC_ROOT` still selects a containing checkout, rather
 than an independent manifest. The selector is the reviewed fix for
 [Shared Tooling #41](https://github.com/dragginzgame/shared-tooling/issues/41).
-`make cloc-tooling` reports sibling CI and tooling without running sibling Make
-targets; `CLOC_PARENT` selects the parent directory. Its scope excludes product
-Rust/example trees, including the Rust release adapter. The reviewed counter
-supports custom snapshot-manifest locations and equivalent HTTPS/SSH source
-identities; explicit `--snapshot-root` selection handles other nested layouts.
-It does not infer ownership from matching hashes. See the correction in
-[Shared Tooling #39](https://github.com/dragginzgame/shared-tooling/issues/39).
+Fleet reports run centrally in Shared Tooling: use `make cloc` there for sibling
+Rust workspaces and `make cloc-tooling` there for sibling CI/tooling. Memory no
+longer vendors either fleet reporter. Its shared Make include reports that owner
+if an omitted optional fleet report is requested; it never invokes a sibling
+implicitly. Local workspace reports and their independent-manifest selection
+remain available.
 
 The retained local LOC fixture selects its own manifest and build output.
 Consumer `make test-tools` passes inherited target settings through to it;
@@ -154,7 +153,8 @@ actual reports retain their selected workspace configuration. These fixes track
 reviewed exports. CI continues to retain scratch under `$RUNNER_TEMP`.
 Fleet and cross-workspace fixture qualification remains in Shared Tooling.
 Memory no longer selects or dispatches those three upstream regression programs;
-its local workspace fixture and documented report commands remain available.
+its local workspace fixture and workspace report remain available. The two fleet
+reporter copies are also retired at the maintainer's explicit selection.
 See [#34](https://github.com/dragginzgame/ic-memory/issues/34).
 
 The shared include also provides explicit `make install-rust-tools` and offline

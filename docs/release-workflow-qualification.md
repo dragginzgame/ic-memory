@@ -3102,3 +3102,24 @@ is queued at inspection, with no completed native acceptance attributed to it.
 Memory's newly configured native runtime jobs and complete release gates still
 require their own execution after delivery; no dirty upstream work is part of
 this consumer export.
+
+## 0.33.0 fleet retirement and CI installer publication
+
+On released 0.32.0 `cc725ef15585d9dd34eb8531bc1620acf195b55f`, the maintainer
+selected full fleet-reporter retirement for [#34](https://github.com/dragginzgame/ic-memory/issues/34).
+The two copies and manifest records are deleted: cloc 2.10 measures 398 code
+lines (423 physical lines). Shared Tooling remains the implementation owner.
+Local root/independent-workspace reports, tool fixtures and the omitted optional
+report's owner diagnostic pass; Memory never dispatches a sibling implicitly.
+
+The 86-file snapshot selects committed Shared 0.2.2
+`ee48bb37c98c771e77b92fd891f0757d8c1c8b99`, adopting [Shared #88](https://github.com/dragginzgame/shared-tooling/issues/88).
+Canonical installer fixtures pass with Bash 5 and genuine Linux-built Bash 3.2,
+including late-directory refusal with candidate retention, late-symlink target
+preservation and missing-Perl refusal. This uses substituted downloads/hosts,
+not native macOS execution. Snapshot, consumer tool/evidence fixtures, declaration
+admission, formatting, tooling lint and local documentation checks pass. Evidence:
+`target/qualification/0.33.0-fleet-shared0202/`. No dependency/tool selection,
+product source, build evidence or Git history changes. The minor candidate
+reflects removal of the local fleet-report offering; package versions stay at
+the released value. New consumer native CI and complete gates remain unrun.

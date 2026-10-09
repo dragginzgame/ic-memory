@@ -16,7 +16,7 @@ implementation and qualification without asking again. It does not authorize
 unrelated sibling edits, commits, pushes, releases or publication.
 
 The existing tooling snapshot at revision
-`06b2e22f6bd213f1a590eb2a8797aee34c42dd69` is recorded in
+`ee48bb37c98c771e77b92fd891f0757d8c1c8b99` is recorded in
 [.shared-tooling.snapshot](.shared-tooling.snapshot). It identifies the vendored
 files, hashes and executable modes; it does not freeze the active local policy.
 Keep its provenance accurate and never edit vendored files in place. Do not
@@ -25,7 +25,7 @@ attribute uncommitted shared files to that recorded revision. The live local
 also applies within its activation scope and is included in this recorded snapshot.
 These instructions are the repository's local overlay.
 
-The single 88-file snapshot uses reviewed committed Shared Tooling 0.2.1,
+The single 86-file snapshot uses reviewed committed Shared Tooling 0.2.2,
 including the archiver, tool-evidence selector, their fixtures and the shared
 retention action. It replaces the supplemental archive manifest and its duplicate
 verifier records. The consumer collector owns product log selection and calls
@@ -52,9 +52,10 @@ fixture remains upstream-owned and is not selected. Fourteen explicit additions
 complete the linked maintenance catalog, optional coordinator and scheduler
 templates. Their adoption activates no task, agent or schedule. The current
 MSRV and std/no_std guidance is included without changing compiler selection.
-Three fleet/context LOC regression programs are no longer selected or dispatched
-by consumer CI; their qualification remains with Shared Tooling. The local
-workspace LOC fixture and existing documented report commands remain selected.
+Fleet/context LOC regression programs and both fleet reporter implementations
+are no longer selected in Memory; their ownership remains with Shared Tooling.
+Run fleet reports there. The local workspace LOC fixture and `make cloc` remain
+selected, including the explicit independent qualification-manifest option.
 
 The snapshot includes the common
 audit methods, local host/IC setup, dependency checker, release-command checker
@@ -88,12 +89,9 @@ owned by `dragginzgame` follows that rule's standing authority; issue actions in
 other GitHub repositories require explicit destination/action authorization.
 Inspection still does not authorize source repair.
 
-The tooling inventory fixture runs from current consumer exports without
-committed-history or distribution-helper prerequisites, the reviewed correction
-for [Shared Tooling #50](https://github.com/dragginzgame/shared-tooling/issues/50).
-Exporter/verifier integration belongs to the upstream distribution fixture;
-the consumer no longer vendors its unused exporter. Never create a fixture
-commit or alter the real index to satisfy a test prerequisite.
+Fleet inventory and exporter/verifier integration fixtures remain upstream-owned.
+The consumer does not vendor the fleet fixtures or unused exporter. Never create
+a fixture commit or alter the real index to satisfy a test prerequisite.
 
 The shared Make execution checker guards the runner, hook and consumer Rust
 validation adapter before gate dispatch. It refuses inherited Make modes that

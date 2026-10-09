@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.33.0]
+
+### Breaking
+
+- Run fleet LOC/tooling reports in Shared Tooling; retire Memory's two copied
+  reporters and local report offering. Local workspace `make cloc` stays available.
+  [#34](https://github.com/dragginzgame/ic-memory/issues/34).
+
+### Fixed
+
+- Adopt Shared Tooling 0.2.2's exact-path CI tool publication, preserving files
+  and failed candidates when the executable destination changes during setup.
+  [Shared #88](https://github.com/dragginzgame/shared-tooling/issues/88).
+
+[Detailed notes](docs/changelog/0.33.md)
+
 ## [0.32.0] - 2026-10-09
 
 ### Breaking
