@@ -1,6 +1,6 @@
 # Changelog
 
-## [0.33.1]
+## [0.33.1] - 2026-10-09
 
 - Preserve untouched metadata files and their permissions when release
   preparation fails before publication.
