@@ -3191,3 +3191,119 @@ regression remain in `target/qualification/0.33.1-note-content/` and
 are unchanged during this correction. These are local Linux checks with
 substituted release effects, not native macOS or live release qualification.
 The compatible 0.33.1 batch remains uncommitted; full gates remain unrun.
+
+
+## 0.33.2 Shared 0.2.4 fixture companions
+
+The canonical exporter refreshes Memory's unchanged 86-file selection from a
+clean isolated checkout of committed Shared Tooling 0.2.4
+`ffbf665b8481c36b2d9f4d988abec557c3485fa6`. Eight selected fixture headers and
+adoption guidance change; all selected bytes and executable modes match that
+commit. Every declared companion is already selected. Production helpers,
+hooks, pins, package manifests and both lockfiles remain unchanged. Dirty
+upstream hook/installer edits are excluded from the committed snapshot.
+[Shared #73](https://github.com/dragginzgame/shared-tooling/issues/73).
+
+A focused initial export selecting the Cargo-metadata fixture without its version
+reader refuses before creating selected files or a manifest, preserving unrelated
+bytes. Two earlier attempts stopped at required verifier prerequisites; those
+inconclusive logs are retained separately. No fixture commits, tags or pushes
+are created, and the upstream integration suite is not copied or invoked.
+Actual consumer snapshot, pin declarations/fixtures, tool fixtures, formatter
+prerequisites, both-workspace formatting and local documentation links pass.
+The broader documentation check also repairs two composed-host links left at
+the former package location in existing reports; their historical claims remain
+unchanged. The failed link-check output is retained.
+Evidence: `target/qualification/0.33.2-shared0204/`.
+
+This is local compatible adoption for pending 0.33.2, with no full gate or release
+effects. Upstream exact-source Linux portable and lint/security jobs pass;
+macOS jobs remain queued in [Shared CI](https://github.com/dragginzgame/shared-tooling/actions/runs/37927306875).
+Memory 0.33.1 is delivered at `17372c0d1d71fc3516f415ff8c30057c4441bc31`,
+matching remote main and the peeled annotated tag. Its Linux native/MSRV,
+installed runtime and lint jobs pass, while six macOS jobs remain queued in
+[Memory CI](https://github.com/dragginzgame/ic-memory/actions/runs/37931572683).
+These observations confirm delivery of [#39](https://github.com/dragginzgame/ic-memory/issues/39)
+and [#40](https://github.com/dragginzgame/ic-memory/issues/40), without claiming
+complete native acceptance or qualification of the new dirty adoption.
+
+
+## 0.33.2 Shared 0.2.5 literal hook paths
+
+The same compatible pending 0.33.2 draft now selects committed Shared Tooling
+0.2.5 `04e07b4bf54e7aeb03eb7804a845cee27b7305df`. The canonical refresh uses
+an isolated clean checkout and retains the existing 86-file roster. All selected
+bytes and modes match that revision; manifests, both locks, the real Git index
+and local Git configuration remain byte-identical to the incoming state.
+The adopted production changes are the shared hook and installer; their linked
+rule also changes. The preceding 0.2.4 evidence retains its original identity.
+[Shared #89](https://github.com/dragginzgame/shared-tooling/issues/89).
+
+Memory's new consumer regression first fails with the old installer in a
+newline-ending checkout (`cd` loses the final newline). The failed fixture remains
+`/tmp/ic-memory-hooks.TidTec`; the before log is retained. With the adopted files,
+actual repeated setup and hook execution pass, formatting selected sources in
+both maintained workspaces with the real cargo-sort/rustfmt targets. Neither
+lockfile nor build directory is created in the fixture. Existing partial-staging,
+failed-formatter, unrelated-edit and prepared-local-tool cases still pass.
+
+The exact owner's focused hook suite also passes on local Linux Bash 5, including
+literal conflicting local/inherited settings, failed Git observations and preserved
+configuration. Consumer snapshot/pin admission, formatting, Actionlint, ShellCheck
+and local documentation links pass. Logs and input hashes are retained in
+`target/qualification/0.33.2-shared0205/`. Fixture effects reuse existing source
+commits; no new commits, tags or pushes, actual clone activation, full gates or
+release effects are performed.
+
+[Exact upstream CI](https://github.com/dragginzgame/shared-tooling/actions/runs/37937705371)
+has successful Linux portable and lint/security jobs; both macOS jobs are queued.
+The older native local-tool fixture failure remains tracked in
+[Shared #85](https://github.com/dragginzgame/shared-tooling/issues/85), and the separate
+qualification helper's newline-root gap remains in
+[Shared #90](https://github.com/dragginzgame/shared-tooling/issues/90). Memory does
+not select that helper. Local Linux evidence is not native macOS acceptance.
+
+
+## 0.33.2 Host 0.9.3 review
+
+The incoming maintainer-selected root lock uses `ic-host-fs` and
+`ic-host-artifacts` 0.9.3, released at
+`545e7236b91d84e190c80931b784f72cc4fafb11`. Their Rust source is byte-identical
+to 0.9.2; this release adopts Shared Tooling's already-reviewed hook correction.
+Both cached registry copies match the exact released source/VCS identity
+(74 source files checked), and cached archive hashes match the selected lock.
+Locked/offline metadata confirms empty feature sets for both packages. All
+38 Memory release-adapter tests and strict Rust 1.99.0 example/test Clippy pass.
+Manifests, both selected locks and the snapshot remain unchanged during review.
+Evidence: `target/qualification/0.33.2-host093/`.
+
+Remote main and the peeled annotated `v0.9.3` tag match the reviewed commit.
+[Exact Host CI](https://github.com/dragginzgame/ic-host-tooling/actions/runs/37938930037)
+has successful Linux native and MSRV jobs; both macOS jobs remain queued.
+No new applicable Host defect or source simplification is identified in this
+release. The consumer qualification stays in pending 0.33.2; no sibling edits,
+source repairs, dependency reselection, full gates or Git/release effects occur.
+
+
+## 0.33.2 publication tag identity
+
+The released 0.33.1 publication adapter checks the tag initially, but omits it
+from late admission and completion checks. The focused regression first shows
+a successful adapter result after substituted Cargo removes the tag. The failed
+fixture remains `/tmp/ic-memory-tooling-225-1`; the before log is retained.
+[#41](https://github.com/dragginzgame/ic-memory/issues/41).
+
+The existing tag admission now returns its observed annotated object identity.
+Publication holds that identity and its selected release tuple through late
+admission and completion. The regression covers pre-dispatch tag removal with
+zero Cargo publication dispatches, plus removal, retargeting and annotation
+replacement during Cargo with exactly one dispatch and unchanged receipt bytes.
+The failure never replays external effects or regenerates qualification evidence;
+a post-dispatch error cannot establish that the external publication failed.
+
+All 39 adapter tests, strict Rust 1.99.0 example/test Clippy, both-workspace
+formatting and local documentation links pass with the incoming Host 0.9.3 lock.
+Input hashes confirm unchanged manifests, both locks and the selected snapshot.
+Logs: `target/qualification/0.33.2-publication-tag/`. This compatible local fix
+extends pending 0.33.2. Tests substitute Git/publication effects; no real commits,
+tags, pushes or publication, full gates, or native macOS acceptance are claimed.

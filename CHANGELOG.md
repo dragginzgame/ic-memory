@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.33.2]
+
+- Adopt Shared Tooling 0.2.5's required-helper declarations so incomplete reusable
+  test selections are rejected before replacing consumer files.
+  [Shared #73](https://github.com/dragginzgame/shared-tooling/issues/73).
+- Preserve literal hook selections and support formatting-hook setup and execution
+  in checkout paths ending in newlines.
+  [Shared #89](https://github.com/dragginzgame/shared-tooling/issues/89).
+- Refresh host-side release-file dependencies to IC Host 0.9.3.
+- Reject changed release tags before package publication and when checking its
+  completion, preserving evidence without automatically retrying publication.
+  [#41](https://github.com/dragginzgame/ic-memory/issues/41).
+
+[Detailed notes](docs/changelog/0.33.md)
+
 ## [0.33.1] - 2026-10-09
 
 - Preserve untouched metadata files and their permissions when release

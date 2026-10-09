@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Shared companions: scripts/ci/verify-evidence-checksums.sh scripts/ci/verify-file-checksum.sh
 set -Eeuo pipefail
 
 ROOT="${BASH_SOURCE[0]}"

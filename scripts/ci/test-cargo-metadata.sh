@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Shared companions: scripts/ci/read-cargo-workspace-version.sh scripts/ci/check-dependency-pins.sh
 set -euo pipefail
 
 ROOT="${BASH_SOURCE[0]}"

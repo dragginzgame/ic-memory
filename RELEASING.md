@@ -225,6 +225,10 @@ change that setting to retry online.
 `PUBLISH_DRY_RUN=1 make publish` also selects a dry run. Publication requires the
 exact commit, annotated tag, selected dependencies and qualified archive; it
 never creates replacement evidence. A fresh checkout alone is not qualification.
+The selected release and exact observed annotated tag object are checked again
+immediately before Cargo dispatch and after successful Cargo return. A changed
+or missing tag stops the check without replaying publication or changing refs.
+A post-dispatch conflict does not undo external effects.
 If publication is interrupted, inspect crates.io's exact version before retrying;
 a lost reply is not proof of failure. Release targets never publish implicitly.
 

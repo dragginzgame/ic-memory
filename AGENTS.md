@@ -16,7 +16,7 @@ implementation and qualification without asking again. It does not authorize
 unrelated sibling edits, commits, pushes, releases or publication.
 
 The existing tooling snapshot at revision
-`ac4549c5ebde497f7db0da5d05d32835112e51de` is recorded in
+`04e07b4bf54e7aeb03eb7804a845cee27b7305df` is recorded in
 [.shared-tooling.snapshot](.shared-tooling.snapshot). It identifies the vendored
 files, hashes and executable modes; it does not freeze the active local policy.
 Keep its provenance accurate and never edit vendored files in place. Do not
@@ -25,7 +25,7 @@ attribute uncommitted shared files to that recorded revision. The live local
 also applies within its activation scope and is included in this recorded snapshot.
 These instructions are the repository's local overlay.
 
-The single 86-file snapshot uses reviewed committed Shared Tooling 0.2.3,
+The single 86-file snapshot uses reviewed committed Shared Tooling 0.2.5,
 including the archiver, tool-evidence selector, their fixtures and the shared
 retention action. It replaces the supplemental archive manifest and its duplicate
 verifier records. The consumer collector owns product log selection and calls

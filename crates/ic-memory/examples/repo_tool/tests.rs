@@ -519,7 +519,15 @@ impl Execute for Substitute {
                 }
                 Ok(String::new())
             }
-            "cargo" if args.get(1) == Some(&"publish") => Ok(String::new()),
+            "cargo" if args.get(1) == Some(&"publish") => {
+                match state.fail.as_deref() {
+                    Some("publish-tag-missing") => state.tag = false,
+                    Some("publish-tag-commit") => state.fail = Some("tag-commit".to_owned()),
+                    Some("publish-tag-object") => state.fail = Some("tag-object".to_owned()),
+                    _ => {}
+                }
+                Ok(String::new())
+            }
             "make"
                 if args
                     == [
@@ -562,14 +570,24 @@ impl Execute for Substitute {
                         .or(state.release.as_ref())
                         .unwrap_or(&state.source),
                 ),
-                ["rev-parse", "HEAD"] => Ok(if state.descendant.is_some() {
-                    "fix"
-                } else if state.release.is_some() {
-                    "release"
-                } else {
-                    "source"
+                ["rev-parse", "HEAD"] => {
+                    if state.fail.as_deref() == Some("publish-before-tag")
+                        && state
+                            .calls
+                            .iter()
+                            .any(|call| call.get(1).is_some_and(|arg| arg == "cat-file"))
+                    {
+                        state.tag = false;
+                    }
+                    Ok(if state.descendant.is_some() {
+                        "fix"
+                    } else if state.release.is_some() {
+                        "release"
+                    } else {
+                        "source"
+                    }
+                    .to_owned())
                 }
-                .to_owned()),
                 ["rev-parse", "HEAD^"] => Ok("source".to_owned()),
                 ["show", object] => {
                     let (revision, path) =
@@ -596,7 +614,11 @@ impl Execute for Substitute {
                         _ => Err("unexpected fixture revision".into()),
                     }
                 }
-                ["for-each-ref", ..] => Ok(if state.tag {
+                ["for-each-ref", ..] => Ok(if state.tag
+                    && state.fail.as_deref() == Some("tag-object")
+                {
+                    "changed-tag-object refs/tags/v0.13.0"
+                } else if state.tag {
                     "tag-object refs/tags/v0.13.0"
                 } else {
                     ""
@@ -1926,6 +1948,36 @@ fn changed_missing_and_wrong_source_receipts_never_dispatch_publication() {
                 .calls
                 .iter()
                 .any(|call| call.get(2).is_some_and(|arg| arg == "publish"))
+        );
+    }
+}
+
+#[test]
+fn publication_rechecks_tag_identity_without_replaying_effects_or_replacing_evidence() {
+    for change in [
+        "publish-before-tag",
+        "publish-tag-missing",
+        "publish-tag-commit",
+        "publish-tag-object",
+    ] {
+        let fixture = Fixture::new();
+        fixture.release();
+        let receipt = fixture.repo.receipt_path("0.13.0", false).unwrap();
+        let before = fs::read(&receipt).unwrap();
+        fixture.fail(change);
+        assert!(fixture.repo.publish(true).is_err(), "accepted {change}");
+        assert_eq!(fs::read(&receipt).unwrap(), before);
+        assert_eq!(
+            fixture
+                .repo
+                .exec
+                .state
+                .borrow()
+                .calls
+                .iter()
+                .filter(|call| { call.get(2).is_some_and(|arg| arg == "publish") })
+                .count(),
+            usize::from(change != "publish-before-tag")
         );
     }
 }

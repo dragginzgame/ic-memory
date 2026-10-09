@@ -1375,8 +1375,8 @@ impl<E: Execute> Repository<E> {
         )?;
         Ok(())
     }
-    fn check_tag(&self, version: &str, head: &str) -> Result<()> {
-        require(self.local_tag(version)?.is_some(), "release tag is missing")?;
+    fn check_tag(&self, version: &str, head: &str) -> Result<String> {
+        let tag = self.local_tag(version)?.ok_or("release tag is missing")?;
         require(
             self.git(&["cat-file", "-t", &format!("refs/tags/v{version}")])? == "tag",
             "release tag must be annotated",
@@ -1384,12 +1384,14 @@ impl<E: Execute> Repository<E> {
         require(
             self.git(&["rev-parse", &format!("refs/tags/v{version}^{{commit}}")])? == head,
             "release tag does not identify the selected commit",
-        )
+        )?;
+        Ok(tag)
     }
 
     fn publish(&self, dry_run: bool) -> Result<()> {
-        let (version, head, source) = self.release_commit()?;
-        self.check_tag(&version, &head)?;
+        let release = self.release_commit()?;
+        let (version, head, _) = &release;
+        let tag = self.check_tag(version, head)?;
         let mut args = vec![
             format!("+{}", self.toolchain()?),
             "publish".to_owned(),
@@ -1401,8 +1403,12 @@ impl<E: Execute> Repository<E> {
             args.push("--dry-run".to_owned());
         }
         require(
-            self.release_commit()? == (version, head, source),
+            self.release_commit()? == release,
             "release changed before publication",
+        )?;
+        require(
+            self.check_tag(version, head)? == tag,
+            "release tag changed before publication",
         )?;
         // Cargo uploads the crate from the package directory. Evidence is checked
         // before dispatch and rechecked afterwards so a rebuild cannot replace it
@@ -1411,8 +1417,14 @@ impl<E: Execute> Repository<E> {
             "cargo",
             &args.iter().map(String::as_str).collect::<Vec<_>>(),
         )?;
-        self.release_commit()?;
-        Ok(())
+        require(
+            self.release_commit()? == release,
+            "release changed during publication",
+        )?;
+        require(
+            self.check_tag(version, head)? == tag,
+            "release tag changed during publication",
+        )
     }
 }
 

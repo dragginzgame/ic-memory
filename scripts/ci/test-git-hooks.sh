@@ -209,4 +209,14 @@ ln -s "$PWD" "$fixture/installer-alias"
 )
 [[ "$(git config --local --get core.hooksPath)" == .githooks ]]
 
+# Qualify the actual two-workspace formatter in a literal newline-ending root.
+new_fixture $'installation-root\n'
+bash scripts/dev/install-git-hooks.sh > output
+bash scripts/dev/install-git-hooks.sh >> output
+[[ "$(git config --local --get core.hooksPath)" == .githooks ]]
+CARGO_NET_OFFLINE=true RUSTUP_AUTO_INSTALL=0 bash .githooks/pre-commit >> output
+[[ "$(git show :crates/hook-fixture/src/lib.rs)" == 'pub fn fixture() {}' ]]
+[[ "$(git show :testing/runtime-qualification/crates/hook-fixture/src/lib.rs)" == 'pub fn fixture() {}' ]]
+[[ ! -e Cargo.lock && ! -e testing/runtime-qualification/Cargo.lock && ! -e target && ! -e testing/runtime-qualification/target ]]
+
 echo 'Consumer hook selection, partial staging, failure isolation, setup and both-workspace formatting passed'

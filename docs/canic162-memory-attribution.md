@@ -215,7 +215,7 @@ recovery or doctor inspection with explicit configuration, construct an owned
 explicitly rejects 16; it is not reduced in place. Use the same setting on later
 bootstrap calls. Current Canic source selects 16 pages; ic-memory itself retains
 128 pages as the fresh-state default. This review does not change any consumer
-or deployed memory. The [composed-host example](../examples/composed_host.rs)
+or deployed memory. The [composed-host example](../crates/ic-memory/examples/composed_host.rs)
 qualifies native thread ordering and repeated substrate reopens; Canic owns its
 participant/store-restoration lifecycle proof.
 

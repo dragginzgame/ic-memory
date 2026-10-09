@@ -56,7 +56,7 @@ feedback is resolved by the released runtime, independently of #8's maintenance
 request.
 
 The 2026-10-03 request for a composed-host example and repeated cold reopens is
-covered by [the new public-API example](../examples/composed_host.rs) and its two
+covered by [the new public-API example](../crates/ic-memory/examples/composed_host.rs) and its two
 tests, enabled in the ordinary suite. They check two cold reopens over the same
 backing, fixed/logical IDs and retained data, current authority, unchanged
 geometry, cold admission, effect-free warm adoption, typed consumer rejection
