@@ -1,6 +1,6 @@
 # Changelog
 
-## [0.33.3]
+## [0.33.3] - 2026-10-09
 
 - Share standard release-command routing through Shared Tooling 0.2.6 while
   preserving checkout-local runner selection, release admission and locked cache
