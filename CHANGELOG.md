@@ -1,6 +1,6 @@
 # Changelog
 
-## [0.31.9]
+## [0.31.9] - 2026-10-09
 
 - Preserve exact Git index bytes when checking clean source, while retaining
   changed-path diagnostics and original Git errors. Reject unrelated release
