@@ -1,6 +1,6 @@
 # Changelog
 
-## [0.33.4]
+## [0.33.4] - 2026-10-09
 
 - Refresh Shared Tooling for checkout-local Make admission, recursive invocation
   and recorded snapshot version/revision, preserving release routing and cache policy.
