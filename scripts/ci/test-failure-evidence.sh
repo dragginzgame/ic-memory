@@ -33,10 +33,16 @@ fi
 [[ "$status" == 1 ]]
 printf 'original_status=%s\n' "$status" > "$temp_root/validation.log"
 printf 'selected dependency diagnostics\n' > "$temp_root/dependencies.log"
+printf 'runtime setup failure\n' > "$temp_root/runtime-setup.log"
+printf 'runtime diagnostics\n' > "$temp_root/runtime.log"
 printf 'unselected temporary file\n' > "$temp_root/unrelated"
 mkdir -p "$repository_root/target/qualification" "$repository_root/target/release-validation" \
     "$repository_root/.tools/host-set.test/bin" "$repository_root/.tools/ic-set.test/bin" \
+    "$repository_root/.tools/rust/build/cargo-attempt.test" \
+    "$repository_root/.tools/ic-testkit-server/failed-attempt" \
     "$repository_root/.git" "$repository_root/target/unrelated"
+printf 'CLI build failure\n' > "$repository_root/.tools/rust/build/cargo-attempt.test/install.log"
+printf 'server setup failure\n' > "$repository_root/.tools/ic-testkit-server/failed-attempt/version.stderr"
 printf 'qualification\n' > "$repository_root/target/qualification/"$'line\nbreak:payload'
 chmod 640 "$repository_root/target/qualification/"$'line\nbreak:payload'
 printf 'release validation\n' > "$repository_root/target/release-validation/attempt.log"

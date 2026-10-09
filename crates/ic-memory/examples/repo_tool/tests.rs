@@ -2,12 +2,8 @@
 //! No fixture commits, tags, pushes or live publication occur.
 
 use super::*;
-use std::{
-    cell::RefCell,
-    sync::atomic::{AtomicU64, Ordering},
-};
+use std::cell::RefCell;
 
-static NEXT_FIXTURE: AtomicU64 = AtomicU64::new(0);
 const MANIFEST: &str = "[workspace]\nmembers = [\"crates/ic-memory\"]\n[workspace.package]\nversion = \"0.12.3\"\nrust-version = \"1.88.0\"\n[workspace.dependencies]\nother = \"0.12.3\"\n";
 const PACKAGE: &str = "[package]\nname = \"ic-memory\"\nversion.workspace = true\n";
 const LOCK: &str = "version = 4\n[[package]]\nname = \"ic-memory\"\nversion = \"0.12.3\"\n[[package]]\nname = \"other\"\nversion = \"0.12.3\"\n";
@@ -33,12 +29,24 @@ struct Fixture {
 
 impl Fixture {
     fn new() -> Self {
-        let root = env::temp_dir().join(format!(
-            "ic-memory-tooling-{}-{}",
-            std::process::id(),
-            NEXT_FIXTURE.fetch_add(1, Ordering::Relaxed)
-        ));
-        fs::create_dir(&root).unwrap();
+        Self::new_in(&env::temp_dir())
+    }
+
+    fn new_in(parent: &Path) -> Self {
+        // Exclusive creation owns uniqueness, including across PID reuse.
+        // Never reuse or remove an occupied path: it may hold failed evidence.
+        let mut sequence = 0_u64;
+        let root = loop {
+            let candidate = parent.join(format!(
+                "ic-memory-tooling-{}-{sequence}",
+                std::process::id()
+            ));
+            match fs::create_dir(&candidate) {
+                Ok(()) => break candidate,
+                Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => sequence += 1,
+                Err(error) => panic!("could not create fixture {}: {error}", candidate.display()),
+            }
+        };
         let source = BTreeMap::from([
             ("Cargo.lock".to_owned(), LOCK.to_owned()),
             ("Cargo.toml".to_owned(), MANIFEST.to_owned()),
@@ -210,6 +218,33 @@ fn failed_release_fixture_retains_receipts_and_command_state() {
     let root = successful.repo.root.clone();
     drop(successful);
     assert!(!root.exists());
+}
+
+#[test]
+fn fixture_creation_preserves_existing_directories_and_files() {
+    let parent = Fixture::new();
+    let retained = parent
+        .repo
+        .root
+        .join(format!("ic-memory-tooling-{}-0", std::process::id()));
+    fs::create_dir(&retained).unwrap();
+    fs::write(retained.join("evidence"), b"retained failure").unwrap();
+    let foreign = parent
+        .repo
+        .root
+        .join(format!("ic-memory-tooling-{}-1", std::process::id()));
+    fs::write(&foreign, b"unrelated file").unwrap();
+
+    let next = Fixture::new_in(&parent.repo.root);
+    assert_eq!(next.repo.version(None).unwrap(), "0.12.3");
+    assert_ne!(next.repo.root, retained);
+    assert_ne!(next.repo.root, foreign);
+    drop(next);
+    assert_eq!(
+        fs::read(retained.join("evidence")).unwrap(),
+        b"retained failure"
+    );
+    assert_eq!(fs::read(foreign).unwrap(), b"unrelated file");
 }
 
 #[test]

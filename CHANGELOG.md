@@ -1,5 +1,30 @@
 # Changelog
 
+## [0.32.0]
+
+### Breaking
+
+- Adopt Shared Tooling 0.2.1's five-tool IC bundle and transfer PocketIC setup
+  to IC Testkit. Rerun `make install-ic-tools`, then prepare runtime qualification
+  separately with `make install-runtime-server`. The runner now consumes
+  `IC_TESTKIT_POCKET_IC_URL`. Prior bundles and evidence remain intact.
+  [#38](https://github.com/dragginzgame/ic-memory/issues/38).
+
+### Fixed
+
+- Reject multi-document dependency-exception catalogs and find checkout-local
+  formatters during isolated hooks without requiring a shell PATH export.
+  [#38](https://github.com/dragginzgame/ic-memory/issues/38).
+
+- Keep release-workflow tests runnable when temporary paths already exist,
+  preserving retained failure evidence and unrelated files.
+  [#37](https://github.com/dragginzgame/ic-memory/issues/37).
+- Refresh host-side release-file dependencies to IC Host 0.9.0.
+- Install and check the final IC tool row even when a selected pin matrix has
+  no final newline. [Shared #87](https://github.com/dragginzgame/shared-tooling/issues/87).
+
+[Detailed notes](docs/changelog/0.32.md)
+
 ## [0.31.11] - 2026-10-09
 
 - Preserve the original release-preparation failure and all restoration errors,

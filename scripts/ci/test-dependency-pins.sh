@@ -73,6 +73,35 @@ cat > "$consumer/ci/dependency-pinning-exceptions.json" <<'JSON'
 [{"rule":"cargo-exact","file":"Cargo.toml","subject":"example","value":"=1.2.3","reason":"Fixture ABI must match its paired component.","evidence":"AGENTS.md"}]
 JSON
 check || { cat "$FIXTURE/output" >&2; exit 1; }
+cp "$consumer/ci/dependency-pinning-exceptions.json" "$FIXTURE/valid-exceptions.json"
+cp "$consumer/Cargo.toml" "$FIXTURE/selected-manifest"
+cp "$consumer/Cargo.lock" "$FIXTURE/selected-lock"
+cp "$consumer/.git/index" "$FIXTURE/selected-index"
+# Admission and suppression must use the same single exception document.
+for mutation in 'map(del(.reason))' '. + .' '.'; do
+    jq "$mutation" "$FIXTURE/valid-exceptions.json" > "$FIXTURE/exception-document"
+    for order in first last; do
+        if [[ "$order" == first ]]; then
+            cat "$FIXTURE/exception-document" > "$consumer/ci/dependency-pinning-exceptions.json"
+            printf '[]\n' >> "$consumer/ci/dependency-pinning-exceptions.json"
+        else
+            printf '[]\n' > "$consumer/ci/dependency-pinning-exceptions.json"
+            cat "$FIXTURE/exception-document" >> "$consumer/ci/dependency-pinning-exceptions.json"
+        fi
+        cp "$consumer/ci/dependency-pinning-exceptions.json" "$FIXTURE/selected-exceptions"
+        reject 'malformed or duplicate'
+        cmp "$FIXTURE/selected-exceptions" "$consumer/ci/dependency-pinning-exceptions.json"
+        cmp "$FIXTURE/selected-manifest" "$consumer/Cargo.toml"
+        cmp "$FIXTURE/selected-lock" "$consumer/Cargo.lock"
+        cmp "$FIXTURE/selected-index" "$consumer/.git/index"
+    done
+done
+for invalid in '' 'null' '['; do
+    printf '%s\n' "$invalid" > "$consumer/ci/dependency-pinning-exceptions.json"
+    reject 'malformed or duplicate'
+done
+cp "$FIXTURE/valid-exceptions.json" "$consumer/ci/dependency-pinning-exceptions.json"
+check || { cat "$FIXTURE/output" >&2; exit 1; }
 # A reason for one version cannot silently authorize another version.
 sed 's/=1.2.3/=1.2.4/' "$consumer/Cargo.toml" > "$FIXTURE/changed.toml"
 cp "$FIXTURE/changed.toml" "$consumer/Cargo.toml"

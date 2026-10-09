@@ -16,7 +16,7 @@ implementation and qualification without asking again. It does not authorize
 unrelated sibling edits, commits, pushes, releases or publication.
 
 The existing tooling snapshot at revision
-`1872ed2c20f6c70689bb2249050b1d673c60bfa0` is recorded in
+`06b2e22f6bd213f1a590eb2a8797aee34c42dd69` is recorded in
 [.shared-tooling.snapshot](.shared-tooling.snapshot). It identifies the vendored
 files, hashes and executable modes; it does not freeze the active local policy.
 Keep its provenance accurate and never edit vendored files in place. Do not
@@ -25,7 +25,7 @@ attribute uncommitted shared files to that recorded revision. The live local
 also applies within its activation scope and is included in this recorded snapshot.
 These instructions are the repository's local overlay.
 
-The single 87-file snapshot uses reviewed committed Shared Tooling 0.1.28,
+The single 88-file snapshot uses reviewed committed Shared Tooling 0.2.1,
 including the archiver, tool-evidence selector, their fixtures and the shared
 retention action. It replaces the supplemental archive manifest and its duplicate
 verifier records. The consumer collector owns product log selection and calls
@@ -33,6 +33,18 @@ the shared selector; full tool retention remains the command default, while CI
 explicitly selects compact retention for freshly verified complete active sets.
 Failed, unknown and unselected bundles remain full. Never attribute subsequent
 dirty sibling fixes to this committed export.
+The shared IC bundle contains five tools. PocketIC selection, provisioning,
+offline admission and managed lifecycle belong to the published Testkit CLI,
+selected independently in the root Makefile. `install-runtime-server` is explicit
+network setup; `runtime-server-check` is offline; `test-runtime` qualifies the
+supplied Wasm and independent runner with the prepared server. An old six-tool
+IC bundle fails the new offline check and requires explicit `install-ic-tools`;
+prior bundles, receipts and failure evidence stay retained. The runner reads
+`IC_TESTKIT_POCKET_IC_URL`; no retired server-path alias remains.
+The snapshot also includes single-document exception admission, checkout-local
+formatter lookup and the linked read-only release-source helper. Memory's Rust
+adapter retains ownership of release source admission; including the helper
+completes the linked governance selection without introducing another gate.
 This revision includes the reviewed installer operand corrections, explicit
 fixture companion declarations and literal host/IC active-link admission.
 The consumer release-runner fixture is simulation-only; the real-Git tracking
@@ -108,11 +120,14 @@ and prerequisites are declared in [docs/host-support.md](docs/host-support.md).
 - Focused checks: `make verify-shared-tooling`, `make check-pins`, `make test-pins`, `make test-tools`, `make test-tooling`,
   `make test-release-adapters`, `make test-release-runner`, `make test-hooks`,
   `make test-failure-evidence`, `make fmt-check`, `make lint-tooling`, or an appropriately
-  selected Rust test.
+  selected Rust test. `make runtime-server-check` and `make test-runtime` are
+  focused installed qualification with explicitly prepared tools and both caches.
 - Full gates: `make validate`, `make validate-toolchain`, `make wasm-size` and
   package/release qualification. Run these only on explicit request or in CI.
 - Dependency preparation: `make fetch-dependencies` is a separate network step.
-  Both maintained workspaces track their existing selected lockfiles.
+  Both maintained workspaces track their existing selected lockfiles. The
+  independent graph is prepared separately with
+  `cargo fetch --locked --manifest-path testing/runtime-qualification/Cargo.toml`.
   Validation and release preparation require those lockfiles and populated
   cache, and run offline without changing dependency selection.
   The documented release entry points also authorize locked cache preparation
@@ -260,8 +275,10 @@ protocol boundaries recorded exactly in
 `ic-stable-structures = "=0.7.2"` owns the manager/Cell layouts inspected by
 `runtime/layout.rs` and `stable_cell.rs`; a change requires layout, corruption,
 growth and installed IO/upgrade qualification. `pocket-ic = "=16.0.0"` is scoped
-to the independent qualification workspace and its caller-owned server API;
-changing that pair requires repeating installed qualification. These are existing
+to the independent qualification workspace. The client pin remains unchanged;
+Testkit 0.25.4 owns the reviewed 16.1.0 server selection. Changing that pair
+requires repeating installed qualification; historical 16.0.0 server evidence
+cannot qualify the new pairing. These are existing
 maintainer-selected boundaries, not new dependency selections. Keep both
 lockfiles, sources, features and toolchains unchanged during pinning adoption.
 

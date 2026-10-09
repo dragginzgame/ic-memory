@@ -21,7 +21,7 @@ fn main() {
     let wasm = fs::read(env::var("IC_MEMORY_QUALIFICATION_WASM").expect("fixture path")).unwrap();
     // The caller owns server startup/teardown. Never implicitly spawn or
     // download a binary as part of qualification.
-    let url = env::var("POCKET_IC_SERVER_URL").expect("owned PocketIC 16 server URL");
+    let url = env::var("IC_TESTKIT_POCKET_IC_URL").expect("caller-selected PocketIC server URL");
     let pic = PocketIcBuilder::new()
         .with_server_url(url.parse().unwrap())
         .with_application_subnet()

@@ -206,6 +206,81 @@ Consumer Make targets provide these adapters:
 | `release-tagged-check` | Check or record exact tag-bound evidence for `RELEASE_COMMIT` without another Git effect. |
 | `release-push-check` | Check the selected `RELEASE_COMMIT`, tag, evidence and destination before dispatch/reconciliation. |
 
+### Dependency preparation before compiled adapters
+
+Standard release entry points include locked cache preparation; maintainers
+should not need a separate manual fetch after every selected dependency update.
+Document the affected workspace graphs and exact preparation commands in the
+consumer's release guide. An explicit request for that documented release
+includes this network preparation, but never dependency upgrades or lock repairs.
+Cargo's explicit offline environment/configuration settings remain authoritative.
+Ordinary validation and standalone adapter commands remain offline.
+Do not hard-code `--offline` onto the authorized preparation step or export an
+offline setting across both preparation and validation. `--locked` preserves
+the selected dependency graph while allowing missing inputs to be downloaded.
+The same separation applies to authorized deployment preparation. See the
+[Cargo network policy](../rules/cargo-dependencies.md#cargo-network-policy):
+an expressly requested dependency update may resolve online before qualification,
+whereas an ordinary release/deployment fetches its existing lockfile and does not
+upgrade dependencies. Offline local-version synchronization and test fixtures
+are separate from dependency updates that need new registry inputs.
+
+If an adapter must compile before it can read the version or run preflight,
+prepare its selected cache before compilation. Keep this within the runner's
+normal adapter dispatch: select unfinished intent first, and never add a fetch
+prerequisite that runs against possibly interrupted metadata before recovery
+selection. A consumer can pass an internal preparation selection from its
+release entry points to its launcher; do not infer permission from an adapter
+name or enable it globally for ordinary checks.
+Remove that internal selection before dispatching the compiled adapter so its
+validation children cannot inherit online preparation permission.
+
+For example, a Cargo launcher selected by an authorized release uses
+`cargo +TOOLCHAIN fetch --locked`, followed by `cargo run --locked --offline`.
+Its ordinary invocation uses `cargo +TOOLCHAIN fetch --locked --offline` before
+the same offline compilation. Retain Cargo's original diagnostics and status
+on failure, name the consumer's explicit fetch command, and stop before further
+release effects. Do not switch an explicitly offline caller online on failure.
+
+Interrupted manifest/lock writes may require a coherent scratch workspace for
+compilation. Prepare that same scratch graph with the copied selected lock;
+do not fetch against inconsistent tracked metadata or change its dependency
+selection. Later qualification remains offline and bound to the selected source,
+inputs and receipts. A locked fetch does not qualify the source or reconcile
+release effects.
+
+Qualify missing-cache preparation, explicit offline refusal and network failure
+before compilation, unchanged locks, and interrupted metadata recovery through
+the consumer's focused launcher fixture. Native support and adoption by other
+consumers remain separately evidenced. Shared Tooling owns this convention;
+consumer launchers own their workspace/toolchain and recovery inputs.
+
+### Source admission diagnostics
+
+When refusing uncommitted source, report the staged, unstaged and untracked
+paths that violate the consumer's policy. Quote unusual path bytes and report
+all observed violations. A failed Git observation must preserve its error and
+be distinguished from a successfully observed dirty checkout. Never repair,
+stage or commit a file or lockfile merely to make admission succeed.
+
+Shell adapters can delegate to
+[`check-release-source.sh`](../scripts/ci/check-release-source.sh) from the
+checkout root. With no arguments it requires clean source. Repeat
+`--allow RELATIVE-PATH` for exact consumer-owned release metadata exceptions;
+these are literal paths, not globs. Shared Tooling allows `VERSION` and
+`CHANGELOG.md`. The helper separately observes index, worktree and untracked
+paths without writing the index, and rejects observation failures before
+reporting admission. Existing native-language owners may implement the same
+contract using their existing Git observation rather than adding a wrapper.
+
+The calling adapter owns phase context. An initial preflight refusal should say
+validation and version preparation have not started for that attempt. A later
+prepared, committed or resumed check must describe its actual phase instead;
+the reusable helper makes no blanket claim that validation never ran. Add the
+helper explicitly when refreshing a shell adapter's snapshot. Qualify clean,
+lock-only, hidden staged, unstaged, untracked and unusual-name cases, Git errors,
+and unchanged file/index bytes; consumer release metadata allowances stay local.
+
 The runner passes `RELEASE_KIND`, `RELEASE_PREVIOUS`, `RELEASE_VERSION`,
 `RELEASE_DATE`, `RELEASE_SOURCE`, `RELEASE_COMMIT`, `RELEASE_BRANCH`, `RELEASE_REMOTE`,
 `RELEASE_DELIVERY`, `RELEASE_PREPARATION_SOURCE` and `RELEASE_PREPARED_COMMIT` as Make

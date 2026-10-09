@@ -2961,3 +2961,144 @@ strict Rust 1.99.0 example/test Clippy and a focused Rust 1.88.0 example check.
 These qualify the local pending recovery correction with the new selected
 libraries on Linux. They do not replace complete release gates or native macOS
 qualification; the preceding 0.8.8 recovery evidence retains its original scope.
+
+## 0.31.12 retained fixture collisions
+
+Local pending correction for [#37](https://github.com/dragginzgame/ic-memory/issues/37)
+on released source `d40a99919eb21378edd2e3305171c45957ae0e0c`, changing only the
+Rust release-fixture constructor and its regression. A preexisting candidate file
+reproduces the old native `AlreadyExists` panic. The corrected fixture skips
+occupied directories/files through exclusive creation and preserves their
+payloads after cleanup; the global `NEXT_FIXTURE` counter is no longer needed.
+Other filesystem failures are not retried.
+
+Evidence remains in `target/qualification/0.31.12-fixture-collisions/`:
+`before.log` records the reproduced failure, `tests.log` records all 36 adapter
+tests passing with the ordinary temporary directory, and `clippy.log` records
+strict Rust 1.99.0 example/test Clippy. The failed reproduction remains under
+`/tmp/ic-memory-fixture-collision-before.1sWAvy/`. These are local Linux checks
+with substituted release effects; no fixture commits, tags, pushes or package
+publication occur. Native macOS qualification awaits delivery. Manifests, both
+lockfiles, tool pins, production adapter code and the Shared snapshot are unchanged.
+
+## 0.31.12 Host 0.8.10
+
+The maintainer-selected root lockfile selects Host filesystem/artifact 0.8.10.
+Locked offline metadata confirms empty feature sets for both crates. All 37
+packaged Rust source files match released Host commit
+`e944f114f7542d27ead5df8996d1b2df04e06c31` and are unchanged from 0.8.9.
+Host's shared checker/hook adoption affects its tooling, not Memory's selected
+library source or immutable Shared Tooling snapshot.
+
+`target/qualification/0.31.12-host0810/` retains input hashes, metadata, feature
+selection, source inventories and passing logs for all 36 Rust adapter tests
+and strict Rust 1.99.0 example/test Clippy. These are focused local Linux checks
+of the pending fixture correction with the new selected libraries, not complete
+release or native macOS qualification. Both manifests, the independent runtime
+lockfile and Shared snapshot remain unchanged; no dependency fetch was needed.
+
+## 0.32.0 Shared Tooling hard cut
+
+Pending local adoption for [#38](https://github.com/dragginzgame/ic-memory/issues/38)
+on released Memory `d40a99919eb21378edd2e3305171c45957ae0e0c`. The canonical
+committed exporter refreshed the reviewed selection to Shared Tooling 0.2.0
+`8140e3dd1b44409d682c721889ab702f438c6a17`, adding only the linked read-only
+release-source helper to complete the governance roster. All 88 selected files
+pass snapshot integrity. No vendored implementation was patched. Later dirty
+Shared work for [#87](https://github.com/dragginzgame/shared-tooling/issues/87)
+is not part of this export; Memory's selected catalog has its final newline.
+
+The five-tool IC selection removes PocketIC completely from the shared catalog,
+validator and installer branches. Actual Linux setup and offline checks pass.
+The former six-tool offline check refuses before activation; explicit setup
+selects a new bundle. The old pin-file and receipt bytes still match their saved
+copies, and all seven receipt-covered files verify afterward. No retained bundle
+or failed evidence is deleted. The initial checksum invocation used the wrong
+working directory and was retained separately from the corrected bundle-root
+checks; that attempt is not a successful verification.
+
+PocketIC now comes from published Testkit 0.25.4's exact registry CLI, installed
+through the canonical selected Cargo-tool installer with a release profile and
+Cargo's published lockfile. Actual owner setup downloads and authenticates its
+16.1.0 Linux server; the offline CLI receipt/byte check and server check return
+the admitted absolute path. The separate runtime client remains locked to
+16.0.0. `test-runtime` builds the supplied Wasm and runner before Testkit's
+managed launch, clears inherited binary/URL selections, and uses the sole
+`IC_TESTKIT_POCKET_IC_URL` contract. It retains input/artifact/CLI hashes,
+runtime diagnostics and server stdout/stderr under unique attempt directories.
+The ordinary library and release gates do not install or require a server.
+
+Actual Linux installed qualification passes all 12 invalid-IO traps with
+neighboring bytes and preceding mutation preserved, post-persistence upgrade
+failure and geometry-conflict rollback, and clean retry advancing exactly one
+generation. Nine valid-IO measurements also complete; the supplied Wasm is
+229,074 bytes. The final command passes again after adding retained diagnostics.
+A separate controlled Cargo/CLI dispatch confirms a failed runtime command's
+status 23 is reported by Make and its diagnostics/hashes remain retained; stale
+inherited server selections are cleared. That dispatch is a substitute proof,
+not installed runtime qualification. Its first malformed substitute invocation
+is retained and excluded from the passing result.
+
+The root manifest/lock selection changed externally during this batch from Host
+0.8.10 to 0.9.0. The selected filesystem/artifact features remain empty; all 37
+packaged Rust files match exact Host release
+`715854b47b888eefb6fc0fca76d9c99f55099150` and are unchanged from 0.8.10.
+Both independent runtime manifest/lock inputs stay byte-identical. Passing
+focused checks include all 36 Rust adapter tests, strict Rust 1.99.0
+example/test Clippy, Rust 1.88.0 example admission and strict independent-runner
+Clippy. The preceding 0.31.12/Host evidence records earlier provisional inputs
+and is not relabelled as this new selection.
+
+`target/qualification/0.32.0-shared0200/` retains before/current hashes, locked
+metadata, Host source inventory and command logs. Snapshot, actual declaration
+and inheritance admission, pin/metadata fixtures, tool/evidence fixtures,
+consumer hook isolation, simulated release runner/adapters, formatting and
+tooling lint pass. Tool, hook and pin fixtures also pass under genuine Linux-built
+Bash 3.2. The new hook cases isolate Cargo's home as well as PATH, admitting
+checkout-local prepared formatters and preserving the index/source on missing
+or wrong versions. Initial fixture isolation failures are retained; global
+formatter discovery and missing fixture `cargo-fmt` shims were corrected without
+changing product formatting. Documentation admission passed 239 local references
+across 37 documents before this record was added. The real staged payload remains
+empty; raw index hashes changed later, so byte-identical real-index preservation
+is not claimed. No commits, tags, pushes or publication occurred.
+
+Testkit's published owner setup/check/managed launch passes all three native hosts
+in [exact 0.25.4 CI](https://github.com/dragginzgame/ic-testkit/actions/runs/37901828971).
+Memory now has separate Linux/Intel macOS/Apple Silicon runtime CI jobs for this
+consumer pairing; these uncommitted jobs have not run remotely. Shared 0.2.0's
+[exact CI](https://github.com/dragginzgame/shared-tooling/actions/runs/37916384666)
+passes Linux portable/lint jobs with both macOS jobs queued at inspection. Memory
+0.31.11's [CI](https://github.com/dragginzgame/ic-memory/actions/runs/37910600351)
+passes Linux native/MSRV/lint, with Apple Silicon native running and the other
+three macOS jobs queued; it cannot qualify these pending edits. Full Memory gates,
+package/release qualification and native consumer macOS execution remain unrun.
+The pending candidate is 0.32.0 because the IC setup requires reinstall and the
+qualification URL contract changes; manifests are not bumped by note selection.
+
+### Final Shared Tooling 0.2.1 selection
+
+Shared 0.2.1 `06b2e22f6bd213f1a590eb2a8797aee34c42dd69` became available
+while this batch was finishing. The final 88-file snapshot adopts that committed
+release through the canonical exporter from a disposable clean local clone:
+the sibling already contained unrelated new dirty work, which was not copied.
+No new commits were created. The preceding 0.2.0 record and logs keep their
+original input identity.
+
+The reviewed follow-up fixes [Shared #87](https://github.com/dragginzgame/shared-tooling/issues/87):
+installation and offline version admission now consume a final pin row without
+a newline. All three simulated hosts cover installation of that last tool and
+refusal of its wrong version even with a matching modified receipt. The canonical
+IC fixtures pass under Bash 5 and genuine Bash 3.2. Actual installed five-tool
+and Testkit server offline checks, snapshot/declaration admission, formatting and
+tooling lint pass. The actual managed Memory runtime qualification also passes
+again with the final snapshot hash retained in its attempt inputs. Root manifests,
+both locks, selected tool versions and server bytes stay unchanged by this
+follow-up. Evidence is in `target/qualification/0.32.0-shared0201/`.
+
+The final documentation check covers 258 local references across 39 documents.
+The [exact Shared 0.2.1 CI](https://github.com/dragginzgame/shared-tooling/actions/runs/37918240103)
+is queued at inspection, with no completed native acceptance attributed to it.
+Memory's newly configured native runtime jobs and complete release gates still
+require their own execution after delivery; no dirty upstream work is part of
+this consumer export.

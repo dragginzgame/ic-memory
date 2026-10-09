@@ -200,20 +200,24 @@ cargo test --locked --offline --release --test allocation_measurements \
   -- --ignored --nocapture --test-threads=1
 ```
 
-In a separate terminal, start an already provisioned and verified PocketIC
-16.0.0 binary bound to loopback, using an available port (for example 4943):
+The preceding historical results used PocketIC server 16.0.0. Current setup
+uses the published Testkit CLI's reviewed server selection; prepare it separately
+and repeat installed qualification for that pairing:
 
 ```sh
-make ic-tools-check
-POCKET_IC_BIN="$PWD/.tools/ic/bin/pocket-ic"
-"$POCKET_IC_BIN" --ip-addr 127.0.0.1 --port 4943 --ttl 900 --hard-ttl 900
+make install-runtime-server
+make runtime-server-check
+make test-runtime
 ```
 
-The terminal owner stops this process after qualification. No server installation
-or download is performed by these commands. Then execute the built host runner:
+Only explicit setup installs the CLI and server. The offline runtime target
+builds before launch and Testkit owns bounded startup and teardown, retaining
+server output under `target/qualification/runtime/attempt.*`. The runner still
+borrows a caller-owned server and supplied artifact. For a direct invocation,
+provide the same URL contract exported by Testkit's `run` command:
 
 ```sh
-POCKET_IC_SERVER_URL=http://127.0.0.1:4943/ \
+IC_TESTKIT_POCKET_IC_URL=http://127.0.0.1:4943/ \
 IC_MEMORY_QUALIFICATION_WASM=target/wasm32-unknown-unknown/wasm-size/examples/wasm_io_qualification.wasm \
   target/runtime-qualification/debug/ic-memory-runtime-qualification
 ```

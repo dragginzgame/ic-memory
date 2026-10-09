@@ -143,6 +143,62 @@ jobs:
           retention-days: 14
           if-no-files-found: error
 
+  runtime:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-15, macos-15-intel]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # reviewed Shared Tooling pin
+        with:
+          persist-credentials: false
+      - name: Read pinned Rust toolchain
+        id: pin
+        shell: bash
+        run: |
+          channel="$(sed -n 's/^channel = "\([^"]*\)"$/\1/p' rust-toolchain.toml)"
+          [[ "$channel" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          echo "channel=$channel" >> "$GITHUB_OUTPUT"
+      - uses: dtolnay/rust-toolchain@e97e2d8cc328f1b50210efc529dca0028893a2d9 # reviewed master-history commit
+        with:
+          toolchain: ${{ steps.pin.outputs.channel }}
+          targets: wasm32-unknown-unknown
+      - run: make verify-shared-tooling
+      - name: Prepare host tools, selected CLI and Testkit server
+        shell: bash
+        run: |
+          make install-host-tools host-tools-check install-runtime-server 2>&1 | tee "$RUNNER_TEMP/runtime-setup.log"
+      - name: Prepare both tracked dependency graphs
+        shell: bash
+        run: |
+          make fetch-dependencies
+          cargo fetch --locked --manifest-path testing/runtime-qualification/Cargo.toml
+          shasum -a 256 Cargo.lock testing/runtime-qualification/Cargo.lock
+          rustc -Vv
+          uname -sm
+      - name: Qualify offline admission, installed IO and upgrade rollback
+        shell: bash
+        run: make test-runtime 2>&1 | tee "$RUNNER_TEMP/runtime.log"
+      - name: Archive failed runtime qualification
+        if: failure()
+        id: failure-evidence
+        shell: bash
+        run: |
+          archive="$(bash scripts/ci/collect-failure-evidence.sh "$RUNNER_TEMP" "$PWD" compact)"
+          if [[ -n "$archive" ]]; then
+            printf 'path=%s\n' "$archive" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Retain failed runtime qualification
+        if: ${{ failure() && steps.failure-evidence.outputs.path != '' }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # reviewed Shared Tooling pin, v7
+        with:
+          name: runtime-failure-${{ matrix.os }}
+          path: ${{ steps.failure-evidence.outputs.path }}
+          retention-days: 14
+          if-no-files-found: error
+
   msrv:
     strategy:
       fail-fast: false

@@ -93,8 +93,11 @@ The reviewed `make/tools.mk` owns installation, offline checks and LOC targets.
 Existing jq/yq/ripgrep-only checkouts must run `make install-host-tools` once to
 add pinned cloc 2.10, then `make host-tools-check` before offline qualification.
 See [common local setup](local-setup.md) for system bootstrap packages and
-[IC tools](ic-tools.md) for the selected Quill, ICP CLI, didc, ic-wasm, PocketIC
-and wasm-opt set. Host and IC setup activate independently; previous selections
+[IC tools](ic-tools.md) for the selected Quill, ICP CLI, didc, ic-wasm
+and wasm-opt set. Shared Tooling 0.2.0 requires an explicit `make install-ic-tools`
+refresh: an old six-tool bundle fails the new offline check and stays retained.
+PocketIC setup belongs to Testkit and is separate from `install-tools`.
+Host and IC setup activate independently; previous selections
 and failed candidates stay under `.tools/`. `install-host-tools` and
 `install-ic-tools` can prepare either set separately, with offline checks through
 `host-tools-check` and `ic-tools-check`. Ordinary validation never installs tools.
@@ -103,6 +106,29 @@ configured jobs alone do not qualify this adoption. The pin checker requires loc
 already tracked by Git. Adopt new locks through an explicitly authorized commit
 or PR before the real-checkout declaration/release gate can pass; qualification
 alone does not authorize staging them.
+
+Installed runtime qualification uses the published `ic-testkit` 0.25.4 server CLI
+selected in the root Makefile, installed through Shared Tooling's exact Cargo
+binary installer. It has a separate locked registry tool graph, outside both
+Memory lockfiles. Prepare it and Testkit's authenticated server selection explicitly:
+
+```sh
+make install-runtime-server
+make runtime-server-check
+cargo +1.99.0 fetch --locked --manifest-path testing/runtime-qualification/Cargo.toml
+make test-runtime
+```
+
+Prepare the root cache with `make fetch-dependencies` too. The offline check
+prints Testkit's admitted absolute server path. `test-runtime` builds both supplied
+artifacts offline, then uses Testkit's managed `run` contract to own startup and
+teardown. The runner consumes `IC_TESTKIT_POCKET_IC_URL`; it never downloads or
+spawns a server. The PocketIC client remains locked to 16.0.0; Testkit selects
+server 16.1.0. This new pairing requires installed IO/upgrade qualification on
+Linux and both macOS hosts, supplied by the separate runtime CI jobs. Historical
+16.0.0 server results remain scoped to their original inputs. Failed CLI setup,
+server attempts and runtime logs remain available; no old bundle is converted
+or deleted. Library and release gates do not acquire this server dependency.
 
 `make cloc` reports the root library workspace by default using locked, offline
 Cargo metadata; it neither builds nor installs tools. Select the independent

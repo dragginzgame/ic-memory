@@ -21,12 +21,14 @@ repository_root="$2"
 inputs=()
 shopt -s nullglob
 for path in "$temp_root/ic-memory-fixtures" "$temp_root/tools-setup.log" \
-    "$temp_root/dependencies.log" "$temp_root/validation.log"; do
+    "$temp_root/dependencies.log" "$temp_root/validation.log" \
+    "$temp_root/runtime-setup.log" "$temp_root/runtime.log"; do
     if [[ -e "$path" || -L "$path" ]]; then
         inputs+=("$temp_root" "${path#"$temp_root/"}")
     fi
 done
-for path in "$repository_root/target/qualification" "$repository_root/target/release-validation"; do
+for path in "$repository_root/target/qualification" "$repository_root/target/release-validation" \
+    "$repository_root/.tools/rust" "$repository_root/.tools/ic-testkit-server"; do
     if [[ -e "$path" || -L "$path" ]]; then
         inputs+=("$repository_root" "${path#"$repository_root/"}")
     fi

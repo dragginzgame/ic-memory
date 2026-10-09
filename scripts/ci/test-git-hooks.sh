@@ -163,6 +163,34 @@ MAKE
 make --no-print-directory -j2 -f parent.make hook HOOK_SELECTION=kept > output
 [[ "$(cat "$fixture/formatter-selection")" == kept ]]
 
+# Prepared checkout-local Rust tools must remain visible inside the isolated
+# index export even when the caller has no Cargo tools on its shell PATH.
+cargo_sort="$(command -v cargo-sort)"
+rustup="$(command -v rustup)"
+for admission in prepared missing wrong-version; do
+    new_fixture "local-tools-$admission"
+    mkdir -p .tools/rust/bin .tools/cargo-home
+    for tool in cargo cargo-fmt rustc rustfmt rustup; do ln -s "$rustup" ".tools/rust/bin/$tool"; done
+    case "$admission" in
+        prepared) cp "$cargo_sort" .tools/rust/bin/cargo-sort ;;
+        wrong-version)
+            printf '#!/bin/sh\necho "cargo-sort 0.0.0"\n' > .tools/rust/bin/cargo-sort
+            chmod +x .tools/rust/bin/cargo-sort ;;
+    esac
+    tree="$(git write-tree)"
+    cp crates/hook-fixture/src/lib.rs before
+    if [[ "$admission" == prepared ]]; then
+        CARGO_HOME="$PWD/.tools/cargo-home" PATH=/usr/bin:/bin bash .githooks/pre-commit > output 2>&1
+        [[ "$(git show :crates/hook-fixture/src/lib.rs)" == 'pub fn fixture() {}' ]]
+        [[ "$(git show :testing/runtime-qualification/crates/hook-fixture/src/lib.rs)" == 'pub fn fixture() {}' ]]
+    else
+        expect_failure env CARGO_HOME="$PWD/.tools/cargo-home" PATH=/usr/bin:/bin bash .githooks/pre-commit
+        [[ "$(git write-tree)" == "$tree" ]]
+        cmp before crates/hook-fixture/src/lib.rs
+    fi
+    [[ ! -e Cargo.lock && ! -e testing/runtime-qualification/Cargo.lock && ! -e target && ! -e testing/runtime-qualification/target ]]
+done
+
 new_fixture installation
 bash scripts/dev/install-git-hooks.sh > output
 [[ "$(git config --local --get core.hooksPath)" == .githooks ]]
