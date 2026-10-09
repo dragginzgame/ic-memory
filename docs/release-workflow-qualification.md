@@ -2780,3 +2780,121 @@ not that lock opener; those selected call paths are unchanged. Host's
 is queued, so native acceptance is not established. Memory retains selected
 Host 0.8.3; Shared remains committed at `4e274a2` with its previously reviewed
 local governance edits. No sibling repair or snapshot refresh occurred.
+
+## 0.31.10 CI retention
+
+The maintainer delivered 0.31.9 at
+`6343f62a36636cb999fa404e4b8769159ca9f4cb`, matching remote main and the peeled
+annotated `v0.31.9` tag. Its
+[CI run 37892022002](https://github.com/dragginzgame/ic-memory/actions/runs/37892022002)
+now passes all seven jobs, including native Linux, Intel macOS and ARM macOS,
+all three MSRV selections and tooling lint. Both macOS native jobs explicitly
+pass CDPATH hook isolation and archive/upload/download/payload controls. This
+completes the remaining delivery/native criterion in
+[#31](https://github.com/dragginzgame/ic-memory/issues/31). The delivered lock
+selects Host 0.8.4; earlier local 0.31.9 evidence for Host 0.8.3 is not relabelled.
+
+For [#33](https://github.com/dragginzgame/ic-memory/issues/33), the local workflow
+now groups push runs by workflow/ref/source SHA and preserves them; PR runs retain
+one group per PR ref and may replace earlier revisions. A SHA group is necessary
+to preserve pending runs as well as active jobs. Only the two concurrency fields
+and explanatory comments change; gates, hosts, pins, permissions, timeouts and
+evidence controls are unchanged. No new fixture or scheduling framework is added.
+
+The actual changed workflow passes actionlint 1.7.12 and the maintained tooling
+lint target with ShellCheck 0.11.0. Both-workspace formatting, declaration pins,
+the exact 90-file snapshot and whitespace checks also pass. Logs and source/input
+hashes are retained in `target/qualification/0.31.10-ci-retention/`. Published
+root/detail notes remain intact, with one undated compatible 0.31.10 candidate.
+This dirty workflow has no matching remote CI. Actual Memory scheduler acceptance
+requires delivery and naturally overlapping pushes; a static lint pass is not
+proof that GitHub preserved older running/queued jobs.
+
+The maintainer's new root lock selects Host filesystem/artifact 0.8.5. Their Rust
+sources are unchanged from 0.8.4, and the existing compatible requirements and
+disabled default features remain. Clean Host source
+`1cad3253096b6eb67be5187209e7fb606593c501` matches remote main and peeled
+annotated `v0.8.5`; its
+[CI run 37893479726](https://github.com/dragginzgame/ic-host-tooling/actions/runs/37893479726)
+is successful. That owner result does not qualify Memory's new locked graph.
+Initially, locked/offline Memory metadata and adapter tests stopped because
+`ic-host-artifacts 0.8.5` was absent from the local Cargo cache. The failed test log
+is preserved; no online retry or dependency reselection occurred. At that point,
+dependency preparation was needed before focused Host 0.8.5 adapter qualification.
+
+Before any network preparation was authorized or executed, the selected cache
+became available independently. A fresh locked/offline metadata observation now
+succeeds against the same input hashes and selects both Host crates with empty
+feature sets. All 34 repo-tool tests and strict example/test Clippy pass offline;
+their successful logs are separate from the initial cache-miss failure. All 18
+filesystem and 19 artifact Rust source files in each cached registry copy match
+Host's committed release tree and Cargo VCS identity. The earlier fetch question
+was no longer needed for those checks; no dependency preparation or online retry
+had run at that point.
+The initial failure remains evidence for its original cache state, not a current
+qualification blocker.
+
+The maintainer subsequently authorized the locked fetch explicitly.
+`make fetch-dependencies` succeeds and reports no downloads; both lockfiles and
+all recorded source/input hashes remain unchanged. Its log is retained with this
+batch. No repeated build was needed because the qualified selection stayed intact.
+
+Memory's manifests, independent runtime graph, tool/compiler pins, public APIs,
+durable formats and Shared snapshot remain unchanged. Shared's current committed
+0.1.32 governance applies through the live-local policy exception, but no sibling
+source was edited or adopted. No symbol was removed. No broad gate, staging,
+commit/tag/push, release, publication or workflow dispatch/rerun occurred.
+
+## 0.31.10 Host 0.8.6 and fleet fixture selection
+
+The maintainer's root lock now selects Host filesystem/artifact 0.8.6 while
+retaining compatible 0.8 requirements and disabled default features. Released
+Host `9f3d9a83def91030056c78e44c9efaa489be7d12` matches remote main and peeled
+annotated `v0.8.6`. Its additive `CommunicationLimits` selects optional deadlines
+for caller-owned child communication through the existing I/O engine; capture
+and executable admission keep finite `OutputLimits`. Memory does not select that
+process crate. All filesystem/artifact Rust sources are unchanged from 0.8.5.
+Each cached published copy's 18 filesystem and 19 artifact Rust files matches
+this committed release tree and its Cargo VCS identity.
+
+For [#34](https://github.com/dragginzgame/ic-memory/issues/34), caller review found
+three upstream-owned regression programs dispatched only by consumer
+`test-tools`: `test-cloc-siblings.sh`, `test-cloc-tooling.sh` and
+`test-cloc-fixture-contexts.sh`. The context fixture also invokes the sibling
+fixture, so these retire together with their Make dispatch and snapshot records.
+Pinned cloc 2.10 measures 267 code lines removed, excluding comments/blanks;
+these were shared copies, not an independent product implementation. None of
+the removed programs declares a production function or type.
+
+The snapshot now selects 87 files from the same `1872ed2` source revision;
+every retained hash/mode is unchanged. No vendored file was patched or dirty
+sibling source imported. The local `test-cloc.sh`, setup/check commands, pinned
+cloc and checksum/verifier companions remain selected. Existing documented fleet
+report commands remain an intentional selection for this patch; their retirement
+requires a separate scope decision and the committed optional-selection update
+owned by [Shared #83](https://github.com/dragginzgame/shared-tooling/issues/83).
+That current upstream Make/guide change is uncommitted and is not adopted here.
+Local AGENTS and host-support guidance now describe the selected fixture roster.
+
+Fresh locked/offline Memory checks pass: all 34 repo-tool tests, strict
+example/test Clippy and full metadata with empty Host feature sets. The actual
+tool-command dispatch fixture and retained local LOC fixture pass; real
+`make cloc` reports the root workspace and an explicit independent qualification
+manifest reports only that graph. This is LOC/metadata evidence, not installed
+PocketIC qualification. Exact snapshot, formatting, tooling lint, declaration
+pins, documentation links and whitespace checks accompany this selection.
+
+Logs, selected-input hashes, cached-source comparisons and removed-fixture LOC
+belong to `target/qualification/0.31.10-host086-fleet-fixtures/`. Earlier 0.31.10
+Host 0.8.5/90-file logs retain their original scope. Package versions, independent
+runtime inputs, compiler/tool pins and public/durable contracts remain unchanged.
+The same compatible 0.31.10 notes cover the existing CI retention fix and this
+completed batch. No broad gate, dependency fetch/reselection, staging, commit,
+release, sibling edit or CI dispatch/rerun occurred. Dirty 0.31.10 still needs
+matching delivery and native acceptance; native Host evidence is separate.
+
+At the final inspection, delivered Host 0.8.6
+[CI 37896909262](https://github.com/dragginzgame/ic-host-tooling/actions/runs/37896909262)
+passes Linux/Intel macOS/ARM macOS native jobs and MSRV. Released Memory 0.31.9
+still has its complete matching CI success; neither run tests this dirty
+0.31.10 fixture selection. All 100 selected documentation references resolve.

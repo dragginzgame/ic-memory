@@ -20,7 +20,7 @@ attribute uncommitted shared files to that recorded revision. The live local
 also applies within its activation scope and is included in this recorded snapshot.
 These instructions are the repository's local overlay.
 
-The single 90-file snapshot uses reviewed committed Shared Tooling 0.1.28,
+The single 87-file snapshot uses reviewed committed Shared Tooling 0.1.28,
 including the archiver, tool-evidence selector, their fixtures and the shared
 retention action. It replaces the supplemental archive manifest and its duplicate
 verifier records. The consumer collector owns product log selection and calls
@@ -35,6 +35,9 @@ fixture remains upstream-owned and is not selected. Fourteen explicit additions
 complete the linked maintenance catalog, optional coordinator and scheduler
 templates. Their adoption activates no task, agent or schedule. The current
 MSRV and std/no_std guidance is included without changing compiler selection.
+Three fleet/context LOC regression programs are no longer selected or dispatched
+by consumer CI; their qualification remains with Shared Tooling. The local
+workspace LOC fixture and existing documented report commands remain selected.
 
 The snapshot includes the common
 audit methods, local host/IC setup, dependency checker, release-command checker
@@ -43,17 +46,15 @@ checks cover both approved workspace roots. The unchanged `make/tools.mk`
 owns setup, offline tool checks and LOC commands. Its complete host set includes
 pinned cloc; existing installations must refresh explicitly. Rust LOC defaults
 to the root workspace; `CLOC_MANIFEST` explicitly selects the independent
-qualification manifest without combining graphs. Both shared LOC fixtures
-own target/manifest isolation, including enclosing Cargo workspaces and aliased
-build paths; consumer dispatch needs no target workaround. The shared Rust-tool
+qualification manifest without combining graphs. The retained local LOC fixture
+owns its target/manifest isolation; consumer dispatch needs no target workaround.
+Fleet/context fixture qualification stays upstream. The shared Rust-tool
 installer and fixtures are available through explicit `install-rust-tools` and
 `rust-tools-check`; the existing required host/IC aggregate and separate exact
 cargo-sort formatter setup remain unchanged.
 The Rust installer refuses redirected install/build/receipt paths before tool
 execution and after Cargo returns. Tool-command fixtures normalize their physical
 scratch root; the IC installer uses the included canonical pin parser.
-Sibling LOC fixtures also normalize physical scratch paths and qualify
-trailing-slash and aliased temporary roots inside enclosing workspaces.
 The release runner and its PR helper are exported unchanged. This consumer
 selects direct delivery and rejects other delivery selections before dispatch;
 PR release adapters and their real-Git qualification fixture are not adopted.

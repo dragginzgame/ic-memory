@@ -120,19 +120,16 @@ identities; explicit `--snapshot-root` selection handles other nested layouts.
 It does not infer ownership from matching hashes. See the correction in
 [Shared Tooling #39](https://github.com/dragginzgame/shared-tooling/issues/39).
 
-The reviewed LOC fixtures select their own manifests and build output,
-including with scratch inside an enclosing Git/Cargo workspace. Consumer
-`make test-tools` passes inherited target settings through to those fixtures;
-their context admission check verifies enclosing workspace/configuration
-isolation. Actual builds/reports retain target selections, and both fixtures
-keep their deliberate per-case overrides. These fixes track
+The retained local LOC fixture selects its own manifest and build output.
+Consumer `make test-tools` passes inherited target settings through to it;
+actual reports retain their selected workspace configuration. These fixes track
 [Shared Tooling #47](https://github.com/dragginzgame/shared-tooling/issues/47) and
 [#48](https://github.com/dragginzgame/shared-tooling/issues/48) without patching
 reviewed exports. CI continues to retain scratch under `$RUNNER_TEMP`.
-The sibling fixture declares its standalone Cargo workspace, addressing
-[#53](https://github.com/dragginzgame/shared-tooling/issues/53). Tooling inventory
-fixtures use current consumer files without requiring a commit or distribution
-exporter, addressing [#50](https://github.com/dragginzgame/shared-tooling/issues/50).
+Fleet and cross-workspace fixture qualification remains in Shared Tooling.
+Memory no longer selects or dispatches those three upstream regression programs;
+its local workspace fixture and documented report commands remain available.
+See [#34](https://github.com/dragginzgame/ic-memory/issues/34).
 
 The shared include also provides explicit `make install-rust-tools` and offline
 `make rust-tools-check` for the optional cargo-sort/cargo-sort-derives/Candid

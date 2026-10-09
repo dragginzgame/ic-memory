@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.31.10]
+
+- Preserve queued and running native CI for each main commit, while newer PR
+  revisions can replace earlier review runs.
+  [#33](https://github.com/dragginzgame/ic-memory/issues/33).
+- Refresh host-side release-file dependencies to IC Host 0.8.6.
+- Keep consumer tooling checks focused on local workspace integration; leave
+  fleet regression fixtures with Shared Tooling.
+  [#34](https://github.com/dragginzgame/ic-memory/issues/34).
+
+[Detailed notes](docs/changelog/0.31.md)
+
 ## [0.31.9] - 2026-10-09
 
 - Preserve exact Git index bytes when checking clean source, while retaining
