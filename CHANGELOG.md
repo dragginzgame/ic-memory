@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.31.9]
+
+- Preserve exact Git index bytes when checking clean source, while retaining
+  changed-path diagnostics and original Git errors. Reject unrelated release
+  changes even when filenames contain only whitespace.
+  [#31](https://github.com/dragginzgame/ic-memory/issues/31).
+- Refresh host-side release-file dependencies to IC Host 0.8.3, preserving
+  receipt and archive behavior.
+
+[Detailed notes](docs/changelog/0.31.md)
+
 ## [0.31.8] - 2026-10-08
 
 - Refresh host-side release-file dependencies to IC Host 0.8.2, preserving

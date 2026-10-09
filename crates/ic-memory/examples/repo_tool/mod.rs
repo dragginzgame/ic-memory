@@ -510,7 +510,15 @@ impl<E: Execute> Repository<E> {
     }
 
     fn clean(&self) -> Result<()> {
-        let status = self.output("git", &["status", "--porcelain", "--untracked-files=all"])?;
+        let status = self.output(
+            "git",
+            &[
+                "--no-optional-locks",
+                "status",
+                "--porcelain",
+                "--untracked-files=all",
+            ],
+        )?;
         require(
             status.trim().is_empty(),
             &format!(
@@ -771,13 +779,13 @@ impl<E: Execute> Repository<E> {
         }
         args.push("--");
         require(
-            self.git(&args)?
+            self.output("git", &args)?
                 .lines()
                 .eq(expected_changes.iter().map(String::as_str)),
             "release candidate contains changes outside its version surfaces",
         )?;
         require(
-            self.git(&["ls-files", "--others", "--exclude-standard"])?
+            self.output("git", &["ls-files", "--others", "--exclude-standard"])?
                 .is_empty(),
             "release candidate has untracked files",
         )
@@ -789,7 +797,10 @@ impl<E: Execute> Repository<E> {
         surfaces: &BTreeMap<String, String>,
     ) -> Result<()> {
         for path in self
-            .git(&["diff", "--cached", "--name-only", &selection.source, "--"])?
+            .output(
+                "git",
+                &["diff", "--cached", "--name-only", &selection.source, "--"],
+            )?
             .lines()
         {
             let expected = surfaces

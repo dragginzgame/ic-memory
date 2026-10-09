@@ -1,4 +1,5 @@
-//! Command effects are substituted; no Git mutations or live publication occur.
+//! Release effects are substituted; native Git checks use disposable indexes.
+//! No fixture commits, tags, pushes or live publication occur.
 
 use super::*;
 use std::{
@@ -514,10 +515,12 @@ impl Execute for Substitute {
                 Ok(String::new())
             }
             "git" => match args {
-                ["status", ..] if state.fail.as_deref() == Some("status") => {
+                ["--no-optional-locks", "status", ..]
+                    if state.fail.as_deref() == Some("status") =>
+                {
                     Err("fixture Git status observation failure".into())
                 }
-                ["status", ..] => changed(
+                ["--no-optional-locks", "status", ..] => changed(
                     state
                         .descendant
                         .as_ref()
@@ -1486,7 +1489,13 @@ fn source_admission_reports_actual_status_and_preserves_git_failures() {
         root: checkout,
         exec: Processes,
     };
+    // Discard stat-cache entries without changing the tree, so a plain status
+    // observation would refresh the index even though the checkout is clean.
+    repo.git(&["read-tree", "HEAD"]).unwrap();
+    repo.git(&["checkout-index", "--all", "--force"]).unwrap();
+    let clean_index = fs::read(repo.root.join(".git/index")).unwrap();
     repo.clean().unwrap();
+    assert_eq!(fs::read(repo.root.join(".git/index")).unwrap(), clean_index);
     let lock = format!(
         "{}\n# staged fixture\n",
         repo.text("Cargo.lock", None).unwrap()
@@ -1502,13 +1511,23 @@ fn source_admission_reports_actual_status_and_preserves_git_failures() {
     fs::write(repo.root.join(untracked), b"untracked fixture").unwrap();
     let tree = repo.git(&["write-tree"]).unwrap();
     let status = repo
-        .output("git", &["status", "--porcelain", "--untracked-files=all"])
+        .output(
+            "git",
+            &[
+                "--no-optional-locks",
+                "status",
+                "--porcelain",
+                "--untracked-files=all",
+            ],
+        )
         .unwrap();
     assert!(status.contains("M  Cargo.lock"));
     assert!(status.contains(" M Cargo.toml"));
     assert!(status.contains("?? \"untracked\\nfile\""));
+    let dirty_index = fs::read(repo.root.join(".git/index")).unwrap();
     let error = repo.clean().unwrap_err().to_string();
     assert!(error.ends_with(status.trim_end()));
+    assert_eq!(fs::read(repo.root.join(".git/index")).unwrap(), dirty_index);
     assert_eq!(repo.git(&["write-tree"]).unwrap(), tree);
     assert_eq!(repo.text("Cargo.lock", None).unwrap(), lock);
     assert_eq!(repo.text("Cargo.toml", None).unwrap(), manifest);
@@ -1526,12 +1545,81 @@ fn source_admission_reports_actual_status_and_preserves_git_failures() {
         fixture.repo.exec.state.borrow().calls,
         [vec![
             "git",
+            "--no-optional-locks",
             "status",
             "--porcelain",
             "--untracked-files=all"
         ]]
     );
     assert_eq!(fixture.repo.version(None).unwrap(), "0.12.3");
+}
+
+#[test]
+fn release_admission_rejects_whitespace_only_paths() {
+    let fixture = Fixture::new();
+    let repo = Repository {
+        root: fixture.repo.root.clone(),
+        exec: Processes,
+    };
+    fs::create_dir_all(repo.root.join("scripts/ci")).unwrap();
+    fs::copy(
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("../../scripts/ci/next-release-version.sh"),
+        repo.root.join("scripts/ci/next-release-version.sh"),
+    )
+    .unwrap();
+    fs::write(repo.root.join(" "), b"original tracked bytes\n").unwrap();
+    repo.git(&["init", "--quiet"]).unwrap();
+    repo.git(&["add", "--", "."]).unwrap();
+    let selection = ReleaseSelection {
+        source: repo.git(&["write-tree"]).unwrap(),
+        ..fixture.selection.clone()
+    };
+    let surfaces = repo.surfaces(&selection).unwrap();
+    repo.check_surfaces(&selection, None, true).unwrap();
+    repo.check_index(&selection, &surfaces).unwrap();
+
+    fs::write(repo.root.join("  "), b"retained untracked bytes\n").unwrap();
+    assert_eq!(
+        repo.check_surfaces(&selection, None, true)
+            .unwrap_err()
+            .to_string(),
+        "release candidate has untracked files"
+    );
+    assert_eq!(repo.git(&["write-tree"]).unwrap(), selection.source);
+    assert_eq!(
+        fs::read(repo.root.join("  ")).unwrap(),
+        b"retained untracked bytes\n"
+    );
+    fs::remove_file(repo.root.join("  ")).unwrap();
+
+    fs::write(repo.root.join(" "), b"changed tracked bytes\n").unwrap();
+    assert_eq!(
+        repo.check_surfaces(&selection, None, true)
+            .unwrap_err()
+            .to_string(),
+        "release candidate contains changes outside its version surfaces"
+    );
+    assert_eq!(repo.git(&["write-tree"]).unwrap(), selection.source);
+    assert_eq!(
+        fs::read(repo.root.join(" ")).unwrap(),
+        b"changed tracked bytes\n"
+    );
+
+    repo.git(&["add", "--", " "]).unwrap();
+    let staged = repo.git(&["write-tree"]).unwrap();
+    fs::write(repo.root.join(" "), b"original tracked bytes\n").unwrap();
+    repo.check_surfaces(&selection, None, true).unwrap();
+    assert_eq!(
+        repo.check_index(&selection, &surfaces)
+            .unwrap_err()
+            .to_string(),
+        "index contains unrelated release changes"
+    );
+    assert_eq!(repo.git(&["write-tree"]).unwrap(), staged);
+    assert_eq!(
+        fs::read(repo.root.join(" ")).unwrap(),
+        b"original tracked bytes\n"
+    );
 }
 
 #[test]

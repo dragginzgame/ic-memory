@@ -2632,3 +2632,151 @@ passes Linux native and Rust 1.88; both macOS native jobs remain queued. That do
 not yet prove native acceptance of the repaired process fixture or nonblocking
 locks. The new Memory candidate's local qualification is separate from released
 0.31.7 CI and requires matching native evidence after delivery.
+
+## 0.31.9 read-only source observation
+
+Reviewed released base `4f48e2626a5d672e0bd12237f5303b35dd932be4`, matching
+remote main and annotated `v0.31.8`. The delivered composed-host example link
+resolves in that tree; all 72 local references across root/detail notes and this
+document pass. This completes delivery for
+[#32](https://github.com/dragginzgame/ic-memory/issues/32).
+
+A disposable checkout using existing committed history reproduces a remaining
+[#31](https://github.com/dragginzgame/ic-memory/issues/31) preservation gap:
+after `read-tree HEAD` and `checkout-index --all --force`, ordinary Git 2.43.0
+status reports clean source but refreshes stat-cache entries in `.git/index`.
+The same query with `--no-optional-locks` reports clean source while preserving
+the index byte-for-byte. No fixture commits, tags or pushes are needed. Original
+and corrected index pairs/status logs are retained under
+`/tmp/ic-memory-status-index.jRh9x2/`.
+
+The local fix adds that Git option only to `Repository::clean`'s existing
+observation. It does not disable required locks, change other Git commands,
+parse paths again or replace the Rust adapter with a shell helper. The existing
+real-Git fixture now compares exact index bytes after both clean admission with
+empty stat-cache entries and dirty refusal, alongside its staged/unstaged/quoted
+untracked paths, preserved file/tree bytes and unchanged observation-error checks.
+
+Focused locked/offline qualification passes on Rust 1.99.0: the targeted boundary
+test, all 33 repo-tool tests, strict example/test Clippy and both-workspace
+formatting. Logs and source/input hashes belong to
+`target/qualification/0.31.9-source-admission/`. Public APIs, durable formats,
+both manifests/lockfiles, tool/compiler pins and the 90-file Shared snapshot at
+`1872ed2` are unchanged. No function, method or type is removed. Pending root
+and detailed notes select compatible 0.31.9 without changing package versions.
+
+Released 0.31.8
+[CI 37807169733](https://github.com/dragginzgame/ic-memory/actions/runs/37807169733)
+has successful Linux and Intel macOS native jobs, including Intel CDPATH hook
+and native archive/upload/download/payload controls. ARM native and some MSRV
+jobs remain queued at inspection. The older 0.31.7 run is cancelled; its earlier
+successes are not relabelled. This dirty 0.31.9 repair has no matching remote CI
+or delivery yet. No broad local gate, real index/history mutation, release,
+publication or CI rerun/dispatch occurred.
+
+## 0.31.9 whitespace-path admission
+
+Review of the same release-admission boundary found that trimmed Git file lists
+can conceal unrelated whitespace-only names. Git 2.43.0 emits a space-only name
+as `20 0a`; the adapter's generic Git-output trimming converts it to an empty
+string. This affects the untracked-file check, source-difference comparison and
+staged-file guard. The raw reproduction is retained in
+`/tmp/ic-memory-0319-path-review.udHovA.untracked`.
+
+The local correction uses the existing raw command-output method for those
+three file-list observations. Identity/version queries retain their existing
+trimming. No path parser, new abstraction or dependency is introduced. A native
+Git fixture builds a source tree object and private index without committing;
+it first admits unchanged surfaces, then refuses untracked, working and staged
+whitespace-only paths. Refusals preserve the relevant file bytes and index tree.
+This extends the pending
+[#31](https://github.com/dragginzgame/ic-memory/issues/31) admission work.
+
+The new regression fails before correction and passes afterward. All 34
+repo-tool tests and strict example/test Clippy pass locked/offline with the
+selected Host 0.8.3 crates. Both-workspace formatting passes after correcting
+one new test-line wrap. Original failure logs, successful checks and source/input
+hashes are retained in `target/qualification/0.31.9-path-admission/`; earlier
+0.31.9 evidence is preserved. Public APIs, durable formats, package versions,
+dependency selections, pins and the Shared snapshot are unchanged by this fix.
+Root and detail notes retain the same compatible 0.31.9 candidate.
+
+Released 0.31.8
+[CI 37807169733](https://github.com/dragginzgame/ic-memory/actions/runs/37807169733)
+now passes all three MSRV jobs, Linux native, Intel macOS native and tooling lint.
+ARM macOS native has passed setup, formatting and hook isolation and is running
+toolchain qualification; archive acceptance is still outstanding. No remote run
+tests these dirty 0.31.9 changes. No broad local gate, real index/history effect,
+sibling source edit, release, publication or CI dispatch/rerun occurred.
+
+## 0.31.9 Host 0.8.3 review
+
+The maintainer's subsequent root lock selection advances only registry
+`ic-host-fs` and `ic-host-artifacts` from 0.8.2 to 0.8.3. Root compatible 0.8
+requirements and disabled default features are unchanged. Fresh locked/offline
+metadata selects both crates with empty feature sets; the independent runtime
+workspace retains its manifest and lock. Earlier 0.31.9 source-admission logs
+and hashes remain evidence for their original 0.8.2 selection.
+
+Host's delivered source `67d031222073f23ad437b45053156e229f86a016` adds
+`open_regular_lock_file_with_parents` by promoting the existing regular-file
+opener and moving acquisition to its callers. Admission and locked callers
+retain their behavior; Memory's typed durable writes do not need adaptation.
+All 19 artifact Rust source files and all 18 filesystem Rust source files in
+each cached published crate match this committed tree and its recorded Cargo
+VCS identity. Artifact Rust code is unchanged from 0.8.2; the filesystem change
+is confined to lock opening/callers and their fixtures. Host's process output
+observer is outside Memory's selected dependency graph.
+
+Fresh 0.8.3 qualification passes on Linux/Rust 1.99.0: all 33 repo-tool tests,
+strict example/test Clippy, both-workspace formatting, declaration pins and the
+90-file snapshot verifier. Both locked metadata projections pass; independent
+runtime metadata is not an installed PocketIC build. Source/input hashes and
+logs are retained separately in
+`target/qualification/0.31.9-host083-review/`. Pending 0.31.9 notes now include
+this compatible host dependency refresh; package version remains 0.31.8.
+
+[Host CI 37810259864](https://github.com/dragginzgame/ic-host-tooling/actions/runs/37810259864)
+passes Linux native and Rust 1.88 MSRV; both macOS native jobs are queued.
+Shared Tooling remains at committed 0.1.30
+`4e274a2219c0b0cc3af68ec65658b373253518fb`, with only its subsequent VERSION
+preparation dirty at inspection.
+[Shared CI 37809818114](https://github.com/dragginzgame/shared-tooling/actions/runs/37809818114)
+passes Linux portable and lint; both macOS jobs are queued. Its separate manual
+Cargo-install assessment has no matching run. The reported dashboard/assessment
+path bugs and PocketIC guidance gap remain unchanged in that committed source.
+No sibling source was repaired or adopted. Memory's Shared snapshot, tool pins,
+PocketIC 16.0.0 boundary and independent qualification inputs are unchanged.
+No dependency reselection/fetch, broad local gate, real Git delivery, release,
+publication or CI rerun/dispatch occurred.
+
+## 0.31.9 remaining-scope review
+
+A subsequent bounded review found no additional actionable defect in the pending
+batch. The remaining trimmed commit-stage file-list comparisons follow the
+corrected prepared-source and index guards, which already reject unrelated
+whitespace-only paths. The source/index fixtures also retain exact staged-byte,
+file-mode and saved-intent checks. No source or dependency selection changed in
+this inspection, so the existing 34-test, Clippy and formatting evidence remains
+applicable; no broad gate or redundant build was run.
+
+Released 0.31.8 source `4f48e2626a5d672e0bd12237f5303b35dd932be4` now has a
+fully successful seven-job
+[CI run 37807169733](https://github.com/dragginzgame/ic-memory/actions/runs/37807169733).
+The completed ARM native job passes host/IC setup, formatting, CDPATH hook
+isolation, pinned-toolchain qualification and native archive/upload/download/
+payload controls. Together with Linux/Intel native and all MSRV jobs, this
+completes the remaining consumer acceptance criterion in
+[#30](https://github.com/dragginzgame/ic-memory/issues/30). The dirty 0.31.9
+admission follow-ups in [#31](https://github.com/dragginzgame/ic-memory/issues/31)
+still require their own delivery and matching native qualification.
+
+The clean Host sibling now has delivered 0.8.4 source
+`97187b2a46d6f8a6964224a36a133d858ef0d223`, matching remote main and the peeled
+annotated release tag. Its library correction skips temporary creation/sync when
+admitting an existing lock file. Memory uses hashing and durable publication,
+not that lock opener; those selected call paths are unchanged. Host's
+[matching CI 37818647474](https://github.com/dragginzgame/ic-host-tooling/actions/runs/37818647474)
+is queued, so native acceptance is not established. Memory retains selected
+Host 0.8.3; Shared remains committed at `4e274a2` with its previously reviewed
+local governance edits. No sibling repair or snapshot refresh occurred.
