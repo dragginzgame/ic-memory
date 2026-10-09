@@ -48,8 +48,11 @@ fi
 }
 # --no-deps metadata does not resolve or update the mismatched lock. Respect
 # Cargo's selected target directory, including the consumer's configuration.
+# Preserve path bytes, removing only the parser's output record terminator.
+# The sentinel is appended only after the complete pipeline succeeds.
 target="$(cargo "+$toolchain" metadata --locked --offline --no-deps --format-version 1 |
-    "${YQ:-yq}" -p=json -r '.target_directory')"
+    "${YQ:-yq}" -p=json -r '.target_directory' && printf '.')"
+target="${target%$'\n.'}"
 [[ "$target" == /* ]] || { echo 'invalid bootstrap target directory' >&2; exit 1; }
 mkdir -p "$target/repo-tool-bootstrap"
 scratch="$(mktemp -d "$target/repo-tool-bootstrap/attempt.XXXXXX")"

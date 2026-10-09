@@ -11,13 +11,13 @@ ROOT="${BASH_SOURCE[0]}"
 [[ "$ROOT" == /* ]] || ROOT="$PWD/$ROOT"
 ROOT="$(cd -P "${ROOT%/*}/../.." && printf '%s/.' "$PWD")"
 ROOT="${ROOT%/.}"
-bash "$ROOT/scripts/ci/check-release-commands.sh" "$ROOT" rust-toolchain.toml ci/tool-versions.env make/tools.mk
+bash "$ROOT/scripts/ci/check-release-commands.sh" "$ROOT" rust-toolchain.toml ci/tool-versions.env make/tools.mk make/release.mk
 FIXTURE="$(mktemp -d "${TMPDIR:-/tmp}/ic-memory-release-adapters.XXXXXX")"
 trap 'if [[ $? == 0 ]]; then rm -rf "$FIXTURE"; else printf "Consumer release-adapter fixture retained: %s\n" "$FIXTURE" >&2; fi' EXIT
 mkdir -p "$FIXTURE/ci" "$FIXTURE/make"
 cp "$ROOT/Makefile" "$ROOT/rust-toolchain.toml" "$FIXTURE/"
 cp "$ROOT/ci/tool-versions.env" "$FIXTURE/ci/"
-cp "$ROOT/make/tools.mk" "$FIXTURE/make/"
+cp "$ROOT/make/tools.mk" "$ROOT/make/release.mk" "$FIXTURE/make/"
 mkdir -p "$FIXTURE/scripts/ci"
 cat > "$FIXTURE/scripts/ci/run-release.sh" <<'STUB'
 #!/usr/bin/env bash
@@ -41,6 +41,31 @@ for target in release-patch release-minor release-major release-resume; do
 done
 (cd "$FIXTURE"; make --no-print-directory release-patch)
 [[ "$(cat "$FIXTURE/runner-events")" == 'patch origin main' ]] || exit 1
+# The previous inline assignment forced preparation for every release entrypoint.
+# Preserve that contract even when a caller supplies a conflicting selection.
+for target in release-patch release-minor release-major release-resume; do
+    (cd "$FIXTURE"; RELEASE_CACHE_PREPARE=0 make --no-print-directory "$target" RELEASE_CACHE_PREPARE=0 VERSION=0.1.1)
+done
+# Memory's standard release entrypoints always select this checkout's runner.
+# An external substitute makes a redirected dispatch harmless and observable.
+external_root="$FIXTURE/external runner"
+mkdir -p "$external_root/scripts/ci"
+cat > "$external_root/scripts/ci/run-release.sh" <<'STUB'
+#!/usr/bin/env bash
+printf '%s\n' "$*" >> external-runner-events
+exit 23
+STUB
+rm "$FIXTURE/runner-events"
+for target in release-patch release-minor release-major release-resume; do
+    (cd "$FIXTURE"; SHARED_TOOLING_ROOT="$external_root" make --no-print-directory "$target" VERSION=0.1.1 RELEASE_REMOTE=fixture RELEASE_BRANCH=reviewed)
+    (cd "$FIXTURE"; make --no-print-directory "$target" SHARED_TOOLING_ROOT="$external_root" VERSION=0.1.1 RELEASE_REMOTE=fixture RELEASE_BRANCH=reviewed)
+done
+printf '%s\n' 'patch fixture reviewed' 'patch fixture reviewed' \
+    'minor fixture reviewed' 'minor fixture reviewed' \
+    'major fixture reviewed' 'major fixture reviewed' \
+    'resume 0.1.1 fixture reviewed' 'resume 0.1.1 fixture reviewed' > "$FIXTURE/expected-runner-events"
+cmp "$FIXTURE/expected-runner-events" "$FIXTURE/runner-events"
+[[ ! -e "$FIXTURE/external-runner-events" ]]
 mkdir -p "$FIXTURE/custom target"
 cat > "$FIXTURE/helper" <<'STUB'
 #!/usr/bin/env bash
@@ -110,7 +135,7 @@ mkdir -p "$FIXTURE/bootstrap/scripts/dev" "$FIXTURE/bootstrap/bin" \
     "$FIXTURE/bootstrap/crates/ic-memory/src" "$FIXTURE/bootstrap/crates/ic-memory/examples" "$FIXTURE/bootstrap/ci" "$FIXTURE/bootstrap/make"
 cp "$ROOT/Makefile" "$ROOT/rust-toolchain.toml" "$FIXTURE/bootstrap/"
 cp "$ROOT/ci/tool-versions.env" "$FIXTURE/bootstrap/ci/"
-cp "$ROOT/make/tools.mk" "$FIXTURE/bootstrap/make/"
+cp "$ROOT/make/tools.mk" "$ROOT/make/release.mk" "$FIXTURE/bootstrap/make/"
 cp "$ROOT/scripts/dev/run-repo-tool.sh" "$FIXTURE/bootstrap/scripts/dev/"
 cd "$FIXTURE/bootstrap"
 cat > Cargo.toml <<'MANIFEST'
@@ -313,6 +338,26 @@ if BOOTSTRAP_STATUS=7 make --no-print-directory -s release-version > refusal.log
 fi
 cmp original-manifest Cargo.toml
 cmp prepared-lock Cargo.lock
+# Cargo's selected target is a literal path, including any terminal newline.
+normal_target="$BOOTSTRAP_TARGET"
+export BOOTSTRAP_TARGET="$PWD/newline target"$'\n\n'
+[[ "$(make --no-print-directory -s release-version 2> newline-target.log)" == 0.12.3 ]]
+[[ -d "$BOOTSTRAP_TARGET/repo-tool-bootstrap" ]]
+[[ ! -e "$PWD/newline target" ]]
+cmp original-manifest Cargo.toml
+cmp prepared-lock Cargo.lock
+# Plausible parser output never overrides its failed observation status.
+cp bin/yq bin/failed-yq
+printf 'exit 23\n' >> bin/failed-yq
+cp calls failed-parser-calls
+printf '%s\n' metadata >> failed-parser-calls
+status=0
+YQ="$PWD/bin/failed-yq" bash scripts/dev/run-repo-tool.sh 1.99.0 version > failed-parser.log 2>&1 || status=$?
+[[ "$status" == 23 ]]
+cmp failed-parser-calls calls
+cmp original-manifest Cargo.toml
+cmp prepared-lock Cargo.lock
+export BOOTSTRAP_TARGET="$normal_target"
 cp calls saved-calls
 cat >> Cargo.lock <<'LOCK'
 [[package]]

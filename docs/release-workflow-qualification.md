@@ -3307,3 +3307,107 @@ Input hashes confirm unchanged manifests, both locks and the selected snapshot.
 Logs: `target/qualification/0.33.2-publication-tag/`. This compatible local fix
 extends pending 0.33.2. Tests substitute Git/publication effects; no real commits,
 tags, pushes or publication, full gates, or native macOS acceptance are claimed.
+
+
+## 0.33.3 Shared 0.2.6 release routing
+
+The canonical exporter selects clean committed Shared Tooling 0.2.6
+`ce13a5314916891fd239d9b199b4a91b04775054`, adding only `make/release.mk`
+to Memory's existing snapshot (87 files). All selected bytes/modes match that
+commit; manifests, both locks, real index and local Git configuration remain
+byte-identical to the incoming state. Production runner/hook bytes are unchanged.
+[#42](https://github.com/dragginzgame/ic-memory/issues/42),
+[Shared #91](https://github.com/dragginzgame/shared-tooling/issues/91).
+
+The actual consumer fixture verifies standard arguments, selected destinations,
+resume, conflicting goals, runner failure propagation and unsupported delivery
+refusal with substituted release effects. All four entrypoints retain forced
+cache preparation even for conflicting caller settings. The isolated Makefile
+copies and actual hook index export include the new shared input. Default Make
+still prints help. Existing two-workspace formatting, partial-stage refusal,
+failed formatter isolation, newline-root and prepared-tool cases pass.
+
+Snapshot/pin admission, formatting, Actionlint, ShellCheck, documentation links
+and exact-owner release/hook suites pass on local Linux Bash 5. Evidence:
+`target/qualification/0.33.3-shared0206/`. The root-only formatter include is not
+selected, preserving the independent workspace and explicit compiler coverage.
+The root Makefile loses eight net lines; the new shared include adds 19 vendored
+lines. No functions/types or supported release targets are removed. Full gates,
+fixture commits/tags/pushes, actual hook activation and release effects are unrun.
+
+Memory 0.33.2 is delivered at `f9095c96077c01c7f63b6d8ef9e744e800ca445e`,
+matching remote main and the peeled annotated tag. Its Linux native/MSRV,
+installed runtime and lint jobs pass; six macOS jobs remain queued in
+[exact-release CI](https://github.com/dragginzgame/ic-memory/actions/runs/37944024295).
+[Shared 0.2.6 CI](https://github.com/dragginzgame/shared-tooling/actions/runs/37944389294)
+has passed Linux portable and lint/security; both macOS jobs remain queued.
+These do not qualify Memory's dirty compatible 0.33.3 adoption.
+
+
+## 0.33.3 literal bootstrap target
+
+The released launcher strips terminal newlines from Cargo's selected target path
+when recovering a manifest/lockfile mismatch. The focused fixture first creates
+a trimmed sibling bootstrap directory and fails helper dispatch. Before evidence
+remains in `/tmp/ic-memory-release-adapters.nqy3zQ` and
+`target/qualification/0.33.3-bootstrap-target/before.log`.
+[#43](https://github.com/dragginzgame/ic-memory/issues/43).
+
+The launcher now preserves the complete parsed path, removing only the output
+record terminator. Its sentinel is appended only after the full metadata pipeline
+succeeds. Actual consumer Make/launcher checks pass with a target ending in two
+newlines, unchanged manifest/lock bytes and no trimmed destination. A parser
+printing a plausible path before failing with status 23 stops without cache or
+helper dispatch. Existing offline/cache preparation and Shared release-routing
+checks still pass; Actionlint and ShellCheck pass. Logs and input hashes:
+`target/qualification/0.33.3-bootstrap-target/`.
+
+This compatible fix extends the existing uncommitted 0.33.3 draft. Manifests,
+both selected locks, snapshot and pending Makefile routing remain unchanged.
+Cargo/parser and release effects are substituted; native macOS acceptance and
+full gates are unrun. No function/type is removed or real Git/release effect used.
+
+## 0.33.3 checkout-local release routing
+
+Review of the pending Shared 0.2.6 adoption reproduces a changed routing boundary:
+an inherited `SHARED_TOOLING_ROOT` selects an external substitute runner instead
+of the one copied into the consumer fixture. It exits 23, and Make refuses only
+after that external dispatch. The failed fixture is retained at
+`/tmp/ic-memory-release-adapters.hKPcgP`; its log is
+`target/qualification/0.33.3-release-root/before.log`.
+[#42](https://github.com/dragginzgame/ic-memory/issues/42).
+
+Memory now binds only its four standard release targets to `$(CURDIR)` through a
+target-specific override/export. The shared include still owns the recipes, and
+other tooling-root selections remain unchanged. All four targets select the
+local substitute runner under both environment and command-line external roots,
+with exact increment/resume and destination forwarding. The complete consumer
+adapter fixture also passes when its parent Make exports an external root; that
+sentinel never executes. This restores the released relative-recipe behavior.
+
+Local Linux Make checks, the actual two-workspace hook suite, Actionlint,
+ShellCheck and the 87-file snapshot verifier pass. Manifests, both selected locks
+(including the incoming Host 0.9.4 selection), snapshot and real index retain
+their incoming bytes. Input hashes and logs are retained under
+`target/qualification/0.33.3-release-root/`. No function/type is removed. Native
+macOS, full gates, real release and Git delivery effects remain unrun.
+
+Shared Tooling committed 0.2.7 at
+`47d6ae6488b8007323fa7c2e22a6efa11d77ae63` during this pass. Its generic smoke
+fixture now binds its disposable root ([Shared #7](https://github.com/dragginzgame/shared-tooling/issues/7)),
+and its new Make companion rejects unsafe execution modes before recipes.
+An isolated candidate using those exact committed files passes ordinary local
+release dispatch, but both external-root controls execute the external substitute
+admission probe before refusing with status 2. Parse-time admission precedes
+Memory's target-specific binding. The snapshot therefore remains 0.2.6;
+the new companion is not adopted or patched downstream. Bind the admission probe
+to its selected reviewed companion at the source owner, then qualify a committed
+fix before refreshing Memory. [Shared #30](https://github.com/dragginzgame/shared-tooling/issues/30).
+Candidate logs and sentinel records are retained alongside the local fix evidence.
+
+This bounded review applies the current Shared `audits/code-hygiene.md` method
+to release Make dispatch and fixture isolation, against Memory release
+`f9095c96077c01c7f63b6d8ef9e744e800ca445e` plus the pending adoption. Runtime
+storage, installed IC behavior and independent Host dependency qualification are
+outside this tooling repair. The local routing defect is corrected; upstream
+admission remains an evidenced adoption gap. No sibling source is changed.

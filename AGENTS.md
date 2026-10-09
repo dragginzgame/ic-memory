@@ -16,7 +16,7 @@ implementation and qualification without asking again. It does not authorize
 unrelated sibling edits, commits, pushes, releases or publication.
 
 The existing tooling snapshot at revision
-`04e07b4bf54e7aeb03eb7804a845cee27b7305df` is recorded in
+`ce13a5314916891fd239d9b199b4a91b04775054` is recorded in
 [.shared-tooling.snapshot](.shared-tooling.snapshot). It identifies the vendored
 files, hashes and executable modes; it does not freeze the active local policy.
 Keep its provenance accurate and never edit vendored files in place. Do not
@@ -25,7 +25,7 @@ attribute uncommitted shared files to that recorded revision. The live local
 also applies within its activation scope and is included in this recorded snapshot.
 These instructions are the repository's local overlay.
 
-The single 86-file snapshot uses reviewed committed Shared Tooling 0.2.5,
+The single 87-file snapshot uses reviewed committed Shared Tooling 0.2.6,
 including the archiver, tool-evidence selector, their fixtures and the shared
 retention action. It replaces the supplemental archive manifest and its duplicate
 verifier records. The consumer collector owns product log selection and calls
@@ -73,6 +73,11 @@ cargo-sort formatter setup remain unchanged.
 The Rust installer refuses redirected install/build/receipt paths before tool
 execution and after Cargo returns. Tool-command fixtures normalize their physical
 scratch root; the IC installer uses the included canonical pin parser.
+The reviewed `make/release.mk` owns standard release entrypoints and conflicting
+selection admission. Memory retains direct-delivery admission, forced release-only
+cache preparation and all Rust metadata/validation/publication adapters. The
+root-only formatting include is not selected: both maintained workspaces keep
+Memory's explicit compiler and formatting coverage.
 The release runner and its PR helper are exported unchanged. This consumer
 selects direct delivery and rejects other delivery selections before dispatch;
 PR release adapters and their real-Git qualification fixture are not adopted.

@@ -3,21 +3,16 @@
         install-tools tools-check install-host-tools host-tools-check install-ic-tools ic-tools-check test-tools test-failure-evidence \
         fmt fmt-check check-format-tools install-hooks lint-tooling test-hooks test-tooling validate validate-toolchain wasm-size \
         install-runtime-server runtime-server-check test-runtime \
-        test-release-runner test-release-adapters release-patch release-minor release-major release-resume \
+        test-release-runner test-release-adapters \
         release-version release-preflight release-verify release-prepare-version \
         release-prepared-check release-files release-commit-check release-committed-check \
         release-tagged-check release-push-check qualify-release package publish publish-dry-run
 
-RELEASE_REMOTE ?= origin
-RELEASE_BRANCH ?= main
 export RELEASE_DELIVERY ?= direct
 ifneq ($(filter release-%,$(MAKECMDGOALS)),)
 ifneq ($(RELEASE_DELIVERY),direct)
 $(error ic-memory release adapters support only RELEASE_DELIVERY=direct)
 endif
-endif
-ifneq ($(word 2,$(filter release-patch release-minor release-major release-resume,$(MAKECMDGOALS))),)
-$(error Select exactly one release target)
 endif
 
 # Bootstrap from the repository's simple, checked-in toolchain declaration.
@@ -27,6 +22,7 @@ TOOL := bash scripts/dev/run-repo-tool.sh $(VALIDATION_TOOLCHAIN)
 FORMAT_CARGO := RUSTUP_AUTO_INSTALL=0 CARGO_NET_OFFLINE=true cargo +$(VALIDATION_TOOLCHAIN)
 CARGO_SORT_VERSION := $(shell sed -n 's/^export SHARED_TOOLING_CARGO_SORT_VERSION=//p' ci/tool-versions.env)
 include make/tools.mk
+include make/release.mk
 
 # The published Testkit CLI owns PocketIC selection, admission and lifecycle.
 # Keep this tool graph outside both maintained workspace lockfiles.
@@ -160,12 +156,9 @@ wasm-size:
 		--example wasm-runtime-integration-size-probe
 	@$(TOOL) wasm-size
 
-# Maintainer-only orchestration: these targets commit, tag and push.
-release-patch release-minor release-major:
-	+@RELEASE_CACHE_PREPARE=1 bash scripts/ci/run-release.sh "$(@:release-%=%)" "$(RELEASE_REMOTE)" "$(RELEASE_BRANCH)"
-
-release-resume:
-	+@RELEASE_CACHE_PREPARE=1 bash scripts/ci/run-release.sh resume "$(VERSION)" "$(RELEASE_REMOTE)" "$(RELEASE_BRANCH)"
+# Preserve checkout-local routing and cache preparation for all caller settings.
+release-patch release-minor release-major release-resume: override export SHARED_TOOLING_ROOT := $(CURDIR)
+release-patch release-minor release-major release-resume: override export RELEASE_CACHE_PREPARE := 1
 
 release-version:
 	@$(TOOL) version

@@ -99,6 +99,13 @@ preserving prior attempts. Optional explicit selection uses the same checks:
 make release-resume VERSION=X.Y.Z
 ```
 
+The recorded `make/release.mk` supplies standard entrypoint routing and
+conflicting-goal admission. Memory's Makefile retains direct-only delivery and
+binds the four standard release targets to this checkout's tooling root while
+forcing release-only cache preparation. These target-specific overrides retain
+the previous local routing even with conflicting caller settings. The Rust
+adapters continue to own metadata, qualification and publication.
+
 Push uses `--no-follow-tags --atomic` and exactly the selected branch and candidate
 tag refspecs. There is no force push or non-atomic fallback. A lost push reply is
 reconciled with exact remote identities; a failed remote query stops recovery.

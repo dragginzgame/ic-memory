@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.33.3]
+
+- Share standard release-command routing through Shared Tooling 0.2.6 while
+  preserving checkout-local runner selection, release admission and locked cache
+  preparation even with conflicting caller settings.
+  [#42](https://github.com/dragginzgame/ic-memory/issues/42),
+  [Shared #91](https://github.com/dragginzgame/shared-tooling/issues/91).
+- Keep recovery bootstrap metadata in Cargo's exact selected target directory,
+  including paths ending in newlines, while preserving parser failures.
+  [#43](https://github.com/dragginzgame/ic-memory/issues/43).
+
+[Detailed notes](docs/changelog/0.33.md)
+
 ## [0.33.2] - 2026-10-09
 
 - Adopt Shared Tooling 0.2.5's required-helper declarations so incomplete reusable
