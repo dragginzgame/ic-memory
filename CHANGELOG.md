@@ -1,6 +1,6 @@
 # Changelog
 
-## [0.35.1]
+## [0.35.1] - 2026-10-10
 
 - Adopt Shared Tooling 0.3.1: common setup refuses unsupported hosts or unavailable
   Rust/Cargo before installation starts; host-tool failures report the selected
