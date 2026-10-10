@@ -1,6 +1,6 @@
 # Changelog
 
-## [0.35.0]
+## [0.35.0] - 2026-10-10
 
 - **Breaking tooling setup:** adopt Shared Tooling 0.3.0's complete host, IC and
   Cargo toolset. Run `make install-tools`, then `make tools-check`; remove direct
