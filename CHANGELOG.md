@@ -1,6 +1,6 @@
 # Changelog
 
-## [0.34.0]
+## [0.34.0] - 2026-10-10
 
 - **Breaking:** components request permanent keys and owners from one host-owned
   allocation pool. Replace numeric declarations/ranges and alternate open helpers;
