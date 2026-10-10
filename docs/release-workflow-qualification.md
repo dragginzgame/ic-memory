@@ -3527,3 +3527,42 @@ both locks, all incoming consumer Rust/Make/fixture files and real index/config
 remain byte-identical. This extends the same uncommitted compatible 0.33.4 draft.
 No named functions/methods/types are removed, fleet tooling adopted, full gates
 or real release effects run. Matching native CI remains outstanding.
+
+## 0.34.0 Shared Tooling and Make admission
+
+Reviewed committed Shared **0.2.10** at
+`43a0dc46cdc3c77e70a68e192561642ed50a3e0f` is exported through the canonical
+refresh helper from a clean exact-revision checkout. The 89-file manifest adds
+`scripts/ci/run-formatting.sh`; its hash and mode are verified. Dirty local
+shared policy remains separately authorized and is not export provenance.
+
+Memory keeps exact formatter prerequisites, compiler selection and both workspace
+commands. The wrapper captures their combined output once, emits one success
+line, preserves failing status and retains full logs. Actual consumer hook tests
+copy the helper into their disposable selection; product failure selection and
+archive round-trip checks include `formatting.*`. No fixture commit or real staged-entry
+change was used.
+
+The consumer parse guard admits `MFLAGS` as well as `MAKEFLAGS` before recipes.
+Real Make tests substitute all release effects and reject four entrypoints under
+nine direct/inherited unsafe modes, with original, empty and harmless explicit
+`MAKEFLAGS` values. Normal direct/recursive dispatch and failing helper validation
+remain qualified. Canonical shared repair remains upstream in
+[Shared #30](https://github.com/dragginzgame/shared-tooling/issues/30).
+[#47](https://github.com/dragginzgame/ic-memory/issues/47) owns this consumer fix.
+
+Evidence under `target/qualification/0.34.0-tooling/` includes modern admission,
+actual two-workspace hook and evidence tests. `portable-2.log` qualifies those
+three targets with Linux Bash 3.2.57 and GNU Make 3.81. The earlier `portable.log`
+failed before admission because Bash 3.2 rejects an empty array expansion under
+nounset; the new fixture uses a nonempty argument vector and retains that failure.
+It is not native macOS evidence. Snapshot/format/workflow/shell checks remain
+focused; no maintainer release target or full validation gate was executed.
+
+The existing pinned artifact download action is supplied a read-only token,
+explicit repository/run and exact uploader artifact IDs. Digest mismatch is an
+error, followed by the existing byte/mode/link comparison. This implements
+[Shared #93](https://github.com/dragginzgame/shared-tooling/issues/93)'s authenticated
+readback boundary. Local workflow lint proves syntax, not hosted availability.
+Hosted acceptance of the working snapshot, wrapper, guard and readback remains
+pending; the green 0.33.4 run is evidence only for released 0.33.4.

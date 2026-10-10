@@ -1,11 +1,10 @@
 use crate::{
     constants::WASM_PAGE_SIZE_BYTES,
-    declaration::AllocationDeclaration,
     ledger::{AllocationLedger, AllocationRecord},
     physical::CommitStoreDiagnostic,
     policy::PolicyIdentity,
     registry::SealedDeclarationFingerprint,
-    slot::{MemoryManagerAuthorityRecord, MemoryManagerRangeAuthority, MemoryManagerSlot},
+    slot::MemoryManagerSlot,
 };
 use serde::{Deserialize, Serialize};
 
@@ -41,6 +40,8 @@ pub struct DiagnosticRuntimeBinding {
     pub policy_identity: PolicyIdentity,
     /// Deterministic fingerprint of the sealed declaration snapshot.
     pub declaration_fingerprint: SealedDeclarationFingerprint,
+    /// Exact host namespace grants and physical exclusions bound at bootstrap.
+    pub allocation_pool: crate::MemoryAllocationPool,
 }
 
 impl DiagnosticRuntimeBinding {
@@ -49,10 +50,12 @@ impl DiagnosticRuntimeBinding {
     pub const fn new(
         policy_identity: PolicyIdentity,
         declaration_fingerprint: SealedDeclarationFingerprint,
+        allocation_pool: crate::MemoryAllocationPool,
     ) -> Self {
         Self {
             policy_identity,
             declaration_fingerprint,
+            allocation_pool,
         }
     }
 }
@@ -93,39 +96,12 @@ pub struct MemoryRuntimeDoctorReport {
     /// Recovered allocation ledger export when protected recovery succeeded.
     #[serde(deserialize_with = "crate::cbor::deserialize_present_option")]
     pub ledger: Option<DiagnosticExport>,
-    /// Static declarations registered by linked crates.
-    pub registered_declarations: Vec<DiagnosticDeclaration>,
-    /// Static range authority registered by linked crates and the effective
-    /// authority table supplied to this runtime.
-    pub range_authority: DiagnosticRangeAuthority,
+    /// Key-only requirements contributed by linked components.
+    pub requests: Vec<crate::MemoryRequest>,
+    /// Tested host namespace grants and physical exclusions.
+    pub allocation_pool: crate::MemoryAllocationPool,
     /// Declaration validation result under the tested caller-supplied policy.
     pub validation: DiagnosticCheck,
-}
-
-///
-/// DiagnosticDeclaration
-///
-/// Read-only diagnostic view of one static allocation declaration.
-///
-
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-#[serde(deny_unknown_fields)]
-pub struct DiagnosticDeclaration {
-    /// Crate or integration authority that registered the declaration.
-    pub authority: String,
-    /// Allocation declaration registered by that authority.
-    pub declaration: AllocationDeclaration,
-}
-
-impl DiagnosticDeclaration {
-    /// Build a diagnostic declaration record.
-    #[must_use]
-    pub fn new(authority: impl Into<String>, declaration: AllocationDeclaration) -> Self {
-        Self {
-            authority: authority.into(),
-            declaration,
-        }
-    }
 }
 
 ///
@@ -178,35 +154,6 @@ impl DiagnosticFailure {
         Self {
             code,
             message: message.into(),
-        }
-    }
-}
-
-///
-/// DiagnosticRangeAuthority
-///
-/// Read-only diagnostic view of registered and effective range authority.
-///
-
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-#[serde(deny_unknown_fields)]
-pub struct DiagnosticRangeAuthority {
-    /// Range records registered directly by linked crates.
-    pub registered_records: Vec<MemoryManagerAuthorityRecord>,
-    /// Validated effective range authority from the sealed declarations.
-    pub effective_authority: MemoryManagerRangeAuthority,
-}
-
-impl DiagnosticRangeAuthority {
-    /// Build a range-authority diagnostic.
-    #[must_use]
-    pub const fn new(
-        registered_records: Vec<MemoryManagerAuthorityRecord>,
-        effective_authority: MemoryManagerRangeAuthority,
-    ) -> Self {
-        Self {
-            registered_records,
-            effective_authority,
         }
     }
 }
@@ -407,8 +354,8 @@ impl DiagnosticMemorySize {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::AllocationDeclaration;
     use crate::{
-        declaration::AllocationDeclaration,
         ledger::AllocationRecord,
         physical::{CommitRecoveryError, CommitSlotDiagnostic, CommitStoreDiagnostic},
         schema::SchemaMetadata,
@@ -489,8 +436,7 @@ mod tests {
             },
             DiagnosticMemorySize::from_wasm_pages(1),
         );
-        let range_authority =
-            DiagnosticRangeAuthority::new(Vec::new(), MemoryManagerRangeAuthority::default());
+        let allocation_pool = crate::MemoryAllocationPool::new(Vec::new(), Vec::new()).unwrap();
         let check = DiagnosticCheck::failed(
             DiagnosticCode::AllocationValidation,
             "duplicate declaration",
@@ -508,10 +454,10 @@ mod tests {
             crate::test_cbor::from_slice(&bytes).expect("stable-cell round trip");
         assert_eq!(decoded, stable_cell);
 
-        let bytes = crate::test_cbor::to_vec(&range_authority).expect("range diagnostic bytes");
-        let decoded: DiagnosticRangeAuthority =
-            crate::test_cbor::from_slice(&bytes).expect("range round trip");
-        assert_eq!(decoded, range_authority);
+        let bytes = crate::test_cbor::to_vec(&allocation_pool).expect("pool diagnostic bytes");
+        let decoded: crate::MemoryAllocationPool =
+            crate::test_cbor::from_slice(&bytes).expect("pool round trip");
+        assert_eq!(decoded, allocation_pool);
     }
 
     #[test]

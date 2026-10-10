@@ -3,7 +3,7 @@ use super::{
 };
 use crate::{
     DiagnosticMemorySize, IC_MEMORY_AUTHORITY_OWNER, IC_MEMORY_LEDGER_STABLE_KEY,
-    MEMORY_MANAGER_LEDGER_ID, MemoryManagerRangeMode, WASM_PAGE_SIZE_BYTES,
+    MEMORY_MANAGER_LEDGER_ID, WASM_PAGE_SIZE_BYTES,
 };
 use ic_stable_structures::Memory;
 use serde::Serialize;
@@ -27,21 +27,6 @@ pub enum AllocationBinding {
 }
 
 ///
-/// AllocationRangeClaim
-///
-/// Current range policy metadata. A range claim is not a stable-key binding,
-/// historical ownership claim, or permission to open a memory handle.
-///
-
-#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
-pub struct AllocationRangeClaim {
-    /// Declaring range authority.
-    pub authority: String,
-    /// Whether the range requires an explicit reserved-slot policy decision.
-    pub mode: MemoryManagerRangeMode,
-}
-
-///
 /// MemoryAllocation
 ///
 /// Measured allocation of one usable ID, including zero-size IDs. Virtual
@@ -54,7 +39,9 @@ pub struct AllocationRangeClaim {
 pub struct MemoryAllocation {
     pub memory_manager_id: u8,
     pub binding: AllocationBinding,
-    pub range_claim: Option<AllocationRangeClaim>,
+    /// Current host pool eligibility, not evidence that this ID is free.
+    /// Unavailable before bootstrap except for the permanent governance exclusion.
+    pub pool_eligible: Option<bool>,
     pub virtual_extent: DiagnosticMemorySize,
     pub allocated_buckets: u16,
     pub allocated_bytes: u64,
@@ -127,7 +114,7 @@ pub struct MemoryBindingSummary {
 /// MemoryAllocationSummary
 ///
 /// Bounded numeric allocation accounting without per-ID rows, stable keys,
-/// owners or range claims. Uses the same validated metadata and conservation
+/// owners or pool metadata. Uses the same validated metadata and conservation
 /// equations as [`MemoryAllocations`]. Binding groups describe current runtime
 /// provenance; unknown includes omitted or retired keys without reading history.
 /// No payload occupancy is available.
@@ -173,7 +160,11 @@ impl<M: Memory> MemoryRuntime<M> {
     ///
     /// Reads at most 34,848 backing bytes. Never initializes stores, decodes the ledger, writes,
     /// grows memory, or advances a generation. Available before bootstrap;
-    /// current declaration/range bindings are then unavailable.
+    /// current declaration/pool bindings are then unavailable.
+    ///
+    /// # Panics
+    ///
+    /// Panics only if the private committed-key/host-grant invariant is broken.
     pub fn memory_allocations(&self) -> Result<MemoryAllocations, RuntimeDiagnosticError> {
         let (measured, summary) = self.measure_allocations()?;
         let mut memories = Vec::with_capacity(layout::IDS);
@@ -184,7 +175,7 @@ impl<M: Memory> MemoryRuntime<M> {
             memories.push(MemoryAllocation {
                 memory_manager_id: id,
                 binding: AllocationBinding::Unknown,
-                range_claim: None,
+                pool_eligible: (id <= crate::MEMORY_MANAGER_GOVERNANCE_MAX_ID).then_some(false),
                 virtual_extent,
                 allocated_buckets: measured.buckets[index],
                 allocated_bytes,
@@ -192,24 +183,26 @@ impl<M: Memory> MemoryRuntime<M> {
                 payload_bytes: None,
             });
         }
-        // Sealing guarantees usable unique IDs and disjoint bounded ranges.
+        // Resolution guarantees usable unique IDs.
         // Populate the ordered rows directly instead of searching for each ID.
-        if let Some(snapshot) = self.allocation_declarations() {
-            for registration in snapshot.registered_declarations() {
-                let declaration = registration.declaration();
+        if let RuntimeLifecycle::Bootstrapped {
+            binding,
+            committed_allocations,
+        } = &self.lifecycle
+        {
+            for declaration in committed_allocations.declarations() {
                 let id = declaration.slot().id();
                 memories[usize::from(id)].binding = AllocationBinding::Current {
                     stable_key: declaration.stable_key().as_str().to_string(),
-                    owner: registration.authority().to_string(),
+                    owner: binding
+                        .pool
+                        .authority_for_key(declaration.stable_key())
+                        .expect("committed key has an admitted owner")
+                        .to_string(),
                 };
             }
-            for claim in snapshot.range_authority().authorities() {
-                for id in claim.range().start()..=claim.range().end() {
-                    memories[usize::from(id)].range_claim = Some(AllocationRangeClaim {
-                        authority: claim.authority().to_string(),
-                        mode: claim.mode(),
-                    });
-                }
+            for memory in &mut memories {
+                memory.pool_eligible = Some(binding.pool.contains(memory.memory_manager_id));
             }
         }
         memories[usize::from(MEMORY_MANAGER_LEDGER_ID)].binding = AllocationBinding::Ledger {
@@ -242,7 +235,7 @@ impl<M: Memory> MemoryRuntime<M> {
     }
 
     /// Measure numeric totals and binding partitions without constructing per-ID
-    /// rows or copying keys, owners or range claims. Reads at most 34,848 metadata
+    /// rows or copying keys, owners or pool metadata. Reads at most 34,848 metadata
     /// bytes; no ledger history, writes, growth, or generation changes occur.
     pub fn memory_allocation_summary(
         &self,
@@ -250,11 +243,14 @@ impl<M: Memory> MemoryRuntime<M> {
         self.measure_allocations().map(|(_, summary)| summary)
     }
 
-    const fn allocation_declarations(&self) -> Option<&crate::SealedDeclarationSnapshot> {
-        // Sealing already bounds declarations/ranges and validates every slot.
+    fn allocation_declarations(&self) -> Option<&[crate::AllocationDeclaration]> {
+        // Resolved declarations already have checked unique slots.
         match &self.lifecycle {
             RuntimeLifecycle::Unbootstrapped => None,
-            RuntimeLifecycle::Bootstrapped { binding, .. } => Some(&binding.declarations),
+            RuntimeLifecycle::Bootstrapped {
+                committed_allocations,
+                ..
+            } => Some(committed_allocations.declarations()),
         }
     }
 
@@ -279,8 +275,8 @@ impl<M: Memory> MemoryRuntime<M> {
         let bucket_size_bytes = u64::from(measured.bucket_pages) * WASM_PAGE_SIZE_BYTES;
         let mut current = [false; layout::IDS];
         if let Some(snapshot) = declarations {
-            for registration in snapshot.registered_declarations() {
-                let id = registration.declaration().slot().id();
+            for declaration in snapshot {
+                let id = declaration.slot().id();
                 current[usize::from(id)] = true;
             }
         }

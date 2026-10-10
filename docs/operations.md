@@ -124,17 +124,17 @@ then call its recovery or doctor methods.
 
 ## Doctor reports
 
-Use `default_memory_manager_doctor_report()` for operator-facing validation
+Use `default_memory_manager_doctor_report(&pool)` for operator-facing validation
 with the built-in policy. If the runtime uses a custom policy, call
-`default_memory_manager_doctor_report_with_policy(&policy)`, or call
-`runtime.doctor_report(&declarations, &policy)` on an explicit runtime.
+`default_memory_manager_doctor_report_with_policy(&pool, &policy)`, or call
+`runtime.doctor_report(&declarations, &pool, &policy)` on an explicit runtime.
 
 A doctor report includes:
 
 - stable-cell status;
 - protected commit recovery;
 - recovered ledger export;
-- registered declarations and range authority;
+- source key requests, current namespace grants and physical exclusions;
 - validation under the tested policy;
 - live slot sizes when recovery permits measurement; and
 - the tested and established runtime binding.
@@ -182,7 +182,7 @@ holds the runtime's capacity reservation.
 
 Allocation reports do not authorize endpoints or users. Keep controller checks
 and response filtering in the integrating application. A report can describe a
-range claim or current binding, but only committed runtime authority can open a
+pool membership or current binding, but only committed runtime authority can open a
 store.
 
 For lower-level runtime ownership, policy, recovery, and manual persistence

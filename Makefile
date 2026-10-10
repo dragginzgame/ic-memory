@@ -1,4 +1,10 @@
 .DEFAULT_GOAL := help
+# Shared #30: MFLAGS retains modes hidden by command-line MAKEFLAGS replacement.
+# Keep this consumer admission outside the immutable shared snapshot.
+override _memory_make_execution_flags := $(filter-out --% %=%,$(firstword $(MAKEFLAGS)) $(MFLAGS))
+ifneq ($(strip $(foreach mode,i n t q,$(findstring $(mode),$(_memory_make_execution_flags)))),)
+$(error ic-memory requires Make recipe execution and failure propagation; remove ignore-errors, dry-run, touch and question modes)
+endif
 .PHONY: help test version ensure-clean fetch-dependencies verify-shared-tooling check-pins test-pins \
         install-tools tools-check install-host-tools host-tools-check install-ic-tools ic-tools-check test-tools test-failure-evidence \
         fmt fmt-check check-format-tools install-hooks lint-tooling test-hooks test-tooling validate validate-toolchain wasm-size \
@@ -19,7 +25,6 @@ endif
 # The Rust helper parses the full TOML for its own compiler identity checks.
 VALIDATION_TOOLCHAIN ?= $(shell sed -n 's/^channel = "\([^"]*\)"$$/\1/p' rust-toolchain.toml)
 TOOL := bash scripts/dev/run-repo-tool.sh $(VALIDATION_TOOLCHAIN)
-FORMAT_CARGO := RUSTUP_AUTO_INSTALL=0 CARGO_NET_OFFLINE=true cargo +$(VALIDATION_TOOLCHAIN)
 CARGO_SORT_VERSION := $(shell sed -n 's/^export SHARED_TOOLING_CARGO_SORT_VERSION=//p' ci/tool-versions.env)
 include make/tools.mk
 include make/release.mk
@@ -95,19 +100,21 @@ test-pins:
 	RUSTUP_TOOLCHAIN=$(VALIDATION_TOOLCHAIN) RUSTUP_AUTO_INSTALL=0 CARGO_NET_OFFLINE=true bash scripts/ci/test-cargo-metadata.sh
 
 check-format-tools:
-	RUSTUP_TOOLCHAIN="$(VALIDATION_TOOLCHAIN)" bash scripts/ci/check-format-tools.sh "$(CARGO_SORT_VERSION)"
+	@RUSTUP_TOOLCHAIN="$(VALIDATION_TOOLCHAIN)" bash scripts/ci/check-format-tools.sh "$(CARGO_SORT_VERSION)"
 
 fmt: check-format-tools
-	$(FORMAT_CARGO) sort --workspace
-	$(FORMAT_CARGO) sort --workspace testing/runtime-qualification
-	$(FORMAT_CARGO) fmt --all
-	$(FORMAT_CARGO) fmt --manifest-path testing/runtime-qualification/Cargo.toml --all
+	@RUSTUP_AUTO_INSTALL=0 CARGO_NET_OFFLINE=true bash scripts/ci/run-formatting.sh --write \
+	  bash -ec 'cargo "+$$1" sort --workspace; \
+	    cargo "+$$1" sort --workspace testing/runtime-qualification; \
+	    cargo "+$$1" fmt --all; \
+	    cargo "+$$1" fmt --manifest-path testing/runtime-qualification/Cargo.toml --all' -- "$(VALIDATION_TOOLCHAIN)"
 
 fmt-check: check-format-tools
-	$(FORMAT_CARGO) sort --workspace --check
-	$(FORMAT_CARGO) sort --workspace --check testing/runtime-qualification
-	$(FORMAT_CARGO) fmt --all -- --check
-	$(FORMAT_CARGO) fmt --manifest-path testing/runtime-qualification/Cargo.toml --all -- --check
+	@RUSTUP_AUTO_INSTALL=0 CARGO_NET_OFFLINE=true bash scripts/ci/run-formatting.sh --check \
+	  bash -ec 'cargo "+$$1" sort --workspace --check; \
+	    cargo "+$$1" sort --workspace --check testing/runtime-qualification; \
+	    cargo "+$$1" fmt --all -- --check; \
+	    cargo "+$$1" fmt --manifest-path testing/runtime-qualification/Cargo.toml --all -- --check' -- "$(VALIDATION_TOOLCHAIN)"
 
 # Install exact, checksum-verified tools separately; these checks are offline.
 lint-tooling:

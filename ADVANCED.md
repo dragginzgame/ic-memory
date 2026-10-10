@@ -17,7 +17,7 @@ applications should start with the README.
 - [Explicit `MemoryRuntime<M>`](#explicit-memoryruntimem)
 - [Manual bootstrap](#manual-bootstrap)
 - [Stable key rules](#stable-key-rules)
-- [Range authority](#range-authority)
+- [Host allocation pool](#host-allocation-pool)
 - [Current MemoryManager rules](#current-memorymanager-rules)
 - [What it does not do](#what-it-does-not-do)
 - [Status](#status)
@@ -51,7 +51,7 @@ but it removes `ic_memory.*` governance keys from the committed allocations it
 publishes for application opens. Public default-runtime open helpers reject
 those reserved keys.
 
-A framework supplies sealed fixed declarations, logical requests and host grants
+A framework supplies sealed key requests and one host allocation pool
 to one runtime. A cold bootstrap then:
 
 1. Recovers the saved allocation ledger into `RecoveredLedger`.
@@ -98,7 +98,7 @@ The intended public API is exported from `ic_memory::...` at the crate root.
 Implementation modules such as the runtime, ledger, registry, and validation
 modules are private. Frameworks should call root exports such as
 `bootstrap_default_memory_manager_with_policy(...)`,
-`default_memory_manager_doctor_report()`, and
+`default_memory_manager_doctor_report(&pool)`, and
 `open_default_memory_manager_memory(...)`.
 
 If multiple layers need separate allocation domains, they should use distinct
@@ -118,197 +118,120 @@ panicking or consulting another runtime.
 
 Bootstrap is once per runtime object, not once per process. A second call on the
 same successfully bootstrapped runtime is idempotent and does not advance the
-ledger generation only when the sealed snapshot and
+ledger generation only when the sealed snapshot, host allocation pool and
 `RuntimeBootstrapPolicy::runtime_bootstrap_identity()` match the established
 bootstrap binding. Independently sealed snapshots with equal canonical contents
-also match. A changed snapshot or policy identity returns a typed error
+also match. A changed snapshot, pool or policy identity returns a typed error
 without evaluating policy or touching the ledger. A different runtime always
 inspects its own ledger memory. No public reset API is provided; constructing a
 new runtime is the correct way to own a new backing memory.
 
 ## Policy Authority
 
-There is one authority order in the default runtime:
+The host owns one `MemoryAllocationPool`. Governance IDs 0..=9 are always
+excluded. Each `MemoryAuthority` admits a named owner under a permanent key
+prefix ending in a dot. Namespace grants must be disjoint; several disjoint
+namespaces can share an owner. Additional physical exclusions retain custody
+for unmanaged users. Namespace grants do not reserve numeric subranges.
 
-1. `ic-memory` always owns its governance range.
-2. Registered `ic_memory_range!` claims are authoritative generic range policy.
-3. The caller-supplied `AllocationPolicy` is applied after generic range checks.
+The runtime checks current namespace ownership and physical eligibility before
+applying custom `AllocationPolicy`. New keys receive the lowest unused pool ID
+in canonical key order. Known keys retain their IDs; changed eligibility causes
+rejection, never relocation. Every retained ledger state occupies its ID.
+A populated pool ID without a ledger record causes `UnmanagedAllocation`;
+explicitly exclude unmanaged custody instead of assigning it inferred ownership.
 
-Policies passed to runtime bootstrap also implement `RuntimeBootstrapPolicy`.
-Its `PolicyIdentity` names the policy family and semantic version, not the
-policy object's address or Rust type. Configuration-dependent policies should
-attach a caller-computed 32-byte digest of their effective configuration.
-Frameworks must change the version or digest when their effective rules change.
-Names are validated printable ASCII and bounded to 256 bytes.
+Owner labels are current host policy. The ledger retains key-to-ID identities,
+not previous owner labels. The host can change a namespace's owner at a cold
+bootstrap while preserving its keys and bytes. This is neither authentication
+of callers nor isolation of linked Rust code.
 
-The policy identity is an in-memory repeat-call and doctor-report binding only.
-It is not written to the allocation ledger and therefore is not upgrade audit
-history. An integration that needs durable policy history must make a separate
-explicit persisted-format decision rather than infer it from this runtime
-binding.
+Custom runtime policies implement `RuntimeBootstrapPolicy`. `PolicyIdentity`
+names their family and semantic version, optionally with a caller-computed
+32-byte configuration digest. Change this identity when effective custom rules
+change. The runtime binds successful bootstrap to that identity, the immutable
+request snapshot and the exact canonical pool. This binding is transient;
+it is not durable upgrade history.
 
-```rust,ignore
-impl RuntimeBootstrapPolicy for FrameworkPolicy {
-    fn runtime_bootstrap_identity(
-        &self,
-    ) -> Result<PolicyIdentity, PolicyIdentityError> {
-        PolicyIdentity::new("framework.memory-bootstrap-policy", 2).map(|identity| {
-            identity.with_configuration_digest(self.effective_configuration_digest())
-        })
-    }
-}
-```
-
-That means a framework adapter must choose deliberately which layer owns range
-decisions.
-
-If a package registers a user range, `ic-memory` enforces that the package's
-declarations stay inside that range. If any user range is registered, all user
-`MemoryManager` declarations are checked against registered range ownership.
-This is the standalone multi-crate composition mode.
-
-A framework can omit all registered user ranges and enforce fixed application
-claims through `bootstrap_default_memory_manager_with_policy(...)` and its
-`AllocationPolicy`. Logical placement and historical selection always
-require explicit registered host grants; a custom policy alone cannot supply
-their eligible pool. `Allowed` ranges supply fresh automatic placements;
-`Reserved` ranges permit matching existing or fixed claims without supplying
-new automatic slots.
-
-Omitting `mode` from `ic_memory_range!` selects `Reserved`. Hosts admitting new
-logical requests must pass `mode = Allowed`. If no free ID exists in a matching
-`Allowed` range, resolution returns `MemoryResolutionError::Exhausted`; free IDs
-in reserved ranges do not satisfy that request.
-
-Canic-specific namespace and framework range rules are Canic policy. They are
-not hard-coded `ic-memory` rules. Canic should adapt to `ic-memory` by either:
-
-- registering the framework and package ranges it wants `ic-memory` to enforce;
-- or leaving all user ranges unclaimed for fixed-only allocations and
-  enforcing those rules in Canic's policy adapter.
-
-Consumers contribute their preparation to the host's single
-`RuntimeBootstrapPolicy::prepare_bootstrap` hook. Warm consumers call
-`verify_authority(&requirements, authority)` or
-`verify_default_memory_manager_authority(...)`, then open committed keys. They
-do not bootstrap again with their own policy. Verification checks fixed IDs,
-logical keys, current authority and diagnostic metadata without replaying
-admission or changing the host's geometry. See the
+Consumers contribute preparation through the host's single `prepare_bootstrap`
+hook. Warm consumers verify their requirements with `verify_authority` and then
+open committed keys. Verification checks keys, current owner labels and schema
+metadata without rerunning admission or choosing geometry. See the
 [composed-host example](crates/ic-memory/examples/composed_host.rs) and
-[recovered-admission contract](docs/recovered-admission.md).
+[admission contract](docs/recovered-admission.md).
 
 ## Declaration-Only Hooks
 
-Use `eager_init!` when a crate needs to register declarations before bootstrap
-without opening a TLS stable structure:
+Use `eager_init!` to register metadata before sealing without opening storage:
 
-```rust,ignore
+```rust,no_run
 ic_memory::eager_init!({
-    ic_memory::register_static_memory_manager_declaration(
-        121,
-        "icydb.test_db",
-        "OrdersDataStore",
-        "icydb.test_db.orders.data.v1",
-    )
-    .expect("valid ic-memory declaration");
+    ic_memory::register_memory_request(ic_memory::MemoryRequest::new(
+        "icydb.test_db", "icydb.test_db.orders.data.v1",
+        ic_memory::SchemaMetadata::default(),
+    ).expect("valid request")).expect("registration remains open");
 });
 ```
 
-Hooks registered with `eager_init!` run before the declaration snapshot is
-sealed. Configured bootstrap checks its bucket geometry before sealing and
-releases the runtime borrow while hooks run. Hooks may observe readiness and
-physical totals on that unbootstrapped runtime.
-Stable structures opened with `ic_memory_key!` require committed
-allocations to be published first, and the macro returns the typed open result
-so the integration chooses how to handle failure. Macro range and key
-declarations require an explicit stable `authority` string; it is policy
-identity and must not be derived implicitly from package metadata.
+Configured bootstrap checks geometry before sealing and releases the runtime
+borrow while hooks run. Hooks may observe readiness and physical totals before
+bootstrap. `ic_memory_key!` returns a typed open result and requires committed
+authority. Macros register keys and explicitly named owners, never numeric IDs.
 
-Frameworks or libraries that need custom policy metadata should call
-`sealed_declaration_snapshot()` and inspect its canonical
-`registered_declarations()` and `registered_ranges()`. They can pass the same
-snapshot to an explicit `MemoryRuntime<M>` or bootstrap the default runtime with
-`bootstrap_default_memory_manager_with_policy(...)`. The custom policy receives
-external declarations only; ic-memory validates its private ledger declaration
-internally.
+`sealed_declaration_snapshot().requests()` exposes canonical source requests.
+A host passes that snapshot and its pool to its runtime. Resolution feeds the existing checked declaration snapshot to commitment;
+current placement/schema projections borrow the resulting capability. There is
+no second resolved-row map or alternative component input.
+Governance is validated internally before application capability publication.
 
 ## Default Runtime Diagnostics
 
-`MemoryRuntime::doctor_report(&snapshot, &policy)` builds a serializable report
-for that runtime before or after bootstrap and runs validation through the
-supplied policy. The default
-`default_memory_manager_doctor_report()` entry point observes an existing runtime,
-seals the linked snapshot, and evaluates the built-in policy. If no runtime exists,
-it returns `RuntimeDiagnosticError::NotBootstrapped` before sealing declarations
-or initializing memory. Default export and commit-recovery diagnostics also
-leave an absent runtime untouched. Only bootstrap constructs the default runtime
-and selects its bucket configuration. For prebootstrap diagnostics with explicit
-configuration, construct an owned `MemoryRuntime::new_with_config(memory, config)`
-and call its recovery or doctor methods.
-Custom-policy default runtimes should use
-`default_memory_manager_doctor_report_with_policy(&policy)`. Reports include
-stable-cell status, protected commit recovery, recovered ledger export,
-registered declarations, registered and effective range authority, validation
-under the tested policy, and live memory sizes for recovered ledger records.
-Effective range authority is a validated table from the sealed snapshot.
-Registration and sealing failures return typed errors before a report is built.
-Doctor validation covers the supplied declaration set and allocation policy;
-it does not run `prepare_bootstrap`, predict historical completion or certify
-consumer admission. Use the bounded allocation summary/report when metrics
-need physical accounting without decoding retained ownership.
+`MemoryRuntime::doctor_report(&snapshot, &pool, &policy)` reports stable-cell
+status, protected recovery, recovered ledger, live sizes, source requests and
+the tested pool. Read-only validation checks custody, namespace ownership,
+placement and custom allocation policy. It never executes preparation, predicts
+its completed historical selections or certifies consumer admission.
 
-The report identifies the tested policy and declaration-snapshot fingerprint,
-shows the binding established by successful bootstrap, and reports whether the
-two match. The snapshot fingerprint is deterministic, versioned,
-non-cryptographic diagnostic metadata; it is neither durable allocation
-authority nor an adversarial integrity proof.
+`default_memory_manager_doctor_report(&pool)` observes an existing default
+runtime; the custom variant takes `(&pool, &policy)`. An absent runtime returns
+`NotBootstrapped` before sealing or initializing storage. Only bootstrap creates
+the default runtime and selects its geometry. For prebootstrap inspection,
+construct an owned runtime with explicit backing and configuration.
 
-Mutually exclusive diagnostic outcomes use enums or `Result` values instead of
-nullable field pairs, so machine-readable reports cannot express contradictory
-success and failure states. Failures include a stable `DiagnosticCode` beside
-the human-readable message, so automation does not need to parse prose.
-
-The first snapshot request runs deferred generated registration and
-`eager_init!` hooks exactly once before sealing, so doctor and bootstrap always
-use the same immutable declaration set. Each measured allocation carries its
-live `DiagnosticMemorySize` directly. A report built without size measurements
-omits that field. Invalid persisted slots fail ledger recovery before measurement;
-doctor reports the recovery failure and does not export the invalid ledger.
-Doctor borrows the resolved declarations for validation without constructing an
-allocation capability.
+Reports compare the tested policy identity, snapshot fingerprint and pool with
+the successful bootstrap binding. The fingerprint is non-cryptographic transient
+diagnostic metadata, not durable authority. Typed diagnostic outcomes include
+stable codes and messages. Invalid persisted records fail recovery and are not
+exported as valid ledgers. Physical allocation reports do not decode ownership;
+`pool_eligible` describes policy membership, not free space or historical custody.
 
 ## Explicit `MemoryRuntime<M>`
 
-The explicit runtime requires only
-`M: ic_memory::ic_stable_structures::Memory`:
-
-```rust,ignore
-let declarations = ic_memory::sealed_declaration_snapshot()?;
-let mut runtime = ic_memory::MemoryRuntime::new(backing_memory)?;
-runtime.bootstrap(&declarations, &policy)?;
-
-let users = runtime.open_memory("app.users.v1", 120)?;
-let export = runtime.diagnostic_export()?;
-let recovery = runtime.commit_recovery_diagnostic()?;
-let doctor = runtime.doctor_report(&declarations, &policy);
+```rust,no_run
+use ic_memory::{MemoryAllocationPool, MemoryAuthority, MemoryRequest,
+    MemoryRuntime, SchemaMetadata, SealedDeclarationSnapshot, GenericAllocationPolicy,
+    ic_stable_structures::VectorMemory};
+let source = SealedDeclarationSnapshot::new(&[
+    MemoryRequest::new("app", "app.users.v1", SchemaMetadata::default())?,
+])?;
+let pool = MemoryAllocationPool::new(vec![MemoryAuthority::new("app", "app.")?], vec![])?;
+let mut runtime = MemoryRuntime::new(VectorMemory::default())?;
+runtime.bootstrap(&source, &pool, &GenericAllocationPolicy)?;
+let users = runtime.open_memory("app.users.v1")?;
+let doctor = runtime.doctor_report(&source, &pool, &GenericAllocationPolicy);
+# Ok::<(), Box<dyn std::error::Error>>(())
 ```
 
-Runtime construction accepts empty backing memory or the current
-`ic-stable-structures` `MemoryManager` layout. It returns
-`RuntimeConstructionError` before initialization when nonempty memory has
-foreign magic or an unsupported manager version, leaving rejected bytes
-unchanged.
+Construction accepts empty memory or the supported manager layout. Foreign or
+unsupported nonempty backing is rejected without writes. Fresh construction
+reserves the metadata page before writing a header; growth refusal returns a
+typed error and leaves backing retryable. Geometry mismatches reject before
+sealing. The default runtime caches construction failures per native thread.
 
-Fresh construction reserves the manager's metadata page before writing its
-header. Ordinary backing growth refusal returns
-`RuntimeConstructionError::Growth(RuntimeGrowError::BackingRefused { .. })`
-without writes; the same unchanged backing can be retried. Configured default
-bootstrap propagates this through `RuntimeStateError::Construction`.
-
-`runtime.committed_allocations()` borrows the capability stored under the
-runtime. Opening memory never accepts a capability from another runtime; it
-consults the capability and `MemoryManager` owned by the same object. Capability
-publication happens only after the stable-cell record write succeeds.
+The runtime owns its manager and committed capability. Opens consult only that
+runtime's capability; they cannot accept another runtime's authority. Capability
+publication follows successful persistence. One bootstrap owner is required for
+each concrete backing memory, including each native default-runtime thread.
 
 ## Manual Bootstrap
 
@@ -325,7 +248,7 @@ commit the new generation
 only then open stable-memory handles
 ```
 
-This lower-level path accepts resolved fixed declarations. Logical requests and
+This lower-level path accepts resolved key-to-ID declarations. Logical requests and
 recovered-metadata admission belong to `MemoryRuntime::bootstrap`, which adds
 preparation and resolution before the same validation/persistence boundary.
 Use the runtime when composing those features; a diagnostic export cannot
@@ -449,122 +372,26 @@ Canic and IcyDB examples:
 Changing a key creates a new logical allocation identity. If the durable store
 is the same, keep the stable key and update schema metadata instead.
 
-## Range Authority
+## Host Allocation Pool
 
-Range authority is policy metadata. It does not allocate stable-memory IDs and
-does not write to the allocation ledger. In the default runtime, however,
-registered range authority is enforced before the caller-supplied policy, as
-described in [Policy Authority](#policy-authority).
-
-Packages should publish only the ranges they own:
+Only the host declares physical exclusions. This reserves IDs 200..=210 for an
+unmanaged client while both components share every other eligible ID:
 
 ```rust
-use ic_memory::{
-    IC_MEMORY_AUTHORITY_OWNER, MemoryManagerAuthorityRecord, MemoryManagerIdRange,
-    MemoryManagerRangeAuthority, MemoryManagerRangeMode, memory_manager_governance_range,
-};
-
-let authority = MemoryManagerRangeAuthority::from_records(vec![
-    MemoryManagerAuthorityRecord::new(
-        memory_manager_governance_range(),
-        IC_MEMORY_AUTHORITY_OWNER,
-        MemoryManagerRangeMode::Reserved,
-        None,
-    )
-    .expect("ic-memory governance record"),
-    MemoryManagerAuthorityRecord::new(
-        MemoryManagerIdRange::new(10, 99).expect("framework range"),
-        "framework.example",
-        MemoryManagerRangeMode::Reserved,
-        None,
-    )
-    .expect("framework record"),
-])
-.expect("non-overlapping ranges");
-
-authority
-    .validate_id_authority_mode(42, "framework.example", MemoryManagerRangeMode::Reserved)
-    .expect("framework-owned ID");
+use ic_memory::{MemoryAllocationPool, MemoryAuthority, MemoryManagerIdRange};
+let pool = MemoryAllocationPool::new(
+    vec![MemoryAuthority::new("framework", "framework.").unwrap(),
+         MemoryAuthority::new("db", "db.").unwrap()],
+    vec![MemoryManagerIdRange::new(200, 210).unwrap()],
+).unwrap();
+assert!(pool.contains(10));
+assert!(!pool.contains(0));
+assert!(!pool.contains(205));
 ```
 
-An open stack composes records from multiple packages and rejects overlaps:
-
-```rust
-use ic_memory::{
-    MemoryManagerAuthorityRecord, MemoryManagerIdRange, MemoryManagerRangeAuthority,
-    MemoryManagerRangeMode,
-};
-
-let framework_records = vec![
-    MemoryManagerAuthorityRecord::new(
-        MemoryManagerIdRange::new(10, 99).expect("framework range"),
-        "framework.example",
-        MemoryManagerRangeMode::Reserved,
-        None,
-    )
-    .expect("framework record"),
-];
-
-let database_records = vec![
-    MemoryManagerAuthorityRecord::new(
-        MemoryManagerIdRange::new(120, 149).expect("database range"),
-        "database.framework",
-        MemoryManagerRangeMode::Reserved,
-        None,
-    )
-    .expect("database record"),
-];
-
-let authority = MemoryManagerRangeAuthority::from_records(
-    framework_records
-        .into_iter()
-        .chain(database_records)
-        .collect(),
-)
-.expect("non-overlapping package ranges");
-
-assert_eq!(authority.authorities().len(), 2);
-```
-
-A final closed policy may claim the remaining application space and require full
-coverage:
-
-```rust
-use ic_memory::{
-    IC_MEMORY_AUTHORITY_OWNER, MEMORY_MANAGER_MAX_ID, MemoryManagerAuthorityRecord,
-    MemoryManagerIdRange, MemoryManagerRangeAuthority, MemoryManagerRangeMode,
-    memory_manager_governance_range,
-};
-
-let authority = MemoryManagerRangeAuthority::from_records(vec![
-    MemoryManagerAuthorityRecord::new(
-        memory_manager_governance_range(),
-        IC_MEMORY_AUTHORITY_OWNER,
-        MemoryManagerRangeMode::Reserved,
-        None,
-    )
-    .expect("ic-memory governance record"),
-    MemoryManagerAuthorityRecord::new(
-        MemoryManagerIdRange::new(10, 99).expect("framework range"),
-        "framework.example",
-        MemoryManagerRangeMode::Reserved,
-        None,
-    )
-    .expect("framework record"),
-    MemoryManagerAuthorityRecord::new(
-        MemoryManagerIdRange::new(100, MEMORY_MANAGER_MAX_ID).expect("application range"),
-        "applications",
-        MemoryManagerRangeMode::Allowed,
-        None,
-    )
-    .expect("application record"),
-])
-.expect("non-overlapping ranges");
-
-authority
-    .validate_complete_coverage(MemoryManagerIdRange::all_usable())
-    .expect("closed policy covers every usable ID");
-```
+Pool membership does not imply an ID is unused. Durable records independently
+retain all assigned IDs. Pool construction and decoding canonicalize exclusions
+and reject invalid or overlapping namespace grants. They grant no open capability.
 
 ## Current MemoryManager Rules
 
@@ -578,12 +405,6 @@ For the checked `MemoryManagerSlot` allocation identity:
 - ID `0` is assigned to the allocation ledger.
 - Stable keys under `ic_memory.*` are reserved for `ic-memory` governance and
   cannot be opened through the public default runtime.
-
-The crate also exposes range-authority helpers for frameworks that want to split
-ID ranges between infrastructure and application stores.
-
-Canic can reserve framework ranges such as `10..=99` through its adapter. That
-kind of range is Canic policy, not an `ic-memory` rule.
 
 ## What It Does Not Do
 

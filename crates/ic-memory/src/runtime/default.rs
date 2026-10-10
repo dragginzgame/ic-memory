@@ -1,7 +1,7 @@
 use super::{
     MemoryManagerConfig, MemoryRuntime, RuntimeBootstrapError, RuntimeConstructionError,
     RuntimeDiagnosticError, RuntimeMemory, RuntimeOpenError, RuntimeStateError,
-    policy::GenericRangePolicy,
+    policy::GenericAllocationPolicy,
 };
 use crate::{
     CommittedAllocations, DiagnosticExport, MemoryRuntimeDoctorReport, RuntimeBootstrapPolicy,
@@ -119,24 +119,26 @@ pub fn verify_default_memory_manager_authority(
     })
 }
 
-/// Bootstrap this thread's default runtime using generic range policy.
-pub fn bootstrap_default_memory_manager()
--> Result<CommittedAllocations, RuntimeBootstrapError<Infallible>> {
-    bootstrap_default_memory_manager_with_policy(&GenericRangePolicy)
+/// Bootstrap this thread's default runtime using the host pool and built-in allocation policy.
+pub fn bootstrap_default_memory_manager(
+    pool: &crate::MemoryAllocationPool,
+) -> Result<CommittedAllocations, RuntimeBootstrapError<Infallible>> {
+    bootstrap_default_memory_manager_with_policy(pool, &GenericAllocationPolicy)
 }
 
 /// Bootstrap this thread's default runtime with caller-supplied policy.
 ///
 /// Static declarations are sealed once per linked program. Recovery, policy
 /// evaluation, persistence, and capability publication occur once for this
-/// concrete TLS runtime. Repeated calls must supply the policy identity bound
-/// by the successful bootstrap.
+/// concrete TLS runtime. Repeated calls must supply the canonical host pool
+/// and policy identity bound by the successful bootstrap.
 pub fn bootstrap_default_memory_manager_with_policy<P: RuntimeBootstrapPolicy>(
+    pool: &crate::MemoryAllocationPool,
     policy: &P,
 ) -> Result<CommittedAllocations, RuntimeBootstrapError<P::Error>> {
     let declarations = sealed_declaration_snapshot()?;
     with_default_runtime_mut(None, |runtime| {
-        runtime.bootstrap(&declarations, policy).cloned()
+        runtime.bootstrap(&declarations, pool, policy).cloned()
     })
 }
 
@@ -144,24 +146,11 @@ pub fn bootstrap_default_memory_manager_with_policy<P: RuntimeBootstrapPolicy>(
 /// Does not construct an absent runtime or select its bucket configuration.
 pub fn open_default_memory_manager_memory(
     stable_key: &str,
-    id: u8,
 ) -> Result<RuntimeMemory<DefaultMemoryImpl>, RuntimeOpenError> {
     with_existing_default_runtime(|runtime| {
         runtime
             .ok_or(RuntimeOpenError::NotBootstrapped)?
-            .open_memory(stable_key, id)
-    })
-}
-
-/// Open a key already committed by the host's default runtime without changing policy.
-/// Does not construct an absent runtime or select its bucket configuration.
-pub fn open_default_memory_manager_memory_by_key(
-    stable_key: &str,
-) -> Result<RuntimeMemory<DefaultMemoryImpl>, RuntimeOpenError> {
-    with_existing_default_runtime(|runtime| {
-        runtime
-            .ok_or(RuntimeOpenError::NotBootstrapped)?
-            .open_memory_by_key(stable_key)
+            .open_memory(stable_key)
     })
 }
 
@@ -195,9 +184,10 @@ pub fn default_memory_manager_commit_recovery_diagnostic()
 ///
 /// Returns `NotBootstrapped` if no runtime exists without initializing memory
 /// or choosing configuration. An existing runtime can be inspected before bootstrap.
-pub fn default_memory_manager_doctor_report()
--> Result<MemoryRuntimeDoctorReport, RuntimeDiagnosticError> {
-    default_memory_manager_doctor_report_with_policy(&GenericRangePolicy)
+pub fn default_memory_manager_doctor_report(
+    pool: &crate::MemoryAllocationPool,
+) -> Result<MemoryRuntimeDoctorReport, RuntimeDiagnosticError> {
+    default_memory_manager_doctor_report_with_policy(pool, &GenericAllocationPolicy)
 }
 
 /// Build diagnostics for this thread's default runtime under one explicit policy.
@@ -206,6 +196,7 @@ pub fn default_memory_manager_doctor_report()
 /// initializing memory or choosing configuration. The policy is evaluated only;
 /// it does not construct or bootstrap the runtime.
 pub fn default_memory_manager_doctor_report_with_policy<P>(
+    pool: &crate::MemoryAllocationPool,
     policy: &P,
 ) -> Result<MemoryRuntimeDoctorReport, RuntimeDiagnosticError>
 where
@@ -223,7 +214,7 @@ where
     with_existing_default_runtime(|runtime| {
         Ok(runtime
             .ok_or(RuntimeDiagnosticError::NotBootstrapped)?
-            .doctor_report(&declarations, policy))
+            .doctor_report(&declarations, pool, policy))
     })
 }
 
@@ -273,10 +264,11 @@ pub fn default_memory_manager_memory_allocation_summary()
 /// untouched.
 /// Registration hooks run without a TLS borrow and may observe the configured,
 /// unbootstrapped runtime.
-/// Use [`super::GenericRangePolicy`] to select the built-in policy, or pass the
+/// Use [`super::GenericAllocationPolicy`] to select the built-in policy, or pass the
 /// host's custom policy. This operation does not adopt a different bound policy.
 pub fn bootstrap_default_memory_manager_with_config<P: RuntimeBootstrapPolicy>(
     config: MemoryManagerConfig,
+    pool: &crate::MemoryAllocationPool,
     policy: &P,
 ) -> Result<CommittedAllocations, RuntimeBootstrapError<P::Error>> {
     // Reject construction/configuration failures before sealing, but release
@@ -284,13 +276,20 @@ pub fn bootstrap_default_memory_manager_with_config<P: RuntimeBootstrapPolicy>(
     with_default_runtime_mut(Some(config), |_| Ok::<_, RuntimeStateError>(()))?;
     let declarations = sealed_declaration_snapshot()?;
     with_default_runtime_mut(Some(config), |runtime| {
-        runtime.bootstrap(&declarations, policy).cloned()
+        runtime.bootstrap(&declarations, pool, policy).cloned()
     })
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    fn pool() -> crate::MemoryAllocationPool {
+        crate::MemoryAllocationPool::new(
+            vec![crate::MemoryAuthority::new("app", "app.").unwrap()],
+            vec![],
+        )
+        .unwrap()
+    }
 
     #[test]
     fn configured_registration_hooks_can_observe_unbootstrapped_runtime() {
@@ -311,7 +310,8 @@ mod tests {
         });
         std::thread::spawn(|| {
             let config = super::super::MemoryManagerConfig::new(16).unwrap();
-            bootstrap_default_memory_manager_with_config(config, &GenericRangePolicy).unwrap();
+            bootstrap_default_memory_manager_with_config(config, &pool(), &GenericAllocationPolicy)
+                .unwrap();
             assert_eq!(is_default_memory_manager_bootstrapped(), Ok(true));
         })
         .join()
@@ -323,8 +323,9 @@ mod tests {
         [
             default_memory_manager_diagnostic_export().map(|_| ()),
             default_memory_manager_commit_recovery_diagnostic().map(|_| ()),
-            default_memory_manager_doctor_report().map(|_| ()),
-            default_memory_manager_doctor_report_with_policy(&GenericRangePolicy).map(|_| ()),
+            default_memory_manager_doctor_report(&pool()).map(|_| ()),
+            default_memory_manager_doctor_report_with_policy(&pool(), &GenericAllocationPolicy)
+                .map(|_| ()),
         ]
     }
 
@@ -389,11 +390,18 @@ mod tests {
                 Err(RuntimeDiagnosticError::NotBootstrapped)
             ));
             default_memory_manager_commit_recovery_diagnostic().unwrap();
-            assert!(!default_memory_manager_doctor_report().unwrap().bootstrapped);
             assert!(
-                !default_memory_manager_doctor_report_with_policy(&GenericRangePolicy)
+                !default_memory_manager_doctor_report(&pool())
                     .unwrap()
                     .bootstrapped
+            );
+            assert!(
+                !default_memory_manager_doctor_report_with_policy(
+                    &pool(),
+                    &GenericAllocationPolicy
+                )
+                .unwrap()
+                .bootstrapped
             );
             assert_eq!(default_memory_manager_memory_allocations().unwrap(), before);
         })
@@ -408,7 +416,7 @@ mod tests {
             let error = RuntimeConstructionError::Growth(super::super::RuntimeGrowError::BackingRefused { additional_pages: 1 });
             DEFAULT_RUNTIME.with(|runtime| *runtime.borrow_mut() = Some(Err(error)));
             assert!(matches!(
-                bootstrap_default_memory_manager_with_config(MemoryManagerConfig::new(16).unwrap(), &GenericRangePolicy),
+                bootstrap_default_memory_manager_with_config(MemoryManagerConfig::new(16).unwrap(), &pool(), &GenericAllocationPolicy),
                 Err(RuntimeBootstrapError::State(RuntimeStateError::Construction(cause))) if cause == error
             ));
             assert_eq!(is_default_memory_manager_bootstrapped(), Err(RuntimeStateError::Construction(error)));
@@ -442,13 +450,12 @@ mod tests {
                     if cause == error
             ));
             for result in [
-                open_default_memory_manager_memory_by_key("app.rows.v1").err(),
-                open_default_memory_manager_memory("app.rows.v1", 100).err(),
+                open_default_memory_manager_memory("app.rows.v1").err(),
                 default_memory_manager_memory_id("app.rows.v1").err(),
             ] {
                 assert_eq!(result, Some(RuntimeOpenError::State(RuntimeStateError::Construction(error))));
             }
-            let requirements = crate::SealedDeclarationSnapshot::new(&[], &[], &[]).unwrap();
+            let requirements = crate::SealedDeclarationSnapshot::new(&[]).unwrap();
             assert_eq!(verify_default_memory_manager_authority(&requirements, "app"), Err(super::super::RuntimeAdoptionError::Open(RuntimeOpenError::State(RuntimeStateError::Construction(error)))));
             assert!(matches!(default_memory_manager_memory_allocation_summary(), Err(RuntimeDiagnosticError::State(RuntimeStateError::Construction(cause))) if cause == error));
             DEFAULT_RUNTIME.with(|runtime| {
@@ -481,14 +488,6 @@ mod tests {
         use ic_stable_structures::Memory;
         let _guard = TEST_REGISTRY_LOCK.lock().unwrap();
         reset_static_memory_declarations_for_tests();
-        crate::register_static_memory_manager_range(
-            100,
-            110,
-            "app",
-            crate::MemoryManagerRangeMode::Allowed,
-            None,
-        )
-        .unwrap();
         crate::register_memory_request(
             crate::MemoryRequest::new(
                 "app",
@@ -506,22 +505,24 @@ mod tests {
             ..Default::default()
         };
         let config = super::super::MemoryManagerConfig::new(1).unwrap();
-        let committed = bootstrap_default_memory_manager_with_config(config, &policy).unwrap();
+        let committed =
+            bootstrap_default_memory_manager_with_config(config, &pool(), &policy).unwrap();
         assert_eq!(committed.generation(), 2);
         let before = backing.borrow().clone();
         let mut marker = [0; 12];
-        open_default_memory_manager_memory_by_key("app.old.journal.v1")
+        open_default_memory_manager_memory("app.old.journal.v1")
             .unwrap()
             .read(0, &mut marker);
         assert_eq!(&marker, b"pending/debt");
         assert_eq!(committed_allocations().unwrap(), committed);
         assert_eq!(
-            bootstrap_default_memory_manager_with_config(config, &policy).unwrap(),
+            bootstrap_default_memory_manager_with_config(config, &pool(), &policy).unwrap(),
             committed
         );
         assert!(
             bootstrap_default_memory_manager_with_config(
                 super::super::MemoryManagerConfig::new(2).unwrap(),
+                &pool(),
                 &policy
             )
             .is_err()

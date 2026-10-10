@@ -1,6 +1,5 @@
 use ic_memory::{
-    AllocationRetirement, MemoryManagerSlot, MemoryManagerAuthorityRecord,
-    MemoryManagerIdRange, MemoryManagerRangeMode, SchemaMetadata, StableKey,
+    AllocationRetirement, MemoryManagerSlot, MemoryAuthority, SchemaMetadata, StableKey,
 };
 
 fn main() {
@@ -9,12 +8,9 @@ fn main() {
 
     let _retirement = AllocationRetirement { stable_key, slot };
 
-    let range = MemoryManagerIdRange::new(100, 109).expect("valid range");
-    let _authority = MemoryManagerAuthorityRecord {
-        range,
+    let _authority = MemoryAuthority {
         authority: "app".to_string(),
-        mode: MemoryManagerRangeMode::Allowed,
-        purpose: None,
+        key_prefix: "app.".to_string(),
     };
 
     let _schema = SchemaMetadata {

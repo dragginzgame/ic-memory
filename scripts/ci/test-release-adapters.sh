@@ -30,17 +30,24 @@ exit "${RELEASE_TEST_STATUS:-0}"
 STUB
 # Actual Make admission must stop before even a failing substitute runner.
 for target in release-patch release-minor release-major release-resume; do
-    for mode in -i -n -t -q; do
+    for mode in -i -n -t -q --ignore-errors --dry-run --touch --question -kin; do
         for source in direct inherited; do
-            status=0
-            if [[ "$source" == direct ]]; then
-                (cd "$FIXTURE"; RELEASE_TEST_STATUS=23 make --no-print-directory "$mode" "$target") \
-                    > "$FIXTURE/mode-$target-$mode-$source.log" 2>&1 || status=$?
-            else
-                (cd "$FIXTURE"; MAKEFLAGS="$mode" RELEASE_TEST_STATUS=23 make --no-print-directory "$target") \
-                    > "$FIXTURE/mode-$target-$mode-$source.log" 2>&1 || status=$?
-            fi
-            [[ "$status" == 2 && ! -e "$FIXTURE/runner-events" ]] || exit 1
+            for replacement in original empty harmless; do
+                flags=(--no-print-directory)
+                case "$replacement" in
+                    empty) flags+=(MAKEFLAGS=) ;;
+                    harmless) flags+=(MAKEFLAGS=-j2) ;;
+                esac
+                status=0
+                if [[ "$source" == direct ]]; then
+                    (cd "$FIXTURE"; RELEASE_TEST_STATUS=23 make "$mode" "$target" "${flags[@]}") \
+                        > "$FIXTURE/mode-$target-$mode-$source-$replacement.log" 2>&1 || status=$?
+                else
+                    (cd "$FIXTURE"; MAKEFLAGS="$mode" RELEASE_TEST_STATUS=23 make "$target" "${flags[@]}") \
+                        > "$FIXTURE/mode-$target-$mode-$source-$replacement.log" 2>&1 || status=$?
+                fi
+                [[ "$status" == 2 && ! -e "$FIXTURE/runner-events" ]] || exit 1
+            done
         done
     done
 done

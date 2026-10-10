@@ -20,8 +20,8 @@
 //! 1. Recover the persisted allocation ledger.
 //! 2. Admit consumer identity and authorized historical selections from bounded
 //!    metadata under the host's `RuntimeBootstrapPolicy`.
-//! 3. Resolve logical requests under explicit host grants, combine them with
-//!    sealed fixed declarations, then validate against retained ownership and current policy.
+//! 3. Resolve key requests in the host-wide pool under current namespace grants,
+//!    then validate retained key-to-ID bindings and application policy.
 //! 4. Stage and durably persist the next generation.
 //! 5. Only then open stable-memory handles through committed allocation
 //!    authority.
@@ -30,13 +30,11 @@
 //! rules, controller authorization, endpoint lifecycle, schema migrations, and
 //! application validation belong to the framework or application.
 //!
-//! For the default `MemoryManager` runtime, registered `ic-memory` range claims
-//! are generic allocation policy and are enforced before caller-supplied
-//! policy. A framework such as Canic that wants higher-level range semantics
-//! should adapt to this contract deliberately. Register explicit grants for
-//! logical placement and historical selection. When no user ranges are
-//! registered, the framework's [`AllocationPolicy`] can enforce fixed
-//! application claims directly.
+//! The host supplies one [`MemoryAllocationPool`] with explicit namespace grants
+//! and physical exclusions. Linked components request permanent keys and name
+//! their owner; they do not select numeric IDs or reserve component subranges.
+//! Namespace grants are current host policy, not caller authentication or
+//! persisted ownership labels. Application admission remains host-owned.
 //!
 //! Use these primitives before opening stable-memory handles. Integrations
 //! should recover the historical ledger, declare the stores expected by the
@@ -82,6 +80,7 @@
 //! crate. Use its collections and traits with [`RuntimeMemory`] handles;
 //! `ic-memory` owns allocation governance without wrapping typed collections.
 
+mod allocation_pool;
 mod bootstrap;
 mod capability;
 mod cbor;
@@ -149,6 +148,7 @@ mod test_cbor {
 /// the owned runtime. This re-export preserves upstream type identity.
 pub use ic_stable_structures;
 
+pub use allocation_pool::{MemoryAllocationPool, MemoryAllocationPoolError, MemoryAuthority};
 pub use bootstrap::{
     AllocationBootstrap, BootstrapError, BootstrapReservationError, BootstrapRetirementError,
     PendingBootstrapCommit,
@@ -159,9 +159,9 @@ pub use constants::{
 };
 pub use declaration::{AllocationDeclaration, DeclarationSnapshot, DeclarationSnapshotError};
 pub use diagnostics::{
-    DiagnosticCheck, DiagnosticCode, DiagnosticDeclaration, DiagnosticExport, DiagnosticFailure,
-    DiagnosticMemorySize, DiagnosticRangeAuthority, DiagnosticRecord, DiagnosticRuntimeBinding,
-    DiagnosticStableCell, DiagnosticStableCellStatus, MemoryRuntimeDoctorReport,
+    DiagnosticCheck, DiagnosticCode, DiagnosticExport, DiagnosticFailure, DiagnosticMemorySize,
+    DiagnosticRecord, DiagnosticRuntimeBinding, DiagnosticStableCell, DiagnosticStableCellStatus,
+    MemoryRuntimeDoctorReport,
 };
 pub use key::{StableKey, StableKeyError};
 pub use ledger::{
@@ -177,36 +177,29 @@ pub use physical::{
 pub use policy::{AllocationPolicy, PolicyIdentity, PolicyIdentityError, RuntimeBootstrapPolicy};
 pub use registry::{
     MemoryRequest, SealedDeclarationFingerprint, SealedDeclarationSnapshot,
-    StaticMemoryDeclaration, StaticMemoryDeclarationError, StaticMemoryRangeDeclaration,
-    register_memory_request, register_static_memory_declaration,
-    register_static_memory_manager_declaration,
-    register_static_memory_manager_declaration_with_schema, register_static_memory_manager_range,
-    register_static_memory_range_declaration, sealed_declaration_snapshot,
+    StaticMemoryDeclarationError, register_memory_request, sealed_declaration_snapshot,
 };
 pub use runtime::{
-    AllocationBinding, AllocationRangeClaim, BootstrapAdmission, BootstrapAdmissionError,
-    GenericRangePolicy, MemoryAllocation, MemoryAllocationSummary, MemoryAllocations,
-    MemoryBindingSummary, MemoryManagerConfig, MemoryManagerLayoutError, MemoryResolutionError,
-    MemoryRuntime, RecoveredAllocationMetadata, RuntimeAdoptionError, RuntimeBootstrapError,
+    AllocationBinding, BootstrapAdmission, BootstrapAdmissionError, GenericAllocationPolicy,
+    MemoryAllocation, MemoryAllocationSummary, MemoryAllocations, MemoryBindingSummary,
+    MemoryManagerConfig, MemoryManagerLayoutError, MemoryResolutionError, MemoryRuntime,
+    RecoveredAllocationMetadata, RuntimeAdoptionError, RuntimeBootstrapError,
     RuntimeConstructionError, RuntimeDiagnosticError, RuntimeGrowError, RuntimeMemory,
-    RuntimeOpenError, RuntimePolicyError, RuntimeStateError, bootstrap_default_memory_manager,
+    RuntimeOpenError, RuntimeStateError, bootstrap_default_memory_manager,
     bootstrap_default_memory_manager_with_config, bootstrap_default_memory_manager_with_policy,
     committed_allocations, default_memory_manager_commit_recovery_diagnostic,
     default_memory_manager_diagnostic_export, default_memory_manager_doctor_report,
     default_memory_manager_doctor_report_with_policy,
     default_memory_manager_memory_allocation_summary, default_memory_manager_memory_allocations,
     default_memory_manager_memory_id, is_default_memory_manager_bootstrapped,
-    open_default_memory_manager_memory, open_default_memory_manager_memory_by_key,
-    verify_default_memory_manager_authority,
+    open_default_memory_manager_memory, verify_default_memory_manager_authority,
 };
 pub use schema::{SchemaMetadata, SchemaMetadataError};
 pub use slot::{
-    IC_MEMORY_AUTHORITY_OWNER, IC_MEMORY_AUTHORITY_PURPOSE, IC_MEMORY_LEDGER_LABEL,
-    IC_MEMORY_LEDGER_STABLE_KEY, IC_MEMORY_STABLE_KEY_PREFIX, MEMORY_MANAGER_GOVERNANCE_MAX_ID,
-    MEMORY_MANAGER_INVALID_ID, MEMORY_MANAGER_LEDGER_ID, MEMORY_MANAGER_MAX_ID,
-    MEMORY_MANAGER_MIN_ID, MemoryManagerAuthorityRecord, MemoryManagerIdRange,
-    MemoryManagerRangeAuthority, MemoryManagerRangeAuthorityError, MemoryManagerRangeError,
-    MemoryManagerRangeMode, MemoryManagerSlot, MemoryManagerSlotError, is_ic_memory_stable_key,
+    IC_MEMORY_AUTHORITY_OWNER, IC_MEMORY_LEDGER_LABEL, IC_MEMORY_LEDGER_STABLE_KEY,
+    IC_MEMORY_STABLE_KEY_PREFIX, MEMORY_MANAGER_GOVERNANCE_MAX_ID, MEMORY_MANAGER_INVALID_ID,
+    MEMORY_MANAGER_LEDGER_ID, MEMORY_MANAGER_MAX_ID, MEMORY_MANAGER_MIN_ID, MemoryManagerIdRange,
+    MemoryManagerRangeError, MemoryManagerSlot, MemoryManagerSlotError, is_ic_memory_stable_key,
     memory_manager_governance_range, validate_memory_manager_id,
 };
 pub use stable_cell::{
@@ -227,8 +220,8 @@ pub mod __reexports {
 
 /// Register a `MemoryManager` allocation declaration during static initialization.
 ///
-/// The explicit authority is stable policy identity shared with the matching
-/// range declaration. A string literal or shared compile-time string constant
+/// The authority names the owner admitted by the host namespace grant.
+/// A string literal or shared compile-time string constant
 /// may be used. Internal `ic-memory` authority is unavailable to callers.
 ///
 /// This macro only registers declaration metadata. It does not open stable
@@ -249,129 +242,14 @@ macro_rules! ic_memory_declaration {
             }
         };
     };
-    (authority = $authority:expr, key = $stable_key:literal, ty = $label:path, id = $id:expr $(,)?) => {
-        const _: () = {
-            const __IC_MEMORY_AUTHORITY: &str = $authority;
-
-            fn __ic_memory_register_static_declaration() -> Result<(), $crate::StaticMemoryDeclarationError> {
-                let _ = core::marker::PhantomData::<$label>;
-                $crate::register_static_memory_manager_declaration(
-                    $id,
-                    __IC_MEMORY_AUTHORITY,
-                    stringify!($label),
-                    $stable_key,
-                )
-            }
-
-            #[ $crate::__reexports::ctor::ctor(unsafe, anonymous, crate_path = $crate::__reexports::ctor) ]
-            fn __ic_memory_defer_static_declaration() {
-                $crate::defer_static_memory_registration(__ic_memory_register_static_declaration);
-            }
-        };
-    };
-    (authority = $authority:expr, key = $stable_key:literal, label = $label:literal, id = $id:expr $(,)?) => {
-        const _: () = {
-            const __IC_MEMORY_AUTHORITY: &str = $authority;
-
-            fn __ic_memory_register_static_declaration() -> Result<(), $crate::StaticMemoryDeclarationError> {
-                $crate::register_static_memory_manager_declaration(
-                    $id,
-                    __IC_MEMORY_AUTHORITY,
-                    $label,
-                    $stable_key,
-                )
-            }
-
-            #[ $crate::__reexports::ctor::ctor(unsafe, anonymous, crate_path = $crate::__reexports::ctor) ]
-            fn __ic_memory_defer_static_declaration() {
-                $crate::defer_static_memory_registration(__ic_memory_register_static_declaration);
-            }
-        };
-    };
 }
 
-/// Declare a `MemoryManager` allocation range during static initialization.
-///
-/// The explicit authority must match every declaration that uses this range.
-/// A shared compile-time string constant can keep those declarations aligned.
-///
-/// Omitting `mode` selects [`MemoryManagerRangeMode::Reserved`]. A reserved
-/// range permits matching fixed or historical claims but supplies no fresh
-/// logical placements. Use `mode = Allowed` to grant a pool for new key-only
-/// requests; neither mode allocates any memory by itself.
-///
-/// A new logical request with no free ID in a matching `Allowed` range returns
-/// [`MemoryResolutionError::Exhausted`], even when a `Reserved` range has free IDs.
-///
-/// # Examples
-///
-/// ```no_run
-/// // Fixed claims use the default Reserved mode.
-/// ic_memory::ic_memory_range!(authority = "framework", start = 10, end = 19);
-///
-/// // New key-only requests require an explicit Allowed pool.
-/// ic_memory::ic_memory_range!(authority = "app", start = 20, end = 29, mode = Allowed);
-/// ic_memory::ic_memory_declaration!(authority = "app", key = "app.users.v1");
-/// ```
-#[macro_export]
-macro_rules! ic_memory_range {
-    (authority = $authority:expr, start = $start:expr, end = $end:expr $(,)?) => {
-        $crate::ic_memory_range!(
-            authority = $authority,
-            start = $start,
-            end = $end,
-            mode = Reserved,
-        );
-    };
-    (authority = $authority:expr, start = $start:expr, end = $end:expr, mode = $mode:ident $(,)?) => {
-        const _: () = {
-            const __IC_MEMORY_AUTHORITY: &str = $authority;
-
-            fn __ic_memory_register_static_range() -> Result<(), $crate::StaticMemoryDeclarationError> {
-                $crate::register_static_memory_manager_range(
-                    $start,
-                    $end,
-                    __IC_MEMORY_AUTHORITY,
-                    $crate::MemoryManagerRangeMode::$mode,
-                    None,
-                )
-            }
-
-            #[ $crate::__reexports::ctor::ctor(unsafe, anonymous, crate_path = $crate::__reexports::ctor) ]
-            fn __ic_memory_defer_static_range() {
-                $crate::defer_static_memory_registration(__ic_memory_register_static_range);
-            }
-        };
-    };
-}
-
-/// Declare and open a committed `MemoryManager` slot by stable key.
-///
-/// The macro registers declaration metadata during static initialization and
-/// returns the typed default-runtime open result at expression use time.
+/// Declare a key-only request and open it after the host has committed bootstrap.
 #[macro_export]
 macro_rules! ic_memory_key {
     (authority = $authority:expr, key = $stable_key:literal $(,)?) => {{
         $crate::ic_memory_declaration!(authority = $authority, key = $stable_key);
-        $crate::open_default_memory_manager_memory_by_key($stable_key)
-    }};
-    (authority = $authority:expr, key = $stable_key:literal, ty = $label:path, id = $id:expr $(,)?) => {{
-        $crate::ic_memory_declaration!(
-            authority = $authority,
-            key = $stable_key,
-            ty = $label,
-            id = $id,
-        );
-        $crate::open_default_memory_manager_memory($stable_key, $id)
-    }};
-    (authority = $authority:expr, key = $stable_key:literal, label = $label:literal, id = $id:expr $(,)?) => {{
-        $crate::ic_memory_declaration!(
-            authority = $authority,
-            key = $stable_key,
-            label = $label,
-            id = $id,
-        );
-        $crate::open_default_memory_manager_memory($stable_key, $id)
+        $crate::open_default_memory_manager_memory($stable_key)
     }};
 }
 

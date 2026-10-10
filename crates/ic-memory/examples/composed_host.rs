@@ -12,14 +12,7 @@ const HOST: &str = "host.control.v1";
 const CONTROL: &str = "db.main.control.v1";
 const ROWS: &str = "db.main.rows.v1";
 
-ic_memory::ic_memory_range!(authority = "host", start = 10, end = 99, mode = Allowed);
-ic_memory::ic_memory_range!(authority = "db", start = 100, end = 110, mode = Allowed);
-ic_memory::ic_memory_declaration!(
-    authority = "host",
-    key = "host.control.v1",
-    label = "host control",
-    id = 10,
-);
+ic_memory::ic_memory_declaration!(authority = "host", key = "host.control.v1");
 ic_memory::ic_memory_declaration!(authority = "db", key = "db.main.control.v1");
 ic_memory::ic_memory_declaration!(authority = "db", key = "db.main.rows.v1");
 
@@ -89,7 +82,7 @@ fn database_requirements() -> SealedDeclarationSnapshot {
     let requests = [CONTROL, ROWS]
         .map(|key| MemoryRequest::new("db", key, SchemaMetadata::default()).unwrap());
     // Consumer requirements do not replace the host's grants or policy.
-    SealedDeclarationSnapshot::new(&[], &[], &requests).unwrap()
+    SealedDeclarationSnapshot::new(&requests).unwrap()
 }
 
 fn cold_reopens() {
@@ -100,10 +93,10 @@ fn cold_reopens() {
     let policy = HostPolicy::default();
     {
         let mut host = MemoryRuntime::new_with_config(backing.clone(), config).unwrap();
-        host.bootstrap(&declarations, &policy).unwrap();
+        host.bootstrap(&declarations, &pool(), &policy).unwrap();
         host.verify_authority(&requirements, "db").unwrap();
         for (key, marker) in [(HOST, b"host"), (CONTROL, b"ctrl"), (ROWS, b"rows")] {
-            let memory = host.open_memory_by_key(key).unwrap();
+            let memory = host.open_memory(key).unwrap();
             memory.grow(1).unwrap();
             memory.write(0, marker);
         }
@@ -113,20 +106,16 @@ fn cold_reopens() {
         let before = backing.borrow().clone();
         // A disallowed control replacement fails before commitment. A subsequent
         // cold attempt still sees the prior IDs and data under the same geometry.
-        let changed = SealedDeclarationSnapshot::new(
-            declarations.registered_declarations(),
-            declarations.registered_ranges(),
-            &[
-                MemoryRequest::new("db", "db.replacement.control.v1", SchemaMetadata::default())
-                    .unwrap(),
-                MemoryRequest::new("db", ROWS, SchemaMetadata::default()).unwrap(),
-            ],
-        )
+        let changed = SealedDeclarationSnapshot::new(&[
+            MemoryRequest::new("db", "db.replacement.control.v1", SchemaMetadata::default())
+                .unwrap(),
+            MemoryRequest::new("db", ROWS, SchemaMetadata::default()).unwrap(),
+        ])
         .unwrap();
         {
             let mut rejected = MemoryRuntime::new_with_config(backing.clone(), config).unwrap();
             assert!(matches!(
-                rejected.bootstrap(&changed, &policy),
+                rejected.bootstrap(&changed, &pool(), &policy),
                 Err(RuntimeBootstrapError::AdmissionPolicy(
                     ConsumerRejection::ControlReplacement
                 ))
@@ -137,33 +126,39 @@ fn cold_reopens() {
                 Err(RuntimeOpenError::NotBootstrapped)
             );
             assert!(matches!(
-                rejected.open_memory_by_key(ROWS),
+                rejected.open_memory(ROWS),
                 Err(RuntimeOpenError::NotBootstrapped)
             ));
             assert_eq!(*backing.borrow(), before);
         }
 
         let mut host = MemoryRuntime::new_with_config(backing.clone(), config).unwrap();
-        let committed = host.bootstrap(&declarations, &policy).unwrap().clone();
+        let committed = host
+            .bootstrap(&declarations, &pool(), &policy)
+            .unwrap()
+            .clone();
         assert_eq!(committed.generation(), reopen + 1);
         let before_adoption = backing.borrow().clone();
         for _ in 0..2 {
             host.verify_authority(&declarations, "host").unwrap();
             host.verify_authority(&requirements, "db").unwrap();
             for (key, id, marker) in [
-                (HOST, 10, b"host"),
-                (CONTROL, 100, b"ctrl"),
-                (ROWS, 101, b"rows"),
+                (HOST, 12, b"host"),
+                (CONTROL, 10, b"ctrl"),
+                (ROWS, 11, b"rows"),
             ] {
                 assert_eq!(host.memory_id(key), Ok(id));
-                let memory = host.open_memory_by_key(key).unwrap();
+                let memory = host.open_memory(key).unwrap();
                 assert_eq!(memory.size(), 1);
                 let mut retained = [0; 4];
                 memory.read(0, &mut retained);
                 assert_eq!(&retained, marker);
             }
         }
-        assert_eq!(host.bootstrap(&declarations, &policy).unwrap(), &committed);
+        assert_eq!(
+            host.bootstrap(&declarations, &pool(), &policy).unwrap(),
+            &committed
+        );
         assert_eq!(host.memory_manager_config(), config);
         assert_eq!(*backing.borrow(), before_adoption);
         assert_eq!(
@@ -195,17 +190,18 @@ fn native_threads() {
                 );
                 ic_memory::bootstrap_default_memory_manager_with_config(
                     MemoryManagerConfig::new(16).unwrap(),
+                    &pool(),
                     &policy,
                 )
                 .unwrap();
                 ic_memory::verify_default_memory_manager_authority(&requirements, "db").unwrap();
-                let rows = ic_memory::open_default_memory_manager_memory_by_key(ROWS).unwrap();
+                let rows = ic_memory::open_default_memory_manager_memory(ROWS).unwrap();
                 rows.grow(1).unwrap();
                 rows.write(0, b"rows");
                 let mut retained = [0; 4];
                 rows.read(0, &mut retained);
                 assert_eq!(&retained, b"rows");
-                assert_eq!(ic_memory::default_memory_manager_memory_id(ROWS), Ok(101));
+                assert_eq!(ic_memory::default_memory_manager_memory_id(ROWS), Ok(11));
                 assert_eq!(
                     ic_memory::default_memory_manager_memory_allocation_summary()
                         .unwrap()
@@ -237,4 +233,15 @@ fn composed_host_retains_authority_and_data_through_two_cold_reopens() {
 #[cfg(not(target_arch = "wasm32"))]
 fn every_native_worker_bootstraps_host_before_consumer_adoption() {
     native_threads();
+}
+
+fn pool() -> ic_memory::MemoryAllocationPool {
+    ic_memory::MemoryAllocationPool::new(
+        vec![
+            ic_memory::MemoryAuthority::new("db", "db.").unwrap(),
+            ic_memory::MemoryAuthority::new("host", "host.").unwrap(),
+        ],
+        vec![],
+    )
+    .unwrap()
 }

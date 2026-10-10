@@ -5,19 +5,9 @@ use std::{
     sync::atomic::{AtomicBool, Ordering},
 };
 
-struct MacroStore;
-
 static EAGER_INIT_RAN: AtomicBool = AtomicBool::new(false);
 const MACRO_AUTHORITY: &str = "runtime_macros";
 
-ic_memory::ic_memory_range!(authority = MACRO_AUTHORITY, start = 130, end = 139);
-
-ic_memory::ic_memory_range!(
-    authority = MACRO_AUTHORITY,
-    start = 140,
-    end = 149,
-    mode = Allowed
-);
 ic_memory::ic_memory_declaration!(authority = MACRO_AUTHORITY, key = "macro.logical.rows.v1");
 
 ic_memory::eager_init!({
@@ -30,18 +20,13 @@ thread_local! {
             ic_memory::is_default_memory_manager_bootstrapped()
                 .expect("default runtime lifecycle")
         );
-        RefCell::new(Some(ic_memory::ic_memory_key!(
-            authority = MACRO_AUTHORITY,
-            key = "macro.integration.users.v1",
-            ty = MacroStore,
-            id = 130,
-        )
+        RefCell::new(Some(ic_memory::ic_memory_key!(authority = MACRO_AUTHORITY, key = "macro.integration.users.v1")
         .expect("committed macro memory")))
     };
 }
 
 fn bootstrap_and_require_thread_local_ledger() {
-    let validated = ic_memory::bootstrap_default_memory_manager().expect("bootstrap");
+    let validated = ic_memory::bootstrap_default_memory_manager(&pool()).expect("bootstrap");
     ic_memory::default_memory_manager_diagnostic_export()
         .expect("bootstrapped runtime should expose its local ledger");
 
@@ -52,7 +37,7 @@ fn bootstrap_and_require_thread_local_ledger() {
             .iter()
             .any(|declaration| declaration.stable_key().as_str() == "macro.integration.users.v1")
     );
-    let logical = ic_memory::open_default_memory_manager_memory_by_key("macro.logical.rows.v1")
+    let logical = ic_memory::open_default_memory_manager_memory("macro.logical.rows.v1")
         .expect("key-only host adoption");
     assert_eq!(ic_stable_structures::Memory::size(&logical), 0);
     assert_eq!(
@@ -60,10 +45,10 @@ fn bootstrap_and_require_thread_local_ledger() {
             .slot_for(&ic_memory::StableKey::parse("macro.logical.rows.v1").unwrap())
             .unwrap()
             .id(),
-        140
+        11
     );
     MACRO_MEMORY.with(|memory| assert!(memory.borrow().is_some()));
-    ic_memory::open_default_memory_manager_memory("macro.integration.users.v1", 130)
+    ic_memory::open_default_memory_manager_memory("macro.integration.users.v1")
         .expect("open macro memory");
 }
 
@@ -75,4 +60,12 @@ fn first_libtest_default_runtime_bootstraps_its_own_memory() {
 #[test]
 fn second_libtest_default_runtime_bootstraps_its_own_memory() {
     bootstrap_and_require_thread_local_ledger();
+}
+
+fn pool() -> ic_memory::MemoryAllocationPool {
+    ic_memory::MemoryAllocationPool::new(
+        vec![ic_memory::MemoryAuthority::new("runtime_macros", "macro.").unwrap()],
+        vec![],
+    )
+    .unwrap()
 }

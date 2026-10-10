@@ -81,7 +81,7 @@ The owned, serializable report contains:
 `AllocationBinding::Current { stable_key, owner }` comes from successfully bound
 current declarations. `Ledger { stable_key, owner }` labels ic-memory's reserved
 ledger slot at ID 0; it does not validate that slot's payload. `Unknown` includes
-retired, absent, and unbound declarations. A range claim is only current policy
+retired, absent, and unbound declarations. Pool eligibility is only current policy
 metadata, not proof of historical ownership. No retired ID is omitted merely
 because its key is unavailable. Before bootstrap all application bindings are
 unknown; the reserved ledger identity is still labeled.
@@ -162,7 +162,7 @@ fn allocation_snapshot()
 This is the ops collection boundary. Map the owned report into Canic's own
 Candid DTO at its existing DTO boundary; ic-memory does not add Candid or an
 endpoint. Canic's `MemoryAllocationsResponse` now carries all 255 rows, binding
-variants, optional range claims, per-ID bucket/slack values, manager metadata
+variants, optional pool eligibility, per-ID bucket/slack values, manager metadata
 and separate unknown-binding/unmanaged residuals. Preserve `payload_bytes = None`
 and the measurement meaning. Do not filter to current keys or coerce unknown
 keys into fabricated strings or `Active` state. If maintaining a derived current-only

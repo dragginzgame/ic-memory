@@ -1,89 +1,50 @@
 //! Run with `cargo run --example key_only`.
+use ic_memory::ic_stable_structures::{Memory, VectorMemory};
 use ic_memory::{
-    AllocationBootstrap, AllocationDeclaration, AllocationLedger, GenericRangePolicy,
-    LedgerCommitStore, MemoryManagerAuthorityRecord, MemoryManagerIdRange, MemoryManagerRangeMode,
-    MemoryRequest, MemoryRuntime, SchemaMetadata, SealedDeclarationSnapshot,
-    StableCellLedgerRecord, StaticMemoryDeclaration, StaticMemoryRangeDeclaration,
+    GenericAllocationPolicy, MemoryAllocationPool, MemoryAuthority, MemoryRequest, MemoryRuntime,
+    SchemaMetadata, SealedDeclarationSnapshot,
 };
-use ic_stable_structures::{
-    Cell, Memory, VectorMemory,
-    memory_manager::{MemoryId, MemoryManager},
-};
-
-fn grant(owner: &str, first: u8, last: u8) -> StaticMemoryRangeDeclaration {
-    StaticMemoryRangeDeclaration::new(
-        MemoryManagerAuthorityRecord::new(
-            MemoryManagerIdRange::new(first, last).unwrap(),
-            owner,
-            MemoryManagerRangeMode::Allowed,
-            None,
-        )
-        .unwrap(),
-    )
-    .unwrap()
-}
-
 fn request(owner: &str, key: &str) -> MemoryRequest {
     MemoryRequest::new(owner, key, SchemaMetadata::default()).unwrap()
 }
-
 fn main() {
-    // Standalone: the application explicitly owns the entire nongovernance pool.
-    let declarations = SealedDeclarationSnapshot::new(
-        &[],
-        &[grant("app", 10, 254)],
-        &[
-            request("app", "app.users.v1"),
-            request("app", "app.orders.v1"),
+    // The final host owns one pool. Owners receive namespaces, not numeric ranges.
+    let pool = MemoryAllocationPool::new(
+        vec![
+            MemoryAuthority::new("app", "app.").unwrap(),
+            MemoryAuthority::new("db", "db.").unwrap(),
         ],
+        vec![],
     )
     .unwrap();
-    let mut standalone = MemoryRuntime::new(VectorMemory::default()).unwrap();
-    standalone
-        .bootstrap(&declarations, &GenericRangePolicy)
-        .unwrap();
-    let users = standalone.open_memory_by_key("app.users.v1").unwrap();
-    users.grow(1).unwrap();
-    users.write(0, b"users");
-
-    // A host's existing persistence owner may seed a reservation before runtime
-    // bootstrap. This is the privileged ledger-root operation, not a store open.
+    let declarations = SealedDeclarationSnapshot::new(&[
+        request("app", "app.control.v1"),
+        request("db", "db.journal.v1"),
+        request("db", "db.rows.v1"),
+    ])
+    .unwrap();
     let backing = VectorMemory::default();
-    let mut store = LedgerCommitStore::default();
-    store
-        .commit(&AllocationLedger::new(0, Vec::new()).unwrap())
+    let mut host = MemoryRuntime::new(backing.clone()).unwrap();
+    host.bootstrap(&declarations, &pool, &GenericAllocationPolicy)
         .unwrap();
-    AllocationBootstrap::new(&mut store)
-        .reserve_and_commit(
-            &[AllocationDeclaration::memory_manager_unlabeled("db.journal.v1", 101).unwrap()],
-            &GenericRangePolicy,
-        )
-        .unwrap();
-    {
-        let manager = MemoryManager::init(backing.clone());
-        let _root = Cell::init(
-            manager.get(MemoryId::new(0)),
-            StableCellLedgerRecord::new(store),
-        );
-    }
-    // Composed: db gets only 100..119. The fixed host claim and reservation are
-    // unavailable to new automatic keys, even if declarations change order.
-    let declarations = SealedDeclarationSnapshot::new(
-        &[StaticMemoryDeclaration::new(
-            "host",
-            AllocationDeclaration::memory_manager_unlabeled("host.control.v1", 10).unwrap(),
-        )
-        .unwrap()],
-        &[grant("host", 10, 99), grant("db", 100, 119)],
-        &[request("db", "db.rows.v1"), request("db", "db.journal.v1")],
-    )
-    .unwrap();
+    let id = host.memory_id("db.rows.v1").unwrap();
+    let rows = host.open_memory("db.rows.v1").unwrap();
+    rows.grow(1).unwrap();
+    rows.write(0, b"rows");
+    drop(rows);
+    drop(host);
     let mut host = MemoryRuntime::new(backing).unwrap();
-    host.bootstrap(&declarations, &GenericRangePolicy).unwrap();
-    host.verify_authority(&declarations, "db").unwrap();
-    assert_eq!(host.memory_id("db.journal.v1"), Ok(101));
-    assert_eq!(host.memory_id("db.rows.v1"), Ok(100));
-    // A library adopts current host authority without running bootstrap again.
-    let _journal = host.open_memory_by_key("db.journal.v1").unwrap();
-    let _rows = host.open_memory_by_key("db.rows.v1").unwrap();
+    host.bootstrap(&declarations, &pool, &GenericAllocationPolicy)
+        .unwrap();
+    // Library adoption verifies only its requirements and does not bootstrap again.
+    let requirements = SealedDeclarationSnapshot::new(&[
+        request("db", "db.journal.v1"),
+        request("db", "db.rows.v1"),
+    ])
+    .unwrap();
+    host.verify_authority(&requirements, "db").unwrap();
+    assert_eq!(host.memory_id("db.rows.v1"), Ok(id));
+    let mut bytes = [0; 4];
+    host.open_memory("db.rows.v1").unwrap().read(0, &mut bytes);
+    assert_eq!(&bytes, b"rows");
 }

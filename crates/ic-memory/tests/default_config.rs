@@ -1,27 +1,20 @@
 use ic_memory::ic_stable_structures::Memory;
 use ic_memory::{
-    GenericRangePolicy, MemoryManagerConfig, RuntimeBootstrapError, RuntimeConstructionError,
+    GenericAllocationPolicy, MemoryManagerConfig, RuntimeBootstrapError, RuntimeConstructionError,
     RuntimeDiagnosticError, RuntimeOpenError, RuntimeStateError, bootstrap_default_memory_manager,
     bootstrap_default_memory_manager_with_config, committed_allocations,
     default_memory_manager_commit_recovery_diagnostic, default_memory_manager_diagnostic_export,
     default_memory_manager_doctor_report, default_memory_manager_doctor_report_with_policy,
     default_memory_manager_memory_allocation_summary, default_memory_manager_memory_allocations,
     default_memory_manager_memory_id, is_default_memory_manager_bootstrapped,
-    open_default_memory_manager_memory, open_default_memory_manager_memory_by_key,
-    verify_default_memory_manager_authority,
+    open_default_memory_manager_memory, verify_default_memory_manager_authority,
 };
 
 const AUTHORITY: &str = "default_config";
 const KEY: &str = "default_config.rows.v1";
-const MEMORY_ID: u8 = 150;
+const MEMORY_ID: u8 = 10;
 
-ic_memory::ic_memory_range!(authority = AUTHORITY, start = MEMORY_ID, end = MEMORY_ID);
-ic_memory::ic_memory_declaration!(
-    authority = AUTHORITY,
-    key = "default_config.rows.v1",
-    label = "rows",
-    id = MEMORY_ID,
-);
+ic_memory::ic_memory_declaration!(authority = AUTHORITY, key = "default_config.rows.v1");
 
 fn assert_unbootstrapped_observations() {
     assert!(!is_default_memory_manager_bootstrapped().unwrap());
@@ -30,11 +23,7 @@ fn assert_unbootstrapped_observations() {
         Err(RuntimeOpenError::NotBootstrapped)
     );
     assert!(matches!(
-        open_default_memory_manager_memory(KEY, MEMORY_ID),
-        Err(RuntimeOpenError::NotBootstrapped)
-    ));
-    assert!(matches!(
-        open_default_memory_manager_memory_by_key(KEY),
+        open_default_memory_manager_memory(KEY),
         Err(RuntimeOpenError::NotBootstrapped)
     ));
     assert!(matches!(
@@ -57,8 +46,9 @@ fn diagnostic_observations() -> [Result<(), RuntimeDiagnosticError>; 4] {
     [
         default_memory_manager_diagnostic_export().map(|_| ()),
         default_memory_manager_commit_recovery_diagnostic().map(|_| ()),
-        default_memory_manager_doctor_report().map(|_| ()),
-        default_memory_manager_doctor_report_with_policy(&GenericRangePolicy).map(|_| ()),
+        default_memory_manager_doctor_report(&pool()).map(|_| ()),
+        default_memory_manager_doctor_report_with_policy(&pool(), &GenericAllocationPolicy)
+            .map(|_| ()),
     ]
 }
 
@@ -81,13 +71,13 @@ fn observations_allow_configured_generic_bootstrap_and_repeated_adoption() {
             ));
             let config = MemoryManagerConfig::new(pages).unwrap();
             let committed =
-                bootstrap_default_memory_manager_with_config(config, &GenericRangePolicy).unwrap();
+                bootstrap_default_memory_manager_with_config(config, &pool(), &GenericAllocationPolicy).unwrap();
             assert!(is_default_memory_manager_bootstrapped().unwrap());
             assert_eq!(committed_allocations().unwrap(), committed);
             assert_eq!(default_memory_manager_memory_id(KEY), Ok(MEMORY_ID));
             verify_default_memory_manager_authority(&declarations, AUTHORITY).unwrap();
 
-            let memory = open_default_memory_manager_memory(KEY, MEMORY_ID).unwrap();
+            let memory = open_default_memory_manager_memory(KEY).unwrap();
             assert_eq!(memory.grow(1), Ok(0));
             memory.write(0, &[7, 8, 9]);
             let before = default_memory_manager_memory_allocations().unwrap();
@@ -100,14 +90,14 @@ fn observations_allow_configured_generic_bootstrap_and_repeated_adoption() {
             assert_eq!(summary.physical_extent, before.physical_extent);
             assert_eq!(summary.current_generation, Some(committed.generation()));
             assert_eq!(
-                bootstrap_default_memory_manager_with_config(config, &GenericRangePolicy).unwrap(),
+                bootstrap_default_memory_manager_with_config(config, &pool(), &GenericAllocationPolicy).unwrap(),
                 committed
             );
             // Both public choices use the same built-in policy identity.
-            assert_eq!(bootstrap_default_memory_manager().unwrap(), committed);
+            assert_eq!(bootstrap_default_memory_manager(&pool()).unwrap(), committed);
             let different = MemoryManagerConfig::new(pages + 1).unwrap();
             assert!(matches!(
-                bootstrap_default_memory_manager_with_config(different, &GenericRangePolicy),
+                bootstrap_default_memory_manager_with_config(different, &pool(), &GenericAllocationPolicy),
                 Err(RuntimeBootstrapError::State(RuntimeStateError::Construction(
                     RuntimeConstructionError::BucketSizeMismatch { persisted, requested }
                 ))) if persisted == pages && requested == pages + 1
@@ -121,4 +111,12 @@ fn observations_allow_configured_generic_bootstrap_and_repeated_adoption() {
         .join()
         .unwrap();
     }
+}
+
+fn pool() -> ic_memory::MemoryAllocationPool {
+    ic_memory::MemoryAllocationPool::new(
+        vec![ic_memory::MemoryAuthority::new("default_config", "default_config.").unwrap()],
+        vec![],
+    )
+    .unwrap()
 }

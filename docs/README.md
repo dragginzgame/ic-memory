@@ -14,7 +14,7 @@ distinguish current integration guidance from historical engineering evidence.
 - [Frequently asked questions](../crates/ic-memory/README.md#frequently-asked-questions) answers
   common scope, lifecycle, retirement, and allocation-style questions.
 - [Advanced integration](../ADVANCED.md) covers runtime ownership, custom
-  policies, range authority, recovery, and manual bootstrap.
+  policies, host allocation pools, recovery, and manual bootstrap.
 - [Safety invariants](../SAFETY.md) defines the properties that implementation
   changes must preserve.
 - [Host support and qualification](host-support.md) declares native prerequisites,

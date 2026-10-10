@@ -1,4 +1,4 @@
-use super::request_tests::snapshot;
+use super::request_tests::{pool, snapshot};
 use super::*;
 use crate::{
     AllocationPolicy, BootstrapAdmissionError as AdmissionError, MemoryManagerSlot, StableKey,
@@ -82,15 +82,13 @@ fn declared_membership_covers_original_inputs_and_retains_poisoned_selections() 
         .store()
         .recover()
         .unwrap();
-    // Neither fixed registrations nor requests arrive in canonical key order.
+    // Requests arrive in deliberately noncanonical key order.
     let original = snapshot(
-        &["app.z.v1", "app.a.v1"],
+        &["app.z.v1", "app.a.v1", "app.fixed.v1", "zoo.fixed.v1"],
         "app",
-        100,
-        110,
-        &[("zoo.fixed.v1", 105), ("app.fixed.v1", 104)],
     );
-    let mut admission = BootstrapAdmission::new(recovered.ledger(), &original);
+    let host_pool = pool();
+    let mut admission = BootstrapAdmission::new(recovered.ledger(), &original, &host_pool);
     for name in [
         crate::IC_MEMORY_LEDGER_STABLE_KEY,
         "app.a.v1",
@@ -124,11 +122,12 @@ pub(super) fn seeded() -> VectorMemory {
             .unwrap();
     runtime
         .bootstrap(
-            &snapshot(&[CONTROL, JOURNAL], "app", 100, 110, &[]),
-            &GenericRangePolicy,
+            &snapshot(&[CONTROL, JOURNAL], "app"),
+            &pool(),
+            &GenericAllocationPolicy,
         )
         .unwrap();
-    let journal = runtime.open_memory_by_key(JOURNAL).unwrap();
+    let journal = runtime.open_memory(JOURNAL).unwrap();
     journal.grow(1).unwrap();
     journal.write(0, b"pending/debt");
     backing
@@ -137,25 +136,25 @@ pub(super) fn seeded() -> VectorMemory {
 #[test]
 fn discovers_omitted_journal_before_one_commit_and_skips_warm_admission() {
     let backing = seeded();
-    let current = snapshot(&[CONTROL, "app.new.journal.v1"], "app", 100, 110, &[]);
+    let current = snapshot(&[CONTROL, "app.new.journal.v1"], "app");
     let policy = AdmissionPolicy {
         discover: true,
         ..Default::default()
     };
     let mut runtime = MemoryRuntime::new(backing.clone()).unwrap();
     assert!(matches!(
-        runtime.open_memory_by_key(JOURNAL),
+        runtime.open_memory(JOURNAL),
         Err(RuntimeOpenError::NotBootstrapped)
     ));
     assert_eq!(
-        runtime.bootstrap(&current, &policy).unwrap().generation(),
+        runtime
+            .bootstrap(&current, &pool(), &policy)
+            .unwrap()
+            .generation(),
         2
     );
     let mut marker = [0; 12];
-    runtime
-        .open_memory_by_key(JOURNAL)
-        .unwrap()
-        .read(0, &mut marker);
+    runtime.open_memory(JOURNAL).unwrap().read(0, &mut marker);
     assert_eq!(&marker, b"pending/debt");
     assert_eq!(
         runtime
@@ -164,19 +163,22 @@ fn discovers_omitted_journal_before_one_commit_and_skips_warm_admission() {
             .slot_for(&StableKey::parse(JOURNAL).unwrap())
             .unwrap()
             .id(),
-        101
+        11
     );
     let before = backing.borrow().clone();
     assert_eq!(
-        runtime.bootstrap(&current, &policy).unwrap().generation(),
+        runtime
+            .bootstrap(&current, &pool(), &policy)
+            .unwrap()
+            .generation(),
         2
     );
-    let _ = runtime.doctor_report(&current, &policy);
+    let _ = runtime.doctor_report(&current, &pool(), &policy);
     assert_eq!(policy.calls.get(), 1);
     assert_eq!(runtime.memory_manager_config().bucket_size_pages(), 1);
     assert_eq!(*backing.borrow(), before);
     assert!(matches!(
-        runtime.bootstrap(&current, &GenericRangePolicy),
+        runtime.bootstrap(&current, &pool(), &GenericAllocationPolicy),
         Err(RuntimeBootstrapError::PolicyIdentityMismatch { .. })
     ));
 }
@@ -196,11 +198,11 @@ fn bad_selections_and_consumer_rejections_leave_mapping_unchanged() {
             ..Default::default()
         };
         let err = runtime
-            .bootstrap(&snapshot(&[CONTROL], "app", 100, 110, &[]), &policy)
+            .bootstrap(&snapshot(&[CONTROL], "app"), &pool(), &policy)
             .unwrap_err();
         match (kind, err) {
             ("unknown", RuntimeBootstrapError::Admission(AdmissionError::Unknown(_)))
-            | ("foreign", RuntimeBootstrapError::Admission(AdmissionError::Range { .. }))
+            | ("foreign", RuntimeBootstrapError::Admission(AdmissionError::Pool(_)))
             | ("duplicate", RuntimeBootstrapError::Admission(AdmissionError::Duplicate(_))) => (),
             (_, error) => panic!("unexpected {error:?}"),
         }
@@ -210,19 +212,20 @@ fn bad_selections_and_consumer_rejections_leave_mapping_unchanged() {
     let backing = seeded();
     let before = backing.borrow().clone();
     let mut runtime = MemoryRuntime::new(backing.clone()).unwrap();
-    let current = snapshot(&["replacement.control.v1"], "app", 100, 110, &[]);
+    let current = snapshot(&["replacement.control.v1"], "app");
     let policy = AdmissionPolicy {
         discover: true,
         ..Default::default()
     };
     assert!(matches!(
-        runtime.bootstrap(&current, &policy),
+        runtime.bootstrap(&current, &pool(), &policy),
         Err(RuntimeBootstrapError::AdmissionPolicy("identity rejected"))
     ));
     assert_eq!(*backing.borrow(), before);
     assert!(matches!(
         runtime.bootstrap(
-            &snapshot(&["other.control.v1"], "other_owner", 100, 110, &[]),
+            &snapshot(&["other.control.v1"], "other_owner"),
+            &pool(),
             &policy
         ),
         Err(RuntimeBootstrapError::AdmissionPolicy("identity rejected"))
@@ -232,7 +235,8 @@ fn bad_selections_and_consumer_rejections_leave_mapping_unchanged() {
     assert_eq!(
         runtime
             .bootstrap(
-                &snapshot(&[CONTROL, "app.added.v1"], "app", 100, 110, &[]),
+                &snapshot(&[CONTROL, "app.added.v1"], "app"),
+                &pool(),
                 &policy
             )
             .unwrap()
@@ -253,7 +257,7 @@ fn current_policy_revoked_grants_and_retirement_still_reject() {
         ..Default::default()
     };
     assert!(matches!(
-        runtime.bootstrap(&snapshot(&[CONTROL], "app", 100, 110, &[]), &policy),
+        runtime.bootstrap(&snapshot(&[CONTROL], "app"), &pool(), &policy),
         Err(RuntimeBootstrapError::Validation(_))
     ));
     assert_eq!(*backing.borrow(), before);
@@ -261,25 +265,26 @@ fn current_policy_revoked_grants_and_retirement_still_reject() {
         selections: vec![("app", JOURNAL)],
         ..Default::default()
     };
+    let revoked = crate::MemoryAllocationPool::new(vec![], vec![]).unwrap();
     assert!(matches!(
-        runtime.bootstrap(
-            &snapshot(&[CONTROL], "app", 100, 110, &[("app.conflict.v1", 101)]),
-            &policy
-        ),
-        Err(RuntimeBootstrapError::Resolution(_))
+        runtime.bootstrap(&snapshot(&[CONTROL], "app"), &revoked, &policy),
+        Err(RuntimeBootstrapError::Admission(AdmissionError::Pool(_)))
     ));
     assert_eq!(*backing.borrow(), before);
+    let excluded = crate::MemoryAllocationPool::new(
+        pool().authorities().to_vec(),
+        vec![crate::MemoryManagerIdRange::new(11, 11).unwrap()],
+    )
+    .unwrap();
     assert!(matches!(
-        runtime.bootstrap(&snapshot(&[], "app", 102, 110, &[]), &policy),
-        Err(RuntimeBootstrapError::Admission(
-            AdmissionError::Range { .. }
-        ))
+        runtime.bootstrap(&snapshot(&[CONTROL], "app"), &excluded, &policy),
+        Err(RuntimeBootstrapError::Admission(AdmissionError::Pool(_)))
     ));
     assert_eq!(*backing.borrow(), before);
     let mut record = runtime.ledger_record_from_memory().unwrap();
     AllocationBootstrap::new(record.store_mut())
         .retire_and_commit(
-            &crate::AllocationRetirement::new(JOURNAL, MemoryManagerSlot::new(101).unwrap())
+            &crate::AllocationRetirement::new(JOURNAL, MemoryManagerSlot::new(11).unwrap())
                 .unwrap(),
         )
         .unwrap();
@@ -288,7 +293,7 @@ fn current_policy_revoked_grants_and_retirement_still_reject() {
     let before = backing.borrow().clone();
     let mut runtime = MemoryRuntime::new(backing.clone()).unwrap();
     assert!(matches!(
-        runtime.bootstrap(&snapshot(&[CONTROL], "app", 100, 110, &[]), &policy),
+        runtime.bootstrap(&snapshot(&[CONTROL], "app"), &pool(), &policy),
         Err(RuntimeBootstrapError::Admission(AdmissionError::Retired(_)))
     ));
     assert_eq!(*backing.borrow(), before);
@@ -298,14 +303,19 @@ fn current_policy_revoked_grants_and_retirement_still_reject() {
 fn corruption_precedes_admission_and_exhaustion_follows_it_without_commit() {
     let backing = seeded();
     let mut runtime = MemoryRuntime::new(backing.clone()).unwrap();
-    let current = snapshot(&["app.new.v1"], "app", 100, 101, &[]);
+    let current = snapshot(&["app.new.v1"], "app");
+    let bounded_pool = crate::MemoryAllocationPool::new(
+        pool().authorities().to_vec(),
+        vec![crate::MemoryManagerIdRange::new(12, 254).unwrap()],
+    )
+    .unwrap();
     let policy = AdmissionPolicy {
         selections: vec![("app", JOURNAL)],
         ..Default::default()
     };
     let before = backing.borrow().clone();
     assert!(matches!(
-        runtime.bootstrap(&current, &policy),
+        runtime.bootstrap(&current, &bounded_pool, &policy),
         Err(RuntimeBootstrapError::Resolution(
             MemoryResolutionError::Exhausted { .. }
         ))
@@ -319,7 +329,7 @@ fn corruption_precedes_admission_and_exhaustion_follows_it_without_commit() {
             runtime = MemoryRuntime::new(backing.clone()).unwrap();
         }
         assert!(matches!(
-            runtime.bootstrap(&current, &policy),
+            runtime.bootstrap(&current, &pool(), &policy),
             Err(RuntimeBootstrapError::StableCellLedger(_))
         ));
         assert_eq!(policy.calls.get(), 1);
@@ -363,13 +373,14 @@ fn failed_persistence_retries_admission_without_partial_publication() {
     MemoryRuntime::new(backing.clone())
         .unwrap()
         .bootstrap(
-            &snapshot(&seeded_refs, "app", 10, 254, &[]),
-            &GenericRangePolicy,
+            &snapshot(&seeded_refs, "app"),
+            &pool(),
+            &GenericAllocationPolicy,
         )
         .unwrap();
     let before = backing.borrow().clone();
     let limit = std::rc::Rc::new(Counter::new(backing.size()));
-    let current = snapshot(&refs, "app", 10, 254, &[]);
+    let current = snapshot(&refs, "app");
     let policy = AdmissionPolicy {
         selections: vec![("app", JOURNAL)],
         ..Default::default()
@@ -379,7 +390,7 @@ fn failed_persistence_retries_admission_without_partial_publication() {
         limit: limit.clone(),
     })
     .unwrap();
-    let result = runtime.bootstrap(&current, &policy);
+    let result = runtime.bootstrap(&current, &pool(), &policy);
     assert!(
         matches!(
             result,
@@ -394,15 +405,15 @@ fn failed_persistence_retries_admission_without_partial_publication() {
     assert_eq!(*backing.borrow(), before);
     limit.set(100);
     assert_eq!(
-        runtime.bootstrap(&current, &policy).unwrap().generation(),
+        runtime
+            .bootstrap(&current, &pool(), &policy)
+            .unwrap()
+            .generation(),
         3
     );
     assert_eq!(policy.calls.get(), 2);
     let mut marker = [0; 12];
-    runtime
-        .open_memory_by_key(JOURNAL)
-        .unwrap()
-        .read(0, &mut marker);
+    runtime.open_memory(JOURNAL).unwrap().read(0, &mut marker);
     assert_eq!(&marker, b"pending/debt");
 }
 
@@ -410,13 +421,13 @@ fn failed_persistence_retries_admission_without_partial_publication() {
 fn fresh_rejection_can_acquire_root_but_cannot_commit_genesis() {
     let backing = VectorMemory::default();
     let mut runtime = MemoryRuntime::new(backing.clone()).unwrap();
-    let current = snapshot(&[CONTROL], "app", 100, 110, &[]);
+    let current = snapshot(&[CONTROL], "app");
     let policy = AdmissionPolicy {
         reject: true,
         ..Default::default()
     };
     assert!(matches!(
-        runtime.bootstrap(&current, &policy),
+        runtime.bootstrap(&current, &pool(), &policy),
         Err(RuntimeBootstrapError::AdmissionPolicy(_))
     ));
     assert!(!runtime.is_bootstrapped());
@@ -433,14 +444,17 @@ fn fresh_rejection_can_acquire_root_but_cannot_commit_genesis() {
     );
     let before = backing.borrow().clone();
     assert!(matches!(
-        runtime.bootstrap(&current, &policy),
+        runtime.bootstrap(&current, &pool(), &policy),
         Err(RuntimeBootstrapError::AdmissionPolicy(_))
     ));
     assert_eq!(*backing.borrow(), before);
     assert!(!runtime.is_bootstrapped());
     let policy = AdmissionPolicy::default();
     assert_eq!(
-        runtime.bootstrap(&current, &policy).unwrap().generation(),
+        runtime
+            .bootstrap(&current, &pool(), &policy)
+            .unwrap()
+            .generation(),
         1
     );
 }
@@ -457,7 +471,7 @@ fn completion_bound_and_reservation_activation_preserve_evidence() {
         ..Default::default()
     };
     assert!(matches!(
-        runtime.bootstrap(&snapshot(&refs, "app", 10, 254, &[]), &policy),
+        runtime.bootstrap(&snapshot(&refs, "app"), &pool(), &policy),
         Err(RuntimeBootstrapError::Admission(
             AdmissionError::TooManyDeclarations
         ))
@@ -469,12 +483,12 @@ fn completion_bound_and_reservation_activation_preserve_evidence() {
             &[
                 crate::AllocationDeclaration::memory_manager_unlabeled_with_schema(
                     "app.reserved.journal.v1",
-                    102,
+                    12,
                     crate::SchemaMetadata::new(Some(5)).unwrap(),
                 )
                 .unwrap(),
             ],
-            &GenericRangePolicy,
+            &GenericAllocationPolicy,
         )
         .unwrap();
     let _cell = Cell::new(runtime.memory(MEMORY_MANAGER_LEDGER_ID), record);
@@ -485,7 +499,7 @@ fn completion_bound_and_reservation_activation_preserve_evidence() {
         ..Default::default()
     };
     let committed = runtime
-        .bootstrap(&snapshot(&[CONTROL], "app", 100, 110, &[]), &policy)
+        .bootstrap(&snapshot(&[CONTROL], "app"), &pool(), &policy)
         .unwrap();
     assert_eq!(committed.generation(), 3);
     let declaration = committed
@@ -497,5 +511,5 @@ fn completion_bound_and_reservation_activation_preserve_evidence() {
         declaration.schema(),
         &crate::SchemaMetadata::new(Some(5)).unwrap()
     );
-    assert_eq!(declaration.slot().id(), 102);
+    assert_eq!(declaration.slot().id(), 12);
 }

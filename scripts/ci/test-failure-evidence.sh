@@ -35,6 +35,7 @@ printf 'original_status=%s\n' "$status" > "$temp_root/validation.log"
 printf 'selected dependency diagnostics\n' > "$temp_root/dependencies.log"
 printf 'runtime setup failure\n' > "$temp_root/runtime-setup.log"
 printf 'runtime diagnostics\n' > "$temp_root/runtime.log"
+printf 'formatter diagnostics\n' > "$temp_root/formatting.failure"
 printf 'unselected temporary file\n' > "$temp_root/unrelated"
 mkdir -p "$repository_root/target/qualification" "$repository_root/target/release-validation" \
     "$repository_root/.tools/host-set.test/bin" "$repository_root/.tools/ic-set.test/bin" \

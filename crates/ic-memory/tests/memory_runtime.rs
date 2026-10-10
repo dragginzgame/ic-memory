@@ -7,14 +7,7 @@ use ic_memory::{
 
 const AUTHORITY: &str = "explicit_runtime";
 
-ic_memory::ic_memory_range!(authority = AUTHORITY, start = 140, end = 140,);
-
-ic_memory::ic_memory_declaration!(
-    authority = AUTHORITY,
-    key = "explicit_runtime.rows.v1",
-    label = "rows",
-    id = 140,
-);
+ic_memory::ic_memory_declaration!(authority = AUTHORITY, key = "explicit_runtime.rows.v1");
 
 struct AllowAll;
 
@@ -54,11 +47,11 @@ fn public_explicit_runtime_bootstraps_opens_and_diagnoses_its_memory() {
     let mut runtime = MemoryRuntime::new(VectorMemory::default()).expect("empty backing memory");
 
     let generation = runtime
-        .bootstrap(&declarations, &AllowAll)
+        .bootstrap(&declarations, &pool(), &AllowAll)
         .expect("runtime bootstrap")
         .generation();
     let rows = runtime
-        .open_memory("explicit_runtime.rows.v1", 140)
+        .open_memory("explicit_runtime.rows.v1")
         .expect("committed rows memory");
     let mut cell = Cell::init(rows, 7_u64);
     cell.set(9);
@@ -66,7 +59,11 @@ fn public_explicit_runtime_bootstraps_opens_and_diagnoses_its_memory() {
 
     let export = runtime.diagnostic_export().expect("runtime diagnostics");
     assert_eq!(export.current_generation, generation);
-    assert!(runtime.doctor_report(&declarations, &AllowAll).bootstrapped);
+    assert!(
+        runtime
+            .doctor_report(&declarations, &pool(), &AllowAll)
+            .bootstrapped
+    );
 }
 
 #[test]
@@ -93,11 +90,9 @@ fn owned_report_and_cloned_handles_support_borrowed_nonclone_backing() {
     )
     .unwrap();
     runtime
-        .bootstrap(&sealed_declaration_snapshot().unwrap(), &AllowAll)
+        .bootstrap(&sealed_declaration_snapshot().unwrap(), &pool(), &AllowAll)
         .unwrap();
-    let rows = runtime
-        .open_memory("explicit_runtime.rows.v1", 140)
-        .unwrap();
+    let rows = runtime.open_memory("explicit_runtime.rows.v1").unwrap();
     rows.grow(1).unwrap();
     rows.write(0, &[7]);
     let clone = rows.clone();
@@ -106,7 +101,7 @@ fn owned_report_and_cloned_handles_support_borrowed_nonclone_backing() {
     assert_eq!(runtime.diagnostic_export().unwrap().current_generation, 1);
     assert!(
         runtime
-            .doctor_report(&sealed_declaration_snapshot().unwrap(), &AllowAll)
+            .doctor_report(&sealed_declaration_snapshot().unwrap(), &pool(), &AllowAll)
             .bootstrapped
     );
     assert_eq!(*memory.borrow(), before);
@@ -115,6 +110,14 @@ fn owned_report_and_cloned_handles_support_borrowed_nonclone_backing() {
     let mut value = [0];
     clone.read(0, &mut value);
     assert_eq!(value, [7]);
-    assert_eq!(report.memories[140].virtual_extent.wasm_pages, 1);
+    assert_eq!(report.memories[10].virtual_extent.wasm_pages, 1);
     assert_eq!(report.bucket_size_pages, 8);
+}
+
+fn pool() -> ic_memory::MemoryAllocationPool {
+    ic_memory::MemoryAllocationPool::new(
+        vec![ic_memory::MemoryAuthority::new("explicit_runtime", "explicit_runtime.").unwrap()],
+        vec![],
+    )
+    .unwrap()
 }

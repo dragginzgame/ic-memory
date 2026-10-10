@@ -100,7 +100,7 @@ Storage integrations must validate layout before opening stable-memory handles:
 
 1. Construct the runtime only after its raw backing memory is classified as
    empty or as the current `ic-stable-structures` `MemoryManager` layout.
-2. Supply the sealed declarations, logical requests and explicit host grants
+2. Supply sealed key requests and the explicit host namespace/pool policy
    expected by the current binary, and recover the persisted allocation ledger.
 3. Run host/consumer admission against bounded recovered metadata, then resolve
    requests while retaining existing assignments.
@@ -160,7 +160,7 @@ Capability publication follows successful persistence.
 
 One runtime must never use another runtime's lifecycle or committed capability.
 The only process-global authority is the immutable canonical snapshot of linked
-declarations, ranges, and metadata. Bootstrap is once per concrete runtime, not
+key requests and metadata. Bootstrap is once per concrete runtime, not
 once per process.
 
 The default convenience layer is one thread-local runtime. On native targets,
@@ -197,7 +197,7 @@ Physical reports and numeric summaries must remain read-only and bounded to
 34,848 bytes of validated manager metadata, without decoding retained ownership.
 They distinguish current, ledger and unknown bindings and preserve physical,
 bucket, virtual, slack and unmanaged-byte conservation. Virtual extent is not
-payload occupancy; a reported range claim is not historical ownership or access
+payload occupancy; reported pool eligibility is not historical ownership or access
 authority.
 
 ## Retirement Invariants
@@ -232,11 +232,13 @@ exclude sentinel 255, and ranges remain ordered with usable ends. `SchemaMetadat
 contains an absent or nonzero schema version, established by construction and
 decoding. `AllocationDeclaration` checks optional printable ASCII labels at
 construction and decoding, including their 256-byte bound.
-`MemoryManagerAuthorityRecord` checks its printable ASCII authority and optional
-purpose through its constructor, including on decode. `DeclarationSnapshot`
-checks its declaration count and unique keys and slots during construction and
-decoding. Retained claims, range overlaps, namespace ownership and policy still
-require their validation boundaries before influencing authority.
+`MemoryAuthority` checks its printable ASCII owner and valid namespace prefix,
+including on decode. `MemoryAllocationPool` canonicalizes physical exclusions
+and rejects overlapping namespaces; governance is always excluded.
+`DeclarationSnapshot` checks declaration count and unique keys and slots during
+construction and decoding. Retained claims, current namespace grants, physical
+eligibility and application policy still require their validation boundaries
+before influencing authority. Previous owner labels are not durable policy.
 
 Invariant-bearing DTO fields are intentionally private where feasible. Callers
 should use checked constructors and accessors instead of fabricating durable

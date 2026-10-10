@@ -32,8 +32,8 @@ pub use admission::{BootstrapAdmission, BootstrapAdmissionError, RecoveredAlloca
 pub use adoption::RuntimeAdoptionError;
 
 pub use allocations::{
-    AllocationBinding, AllocationRangeClaim, MemoryAllocation, MemoryAllocationSummary,
-    MemoryAllocations, MemoryBindingSummary,
+    AllocationBinding, MemoryAllocation, MemoryAllocationSummary, MemoryAllocations,
+    MemoryBindingSummary,
 };
 pub use backing::RuntimeMemory;
 pub use config::MemoryManagerConfig;
@@ -44,15 +44,14 @@ pub use default::{
     default_memory_manager_doctor_report, default_memory_manager_doctor_report_with_policy,
     default_memory_manager_memory_allocation_summary, default_memory_manager_memory_allocations,
     default_memory_manager_memory_id, is_default_memory_manager_bootstrapped,
-    open_default_memory_manager_memory, open_default_memory_manager_memory_by_key,
-    verify_default_memory_manager_authority,
+    open_default_memory_manager_memory, verify_default_memory_manager_authority,
 };
 pub use error::{
     MemoryResolutionError, RuntimeBootstrapError, RuntimeConstructionError, RuntimeDiagnosticError,
-    RuntimeGrowError, RuntimeOpenError, RuntimePolicyError, RuntimeStateError,
+    RuntimeGrowError, RuntimeOpenError, RuntimeStateError,
 };
 pub use layout::MemoryManagerLayoutError;
-pub use policy::GenericRangePolicy;
+pub use policy::GenericAllocationPolicy;
 
 use self::policy::{RuntimeMemoryManagerPolicy, runtime_bootstrap_error_from_bootstrap};
 use crate::{
@@ -78,8 +77,8 @@ enum RuntimeLifecycle {
 
 struct RuntimeBootstrapBinding {
     source: SealedDeclarationSnapshot,
-    declarations: SealedDeclarationSnapshot,
     policy_identity: PolicyIdentity,
+    pool: crate::MemoryAllocationPool,
 }
 
 ///
@@ -206,8 +205,8 @@ impl<M: Memory> MemoryRuntime<M> {
     ///
     /// Recovery, metadata admission, logical resolution, policy evaluation,
     /// staging, persistence and capability publication are local to this runtime.
-    /// A repeated call is idempotent only when the sealed declaration snapshot and
-    /// [`RuntimeBootstrapPolicy::runtime_bootstrap_identity`] match the
+    /// A repeated call is idempotent only when the sealed declaration snapshot,
+    /// canonical host pool and [`RuntimeBootstrapPolicy::runtime_bootstrap_identity`] match the
     /// successful bootstrap. A mismatch returns a typed error without
     /// advancing the durable generation or re-evaluating policy.
     /// Independently sealed snapshots match when their canonical contents are equal.
@@ -219,15 +218,16 @@ impl<M: Memory> MemoryRuntime<M> {
     pub fn bootstrap<P: RuntimeBootstrapPolicy>(
         &mut self,
         declarations: &SealedDeclarationSnapshot,
+        pool: &crate::MemoryAllocationPool,
         policy: &P,
     ) -> Result<&CommittedAllocations, RuntimeBootstrapError<P::Error>> {
         let policy_identity = policy.runtime_bootstrap_identity()?;
         match &self.lifecycle {
             RuntimeLifecycle::Unbootstrapped => {
-                self.bootstrap_unbootstrapped(declarations, policy, policy_identity)?;
+                self.bootstrap_unbootstrapped(declarations, pool, policy, policy_identity)?;
             }
             RuntimeLifecycle::Bootstrapped { binding, .. } => {
-                binding.validate(declarations, &policy_identity)?;
+                binding.validate(declarations, pool, &policy_identity)?;
             }
         }
         match &self.lifecycle {
@@ -241,37 +241,53 @@ impl<M: Memory> MemoryRuntime<M> {
         }
     }
 
+    fn validate_pool_custody(
+        &self,
+        ledger: &AllocationLedger,
+        pool: &crate::MemoryAllocationPool,
+    ) -> Result<(), super::MemoryResolutionError> {
+        for id in 0..crate::MEMORY_MANAGER_INVALID_ID {
+            if pool.contains(id)
+                && self.memory_size_pages(id) != 0
+                && !ledger
+                    .records()
+                    .iter()
+                    .any(|record| record.slot().id() == id)
+            {
+                return Err(super::MemoryResolutionError::UnmanagedAllocation { id });
+            }
+        }
+        Ok(())
+    }
+
     fn bootstrap_unbootstrapped<P: RuntimeBootstrapPolicy>(
         &mut self,
         declarations: &SealedDeclarationSnapshot,
+        pool: &crate::MemoryAllocationPool,
         policy: &P,
         policy_identity: PolicyIdentity,
     ) -> Result<(), RuntimeBootstrapError<P::Error>> {
         let memory = self.memory(MEMORY_MANAGER_LEDGER_ID);
         let mut record = decode_stable_cell_ledger_record_from_memory(&memory)?;
+        let genesis = AllocationLedger::empty_genesis();
+        let recovered = record.store_mut().recover_or_initialize(&genesis)?;
+        self.validate_pool_custody(recovered.ledger(), pool)?;
         if memory.size() == 0 {
             // Empty memory decodes to an uninitialized record. Preserve fresh
             // cell acquisition before admission without persisting genesis.
             ensure_ledger_cell_capacity(&memory, &record)?;
             drop(Cell::new(memory.clone(), StableCellLedgerRecord::default()));
         }
-        let genesis = AllocationLedger::empty_genesis();
-        let recovered = record.store_mut().recover_or_initialize(&genesis)?;
-        let mut admission = BootstrapAdmission::new(recovered.ledger(), declarations);
+        let mut admission = BootstrapAdmission::new(recovered.ledger(), declarations, pool);
         let preparation = policy.prepare_bootstrap(&mut admission);
         let historical = admission.complete()?;
         preparation.map_err(RuntimeBootstrapError::AdmissionPolicy)?;
-        let resolved = declarations.resolve(recovered.ledger(), historical)?;
+        let resolved = declarations.resolve(recovered.ledger(), historical, pool)?;
         let runtime_policy = RuntimeMemoryManagerPolicy {
-            declarations: &resolved,
             custom_policy: policy,
         };
         let commit = AllocationBootstrap::new(record.store_mut())
-            .validate_against(
-                recovered,
-                resolved.allocation_snapshot().clone(),
-                &runtime_policy,
-            )
+            .validate_against(recovered, resolved, &runtime_policy)
             .map_err(runtime_bootstrap_error_from_bootstrap)?;
         ensure_ledger_cell_capacity(&memory, &record)?;
         drop(Cell::new(memory, record));
@@ -280,8 +296,8 @@ impl<M: Memory> MemoryRuntime<M> {
             committed_allocations: committed,
             binding: RuntimeBootstrapBinding {
                 source: declarations.clone(),
-                declarations: resolved,
                 policy_identity,
+                pool: pool.clone(),
             },
         };
         Ok(())
@@ -299,28 +315,8 @@ impl<M: Memory> MemoryRuntime<M> {
     }
 
     /// Open by durable key using only this runtime's persisted current capability.
-    pub fn open_memory_by_key(
-        &self,
-        stable_key: &str,
-    ) -> Result<RuntimeMemory<M>, RuntimeOpenError> {
+    pub fn open_memory(&self, stable_key: &str) -> Result<RuntimeMemory<M>, RuntimeOpenError> {
         Ok(self.memory(self.memory_id(stable_key)?))
-    }
-
-    /// Open this runtime's committed memory by stable key and expected ID.
-    pub fn open_memory(
-        &self,
-        stable_key: &str,
-        expected_id: u8,
-    ) -> Result<RuntimeMemory<M>, RuntimeOpenError> {
-        let committed_id = self.memory_id(stable_key)?;
-        if committed_id != expected_id {
-            return Err(RuntimeOpenError::MemoryIdMismatch {
-                stable_key: stable_key.to_string(),
-                committed_id,
-                requested_id: expected_id,
-            });
-        }
-        Ok(self.memory(committed_id))
     }
 
     /// Resolve an application key's committed ID without opening memory,
@@ -332,12 +328,12 @@ impl<M: Memory> MemoryRuntime<M> {
                 stable_key: stable_key.to_string(),
             });
         }
-        let slot = crate::capability::slot_for_key(
+        let declaration = crate::capability::declaration_for_key(
             self.committed_allocations()?.declarations(),
             stable_key,
         )
         .ok_or_else(|| RuntimeOpenError::StableKeyNotCommitted(stable_key.to_string()))?;
-        Ok(slot.id())
+        Ok(declaration.slot().id())
     }
 
     fn memory(&self, id: u8) -> RuntimeMemory<M> {
@@ -366,10 +362,14 @@ impl RuntimeBootstrapBinding {
     fn validate<P>(
         &self,
         declarations: &SealedDeclarationSnapshot,
+        pool: &crate::MemoryAllocationPool,
         policy_identity: &PolicyIdentity,
     ) -> Result<(), RuntimeBootstrapError<P>> {
         if &self.source != declarations {
             return Err(RuntimeBootstrapError::DeclarationSnapshotMismatch);
+        }
+        if &self.pool != pool {
+            return Err(RuntimeBootstrapError::AllocationPoolMismatch);
         }
         if &self.policy_identity != policy_identity {
             return Err(RuntimeBootstrapError::PolicyIdentityMismatch {

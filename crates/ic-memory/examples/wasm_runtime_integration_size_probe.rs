@@ -1,12 +1,6 @@
 const AUTHORITY: &str = "wasm_runtime_integration_size_probe";
 const KEY: &str = "wasm_runtime_integration_size_probe.rows.v1";
 
-ic_memory::ic_memory_range!(
-    authority = AUTHORITY,
-    start = 162,
-    end = 162,
-    mode = Allowed
-);
 ic_memory::ic_memory_declaration!(
     authority = AUTHORITY,
     key = "wasm_runtime_integration_size_probe.rows.v1"
@@ -17,13 +11,17 @@ pub extern "C" fn ic_memory_wasm_runtime_integration_size_probe_bootstrap() -> u
     let Ok(config) = ic_memory::MemoryManagerConfig::new(16) else {
         return 0;
     };
-    ic_memory::bootstrap_default_memory_manager_with_config(config, &ic_memory::GenericRangePolicy)
-        .map_or(0, |allocations| allocations.generation())
+    ic_memory::bootstrap_default_memory_manager_with_config(
+        config,
+        &pool(),
+        &ic_memory::GenericAllocationPolicy,
+    )
+    .map_or(0, |allocations| allocations.generation())
 }
 
 #[unsafe(no_mangle)]
 pub extern "C" fn ic_memory_wasm_runtime_integration_size_probe_grow(pages: u64) -> u32 {
-    ic_memory::open_default_memory_manager_memory_by_key(KEY)
+    ic_memory::open_default_memory_manager_memory(KEY)
         .ok()
         .and_then(|memory| memory.grow(pages).ok())
         .map_or(u32::MAX, |previous| {
@@ -52,4 +50,18 @@ pub extern "C" fn ic_memory_wasm_runtime_integration_size_probe_summary() -> u32
         return u32::MAX;
     }
     u32::try_from(bytes.len()).unwrap_or(u32::MAX)
+}
+
+fn pool() -> ic_memory::MemoryAllocationPool {
+    ic_memory::MemoryAllocationPool::new(
+        vec![
+            ic_memory::MemoryAuthority::new(
+                "wasm_runtime_integration_size_probe",
+                "wasm_runtime_integration_size_probe.",
+            )
+            .unwrap(),
+        ],
+        vec![],
+    )
+    .unwrap()
 }

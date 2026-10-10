@@ -406,7 +406,10 @@ policy:
   validation adapters. See the [release example](releases.md#makefile-example).
 - `make/rust-format.mk`, included after `make/tools.mk`,
   supplies the simple root-workspace formatting commands. Select both includes,
-  `scripts/ci/check-format-tools.sh` and the reviewed pin file. Keep richer
+  `scripts/ci/check-format-tools.sh`, `scripts/ci/run-formatting.sh` and the
+  reviewed pin file. The wrapper reports one success line and retains failure
+  diagnostics behind a two-line summary. Include it in isolated hook fixtures.
+  Refresh the failure collector to retain `formatting.*` logs in CI. Keep richer
   workspace/frontend recipes local under the [formatting rules](../rules/git-hooks.md).
 
 Both includes require the adjacent `make/execution.mk` and its execution-probe
@@ -497,6 +500,12 @@ document and each selected helper in the snapshot, and move callers before
 deleting duplicated code. Keep product-specific checks and publication policy
 local. Adoption must wait for a reviewed committed source revision; local
 upstream tests do not establish that consumers have refreshed their snapshots.
+
+Exact registry metadata uses the existing `check-crates-io-version.sh` selection
+with `--metadata NEW-DIRECTORY`; no additional shared script is required. Prepare
+jq and curl 8.4.0+ for that mode. Retain each attempt's directory and handle all
+three statuses before removing local transport/parsing. The consumer still owns
+payload verification, yanked-version acceptance and publication reconciliation.
 
 File-digest generation uses the checksum verifier's additive `--print` interface,
 so its existing snapshot file set is sufficient. Refresh that verifier before

@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.34.0]
+
+- **Breaking:** components request permanent keys and owners from one host-owned
+  allocation pool. Replace numeric declarations/ranges and alternate open helpers;
+  bootstrap now requires explicit namespace grants and physical exclusions,
+  and custom validation errors are carried directly.
+  Existing ledger bytes and key-to-ID bindings remain unchanged.
+  [#44](https://github.com/dragginzgame/ic-memory/issues/44).
+- Adopt Shared Tooling 0.2.10 with concise two-workspace formatting output and
+  retained failure logs. [#48](https://github.com/dragginzgame/ic-memory/issues/48).
+- Reject hidden unsafe Make modes and authenticate exact-ID CI artifact readback.
+  [#47](https://github.com/dragginzgame/ic-memory/issues/47),
+  [Shared #93](https://github.com/dragginzgame/shared-tooling/issues/93).
+
+[Detailed notes](docs/changelog/0.34.md)
+
 ## [0.33.4] - 2026-10-09
 
 - Refresh Shared Tooling for checkout-local Make admission, recursive invocation

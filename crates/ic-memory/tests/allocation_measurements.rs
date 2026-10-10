@@ -1,8 +1,8 @@
 //! Explicit native allocation measurements; not IC instruction benchmarks.
 use ic_memory::{
-    AllocationLedger, DualCommitStore, GenericRangePolicy, LedgerCommitError, LedgerCommitStore,
-    LedgerPayloadEnvelope, MemoryManagerConfig, MemoryRuntime, SealedDeclarationSnapshot,
-    StableCellLedgerRecord,
+    AllocationLedger, DualCommitStore, GenericAllocationPolicy, LedgerCommitError,
+    LedgerCommitStore, LedgerPayloadEnvelope, MemoryManagerConfig, MemoryRuntime,
+    SealedDeclarationSnapshot, StableCellLedgerRecord,
     ic_stable_structures::{
         Memory, Storable, VectorMemory,
         memory_manager::{MemoryId, MemoryManager},
@@ -196,7 +196,7 @@ fn ledger_text_recovery_allocations() {
 #[ignore = "explicit matched diagnostics allocation measurement, run in release mode with one test thread"]
 fn allocation_diagnostics_allocations() {
     println!("phase,generations,iterations,allocations,reallocations,peak_bytes,elapsed_us");
-    let declarations = SealedDeclarationSnapshot::new(&[], &[], &[]).unwrap();
+    let declarations = SealedDeclarationSnapshot::new(&[]).unwrap();
     for populated in [false, true] {
         let backing = VectorMemory::default();
         if populated {
@@ -218,7 +218,7 @@ fn allocation_diagnostics_allocations() {
         for bootstrapped in [false, true] {
             if bootstrapped {
                 runtime
-                    .bootstrap(&declarations, &GenericRangePolicy)
+                    .bootstrap(&declarations, &pool(), &GenericAllocationPolicy)
                     .unwrap();
             }
             let generation = u64::from(bootstrapped);
@@ -241,4 +241,8 @@ fn allocation_diagnostics_allocations() {
             });
         }
     }
+}
+
+fn pool() -> ic_memory::MemoryAllocationPool {
+    ic_memory::MemoryAllocationPool::new(vec![], vec![]).unwrap()
 }

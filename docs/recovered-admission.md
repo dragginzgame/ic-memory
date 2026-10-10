@@ -109,14 +109,13 @@ Run `cargo run --example composed_host`. Its two public-API regressions are also
 enabled in the ordinary `cargo test -- --test-threads=1` suite; they can be run
 alone with `cargo test --example composed_host -- --test-threads=1`.
 
-The host grants itself IDs 10–99 and the consumer IDs 100–110, registers one
-fixed host store and two logical consumer stores, and delegates consumer
-identity admission through one host policy. After writing all three stores, it
-reconstructs `MemoryRuntime` over the same backing twice with unchanged
-declarations and 16-page buckets. Each cold bootstrap runs both preparations
-and commits one generation; consumer `verify_authority` and matching warm
-bootstrap do not rerun preparation or write stable memory. Fixed ID 10, logical
-IDs 100/101, current authority, virtual sizes and stored bytes remain intact.
+The host admits `host.` and `db.` namespaces into one common pool, requests
+three keys and delegates consumer identity admission through one host policy.
+After writing all three stores, it reconstructs the runtime over the same
+backing twice with 16-page buckets. Cold bootstrap runs preparation and commits
+one generation. Consumer adoption and matching warm bootstrap do not rerun
+preparation or write bytes. Assigned IDs, current bindings, sizes and payloads
+remain intact.
 
 Before each accepted reopen, a replacement consumer control declaration
 returns `RuntimeBootstrapError::AdmissionPolicy` with the exact consumer error.
@@ -156,7 +155,7 @@ crash-atomic by this hook.
 Recovered metadata has at most 255 records; iteration borrows key/slot/state and
 latest-schema references without copying records. At most 254 external
 requests, including the original set, can be completed. Membership uses the sealed
-fixed-key lookup and canonical request vector; only earlier selections need a
+canonical source request vector; only earlier selections need a
 scan. Selection also scans bounded recovered records and checks current grants.
 Completion returns the selected requests directly; the resolver builds the final
 canonical snapshot once, without constructing an intermediate completed snapshot.

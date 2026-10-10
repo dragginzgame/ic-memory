@@ -1,10 +1,10 @@
 use super::{MemoryRuntime, RuntimeDiagnosticError, RuntimeLifecycle};
 use crate::{
-    AllocationLedger, AllocationPolicy, DiagnosticCheck, DiagnosticCode, DiagnosticDeclaration,
-    DiagnosticExport, DiagnosticFailure, DiagnosticMemorySize, DiagnosticRangeAuthority,
-    DiagnosticRuntimeBinding, DiagnosticStableCell, DiagnosticStableCellStatus, LedgerCommitError,
-    LedgerPayloadEnvelopeError, MemoryRuntimeDoctorReport, PolicyIdentity, RecoveredLedger,
-    RuntimeBootstrapPolicy, StableCellLedgerRecord,
+    AllocationLedger, AllocationPolicy, DiagnosticCheck, DiagnosticCode, DiagnosticExport,
+    DiagnosticFailure, DiagnosticMemorySize, DiagnosticRuntimeBinding, DiagnosticStableCell,
+    DiagnosticStableCellStatus, LedgerCommitError, LedgerPayloadEnvelopeError,
+    MemoryRuntimeDoctorReport, PolicyIdentity, RecoveredLedger, RuntimeBootstrapPolicy,
+    StableCellLedgerRecord,
     physical::CommitStoreDiagnostic,
     registry::{SealedDeclarationFingerprint, SealedDeclarationSnapshot},
     slot::MEMORY_MANAGER_LEDGER_ID,
@@ -47,6 +47,7 @@ impl<M: Memory> MemoryRuntime<M> {
     pub fn doctor_report<P>(
         &self,
         declarations: &SealedDeclarationSnapshot,
+        pool: &crate::MemoryAllocationPool,
         policy: &P,
     ) -> MemoryRuntimeDoctorReport
     where
@@ -64,25 +65,6 @@ impl<M: Memory> MemoryRuntime<M> {
                 self.recovered_diagnostic_export(Cow::Borrowed(recovered), *diagnostic)
             })
         });
-        let diagnostic_declarations = declarations
-            .registered_declarations()
-            .iter()
-            .map(|registration| {
-                DiagnosticDeclaration::new(
-                    registration.authority(),
-                    registration.declaration().clone(),
-                )
-            })
-            .collect();
-        let registered_records = declarations
-            .registered_ranges()
-            .iter()
-            .map(|registration| registration.record().clone())
-            .collect();
-        let range_authority = DiagnosticRangeAuthority::new(
-            registered_records,
-            declarations.range_authority().clone(),
-        );
         let tested_policy_identity = policy
             .runtime_bootstrap_identity()
             .map_err(|err| DiagnosticFailure::new(DiagnosticCode::PolicyIdentity, err.to_string()));
@@ -91,11 +73,14 @@ impl<M: Memory> MemoryRuntime<M> {
         let bootstrap_binding = diagnostic_bootstrap_binding(
             &tested_policy_identity,
             tested_declaration_fingerprint,
+            pool,
             established_bootstrap_binding.as_ref(),
         );
         let validation = match &tested_policy_identity {
             Ok(_) => diagnostic_validation(
+                self,
                 declarations,
+                pool,
                 policy,
                 recovery.as_ref().map(|(recovered, _)| recovered),
             ),
@@ -112,8 +97,8 @@ impl<M: Memory> MemoryRuntime<M> {
             stable_cell: stable_cell.diagnostic,
             commit_recovery: recovery.as_ref().map(|(_, diagnostic)| *diagnostic),
             ledger,
-            registered_declarations: diagnostic_declarations,
-            range_authority,
+            requests: declarations.requests().to_vec(),
+            allocation_pool: pool.clone(),
             validation,
         }
     }
@@ -146,6 +131,7 @@ impl<M: Memory> MemoryRuntime<M> {
             RuntimeLifecycle::Bootstrapped { binding, .. } => Some(DiagnosticRuntimeBinding::new(
                 binding.policy_identity.clone(),
                 binding.source.fingerprint(),
+                binding.pool.clone(),
             )),
         }
     }
@@ -188,8 +174,10 @@ struct StableCellDiagnostic {
     record: Option<StableCellLedgerRecord>,
 }
 
-fn diagnostic_validation<P: AllocationPolicy>(
+fn diagnostic_validation<M: Memory, P: AllocationPolicy>(
+    runtime: &MemoryRuntime<M>,
     declarations: &SealedDeclarationSnapshot,
+    pool: &crate::MemoryAllocationPool,
     custom_policy: &P,
     recovered: Option<&Result<crate::RecoveredLedger, LedgerCommitError>>,
 ) -> DiagnosticCheck
@@ -200,18 +188,17 @@ where
         Ok(recovered) => recovered,
         Err(failure) => return DiagnosticCheck::not_run(failure.code, failure.message),
     };
-    let resolved = match declarations.resolve(recovered.ledger(), Vec::new()) {
+    if let Err(error) = runtime.validate_pool_custody(recovered.ledger(), pool) {
+        return DiagnosticCheck::failed(DiagnosticCode::AllocationValidation, error.to_string());
+    }
+    let resolved = match declarations.resolve(recovered.ledger(), Vec::new(), pool) {
         Ok(resolved) => resolved,
         Err(err) => {
             return DiagnosticCheck::failed(DiagnosticCode::AllocationValidation, err.to_string());
         }
     };
-    let policy = super::policy::RuntimeMemoryManagerPolicy {
-        declarations: &resolved,
-        custom_policy,
-    };
-    match crate::validation::check_allocations(&recovered, resolved.allocation_snapshot(), &policy)
-    {
+    let policy = super::policy::RuntimeMemoryManagerPolicy { custom_policy };
+    match crate::validation::check_allocations(&recovered, &resolved, &policy) {
         Ok(()) => DiagnosticCheck::passed(),
         Err(err) => DiagnosticCheck::failed(DiagnosticCode::AllocationValidation, err.to_string()),
     }
@@ -220,6 +207,7 @@ where
 fn diagnostic_bootstrap_binding(
     tested_policy_identity: &Result<PolicyIdentity, DiagnosticFailure>,
     tested_declaration_fingerprint: SealedDeclarationFingerprint,
+    pool: &crate::MemoryAllocationPool,
     established: Option<&DiagnosticRuntimeBinding>,
 ) -> DiagnosticCheck {
     let tested_policy_identity = match tested_policy_identity {
@@ -236,15 +224,17 @@ fn diagnostic_bootstrap_binding(
     };
     if &established.policy_identity == tested_policy_identity
         && established.declaration_fingerprint == tested_declaration_fingerprint
+        && &established.allocation_pool == pool
     {
         return DiagnosticCheck::passed();
     }
     DiagnosticCheck::failed(
         DiagnosticCode::RuntimeBinding,
         format!(
-            "tested policy/declaration binding differs from established runtime binding: \
+            "tested policy/declaration/pool binding differs from established runtime binding: \
              tested_policy={tested_policy_identity:?}, \
              tested_declarations={tested_declaration_fingerprint:?}, \
+             tested_pool={pool:?}, \
              established={established:?}"
         ),
     )

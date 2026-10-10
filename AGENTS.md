@@ -16,7 +16,7 @@ implementation and qualification without asking again. It does not authorize
 unrelated sibling edits, commits, pushes, releases or publication.
 
 The existing tooling snapshot at revision
-`f77fcb1f623c2e5f14b3fbe96ef68d24e0c20771` is recorded in
+`43a0dc46cdc3c77e70a68e192561642ed50a3e0f` is recorded in
 [.shared-tooling.snapshot](.shared-tooling.snapshot). It identifies the vendored
 files, hashes and executable modes; it does not freeze the active local policy.
 Keep its provenance accurate and never edit vendored files in place. Do not
@@ -25,8 +25,8 @@ attribute uncommitted shared files to that recorded revision. The live local
 also applies within its activation scope and is included in this recorded snapshot.
 These instructions are the repository's local overlay.
 
-The single 88-file snapshot uses reviewed committed Shared Tooling at that
-revision, whose committed source `VERSION` is 0.2.8. The manifest records that
+The single 89-file snapshot uses reviewed committed Shared Tooling at that
+revision, whose committed source `VERSION` is 0.2.10. The manifest records that
 display version separately from its authoritative commit identity. It includes
 the archiver, tool-evidence selector, their fixtures and the shared
 retention action. It replaces the supplemental archive manifest and its duplicate
@@ -106,8 +106,10 @@ The shared Make execution checker guards the runner, hook and consumer Rust
 validation adapter before gate dispatch. It refuses inherited Make modes that
 skip execution or ignore failures, preserving ordinary selections and jobserver
 settings. Qualify rejection through real Make with substituted release effects.
-Explicit command-line `MAKEFLAGS` replacement can still hide unsafe invocation
-modes in this unchanged Make guard; the reproduced gap remains owned by
+Memory adds parse-time admission using normalized `MAKEFLAGS` and `MFLAGS` to
+reject unsafe modes hidden by command-line `MAKEFLAGS` replacement, before
+any recipe can dispatch. The immutable common guard remains unchanged; its
+canonical repair remains owned by
 [Shared #30](https://github.com/dragginzgame/shared-tooling/issues/30).
 
 Follow the shared [contribution rules](rules/contributions.md). Ordinary fixes

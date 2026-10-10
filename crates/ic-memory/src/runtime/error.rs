@@ -1,6 +1,6 @@
 use crate::{
     LedgerCommitError, PolicyIdentity, PolicyIdentityError, StableCellLedgerError,
-    registry::StaticMemoryDeclarationError, slot::MemoryManagerRangeAuthorityError,
+    registry::StaticMemoryDeclarationError,
 };
 
 ///
@@ -118,6 +118,9 @@ pub enum RuntimeBootstrapError<P> {
     /// A bootstrapped runtime was called with a different declaration snapshot.
     #[error("runtime bootstrap declaration snapshot differs from the established binding")]
     DeclarationSnapshotMismatch,
+    /// A repeated bootstrap attempted to replace host allocation policy.
+    #[error("runtime allocation pool differs from the established host policy")]
+    AllocationPoolMismatch,
     /// A bootstrapped runtime was called with a different policy identity.
     #[error("runtime bootstrap policy identity changed from {established:?} to {requested:?}")]
     PolicyIdentityMismatch {
@@ -146,7 +149,7 @@ pub enum RuntimeBootstrapError<P> {
     LedgerGrowth(#[from] RuntimeGrowError),
     /// Declaration validation failed.
     #[error(transparent)]
-    Validation(#[from] crate::AllocationValidationError<RuntimePolicyError<P>>),
+    Validation(#[from] crate::AllocationValidationError<P>),
     /// Validated declarations could not be staged.
     #[error(transparent)]
     Staging(#[from] crate::AllocationStageError),
@@ -182,18 +185,6 @@ pub enum RuntimeOpenError {
         /// Reserved stable key.
         stable_key: String,
     },
-    /// The requested memory ID does not match the committed stable-key binding.
-    #[error(
-        "stable key '{stable_key}' is committed for MemoryManager ID {committed_id}, not requested ID {requested_id}"
-    )]
-    MemoryIdMismatch {
-        /// Stable key being opened.
-        stable_key: String,
-        /// Committed MemoryManager ID.
-        committed_id: u8,
-        /// Requested MemoryManager ID.
-        requested_id: u8,
-    },
 }
 
 ///
@@ -226,23 +217,6 @@ pub enum RuntimeDiagnosticError {
 }
 
 ///
-/// RuntimePolicyError
-///
-/// Failure in generic runtime range policy or caller-supplied policy.
-///
-
-#[non_exhaustive]
-#[derive(Clone, Debug, Eq, thiserror::Error, PartialEq)]
-pub enum RuntimePolicyError<P> {
-    /// Runtime range authority rejected the declaration.
-    #[error(transparent)]
-    Range(#[from] MemoryManagerRangeAuthorityError),
-    /// Caller-supplied policy rejected the declaration.
-    #[error(transparent)]
-    Custom(P),
-}
-
-///
 /// MemoryResolutionError
 ///
 /// Logical placement failed before publishing allocation authority.
@@ -251,13 +225,16 @@ pub enum RuntimePolicyError<P> {
 #[non_exhaustive]
 #[derive(Debug, thiserror::Error)]
 pub enum MemoryResolutionError {
+    /// Populated unmanaged memory lacks an explicit host exclusion.
+    #[error("unmanaged MemoryManager ID {id} needs an explicit host exclusion")]
+    UnmanagedAllocation { id: u8 },
     #[error("no eligible free slot for {stable_key} under authority {authority}")]
     Exhausted {
         stable_key: crate::StableKey,
         authority: String,
     },
     #[error(transparent)]
-    Range(#[from] crate::MemoryManagerRangeAuthorityError),
+    Pool(#[from] crate::MemoryAllocationPoolError),
     #[error(transparent)]
     Registry(#[from] StaticMemoryDeclarationError),
 }

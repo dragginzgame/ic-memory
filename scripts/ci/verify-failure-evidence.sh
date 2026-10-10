@@ -19,7 +19,7 @@ unpacked="$(mktemp -d "$fixture/unpacked.XXXXXX")"
 tar -xzf "$2" -C "$unpacked"
 retained=("$unpacked/ic-memory-fixtures"/host-tools-test.*/Linux:x86_64/.tools/host-set.*/bin/yq)
 [[ ${#retained[@]} == 1 && -x "${retained[0]}" ]]
-for path in tools-setup.log dependencies.log validation.log runtime-setup.log runtime.log; do cmp "$temp_root/$path" "$unpacked/$path"; done
+for path in tools-setup.log dependencies.log validation.log runtime-setup.log runtime.log formatting.failure; do cmp "$temp_root/$path" "$unpacked/$path"; done
 [[ "$(cat "$unpacked/validation.log")" == original_status=1 ]]
 cmp "$repository_root/target/qualification/"$'line\nbreak:payload' "$unpacked/target/qualification/"$'line\nbreak:payload'
 [[ "$(perl -e 'printf "%o", (stat($ARGV[0]))[2] & 0777' "$unpacked/target/qualification/"$'line\nbreak:payload')" == 640 ]]

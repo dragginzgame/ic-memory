@@ -1,121 +1,315 @@
 use super::*;
 use crate::{
-    AllocationDeclaration, AllocationPolicy, AllocationRetirement, MemoryManagerAuthorityRecord,
-    MemoryManagerIdRange, MemoryManagerRangeMode, MemoryManagerSlot, MemoryRequest, SchemaMetadata,
-    StableKey, StaticMemoryDeclaration, StaticMemoryRangeDeclaration,
+    AllocationBootstrap, AllocationDeclaration, AllocationLedger, AllocationRetirement,
+    GenericAllocationPolicy, LedgerCommitStore, MemoryAllocationPool, MemoryAuthority,
+    MemoryManagerIdRange, MemoryManagerSlot, MemoryRequest, SchemaMetadata,
+    SealedDeclarationSnapshot, StableCellLedgerRecord,
 };
-use ic_stable_structures::VectorMemory;
+use ic_stable_structures::{
+    Cell, Memory, VectorMemory,
+    memory_manager::{MemoryId, MemoryManager},
+};
 
-pub(super) fn snapshot(
-    keys: &[&str],
-    owner: &str,
-    start: u8,
-    end: u8,
-    fixed: &[(&str, u8)],
-) -> SealedDeclarationSnapshot {
-    let range = StaticMemoryRangeDeclaration::new(
-        MemoryManagerAuthorityRecord::new(
-            MemoryManagerIdRange::new(start, end).unwrap(),
-            owner,
-            MemoryManagerRangeMode::Allowed,
-            None,
-        )
-        .unwrap(),
+pub(super) fn snapshot(keys: &[&str], owner: &str) -> SealedDeclarationSnapshot {
+    SealedDeclarationSnapshot::new(
+        &keys
+            .iter()
+            .map(|key| MemoryRequest::new(owner, key, SchemaMetadata::default()).unwrap())
+            .collect::<Vec<_>>(),
     )
-    .unwrap();
-    let requests: Vec<_> = keys
-        .iter()
-        .map(|key| MemoryRequest::new(owner, key, SchemaMetadata::default()).unwrap())
-        .collect();
-    let declarations: Vec<_> = fixed
-        .iter()
-        .map(|(key, id)| {
-            StaticMemoryDeclaration::new(
-                owner,
-                AllocationDeclaration::memory_manager_unlabeled(key, *id).unwrap(),
-            )
-            .unwrap()
-        })
-        .collect();
-    SealedDeclarationSnapshot::new(&declarations, &[range], &requests).unwrap()
+    .unwrap()
 }
 
-fn id(runtime: &MemoryRuntime<VectorMemory>, key: &str) -> u8 {
-    runtime
-        .committed_allocations()
-        .unwrap()
-        .slot_for(&StableKey::parse(key).unwrap())
-        .unwrap()
-        .id()
+pub(super) fn pool() -> MemoryAllocationPool {
+    MemoryAllocationPool::new(vec![MemoryAuthority::new("app", "app.").unwrap()], vec![]).unwrap()
+}
+
+fn composed_pool(exclusions: Vec<MemoryManagerIdRange>) -> MemoryAllocationPool {
+    MemoryAllocationPool::new(
+        vec![
+            MemoryAuthority::new("canic-core", "canic.").unwrap(),
+            MemoryAuthority::new("icydb.main", "icydb.main.").unwrap(),
+            MemoryAuthority::new("jobs", "jobs.").unwrap(),
+        ],
+        exclusions,
+    )
+    .unwrap()
+}
+
+fn composed(keys: &[(&str, &str)]) -> SealedDeclarationSnapshot {
+    SealedDeclarationSnapshot::new(
+        &keys
+            .iter()
+            .map(|(owner, key)| MemoryRequest::new(*owner, key, SchemaMetadata::default()).unwrap())
+            .collect::<Vec<_>>(),
+    )
+    .unwrap()
+}
+
+/// Seed current-format ownership through its existing persistence owner. This
+/// models retained fixed claims, without exposing a numeric component request.
+fn retained(backing: &VectorMemory, declarations: &[AllocationDeclaration]) {
+    let mut store = LedgerCommitStore::default();
+    store
+        .commit(&AllocationLedger::new(0, vec![]).unwrap())
+        .unwrap();
+    let pending = AllocationBootstrap::new(&mut store)
+        .validate_and_commit(
+            crate::DeclarationSnapshot::new(declarations.to_vec()).unwrap(),
+            &GenericAllocationPolicy,
+        )
+        .unwrap();
+    let manager = MemoryManager::init(backing.clone());
+    drop(Cell::new(
+        manager.get(MemoryId::new(0)),
+        StableCellLedgerRecord::new(store),
+    ));
+    drop(pending.confirm_persisted());
 }
 
 #[test]
-fn fragmented_grants_place_in_order_and_exhaust_without_reusing_history() {
-    let ranges = [
-        ("app", 200, 201, MemoryManagerRangeMode::Allowed),
-        ("app", 10, 19, MemoryManagerRangeMode::Reserved),
-        ("foreign", 20, 29, MemoryManagerRangeMode::Allowed),
-        ("app", 100, 101, MemoryManagerRangeMode::Allowed),
-    ]
-    .map(|(authority, start, end, mode)| {
-        StaticMemoryRangeDeclaration::new(
-            MemoryManagerAuthorityRecord::new(
-                MemoryManagerIdRange::new(start, end).unwrap(),
-                authority,
-                mode,
-                None,
-            )
-            .unwrap(),
-        )
-        .unwrap()
-    });
-    let fixed = [StaticMemoryDeclaration::new(
-        "app",
-        AllocationDeclaration::memory_manager_unlabeled("app.fixed.v1", 100).unwrap(),
-    )
-    .unwrap()];
-    let requests = ["app.c.v1", "app.a.v1", "app.b.v1"]
-        .map(|key| MemoryRequest::new("app", key, SchemaMetadata::default()).unwrap());
-    let declarations = SealedDeclarationSnapshot::new(&fixed, &ranges, &requests).unwrap();
+fn deterministic_requests_preserve_history_and_explicit_inspection() {
+    let initial = [
+        ("jobs", "jobs.rows.v1"),
+        ("canic-core", "canic.control.v1"),
+        ("icydb.main", "icydb.main.rows.v1"),
+    ];
+    let pool = composed_pool(vec![]);
     let backing = VectorMemory::default();
-    let mut runtime = MemoryRuntime::new(backing.clone()).unwrap();
-    runtime
-        .bootstrap(&declarations, &GenericRangePolicy)
+    let mut host = MemoryRuntime::new(backing.clone()).unwrap();
+    assert_eq!(
+        host.memory_id("jobs.rows.v1"),
+        Err(RuntimeOpenError::NotBootstrapped)
+    );
+    host.bootstrap(&composed(&initial), &pool, &GenericAllocationPolicy)
         .unwrap();
-    for (key, expected) in [("app.a.v1", 101), ("app.b.v1", 200), ("app.c.v1", 201)] {
-        assert_eq!(runtime.memory_id(key).unwrap(), expected);
+    let ids: Vec<_> = initial
+        .iter()
+        .map(|(_, key)| (*key, host.memory_id(key).unwrap()))
+        .collect();
+    for (key, _) in &ids {
+        let memory = host.open_memory(key).unwrap();
+        memory.grow(1).unwrap();
+        memory.write(0, key.as_bytes());
     }
-    drop(runtime);
+    let mut reversed = initial;
+    reversed.reverse();
+    let generation = host
+        .bootstrap(&composed(&reversed), &pool, &GenericAllocationPolicy)
+        .unwrap()
+        .generation();
+    assert_eq!(generation, 1);
+    host.verify_authority(&composed(&[("jobs", "jobs.rows.v1")]), "jobs")
+        .unwrap();
+    drop(host);
 
-    // Omitted keys still occupy every remaining Allowed slot. Free Reserved
-    // slots and another authority's grants cannot supply a new placement.
-    let requests = [MemoryRequest::new("app", "app.d.v1", SchemaMetadata::default()).unwrap()];
-    let declarations = SealedDeclarationSnapshot::new(&fixed, &ranges, &requests).unwrap();
-    let before = backing.borrow().clone();
-    let mut runtime = MemoryRuntime::new(backing.clone()).unwrap();
+    // Omit IcyDB and add a key that sorts before the old keys. Both its retained
+    // mapping and payload remain unavailable to the new key, across cold reopen.
+    let changed = composed(&[
+        ("canic-core", "canic.control.v1"),
+        ("canic-core", "canic.added.v1"),
+        ("jobs", "jobs.rows.v1"),
+    ]);
+    let mut host = MemoryRuntime::new(backing.clone()).unwrap();
+    host.bootstrap(&changed, &pool, &GenericAllocationPolicy)
+        .unwrap();
+    let new_id = host.memory_id("canic.added.v1").unwrap();
+    assert!(!ids.iter().any(|(_, id)| *id == new_id));
     assert!(matches!(
-        runtime.bootstrap(&declarations, &GenericRangePolicy),
+        host.open_memory("icydb.main.rows.v1"),
+        Err(RuntimeOpenError::StableKeyNotCommitted(_))
+    ));
+    drop(host);
+    let mut reopened = MemoryRuntime::new(backing).unwrap();
+    reopened
+        .bootstrap(&composed(&initial), &pool, &GenericAllocationPolicy)
+        .unwrap();
+    for (key, id) in ids {
+        assert_eq!(reopened.memory_id(key), Ok(id));
+        let mut bytes = vec![0; key.len()];
+        reopened.open_memory(key).unwrap().read(0, &mut bytes);
+        assert_eq!(bytes, key.as_bytes());
+    }
+}
+
+#[test]
+fn common_pool_supplies_available_space_across_all_owners() {
+    // Host exclusions deliberately leave three slots. Each owner can consume
+    // any free slot; no component has a numeric quota or private partition.
+    let pool = composed_pool(vec![MemoryManagerIdRange::new(13, 254).unwrap()]);
+    let declarations = composed(&[
+        ("canic-core", "canic.a.v1"),
+        ("canic-core", "canic.b.v1"),
+        ("icydb.main", "icydb.main.a.v1"),
+    ]);
+    let backing = VectorMemory::default();
+    let mut host = MemoryRuntime::new(backing.clone()).unwrap();
+    host.bootstrap(&declarations, &pool, &GenericAllocationPolicy)
+        .unwrap();
+    assert_eq!(host.memory_id("canic.a.v1"), Ok(10));
+    assert_eq!(host.memory_id("canic.b.v1"), Ok(11));
+    assert_eq!(host.memory_id("icydb.main.a.v1"), Ok(12));
+    drop(host);
+    let before = backing.borrow().clone();
+    let mut host = MemoryRuntime::new(backing.clone()).unwrap();
+    assert!(matches!(
+        host.bootstrap(
+            &composed(&[("jobs", "jobs.extra.v1")]),
+            &pool,
+            &GenericAllocationPolicy
+        ),
         Err(RuntimeBootstrapError::Resolution(
             MemoryResolutionError::Exhausted { .. }
         ))
     ));
-    assert!(!runtime.is_bootstrapped());
+    assert_eq!(*backing.borrow(), before);
+    assert!(!host.is_bootstrapped());
+}
+
+#[test]
+fn retained_fixed_claims_and_tombstones_are_never_remapped_or_reused() {
+    let backing = VectorMemory::default();
+    retained(
+        &backing,
+        &[
+            AllocationDeclaration::memory_manager_unlabeled("app.retained.v1", 100).unwrap(),
+            AllocationDeclaration::memory_manager_unlabeled("app.retired.v1", 10).unwrap(),
+        ],
+    );
+    let manager = MemoryManager::init(backing.clone());
+    let memory = manager.get(MemoryId::new(100));
+    memory.grow(1);
+    memory.write(0, b"retained");
+    let mut record =
+        super::super::decode_stable_cell_ledger_record_from_memory(&manager.get(MemoryId::new(0)))
+            .unwrap();
+    AllocationBootstrap::new(record.store_mut())
+        .retire_and_commit(
+            &AllocationRetirement::new("app.retired.v1", MemoryManagerSlot::new(10).unwrap())
+                .unwrap(),
+        )
+        .unwrap();
+    drop(Cell::new(manager.get(MemoryId::new(0)), record));
+    drop(manager);
+    let mut host = MemoryRuntime::new(backing.clone()).unwrap();
+    host.bootstrap(
+        &snapshot(&["app.retained.v1", "app.new.v1"], "app"),
+        &pool(),
+        &GenericAllocationPolicy,
+    )
+    .unwrap();
+    assert_eq!(host.memory_id("app.retained.v1"), Ok(100));
+    assert_eq!(host.memory_id("app.new.v1"), Ok(11));
+    let mut bytes = [0; 8];
+    host.open_memory("app.retained.v1")
+        .unwrap()
+        .read(0, &mut bytes);
+    assert_eq!(&bytes, b"retained");
+    drop(host);
+    let before = backing.borrow().clone();
+    let mut host = MemoryRuntime::new(backing.clone()).unwrap();
+    assert!(matches!(
+        host.bootstrap(
+            &snapshot(&["app.retired.v1"], "app"),
+            &pool(),
+            &GenericAllocationPolicy
+        ),
+        Err(RuntimeBootstrapError::Validation(
+            crate::AllocationValidationError::RetiredAllocation { .. }
+        ))
+    ));
     assert_eq!(*backing.borrow(), before);
 }
 
 #[test]
-fn doctor_resolves_logical_requests_without_writes() {
-    let declarations = snapshot(&["app.a.v1"], "app", 100, 103, &[("app.fixed.v1", 100)]);
+fn foreign_namespace_and_excluded_historical_claims_fail_before_commit() {
     let backing = VectorMemory::default();
-    let mut runtime = MemoryRuntime::new(backing.clone()).unwrap();
+    retained(
+        &backing,
+        &[AllocationDeclaration::memory_manager_unlabeled("app.rows.v1", 100).unwrap()],
+    );
+    let before = backing.borrow().clone();
+    let mut host = MemoryRuntime::new(backing.clone()).unwrap();
+    assert!(matches!(
+        host.bootstrap(
+            &snapshot(&["app.rows.v1"], "foreign"),
+            &pool(),
+            &GenericAllocationPolicy
+        ),
+        Err(RuntimeBootstrapError::Resolution(
+            MemoryResolutionError::Pool(crate::MemoryAllocationPoolError::AuthorityMismatch { .. })
+        ))
+    ));
+    assert_eq!(*backing.borrow(), before);
+    let excluded = MemoryAllocationPool::new(
+        pool().authorities().to_vec(),
+        vec![MemoryManagerIdRange::new(100, 100).unwrap()],
+    )
+    .unwrap();
+    assert!(matches!(
+        host.bootstrap(
+            &snapshot(&["app.rows.v1"], "app"),
+            &excluded,
+            &GenericAllocationPolicy
+        ),
+        Err(RuntimeBootstrapError::Resolution(
+            MemoryResolutionError::Pool(crate::MemoryAllocationPoolError::ExcludedSlot { id: 100 })
+        ))
+    ));
+    assert_eq!(*backing.borrow(), before);
+}
+
+#[test]
+fn unmanaged_physical_custody_requires_explicit_host_exclusion() {
+    let backing = VectorMemory::default();
+    let manager = MemoryManager::init(backing.clone());
+    let raw = manager.get(MemoryId::new(30));
+    raw.grow(1);
+    raw.write(0, b"unmanaged");
+    drop(raw);
+    drop(manager);
+    let before = backing.borrow().clone();
+    let mut host = MemoryRuntime::new(backing.clone()).unwrap();
+    let requests = snapshot(&["app.rows.v1"], "app");
+    let report = host.doctor_report(&requests, &pool(), &GenericAllocationPolicy);
+    assert!(matches!(
+        report.validation,
+        crate::DiagnosticCheck::Failed { .. }
+    ));
+    assert_eq!(*backing.borrow(), before);
+    assert!(matches!(
+        host.bootstrap(&requests, &pool(), &GenericAllocationPolicy),
+        Err(RuntimeBootstrapError::Resolution(
+            MemoryResolutionError::UnmanagedAllocation { id: 30 }
+        ))
+    ));
+    assert_eq!(*backing.borrow(), before);
+    let excluded = MemoryAllocationPool::new(
+        pool().authorities().to_vec(),
+        vec![MemoryManagerIdRange::new(30, 30).unwrap()],
+    )
+    .unwrap();
+    host.bootstrap(&requests, &excluded, &GenericAllocationPolicy)
+        .unwrap();
+    assert_eq!(host.memory_id("app.rows.v1"), Ok(10));
+    let raw = MemoryManager::init(backing).get(MemoryId::new(30));
+    let mut bytes = [0; 9];
+    raw.read(0, &mut bytes);
+    assert_eq!(&bytes, b"unmanaged");
+}
+
+#[test]
+fn doctor_resolves_logical_requests_without_writes() {
+    let source = snapshot(&["app.rows.v1"], "app");
+    let backing = VectorMemory::default();
+    let mut host = MemoryRuntime::new(backing.clone()).unwrap();
     for bootstrapped in [false, true] {
         if bootstrapped {
-            runtime
-                .bootstrap(&declarations, &GenericRangePolicy)
+            host.bootstrap(&source, &pool(), &GenericAllocationPolicy)
                 .unwrap();
         }
         let before = backing.borrow().clone();
-        let report = runtime.doctor_report(&declarations, &GenericRangePolicy);
+        let report = host.doctor_report(&source, &pool(), &GenericAllocationPolicy);
         assert_eq!(report.validation, crate::DiagnosticCheck::Passed);
         assert_eq!(report.bootstrapped, bootstrapped);
         assert_eq!(*backing.borrow(), before);
@@ -123,319 +317,37 @@ fn doctor_resolves_logical_requests_without_writes() {
 }
 
 #[test]
-fn deterministic_requests_preserve_history_and_explicit_inspection() {
+fn current_host_grants_replace_owner_labels_without_moving_keys() {
     let backing = VectorMemory::default();
-    let first = snapshot(
-        &["app.b.v1", "app.a.v1"],
-        "app",
-        100,
-        103,
-        &[("app.fixed.v1", 100)],
-    );
-    let mut runtime = MemoryRuntime::new(backing.clone()).unwrap();
-    assert!(matches!(
-        runtime.open_memory_by_key("app.b.v1"),
-        Err(RuntimeOpenError::NotBootstrapped)
-    ));
-    runtime.bootstrap(&first, &GenericRangePolicy).unwrap();
-    assert_eq!(
-        (id(&runtime, "app.a.v1"), id(&runtime, "app.b.v1")),
-        (101, 102)
-    );
-    let b = runtime.open_memory_by_key("app.b.v1").unwrap();
-    assert_eq!(b.grow(1), Ok(0));
-    b.write(0, b"journal debt");
-    drop(b);
-    let fresh = VectorMemory::default();
-    let mut other = MemoryRuntime::new(fresh).unwrap();
-    other
+    let source = snapshot(&["app.rows.v1"], "app");
+    let mut original = MemoryRuntime::new(backing.clone()).unwrap();
+    original
+        .bootstrap(&source, &pool(), &GenericAllocationPolicy)
+        .unwrap();
+    let id = original.memory_id("app.rows.v1").unwrap();
+    let rows = original.open_memory("app.rows.v1").unwrap();
+    rows.grow(1).unwrap();
+    rows.write(0, b"retained");
+    drop(rows);
+    drop(original);
+    let current = MemoryAllocationPool::new(
+        vec![MemoryAuthority::new("replacement", "app.").unwrap()],
+        vec![],
+    )
+    .unwrap();
+    let mut reopened = MemoryRuntime::new(backing).unwrap();
+    reopened
         .bootstrap(
-            &snapshot(
-                &["app.a.v1", "app.b.v1"],
-                "app",
-                100,
-                103,
-                &[("app.fixed.v1", 100)],
-            ),
-            &GenericRangePolicy,
+            &snapshot(&["app.rows.v1"], "replacement"),
+            &current,
+            &GenericAllocationPolicy,
         )
         .unwrap();
-    assert_eq!(id(&other, "app.b.v1"), 102);
-    drop(runtime);
-
-    // B is absent from current open authority, but still owns its slot.
-    let mut runtime = MemoryRuntime::new(backing.clone()).unwrap();
-    runtime
-        .bootstrap(
-            &snapshot(
-                &["app.c.v1", "app.a.v1"],
-                "app",
-                100,
-                103,
-                &[("app.fixed.v1", 100)],
-            ),
-            &GenericRangePolicy,
-        )
-        .unwrap();
-    assert_eq!(
-        (id(&runtime, "app.a.v1"), id(&runtime, "app.c.v1")),
-        (101, 103)
-    );
-    assert!(matches!(
-        runtime.open_memory_by_key("app.b.v1"),
-        Err(RuntimeOpenError::StableKeyNotCommitted(_))
-    ));
-    drop(runtime);
-
-    // The generated reconciliation manifest explicitly includes B before sealing.
-    let mut runtime = MemoryRuntime::new(backing.clone()).unwrap();
-    runtime
-        .bootstrap(
-            &snapshot(
-                &["app.a.v1", "app.b.v1", "app.c.v1"],
-                "app",
-                100,
-                103,
-                &[("app.fixed.v1", 100)],
-            ),
-            &GenericRangePolicy,
-        )
-        .unwrap();
-    let mut marker = [0; 12];
-    runtime
-        .open_memory_by_key("app.b.v1")
+    assert_eq!(reopened.memory_id("app.rows.v1"), Ok(id));
+    let mut bytes = [0; 8];
+    reopened
+        .open_memory("app.rows.v1")
         .unwrap()
-        .read(0, &mut marker);
-    assert_eq!(&marker, b"journal debt");
-    assert_eq!(id(&runtime, "app.b.v1"), 102);
-    assert!(matches!(
-        runtime.open_memory_by_key("app.unknown.v1"),
-        Err(RuntimeOpenError::StableKeyNotCommitted(_))
-    ));
-    drop(runtime);
-
-    for denied in [
-        snapshot(&["app.b.v1"], "foreign", 110, 115, &[]),
-        snapshot(&["app.b.v1"], "app", 103, 115, &[]),
-    ] {
-        let before = backing.borrow().clone();
-        let mut runtime = MemoryRuntime::new(backing.clone()).unwrap();
-        assert!(matches!(
-            runtime.bootstrap(&denied, &GenericRangePolicy),
-            Err(RuntimeBootstrapError::Resolution(_))
-        ));
-        assert!(!runtime.is_bootstrapped());
-        assert_eq!(*backing.borrow(), before);
-    }
-}
-
-#[test]
-fn exhaustion_and_fixed_conflicts_do_not_publish_or_change_committed_state() {
-    let backing = VectorMemory::default();
-    let mut runtime = MemoryRuntime::new(backing.clone()).unwrap();
-    runtime
-        .bootstrap(
-            &snapshot(&["app.a.v1"], "app", 100, 100, &[]),
-            &GenericRangePolicy,
-        )
-        .unwrap();
-    drop(runtime);
-    for invalid in [
-        snapshot(&["app.b.v1"], "app", 100, 100, &[]),
-        snapshot(&["app.a.v1"], "app", 100, 101, &[("app.fixed.v1", 100)]),
-    ] {
-        let before = backing.borrow().clone();
-        let mut runtime = MemoryRuntime::new(backing.clone()).unwrap();
-        assert!(runtime.bootstrap(&invalid, &GenericRangePolicy).is_err());
-        assert!(!runtime.is_bootstrapped());
-        assert_eq!(*backing.borrow(), before);
-    }
-    assert!(MemoryRequest::new("app", "BAD KEY", SchemaMetadata::default()).is_err());
-    let request = MemoryRequest::new("app", "app.a.v1", SchemaMetadata::default()).unwrap();
-    assert!(SealedDeclarationSnapshot::new(&[], &[], &[request.clone(), request]).is_err());
-    let mut runtime = MemoryRuntime::new(VectorMemory::default()).unwrap();
-    let no_grant = SealedDeclarationSnapshot::new(
-        &[],
-        &[],
-        &[MemoryRequest::new("app", "app.a.v1", SchemaMetadata::default()).unwrap()],
-    )
-    .unwrap();
-    assert!(matches!(
-        runtime.bootstrap(&no_grant, &GenericRangePolicy),
-        Err(RuntimeBootstrapError::Resolution(
-            MemoryResolutionError::Exhausted { .. }
-        ))
-    ));
-}
-
-#[test]
-fn reservation_activation_and_retirement_use_existing_claim_rules() {
-    let backing = VectorMemory::default();
-    let mut runtime = MemoryRuntime::new(backing.clone()).unwrap();
-    let genesis = AllocationLedger::new(0, Vec::new()).unwrap();
-    let reservation = AllocationDeclaration::memory_manager_unlabeled("app.b.v1", 101).unwrap();
-    let mut record = StableCellLedgerRecord::default();
-    record.store_mut().commit(&genesis).unwrap();
-    AllocationBootstrap::new(record.store_mut())
-        .reserve_and_commit(&[reservation], &GenericRangePolicy)
-        .unwrap();
-    let _cell = Cell::init(runtime.memory(MEMORY_MANAGER_LEDGER_ID), record);
-    runtime
-        .bootstrap(
-            &snapshot(&["app.a.v1", "app.b.v1"], "app", 100, 103, &[]),
-            &GenericRangePolicy,
-        )
-        .unwrap();
-    assert_eq!(id(&runtime, "app.b.v1"), 101);
-    let memory = runtime.open_memory_by_key("app.b.v1").unwrap();
-    memory.grow(1).unwrap();
-    memory.write(0, b"pending");
-    let mut record = runtime.ledger_record_from_memory().unwrap();
-    AllocationBootstrap::new(record.store_mut())
-        .retire_and_commit(
-            &AllocationRetirement::new("app.b.v1", MemoryManagerSlot::new(101).unwrap()).unwrap(),
-        )
-        .unwrap();
-    let _cell = Cell::new(runtime.memory(MEMORY_MANAGER_LEDGER_ID), record);
-    drop(runtime);
-    let mut runtime = MemoryRuntime::new(backing.clone()).unwrap();
-    assert!(matches!(
-        runtime.bootstrap(
-            &snapshot(&["app.b.v1"], "app", 100, 103, &[]),
-            &GenericRangePolicy
-        ),
-        Err(RuntimeBootstrapError::Validation(_))
-    ));
-    assert!(!runtime.is_bootstrapped());
-    drop(runtime);
-    let mut runtime = MemoryRuntime::new(backing).unwrap();
-    runtime
-        .bootstrap(
-            &snapshot(&["app.c.v1"], "app", 100, 103, &[]),
-            &GenericRangePolicy,
-        )
-        .unwrap();
-    assert_eq!(id(&runtime, "app.c.v1"), 102); // A and retired B remain claimed.
-}
-
-#[test]
-fn failed_persistence_publishes_no_mapping_and_retries_deterministically() {
-    struct Limited {
-        bytes: VectorMemory,
-        limit: std::rc::Rc<std::cell::Cell<u64>>,
-    }
-    impl Memory for Limited {
-        fn size(&self) -> u64 {
-            self.bytes.size()
-        }
-        fn grow(&self, pages: u64) -> i64 {
-            if self.size() + pages > self.limit.get() {
-                -1
-            } else {
-                self.bytes.grow(pages)
-            }
-        }
-        fn read(&self, offset: u64, bytes: &mut [u8]) {
-            self.bytes.read(offset, bytes);
-        }
-        fn write(&self, offset: u64, bytes: &[u8]) {
-            self.bytes.write(offset, bytes);
-        }
-    }
-    let bytes = VectorMemory::default();
-    let limit = std::rc::Rc::new(std::cell::Cell::new(1));
-    // Refuse the ledger cell's first backing page, before publishing any mapping.
-    let keys = ["app.rows.v1".to_string()];
-    let refs: Vec<_> = keys.iter().map(String::as_str).collect();
-    let declarations = snapshot(&refs, "app", 16, 254, &[]);
-    let mut runtime = MemoryRuntime::new_with_config(
-        Limited {
-            bytes: bytes.clone(),
-            limit: limit.clone(),
-        },
-        MemoryManagerConfig::new(1).unwrap(),
-    )
-    .unwrap();
-    let result = runtime.bootstrap(&declarations, &GenericRangePolicy);
-    assert!(
-        matches!(
-            result,
-            Err(RuntimeBootstrapError::LedgerGrowth(
-                super::RuntimeGrowError::BackingRefused { .. }
-            ))
-        ),
-        "{:?}",
-        result.err()
-    );
-    assert!(!runtime.is_bootstrapped());
-    assert!(matches!(
-        runtime.open_memory_by_key(&keys[0]),
-        Err(RuntimeOpenError::NotBootstrapped)
-    ));
-    drop(runtime);
-    limit.set(100);
-    let mut runtime = MemoryRuntime::new(Limited { bytes, limit }).unwrap();
-    runtime
-        .bootstrap(&declarations, &GenericRangePolicy)
-        .unwrap();
-    assert_eq!(runtime.committed_allocations().unwrap().generation(), 1);
-    assert_eq!(
-        runtime
-            .committed_allocations()
-            .unwrap()
-            .slot_for(&StableKey::parse(&keys[0]).unwrap())
-            .unwrap()
-            .id(),
-        16
-    );
-}
-
-#[test]
-fn current_custom_policy_can_reject_a_recovered_logical_key() {
-    struct Revoked;
-    impl AllocationPolicy for Revoked {
-        type Error = &'static str;
-        fn validate_key(&self, _: &StableKey) -> Result<(), Self::Error> {
-            Err("revoked")
-        }
-        fn validate_slot(&self, _: &StableKey, _: &MemoryManagerSlot) -> Result<(), Self::Error> {
-            Ok(())
-        }
-        fn validate_reserved_slot(
-            &self,
-            _: &StableKey,
-            _: &MemoryManagerSlot,
-        ) -> Result<(), Self::Error> {
-            Ok(())
-        }
-    }
-    impl RuntimeBootstrapPolicy for Revoked {
-        fn runtime_bootstrap_identity(&self) -> Result<PolicyIdentity, crate::PolicyIdentityError> {
-            PolicyIdentity::new("revoked", 1)
-        }
-    }
-    let backing = VectorMemory::default();
-    let declarations = snapshot(&["app.a.v1"], "app", 100, 110, &[]);
-    let mut runtime = MemoryRuntime::new(backing.clone()).unwrap();
-    runtime
-        .bootstrap(&declarations, &GenericRangePolicy)
-        .unwrap();
-    // Logical diagnostics use the same resolution, and the original input binding.
-    assert_eq!(
-        runtime
-            .doctor_report(&declarations, &GenericRangePolicy)
-            .bootstrap_binding,
-        crate::DiagnosticCheck::passed()
-    );
-    drop(runtime);
-    let before = backing.borrow().clone();
-    let mut runtime = MemoryRuntime::new(backing.clone()).unwrap();
-    assert!(matches!(
-        runtime.bootstrap(&declarations, &Revoked),
-        Err(RuntimeBootstrapError::Validation(
-            crate::AllocationValidationError::Policy(RuntimePolicyError::Custom("revoked"))
-        ))
-    ));
-    assert_eq!(*backing.borrow(), before);
-    assert!(!runtime.is_bootstrapped());
+        .read(0, &mut bytes);
+    assert_eq!(&bytes, b"retained");
 }

@@ -5,9 +5,9 @@
 # Logical bootstrap cleanup (#6)
 
 Baseline: release 0.14.1, commit `91288c45e450d98c96e447a6f64487223d004087`.
-Implemented and released in 0.14.2; issue #6 is closed. The implementation
-discussion remains applicable, while the measurements and validation budgets
-below describe that release. See [the reconciliation](issue-reconciliation.md)
+Implemented and released in 0.14.2; issue #6 is closed. The implementation discussion, measurements and validation budgets below
+describe that historical release; the current key-only pool contract is in
+[key-only recovery](key-only-recovery.md). See [the reconciliation](issue-reconciliation.md)
 for subsequent adoption and the current [Makefile](../Makefile) for size gates.
 This is a construction/repeated-work cleanup with no public API or durable-format
 change and no additional lifecycle state, cache or allocator.

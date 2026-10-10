@@ -22,7 +22,7 @@ inputs=()
 shopt -s nullglob
 for path in "$temp_root/ic-memory-fixtures" "$temp_root/tools-setup.log" \
     "$temp_root/dependencies.log" "$temp_root/validation.log" \
-    "$temp_root/runtime-setup.log" "$temp_root/runtime.log"; do
+    "$temp_root/runtime-setup.log" "$temp_root/runtime.log" "$temp_root"/formatting.*; do
     if [[ -e "$path" || -L "$path" ]]; then
         inputs+=("$temp_root" "${path#"$temp_root/"}")
     fi

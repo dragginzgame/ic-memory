@@ -7,29 +7,24 @@
     reason = "test-only raw IC system calls and Memory::read_unsafe"
 )]
 mod canister {
+    use super::pool;
     use ic_memory::{
-        GenericRangePolicy, MemoryManagerConfig, bootstrap_default_memory_manager_with_config,
+        GenericAllocationPolicy, MemoryManagerConfig, bootstrap_default_memory_manager_with_config,
         committed_allocations, default_memory_manager_memory_allocation_summary,
         ic_stable_structures::Memory, open_default_memory_manager_memory,
-        open_default_memory_manager_memory_by_key,
     };
 
     const PAGE: u64 = 65_536;
     const ROWS: &str = "io_qualification.rows.v1";
     const NEIGHBOR: &str = "io_qualification.neighbor.v1";
 
-    ic_memory::ic_memory_range!(authority = "io_qualification", start = 10, end = 11);
     ic_memory::ic_memory_declaration!(
         authority = "io_qualification",
-        key = "io_qualification.neighbor.v1",
-        label = "neighbor",
-        id = 10
+        key = "io_qualification.neighbor.v1"
     );
     ic_memory::ic_memory_declaration!(
         authority = "io_qualification",
-        key = "io_qualification.rows.v1",
-        label = "rows",
-        id = 11
+        key = "io_qualification.rows.v1"
     );
 
     #[link(wasm_import_module = "ic0")]
@@ -63,7 +58,8 @@ mod canister {
         let pages = if mode == 2 { 16 } else { 8 };
         bootstrap_default_memory_manager_with_config(
             MemoryManagerConfig::new(pages).unwrap(),
-            &GenericRangePolicy,
+            &pool(),
+            &GenericAllocationPolicy,
         )
         .unwrap();
         assert_ne!(mode, 1, "injected trap after durable bootstrap write");
@@ -72,10 +68,10 @@ mod canister {
     #[unsafe(export_name = "canister_init")]
     extern "C" fn init() {
         bootstrap(0);
-        let neighbor = open_default_memory_manager_memory_by_key(NEIGHBOR).unwrap();
+        let neighbor = open_default_memory_manager_memory(NEIGHBOR).unwrap();
         neighbor.grow(8).unwrap();
         neighbor.write(8 * PAGE - 1, &[0x6D]);
-        let rows = open_default_memory_manager_memory_by_key(ROWS).unwrap();
+        let rows = open_default_memory_manager_memory(ROWS).unwrap();
         rows.grow(1).unwrap();
         rows.write(0, &[0x42]);
     }
@@ -92,9 +88,17 @@ mod canister {
             .generation()
             .to_le_bytes()
             .to_vec();
-        // Expected IDs prove retained ownership as well as retained bytes.
-        let rows = open_default_memory_manager_memory(ROWS, 11).unwrap();
-        let neighbor = open_default_memory_manager_memory(NEIGHBOR, 10).unwrap();
+        // Check assigned identities independently of payload retention.
+        assert_eq!(
+            ic_memory::default_memory_manager_memory_id(NEIGHBOR).unwrap(),
+            10
+        );
+        assert_eq!(
+            ic_memory::default_memory_manager_memory_id(ROWS).unwrap(),
+            11
+        );
+        let rows = open_default_memory_manager_memory(ROWS).unwrap();
+        let neighbor = open_default_memory_manager_memory(NEIGHBOR).unwrap();
         let mut markers = [0; 2];
         rows.read(0, &mut markers[..1]);
         neighbor.read(8 * PAGE - 1, &mut markers[1..]);
@@ -112,7 +116,7 @@ mod canister {
         let count = usize::from(args[1]);
         assert!(count <= 2);
         let offset = u64::from_le_bytes(args[2..].try_into().unwrap());
-        let rows = open_default_memory_manager_memory_by_key(ROWS).unwrap();
+        let rows = open_default_memory_manager_memory(ROWS).unwrap();
         // Warm the cache and dirty valid state before the candidate failure.
         // A trap must roll this mutation back as well as reject the invalid IO.
         rows.write(0, &[0x99]);
@@ -134,4 +138,13 @@ mod canister {
         bytes.extend_from_slice(&instructions.to_le_bytes());
         reply(&bytes);
     }
+}
+
+#[cfg(target_arch = "wasm32")]
+fn pool() -> ic_memory::MemoryAllocationPool {
+    ic_memory::MemoryAllocationPool::new(
+        vec![ic_memory::MemoryAuthority::new("io_qualification", "io_qualification.").unwrap()],
+        vec![],
+    )
+    .unwrap()
 }

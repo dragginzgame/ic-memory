@@ -1,5 +1,5 @@
 use super::{MemoryRuntime, RuntimeLifecycle, RuntimeOpenError};
-use crate::{AllocationDeclaration, SchemaMetadata, SealedDeclarationSnapshot, StableKey};
+use crate::{SchemaMetadata, SealedDeclarationSnapshot, StableKey};
 use ic_stable_structures::Memory;
 
 ///
@@ -13,10 +13,10 @@ use ic_stable_structures::Memory;
 #[derive(Clone, Debug, Eq, PartialEq, thiserror::Error)]
 #[non_exhaustive]
 pub enum RuntimeAdoptionError {
-    /// Runtime readiness, key resolution or fixed-ID verification failed.
+    /// Runtime readiness, key resolution or requirement verification failed.
     #[error(transparent)]
     Open(#[from] RuntimeOpenError),
-    /// The supplied snapshot contains no fixed declarations or requests for this authority.
+    /// The supplied snapshot contains no requests for this authority.
     #[error("no allocation requirements declared by authority '{authority}'")]
     UnknownAuthority { authority: String },
     /// This key was committed under a different current declaration authority.
@@ -28,7 +28,7 @@ pub enum RuntimeAdoptionError {
         committed_authority: String,
         requested_authority: String,
     },
-    /// Declared diagnostic schema or fixed-declaration label differs from the commitment.
+    /// Declared diagnostic schema differs from the commitment.
     #[error("declaration metadata for stable key '{stable_key}' differs from the commitment")]
     DeclarationMetadataMismatch { stable_key: String },
 }
@@ -40,11 +40,10 @@ impl From<super::RuntimeStateError> for RuntimeAdoptionError {
 }
 
 impl<M: Memory> MemoryRuntime<M> {
-    /// Verify every fixed declaration and logical request for one authority in
+    /// Verify every logical request for one authority in
     /// the supplied requirements against this runtime's current commitment.
     ///
-    /// Fixed declarations must match key, ID, label and diagnostic schema;
-    /// logical requests must match key, authority and diagnostic schema while
+    /// Requests must match key, authority and diagnostic schema while
     /// retaining the host's assigned ID. Other authorities and additional
     /// committed keys are ignored. An authority with no requirements rejects.
     /// Grants and application schema semantics are not revalidated. Success
@@ -54,33 +53,23 @@ impl<M: Memory> MemoryRuntime<M> {
         requirements: &SealedDeclarationSnapshot,
         authority: &str,
     ) -> Result<(), RuntimeAdoptionError> {
-        let RuntimeLifecycle::Bootstrapped { binding, .. } = &self.lifecycle else {
+        let RuntimeLifecycle::Bootstrapped {
+            binding,
+            committed_allocations,
+        } = &self.lifecycle
+        else {
             return Err(RuntimeOpenError::NotBootstrapped.into());
         };
-        let committed = &binding.declarations;
         let mut found = false;
-        for registration in requirements.registered_declarations() {
-            if registration.authority() == authority {
-                found = true;
-                let expected = registration.declaration();
-                verify_requirement(
-                    committed,
-                    authority,
-                    expected.stable_key(),
-                    expected.schema(),
-                    Some(expected),
-                )?;
-            }
-        }
         for request in requirements.requests() {
             if request.authority() == authority {
                 found = true;
                 verify_requirement(
-                    committed,
+                    committed_allocations,
+                    &binding.pool,
                     authority,
                     request.stable_key(),
                     request.schema(),
-                    None,
                 )?;
             }
         }
@@ -94,36 +83,26 @@ impl<M: Memory> MemoryRuntime<M> {
 }
 
 fn verify_requirement(
-    committed: &SealedDeclarationSnapshot,
+    committed: &crate::CommittedAllocations,
+    pool: &crate::MemoryAllocationPool,
     authority: &str,
     key: &StableKey,
     schema: &SchemaMetadata,
-    fixed: Option<&AllocationDeclaration>,
 ) -> Result<(), RuntimeAdoptionError> {
-    let registration = committed
-        .registered_declaration(key)
-        .ok_or_else(|| RuntimeOpenError::StableKeyNotCommitted(key.to_string()))?;
-    if registration.authority() != authority {
+    let declaration =
+        crate::capability::declaration_for_key(committed.declarations(), key.as_str())
+            .ok_or_else(|| RuntimeOpenError::StableKeyNotCommitted(key.to_string()))?;
+    let admitted_authority = pool
+        .authority_for_key(key)
+        .expect("committed key has an admitted owner");
+    if admitted_authority != authority {
         return Err(RuntimeAdoptionError::AuthorityMismatch {
             stable_key: key.to_string(),
-            committed_authority: registration.authority().to_string(),
+            committed_authority: admitted_authority.to_string(),
             requested_authority: authority.to_string(),
         });
     }
-    let committed = registration.declaration();
-    if let Some(expected) = fixed
-        && expected.slot() != committed.slot()
-    {
-        return Err(RuntimeOpenError::MemoryIdMismatch {
-            stable_key: key.to_string(),
-            committed_id: committed.slot().id(),
-            requested_id: expected.slot().id(),
-        }
-        .into());
-    }
-    if schema != committed.schema()
-        || fixed.is_some_and(|expected| expected.label() != committed.label())
-    {
+    if schema != declaration.schema() {
         return Err(RuntimeAdoptionError::DeclarationMetadataMismatch {
             stable_key: key.to_string(),
         });

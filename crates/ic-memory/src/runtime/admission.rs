@@ -8,7 +8,7 @@ use crate::{
 ///
 /// Validated allocation evidence borrowed during bootstrap preparation. This
 /// metadata grants no memory access and contains no application payload or
-/// historical authority identity. Host grants supply current authorization.
+/// historical authority identity. Host namespace grants supply current authorization.
 ///
 
 #[derive(Clone, Copy, Debug)]
@@ -40,12 +40,8 @@ pub enum BootstrapAdmissionError {
     Duplicate(StableKey),
     #[error("completed declarations exceed 254 external allocations")]
     TooManyDeclarations,
-    #[error("historical selection {stable_key} by {authority} lacks a current grant: {source}")]
-    Range {
-        stable_key: StableKey,
-        authority: String,
-        source: crate::MemoryManagerRangeAuthorityError,
-    },
+    #[error(transparent)]
+    Pool(#[from] crate::MemoryAllocationPoolError),
     #[error(transparent)]
     Registry(#[from] crate::StaticMemoryDeclarationError),
 }
@@ -63,6 +59,7 @@ pub enum BootstrapAdmissionError {
 pub struct BootstrapAdmission<'a> {
     ledger: &'a AllocationLedger,
     declarations: &'a SealedDeclarationSnapshot,
+    pool: &'a crate::MemoryAllocationPool,
     selected: Vec<MemoryRequest>,
     failure: Option<BootstrapAdmissionError>,
 }
@@ -71,16 +68,18 @@ impl<'a> BootstrapAdmission<'a> {
     pub(super) const fn new(
         ledger: &'a AllocationLedger,
         declarations: &'a SealedDeclarationSnapshot,
+        pool: &'a crate::MemoryAllocationPool,
     ) -> Self {
         Self {
             ledger,
             declarations,
+            pool,
             selected: Vec::new(),
             failure: None,
         }
     }
 
-    /// Original sealed input; preparation cannot remove declarations or add grants.
+    /// Original sealed input; preparation cannot remove declarations or change host policy.
     #[must_use]
     pub const fn declarations(&self) -> &SealedDeclarationSnapshot {
         self.declarations
@@ -109,10 +108,9 @@ impl<'a> BootstrapAdmission<'a> {
     /// Whether the original input or an earlier selection already names this key.
     #[must_use]
     pub fn is_declared(&self, key: &StableKey) -> bool {
-        // Sealing owns canonical fixed/request keys. Selections retain callback
+        // Sealing owns canonical source request keys. Selections retain callback
         // order, so only that unsealed tail needs a scan.
         key.as_str() == crate::IC_MEMORY_LEDGER_STABLE_KEY
-            || self.declarations.registered_declaration(key).is_some()
             || self
                 .declarations
                 .requests()
@@ -124,7 +122,7 @@ impl<'a> BootstrapAdmission<'a> {
                 .any(|request| request.stable_key() == key)
     }
 
-    /// Include a known, nonretired key under an explicit current host grant.
+    /// Include a known, nonretired key under an explicit current host namespace grant.
     /// Retains its slot and latest schema metadata. Final current policy and all
     /// ordinary collision/retirement checks still run after preparation.
     pub fn include_historical(
@@ -149,11 +147,7 @@ impl<'a> BootstrapAdmission<'a> {
         if self.is_declared(key) {
             return Err(BootstrapAdmissionError::Duplicate(key.clone()));
         }
-        if self.declarations.registered_declarations().len()
-            + self.declarations.requests().len()
-            + self.selected.len()
-            >= 254
-        {
+        if self.declarations.requests().len() + self.selected.len() >= 254 {
             return Err(BootstrapAdmissionError::TooManyDeclarations);
         }
         let record = self
@@ -165,14 +159,8 @@ impl<'a> BootstrapAdmission<'a> {
         if matches!(record.state(), AllocationState::Retired) {
             return Err(BootstrapAdmissionError::Retired(key.clone()));
         }
-        self.declarations
-            .range_authority()
-            .validate_slot_authority(record.slot(), authority)
-            .map_err(|source| BootstrapAdmissionError::Range {
-                stable_key: key.clone(),
-                authority: authority.to_string(),
-                source,
-            })?;
+        self.pool.validate_authority(key, authority)?;
+        self.pool.validate_id(record.slot().id())?;
         self.selected
             .push(request.with_schema(record.schema().clone()));
         Ok(())

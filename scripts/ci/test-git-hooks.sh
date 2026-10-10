@@ -44,7 +44,7 @@ new_fixture() {
     # consumer locks so the formatter check still detects accidental creation.
     git rm --quiet --ignore-unmatch -- Cargo.lock testing/runtime-qualification/Cargo.lock
     mkdir -p ci make .githooks scripts/ci scripts/dev
-    for path in Makefile make/tools.mk make/release.mk make/execution.mk ci/tool-versions.env rust-toolchain.toml .githooks/pre-commit scripts/dev/install-git-hooks.sh scripts/ci/check-format-tools.sh scripts/ci/check-make-execution.sh; do
+    for path in Makefile make/tools.mk make/release.mk make/execution.mk ci/tool-versions.env rust-toolchain.toml .githooks/pre-commit scripts/dev/install-git-hooks.sh scripts/ci/check-format-tools.sh scripts/ci/run-formatting.sh scripts/ci/check-make-execution.sh; do
         cp -p "$root/$path" "$path"
     done
     for workspace in . testing/runtime-qualification; do
@@ -81,7 +81,7 @@ CARGO
             printf 'pub fn fixture() {}\n' > "$workspace/crates/$member/src/lib.rs"
         done
     done
-    git add -- Makefile make/tools.mk make/release.mk make/execution.mk ci/tool-versions.env rust-toolchain.toml .githooks/pre-commit scripts/dev/install-git-hooks.sh scripts/ci/check-format-tools.sh scripts/ci/check-make-execution.sh Cargo.toml crates/hook-fixture crates/alpha crates/zeta testing/runtime-qualification/Cargo.toml testing/runtime-qualification/crates/hook-fixture testing/runtime-qualification/crates/alpha testing/runtime-qualification/crates/zeta
+    git add -- Makefile make/tools.mk make/release.mk make/execution.mk ci/tool-versions.env rust-toolchain.toml .githooks/pre-commit scripts/dev/install-git-hooks.sh scripts/ci/check-format-tools.sh scripts/ci/run-formatting.sh scripts/ci/check-make-execution.sh Cargo.toml crates/hook-fixture crates/alpha crates/zeta testing/runtime-qualification/Cargo.toml testing/runtime-qualification/crates/hook-fixture testing/runtime-qualification/crates/alpha testing/runtime-qualification/crates/zeta
 }
 
 expect_failure() {

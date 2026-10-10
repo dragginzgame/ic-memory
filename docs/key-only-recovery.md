@@ -4,127 +4,87 @@
 
 # Key-only allocation and bounded recovery
 
-This is the current contract for completed issues #2–#4. Fixed declarations
-remain useful for host composition. Logical requests add no fields to the
-durable ledger and create no second allocation map.
+The runtime accepts permanent key requests and one host-owned allocation pool.
+Placement adds no fields to the durable ledger and creates no second allocation
+map. See the [0.34 pool qualification](allocation-pool-qualification.md).
 
 ## Placement and host adoption
 
-`MemoryRequest::new(authority, key, schema)` checks the existing key grammar,
-authority identifier and schema metadata. Register it with
-`register_memory_request` before static sealing, use the key-only
-`ic_memory_declaration!` form, or pass it to `SealedDeclarationSnapshot::new`
-with explicitly owned fixed declarations and range grants.
+`MemoryRequest::new(authority, key, schema)` checks key grammar, owner metadata
+and schema metadata. Register it before sealing, use `ic_memory_declaration!`,
+or pass requests to `SealedDeclarationSnapshot::new(&requests)`.
 
-The runtime opens its fixed ledger root (ID 0), recovers ownership records, runs host
-admission, resolves requests, validates the complete resolved snapshot under
-current policy, stages one generation, persists it, then publishes
-`CommittedAllocations`. The default runtime delegates to this same
-implementation. Resolution does not commit.
+The host supplies `MemoryAllocationPool::new(namespace_grants, exclusions)`.
+Each `MemoryAuthority::new(owner, prefix)` admits a disjoint key namespace.
+Governance IDs 0..=9 are excluded permanently; all owners share every other
+eligible ID. Physical exclusions retain unmanaged custody. A populated eligible
+ID without a ledger record rejects bootstrap with `UnmanagedAllocation` before
+initial ledger-cell writes. Diagnostics perform the same read-only check.
 
-Resolution sorts requests by stable key. Every known key retains its durable
-slot. Every new key takes the lowest unused ID covered by an explicit `Allowed`
-grant to its authority. All historical states occupy slots, including omitted,
-reserved and retired records. Fixed current declarations occupy slots before
-request resolution. Policy rejection fails the whole attempt; placement does
-not probe custom policy for alternate IDs. Known keys are never relocated to
-satisfy changed policy. Matching reservations activate through existing claim
-validation; a reservation is never free space for another key.
+The runtime recovers the ledger at ID 0, runs host admission, resolves requests,
+validates the completed snapshot, stages and persists one generation, then
+publishes committed authority. The default runtime delegates to this flow.
 
-A standalone host can explicitly grant itself IDs 10–254. A composed host grants
-libraries smaller pools. `Reserved` ranges can admit explicit fixed claims or
-matching historical requests under current policy, but supply no new automatic
-placements. Raw unregistered manager clients must be declared or reserved by
-the host; no diagnostic can infer their ownership.
+New requests are sorted by key and take the lowest unoccupied pool ID. Known
+keys preserve their committed IDs. All historical states occupy slots, including
+omitted, reserved and retired records. Custom policy rejection fails the whole
+attempt; placement does not search alternate IDs to evade it. Matching
+reservations activate through normal validation. Retirement is permanent.
 
-`MemoryResolutionError::Exhausted` identifies the bounded key and authority;
-range errors identify the rejected slot/authority. Historical conflicts and
-retirement retain `AllocationValidationError` variants. Persistence growth refusal
-returns `RuntimeBootstrapError::LedgerGrowth` carrying a `RuntimeGrowError`;
-an oversized encoded record returns `StableCellLedgerWriteTooLarge`. No failed
-bootstrap publishes a capability. `RuntimeMemory::grow` reserves backing capacity
-before upstream manager bucket assignment for application and ledger handles.
-Direct growth returns `Result<u64, RuntimeGrowError>`; ordinary refusal preserves
-virtual extents and manager metadata. Only the upstream `Memory` trait adapter
-maps these errors to its required `-1` sentinel. A fresh failed attempt
-can leave an initialized empty ledger cell; an existing committed mapping remains
-unchanged.
+Namespace grants authorize current owner labels. Previous owner labels are not
+stored in the ledger or enforced. The host can replace a label while preserving
+the key and its ID. Labels are not caller authentication or linked-code isolation.
 
-A library adopting a bootstrapped host uses `verify_authority` to check every
-fixed declaration and logical request under its authority, then `memory_id`
-and `open_memory_by_key`. Default-runtime equivalents are
+A library adopts a bootstrapped runtime through `verify_authority`, then
+`memory_id` or `open_memory(key)`. Default equivalents are
 `verify_default_memory_manager_authority`, `default_memory_manager_memory_id`
-and `open_default_memory_manager_memory_by_key`. These calls neither bootstrap nor
-replace policy/configuration. They do not read ownership records or construct an absent
-default runtime. Verification reports typed missing-key, fixed-ID, current
-authority and diagnostic-metadata mismatches; it does not validate application
-schema semantics or replay admission. The runnable
-[`key_only` example](../crates/ic-memory/examples/key_only.rs) covers standalone ownership and a
-composed host with automatic requests, a fixed control slot and a prior journal
-reservation. The [composed-host regression](../crates/ic-memory/examples/composed_host.rs) adds
-consumer admission, two cold reopens and bootstrap on each native worker.
+and `open_default_memory_manager_memory(key)`. These do not bootstrap, replace
+policy, inspect persisted ownership or construct an absent default runtime.
+Verification checks required keys, current owners and schema metadata without
+certifying application schema semantics or replaying admission.
+
+Exhaustion, invalid grants, excluded historical IDs, retirement and corruption
+fail closed. Growth refusal returns typed errors; failed persistence publishes
+no capability. A fresh admitted attempt can leave an empty initialized ledger
+cell; previous committed mappings remain unchanged. IC message traps roll back
+stable writes; arbitrary native backing is not a crash-atomic storage protocol.
+
+See the runnable [key-only example](../crates/ic-memory/examples/key_only.rs)
+and [composed host](../crates/ic-memory/examples/composed_host.rs).
 
 ## Omitted-store inspection
 
-Omission retains ownership but removes the key from current open authority.
-Opening an omitted or unknown key returns
-`RuntimeOpenError::StableKeyNotCommitted`. Diagnostics reporting an unknown
-current binding do not make the slot available.
+Omitted keys retain their IDs but cannot open under the current capability.
+Include independently known prior keys in the source request snapshot, or select
+known historical keys during `prepare_bootstrap` through
+`BootstrapAdmission::include_historical`. Both routes finish before resolution
+and the single persistence boundary. Historical selection rejects unknown,
+retired, duplicate, foreign-namespace and physically excluded claims. Ignoring
+an admission error does not make the attempt succeed.
 
-For lifecycle reconciliation, every journal to inspect must be explicitly
-included before commitment. Consumers that already know the keys can include
-them in the original sealed manifest, as below. Consumers that discover roles
-from allocation metadata can instead contribute
-`RuntimeBootstrapPolicy::prepare_bootstrap` to the host policy and use
-`BootstrapAdmission::include_historical` before resolution. See the
-[admission contract and example](recovered-admission.md). Both routes retain the
-single persistence boundary and current grant/policy checks.
-
-```rust
-ic_memory::ic_memory_range!(authority = "db", start = 100, end = 119, mode = Allowed);
+```rust,no_run
 ic_memory::ic_memory_declaration!(authority = "db", key = "db.current.v1");
-// A known prior store's journal, retained explicitly for reconciliation.
 ic_memory::ic_memory_declaration!(authority = "db", key = "db.removed_journal.v1");
-
-fn reconcile() {
-    ic_memory::bootstrap_default_memory_manager().unwrap();
-    let journal = ic_memory::open_default_memory_manager_memory_by_key(
-        "db.removed_journal.v1",
-    ).unwrap();
-    // Consumer decodes journal debt/commit markers and refuses unsafe retirement.
-    # let _ = journal;
+fn reconcile() -> Result<(), Box<dyn std::error::Error>> {
+    let pool = ic_memory::MemoryAllocationPool::new(
+        vec![ic_memory::MemoryAuthority::new("db", "db.")?], vec![],
+    )?;
+    ic_memory::bootstrap_default_memory_manager(&pool)?;
+    let journal = ic_memory::open_default_memory_manager_memory("db.removed_journal.v1")?;
+    // Consumer validates journal debt and pending effects before retirement.
+    drop(journal);
+    Ok(())
 }
 ```
 
-The static-manifest route requires keys independently known before sealing.
-The admission hook closes the allocation-metadata discovery gap without reading
-an unopened control store or extending the global sealed registry: it completes
-the runtime-local request set before resolution. Its historical selections reject
-unknown or retired keys, whereas ordinary new declarations may allocate fresh
-slots. Naming a key in an open call grants nothing.
+Allocation metadata contains no database incarnation, journal debt or schema
+support proof. Consumers own control-store admission, reconciliation and
+lifecycle decisions. Selecting a key is not permission to revive an
+application-retired database. See the [admission contract](recovered-admission.md).
 
-Allocation metadata does not contain IcyDB incarnation, journal debt or accepted
-schema. Consumers must supply their own identity/role interpretation and retain
-control-store and lifecycle checks after commitment. IcyDB's maintained generated
-upgrade qualification now covers omitted-journal reconciliation, debt and pending
-markers; see the [issue reconciliation](issue-reconciliation.md#downstream-acceptance).
-Application-specific host composition and lifecycle qualification remain
-consumer responsibilities.
-
-A foreign authority without the slot grant or a revoked grant fails before
-persistence. Explicit generic retirement produces `RetiredAllocation` even if
-the key is requested again. Current custom policy is also rechecked. The host
-owns range grants; they are current authorization, not persisted identities.
-Policy changes take effect at a new runtime/bootstrap, not by revoking already
-issued handles within a live runtime.
-
-The production-runtime tests write a marker to B, recreate with only A plus a
-new key, verify B cannot open and its slot cannot be reused, then explicitly
-include B in a subsequent manifest and read its marker. They also cover foreign
-and revoked grants and explicit retirement. There is no historical-open API,
-new retirement endpoint or data clearing. IcyDB still owns schema/incarnation,
-journal-debt, pending-commit and database-retirement decisions. Generic
-redeclaration does not promise that IcyDB can reintroduce a retired database.
+Warm bootstrap requires the same snapshot, exact canonical pool and custom
+policy identity. It does not replay preparation. Changed configuration is
+admitted only by a new runtime; existing handles are not dynamically revoked.
 
 ## Recovery and admission limits
 
@@ -141,8 +101,8 @@ schema trail. A checked `u64` commit counter binds proofs to commits.
 | Advertised CBOR text length | 256 bytes and remaining input | Syntax walk before serde allocation; keys also obey their 128-byte grammar |
 | Opaque commit payload | 65,560 bytes (64 KiB + 24-byte envelope) | Syntax walk before serde; writer checks the same limit |
 | Advertised array/map entries | Remaining input bounds | Syntax walk before serde allocation hints |
-| External fixed + logical declarations | 254 | Snapshot sealing before copying/canonicalizing inputs |
-| External range declarations | 254 | Snapshot sealing before copying inputs |
+| External key requests | 254 | Snapshot sealing before copying/canonicalizing inputs |
+| Host namespace grants / physical exclusions | 254 / 255 | Pool construction and checked decoding |
 | Resolved/generic declarations and retained records | 255, including governance | Snapshot validation; record visitor before vector growth; integrity before staging/commit |
 | Diagnostic strings | 256 bytes | CBOR preflight before allocation; constructors retain printable ASCII and non-empty checks |
 
@@ -177,9 +137,10 @@ The Cell is not a crash-atomic file protocol on arbitrary native backing memory;
 arbitrary partially persisted writes fail closed. Existing dual-slot corruption
 and interrupted-commit tests remain in the suite.
 
-## 0.14.0 qualification and costs
+## Historical 0.14–0.15 qualification and costs
 
-Raw, uncompressed Wasm is measured with matching Rust 1.97.1, the committed
+These historical figures describe the released 0.14–0.15 implementation, not
+qualification of the current pool API. Raw, uncompressed Wasm was measured with matching Rust 1.97.1, the committed
 `wasm-size` profile, `wasm32-unknown-unknown`, and the same maintained core and
 diagnostics probe sources at baseline and after the change. No native timing is
 used. Baseline is release commit `4a5cd22` (0.13.3).

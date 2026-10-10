@@ -3,16 +3,15 @@ use super::{
     RuntimeStateError,
     default::{is_default_memory_manager_bootstrapped, with_default_runtime_borrowed},
     diagnostics::diagnostic_validation_ledger,
-    policy::GenericRangePolicy,
+    policy::GenericAllocationPolicy,
 };
 use crate::{
     AllocationPolicy, DiagnosticCheck, DiagnosticCode, DiagnosticMemorySize, LedgerCommitError,
     LedgerPayloadEnvelopeError, MemoryManagerSlot, PolicyIdentity, PolicyIdentityError,
     RuntimeBootstrapPolicy, StableKey,
     registry::{
-        SealedDeclarationSnapshot, TEST_REGISTRY_LOCK, register_static_memory_manager_declaration,
-        register_static_memory_manager_range, reset_static_memory_declarations_for_tests,
-        sealed_declaration_snapshot,
+        SealedDeclarationSnapshot, TEST_REGISTRY_LOCK, register_memory_request,
+        reset_static_memory_declarations_for_tests, sealed_declaration_snapshot,
     },
 };
 use ic_stable_structures::{Cell, Memory, VectorMemory};
@@ -20,21 +19,15 @@ use std::convert::Infallible;
 
 pub(super) fn declarations() -> SealedDeclarationSnapshot {
     reset_static_memory_declarations_for_tests();
-    register_static_memory_manager_range(
-        120,
-        120,
-        "runtime_tests",
-        crate::MemoryManagerRangeMode::Reserved,
-        None,
+    register_memory_request(
+        crate::MemoryRequest::new(
+            "runtime_tests",
+            "runtime_tests.rows.v1",
+            crate::SchemaMetadata::default(),
+        )
+        .unwrap(),
     )
-    .expect("test range");
-    register_static_memory_manager_declaration(
-        120,
-        "runtime_tests",
-        "rows",
-        "runtime_tests.rows.v1",
-    )
-    .expect("test declaration");
+    .unwrap();
     sealed_declaration_snapshot().expect("sealed declarations")
 }
 
@@ -91,74 +84,6 @@ impl AllocationPolicy for CountingPolicy {
 impl RuntimeBootstrapPolicy for CountingPolicy {
     fn runtime_bootstrap_identity(&self) -> Result<PolicyIdentity, PolicyIdentityError> {
         PolicyIdentity::new("runtime-tests.counting-policy", 1)
-    }
-}
-
-#[test]
-fn fixed_range_checks_preserve_custom_policy_admission_and_rejection_order() {
-    use crate::{
-        AllocationValidationError, MemoryManagerAuthorityRecord, MemoryManagerIdRange,
-        MemoryManagerRangeAuthorityError, MemoryManagerRangeMode, RuntimeBootstrapError,
-        RuntimePolicyError, StaticMemoryDeclaration, StaticMemoryRangeDeclaration,
-    };
-
-    let mismatch = |id, actual: &str| MemoryManagerRangeAuthorityError::AuthorityMismatch {
-        id,
-        expected_authority: "app".to_string(),
-        actual_authority: actual.to_string(),
-    };
-    for (authority, id, expected) in [
-        (None, 100, None),
-        (Some("app"), 100, None),
-        (None, 1, Some(mismatch(1, crate::IC_MEMORY_AUTHORITY_OWNER))),
-        (Some("foreign"), 100, Some(mismatch(100, "foreign"))),
-        (
-            Some("app"),
-            101,
-            Some(MemoryManagerRangeAuthorityError::UnclaimedId { id: 101 }),
-        ),
-    ] {
-        let ranges: Vec<_> = authority
-            .map(|authority| {
-                StaticMemoryRangeDeclaration::new(
-                    MemoryManagerAuthorityRecord::new(
-                        MemoryManagerIdRange::new(100, 100).unwrap(),
-                        authority,
-                        MemoryManagerRangeMode::Allowed,
-                        None,
-                    )
-                    .unwrap(),
-                )
-                .unwrap()
-            })
-            .into_iter()
-            .collect();
-        let registration = StaticMemoryDeclaration::new(
-            "app",
-            crate::AllocationDeclaration::memory_manager_unlabeled("app.rows.v1", id).unwrap(),
-        )
-        .unwrap();
-        let declarations = SealedDeclarationSnapshot::new(&[registration], &ranges, &[]).unwrap();
-        let policy = CountingPolicy(std::cell::Cell::new(0));
-        let mut runtime = empty_runtime();
-        match (expected, runtime.bootstrap(&declarations, &policy)) {
-            (None, Ok(_)) => {
-                assert_eq!(runtime.memory_id("app.rows.v1").unwrap(), id);
-                assert_eq!(policy.0.get(), 2);
-            }
-            (
-                Some(expected),
-                Err(RuntimeBootstrapError::Validation(AllocationValidationError::Policy(
-                    RuntimePolicyError::Range(actual),
-                ))),
-            ) => {
-                assert_eq!(actual, expected);
-                assert!(!runtime.is_bootstrapped());
-                // Key policy runs first; the range failure precedes slot policy.
-                assert_eq!(policy.0.get(), 1);
-            }
-            outcome => panic!("unexpected range-policy outcome: {outcome:?}"),
-        }
     }
 }
 
@@ -304,7 +229,7 @@ fn separate_runtimes_have_independent_bootstrap_authority_and_memory() {
     let policy = CountingPolicy(std::cell::Cell::new(0));
 
     runtime_a
-        .bootstrap(&declarations, &policy)
+        .bootstrap(&declarations, &pool(), &policy)
         .expect("runtime A bootstrap");
     assert_eq!(policy.0.get(), 2);
     assert!(runtime_a.is_bootstrapped());
@@ -315,17 +240,17 @@ fn separate_runtimes_have_independent_bootstrap_authority_and_memory() {
     );
 
     let memory_a = runtime_a
-        .open_memory("runtime_tests.rows.v1", 120)
+        .open_memory("runtime_tests.rows.v1")
         .expect("runtime A memory");
     memory_a.grow(1).unwrap();
     memory_a.write(0, b"runtime-a");
 
     runtime_b
-        .bootstrap(&declarations, &policy)
+        .bootstrap(&declarations, &pool(), &policy)
         .expect("runtime B bootstrap");
     assert_eq!(policy.0.get(), 4);
     let memory_b = runtime_b
-        .open_memory("runtime_tests.rows.v1", 120)
+        .open_memory("runtime_tests.rows.v1")
         .expect("runtime B memory");
     assert_eq!(memory_b.size(), 0);
     memory_b.grow(1).unwrap();
@@ -359,7 +284,7 @@ fn concurrent_independent_runtimes_do_not_share_bootstrap_state() {
         let first = scope.spawn(move || {
             let mut runtime = empty_runtime();
             let generation = runtime
-                .bootstrap(&first_declarations, &GenericRangePolicy)
+                .bootstrap(&first_declarations, &pool(), &GenericAllocationPolicy)
                 .expect("first bootstrap")
                 .generation();
             let diagnostic_generation = runtime
@@ -371,7 +296,7 @@ fn concurrent_independent_runtimes_do_not_share_bootstrap_state() {
         let second = scope.spawn(move || {
             let mut runtime = empty_runtime();
             let generation = runtime
-                .bootstrap(&second_declarations, &GenericRangePolicy)
+                .bootstrap(&second_declarations, &pool(), &GenericAllocationPolicy)
                 .expect("second bootstrap")
                 .generation();
             let diagnostic_generation = runtime
@@ -398,16 +323,16 @@ fn repeated_bootstrap_is_idempotent_and_existing_memory_recovers() {
     let generation = {
         let mut runtime = MemoryRuntime::new(backing.clone()).expect("empty backing memory");
         let first = runtime
-            .bootstrap(&declarations, &GenericRangePolicy)
+            .bootstrap(&declarations, &pool(), &GenericAllocationPolicy)
             .expect("first bootstrap")
             .generation();
         let second = runtime
-            .bootstrap(&declarations, &GenericRangePolicy)
+            .bootstrap(&declarations, &pool(), &GenericAllocationPolicy)
             .expect("idempotent bootstrap")
             .generation();
         assert_eq!(first, second);
         let memory = runtime
-            .open_memory("runtime_tests.rows.v1", 120)
+            .open_memory("runtime_tests.rows.v1")
             .expect("first runtime memory");
         memory.grow(1).unwrap();
         memory.write(0, b"persisted");
@@ -417,7 +342,7 @@ fn repeated_bootstrap_is_idempotent_and_existing_memory_recovers() {
     let mut recovered_runtime =
         MemoryRuntime::new(backing).expect("existing MemoryManager backing memory");
     let recovered_generation = recovered_runtime
-        .bootstrap(&declarations, &GenericRangePolicy)
+        .bootstrap(&declarations, &pool(), &GenericAllocationPolicy)
         .expect("recover existing backing memory")
         .generation();
     assert!(recovered_generation >= generation);
@@ -429,7 +354,7 @@ fn repeated_bootstrap_is_idempotent_and_existing_memory_recovers() {
         recovered_generation
     );
     let memory = recovered_runtime
-        .open_memory("runtime_tests.rows.v1", 120)
+        .open_memory("runtime_tests.rows.v1")
         .expect("recovered runtime memory");
     let mut bytes = [0; 9];
     memory.read(0, &mut bytes);
@@ -440,24 +365,20 @@ fn repeated_bootstrap_is_idempotent_and_existing_memory_recovers() {
 fn repeated_bootstrap_accepts_independently_sealed_equivalent_declarations() {
     let _guard = TEST_REGISTRY_LOCK.lock().expect("test lock");
     let declarations = declarations();
-    let equivalent = SealedDeclarationSnapshot::new(
-        declarations.registered_declarations(),
-        declarations.registered_ranges(),
-        declarations.requests(),
-    )
-    .expect("equivalent declarations");
+    let equivalent =
+        SealedDeclarationSnapshot::new(declarations.requests()).expect("equivalent declarations");
     assert_eq!(equivalent, declarations);
     assert!(!declarations.shares_storage_with(&equivalent));
 
     let policy = CountingPolicy(std::cell::Cell::new(0));
     let mut runtime = empty_runtime();
     let generation = runtime
-        .bootstrap(&declarations, &policy)
+        .bootstrap(&declarations, &pool(), &policy)
         .expect("bootstrap")
         .generation();
     assert!(matches!(
         runtime
-            .doctor_report(&equivalent, &policy)
+            .doctor_report(&equivalent, &pool(), &policy)
             .bootstrap_binding,
         DiagnosticCheck::Passed
     ));
@@ -466,7 +387,7 @@ fn repeated_bootstrap_accepts_independently_sealed_equivalent_declarations() {
 
     assert_eq!(
         runtime
-            .bootstrap(&equivalent, &policy)
+            .bootstrap(&equivalent, &pool(), &policy)
             .expect("equivalent bootstrap")
             .generation(),
         generation
@@ -487,6 +408,7 @@ fn repeated_bootstrap_is_bound_to_declarations_and_policy_identity() {
     let generation = runtime
         .bootstrap(
             &declarations,
+            &pool(),
             &IdentityPolicy::new("runtime-tests.identity-policy", 1),
         )
         .expect("first bootstrap")
@@ -494,6 +416,7 @@ fn repeated_bootstrap_is_bound_to_declarations_and_policy_identity() {
     let repeated_generation = runtime
         .bootstrap(
             &declarations,
+            &pool(),
             &IdentityPolicy::new("runtime-tests.identity-policy", 1),
         )
         .expect("same semantic policy identity")
@@ -503,6 +426,7 @@ fn repeated_bootstrap_is_bound_to_declarations_and_policy_identity() {
     let policy_error = runtime
         .bootstrap(
             &declarations,
+            &pool(),
             &IdentityPolicy::new("runtime-tests.identity-policy", 2),
         )
         .expect_err("changed policy identity");
@@ -512,26 +436,19 @@ fn repeated_bootstrap_is_bound_to_declarations_and_policy_identity() {
     ));
 
     reset_static_memory_declarations_for_tests();
-    register_static_memory_manager_range(
-        121,
-        121,
+    crate::MemoryRequest::new(
         "alternate_runtime_tests",
-        crate::MemoryManagerRangeMode::Reserved,
-        None,
-    )
-    .expect("alternate range");
-    register_static_memory_manager_declaration(
-        121,
-        "alternate_runtime_tests",
-        "rows",
         "alternate_runtime_tests.rows.v1",
+        crate::SchemaMetadata::default(),
     )
+    .and_then(register_memory_request)
     .expect("alternate declaration");
     let alternate_declarations =
         sealed_declaration_snapshot().expect("alternate sealed declarations");
     let declaration_error = runtime
         .bootstrap(
             &alternate_declarations,
+            &pool(),
             &IdentityPolicy::new("runtime-tests.identity-policy", 1),
         )
         .expect_err("changed declaration snapshot");
@@ -554,7 +471,7 @@ fn policy_identity_validation_and_configuration_digest_are_runtime_bound() {
     let declarations = declarations();
     let mut empty_identity_runtime = empty_runtime();
     let empty_identity_error = empty_identity_runtime
-        .bootstrap(&declarations, &IdentityPolicy::new("", 1))
+        .bootstrap(&declarations, &pool(), &IdentityPolicy::new("", 1))
         .expect_err("empty policy identity");
     assert!(matches!(
         empty_identity_error,
@@ -562,7 +479,7 @@ fn policy_identity_validation_and_configuration_digest_are_runtime_bound() {
     ));
     assert!(!empty_identity_runtime.is_bootstrapped());
     let invalid_identity_doctor =
-        empty_identity_runtime.doctor_report(&declarations, &IdentityPolicy::new("", 1));
+        empty_identity_runtime.doctor_report(&declarations, &pool(), &IdentityPolicy::new("", 1));
     assert!(matches!(
         invalid_identity_doctor.tested_policy_identity,
         Err(crate::DiagnosticFailure {
@@ -582,12 +499,14 @@ fn policy_identity_validation_and_configuration_digest_are_runtime_bound() {
     configured_runtime
         .bootstrap(
             &declarations,
+            &pool(),
             &IdentityPolicy::configured("runtime-tests.configured-policy", 1, [1; 32]),
         )
         .expect("configured policy bootstrap");
     let digest_mismatch = configured_runtime
         .bootstrap(
             &declarations,
+            &pool(),
             &IdentityPolicy::configured("runtime-tests.configured-policy", 1, [2; 32]),
         )
         .expect_err("configuration digest is part of identity");
@@ -635,13 +554,18 @@ fn open_errors_and_failed_bootstrap_do_not_publish_authority() {
     let declarations = declarations();
     let mut runtime = empty_runtime();
 
-    let Err(open_before_bootstrap) = runtime.open_memory("runtime_tests.rows.v1", 120) else {
+    let Err(open_before_bootstrap) = runtime.open_memory("runtime_tests.rows.v1") else {
         panic!("open before bootstrap must fail");
     };
     assert_eq!(open_before_bootstrap, RuntimeOpenError::NotBootstrapped);
-    assert!(runtime.bootstrap(&declarations, &RejectPolicy).is_err());
+    assert!(matches!(
+        runtime.bootstrap(&declarations, &pool(), &RejectPolicy),
+        Err(super::RuntimeBootstrapError::Validation(
+            crate::AllocationValidationError::Policy("rejected")
+        ))
+    ));
     assert!(!runtime.is_bootstrapped());
-    let rejected_doctor = runtime.doctor_report(&declarations, &RejectPolicy);
+    let rejected_doctor = runtime.doctor_report(&declarations, &pool(), &RejectPolicy);
     assert!(!rejected_doctor.bootstrapped);
     assert!(matches!(
         rejected_doctor.validation,
@@ -660,28 +584,15 @@ fn open_errors_and_failed_bootstrap_do_not_publish_authority() {
     );
 
     runtime
-        .bootstrap(&declarations, &GenericRangePolicy)
+        .bootstrap(&declarations, &pool(), &GenericAllocationPolicy)
         .expect("successful retry");
-    let Err(wrong_key) = runtime.open_memory("runtime_tests.missing.v1", 120) else {
+    let Err(wrong_key) = runtime.open_memory("runtime_tests.missing.v1") else {
         panic!("wrong key must fail");
     };
     assert!(matches!(
         wrong_key,
         RuntimeOpenError::StableKeyNotCommitted(_)
     ));
-    for requested_id in [121, crate::MEMORY_MANAGER_INVALID_ID] {
-        let Err(wrong_id) = runtime.open_memory("runtime_tests.rows.v1", requested_id) else {
-            panic!("wrong ID must fail");
-        };
-        assert_eq!(
-            wrong_id,
-            RuntimeOpenError::MemoryIdMismatch {
-                stable_key: "runtime_tests.rows.v1".to_string(),
-                committed_id: 120,
-                requested_id,
-            }
-        );
-    }
 }
 
 #[test]
@@ -692,7 +603,7 @@ fn doctor_and_diagnostics_report_the_same_runtime_lifecycle() {
 
     assert!(
         !runtime
-            .doctor_report(&declarations, &GenericRangePolicy)
+            .doctor_report(&declarations, &pool(), &GenericAllocationPolicy)
             .bootstrapped
     );
     assert!(matches!(
@@ -701,13 +612,11 @@ fn doctor_and_diagnostics_report_the_same_runtime_lifecycle() {
     ));
 
     runtime
-        .bootstrap(&declarations, &GenericRangePolicy)
+        .bootstrap(&declarations, &pool(), &GenericAllocationPolicy)
         .expect("bootstrap");
-    let memory = runtime
-        .open_memory("runtime_tests.rows.v1", 120)
-        .expect("open");
+    let memory = runtime.open_memory("runtime_tests.rows.v1").expect("open");
     memory.grow(2).unwrap();
-    let doctor = runtime.doctor_report(&declarations, &GenericRangePolicy);
+    let doctor = runtime.doctor_report(&declarations, &pool(), &GenericAllocationPolicy);
     let export = runtime.diagnostic_export().expect("diagnostic export");
     assert!(doctor.bootstrapped);
     assert_eq!(doctor.ledger.as_ref().expect("doctor ledger"), &export);
@@ -749,6 +658,7 @@ fn doctor_and_diagnostics_report_the_same_runtime_lifecycle() {
 
     let mismatched = runtime.doctor_report(
         &declarations,
+        &pool(),
         &IdentityPolicy::new("runtime-tests.identity-policy", 2),
     );
     assert!(matches!(
@@ -763,11 +673,11 @@ fn doctor_and_diagnostics_report_the_same_runtime_lifecycle() {
 
 #[test]
 fn diagnostics_reject_invalid_persisted_slots_before_measuring_sizes() {
-    let declarations = SealedDeclarationSnapshot::new(&[], &[], &[]).unwrap();
+    let declarations = SealedDeclarationSnapshot::new(&[]).unwrap();
     let backing = VectorMemory::default();
     let mut runtime = MemoryRuntime::new(backing.clone()).unwrap();
     runtime
-        .bootstrap(&declarations, &GenericRangePolicy)
+        .bootstrap(&declarations, &pool(), &GenericAllocationPolicy)
         .unwrap();
     let record = runtime.ledger_record_from_memory().unwrap();
     let ledger = record.store().recover().unwrap().into_ledger();
@@ -796,7 +706,7 @@ fn diagnostics_reject_invalid_persisted_slots_before_measuring_sizes() {
             LedgerCommitError::Codec(_)
         ))
     ));
-    let doctor = runtime.doctor_report(&declarations, &GenericRangePolicy);
+    let doctor = runtime.doctor_report(&declarations, &pool(), &GenericAllocationPolicy);
     assert!(doctor.ledger.is_none());
     assert!(matches!(
         doctor.validation,
@@ -807,7 +717,7 @@ fn diagnostics_reject_invalid_persisted_slots_before_measuring_sizes() {
     ));
     let mut reopened = MemoryRuntime::new(backing.clone()).unwrap();
     assert!(matches!(
-        reopened.bootstrap(&declarations, &GenericRangePolicy),
+        reopened.bootstrap(&declarations, &pool(), &GenericAllocationPolicy),
         Err(super::RuntimeBootstrapError::LedgerCommit(
             LedgerCommitError::Codec(_)
         ))
@@ -834,7 +744,7 @@ fn default_runtime_reentry_is_a_typed_state_error() {
 
 #[test]
 fn doctor_preserves_distinct_record_decode_causes_without_writes() {
-    let declarations = SealedDeclarationSnapshot::new(&[], &[], &[]).unwrap();
+    let declarations = SealedDeclarationSnapshot::new(&[]).unwrap();
     let mut messages = Vec::new();
     for bytes in [vec![0xff], vec![0xa0]] {
         let cause = crate::decode_stable_cell_ledger_record(&bytes)
@@ -850,7 +760,7 @@ fn doctor_preserves_distinct_record_decode_causes_without_writes() {
         memory.write(crate::STABLE_CELL_VALUE_OFFSET, &bytes);
         let before = backing.borrow().clone();
 
-        let report = runtime.doctor_report(&declarations, &GenericRangePolicy);
+        let report = runtime.doctor_report(&declarations, &pool(), &GenericAllocationPolicy);
         assert!(report.commit_recovery.is_none());
         assert!(report.ledger.is_none());
         let crate::DiagnosticStableCellStatus::Corrupt { failure } = report.stable_cell.status
@@ -867,7 +777,7 @@ fn doctor_preserves_distinct_record_decode_causes_without_writes() {
 
 #[test]
 fn doctor_uses_genesis_only_for_empty_commit_storage() {
-    let declarations = SealedDeclarationSnapshot::new(&[], &[], &[]).unwrap();
+    let declarations = SealedDeclarationSnapshot::new(&[]).unwrap();
     let backing = VectorMemory::default();
     let runtime = MemoryRuntime::new(backing.clone()).unwrap();
     for initialized in [false, true] {
@@ -878,7 +788,7 @@ fn doctor_uses_genesis_only_for_empty_commit_storage() {
             );
         }
         let before = backing.borrow().clone();
-        let report = runtime.doctor_report(&declarations, &GenericRangePolicy);
+        let report = runtime.doctor_report(&declarations, &pool(), &GenericAllocationPolicy);
         assert!(!report.bootstrapped);
         assert_eq!(
             report.stable_cell.status,
@@ -903,7 +813,7 @@ fn doctor_uses_genesis_only_for_empty_commit_storage() {
         .unwrap();
     let _cell = Cell::new(runtime.memory(crate::MEMORY_MANAGER_LEDGER_ID), record);
     let before = backing.borrow().clone();
-    let report = runtime.doctor_report(&declarations, &GenericRangePolicy);
+    let report = runtime.doctor_report(&declarations, &pool(), &GenericAllocationPolicy);
     assert!(matches!(
         report.stable_cell.status,
         crate::DiagnosticStableCellStatus::Readable
@@ -934,4 +844,65 @@ fn validation_diagnostic_preserves_unsupported_format_code() {
         .expect_err("unsupported format must block validation");
 
     assert_eq!(failure.code, DiagnosticCode::UnsupportedFormat);
+}
+
+pub(super) fn pool() -> crate::MemoryAllocationPool {
+    crate::MemoryAllocationPool::new(
+        vec![crate::MemoryAuthority::new("runtime_tests", "runtime_tests.").unwrap()],
+        vec![
+            crate::MemoryManagerIdRange::new(10, 119).unwrap(),
+            crate::MemoryManagerIdRange::new(121, 254).unwrap(),
+        ],
+    )
+    .unwrap()
+}
+
+#[test]
+fn pool_admission_precedes_application_validation_and_preserves_retry() {
+    let _guard = TEST_REGISTRY_LOCK.lock().expect("test lock");
+    let source = declarations();
+    let backing = VectorMemory::default();
+    let mut original = MemoryRuntime::new(backing.clone()).unwrap();
+    original
+        .bootstrap(&source, &pool(), &GenericAllocationPolicy)
+        .unwrap();
+    drop(original);
+    let before = backing.borrow().clone();
+    let foreign = SealedDeclarationSnapshot::new(&[crate::MemoryRequest::new(
+        "foreign",
+        "runtime_tests.rows.v1",
+        crate::SchemaMetadata::default(),
+    )
+    .unwrap()])
+    .unwrap();
+    let excluded = crate::MemoryAllocationPool::new(
+        pool().authorities().to_vec(),
+        vec![crate::MemoryManagerIdRange::new(10, 254).unwrap()],
+    )
+    .unwrap();
+    let policy = CountingPolicy(std::cell::Cell::new(0));
+    let mut runtime = MemoryRuntime::new(backing.clone()).unwrap();
+    for (requests, host_pool) in [(&foreign, pool()), (&source, excluded)] {
+        assert!(matches!(
+            runtime
+                .doctor_report(requests, &host_pool, &policy)
+                .validation,
+            DiagnosticCheck::Failed {
+                code: DiagnosticCode::AllocationValidation,
+                ..
+            }
+        ));
+        assert!(matches!(
+            runtime.bootstrap(requests, &host_pool, &policy),
+            Err(super::RuntimeBootstrapError::Resolution(
+                super::MemoryResolutionError::Pool(_)
+            ))
+        ));
+        assert_eq!(policy.0.get(), 0);
+        assert_eq!(*backing.borrow(), before);
+        assert!(!runtime.is_bootstrapped());
+    }
+    runtime.bootstrap(&source, &pool(), &policy).unwrap();
+    assert_eq!(policy.0.get(), 2); // One external key/slot; governance stays private.
+    assert_eq!(runtime.memory_id("runtime_tests.rows.v1"), Ok(120));
 }

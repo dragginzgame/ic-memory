@@ -1,4 +1,4 @@
-use super::range_authority::MemoryManagerIdRange;
+use super::id_range::MemoryManagerIdRange;
 use serde::{Deserialize, Serialize};
 
 ///
@@ -84,9 +84,6 @@ pub const IC_MEMORY_STABLE_KEY_PREFIX: &str = "ic_memory.";
 
 /// Diagnostic owner label for `ic-memory` allocation-governance infrastructure.
 pub const IC_MEMORY_AUTHORITY_OWNER: &str = "ic-memory";
-
-/// Diagnostic purpose for the `ic-memory` allocation-governance authority range.
-pub const IC_MEMORY_AUTHORITY_PURPOSE: &str = "ic-memory allocation-governance authority";
 
 /// Stable key of the allocation ledger when backed by the current MemoryManager substrate.
 pub const IC_MEMORY_LEDGER_STABLE_KEY: &str = "ic_memory.ledger.v1";

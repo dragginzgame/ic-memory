@@ -17,7 +17,7 @@ barrier, not an instruction to reset storage.
 | Symptom | Was a new open capability published? | First action |
 | --- | --- | --- |
 | Layout, ID, authority, or policy conflict | No | Compare the new declarations with the last working release |
-| No eligible slot | No | Inspect the authority's current `Allowed` ranges and historical occupancy |
+| No eligible slot | No | Inspect host pool exclusions and historical occupancy |
 | Runtime not bootstrapped | No | Run the one correct bootstrap owner before opening stores |
 | Bucket-size mismatch | No | Use the persisted setting; do not attempt an in-place resize |
 | Corrupt or unsupported metadata | No | Preserve the bytes and collect read-only diagnostics |
@@ -29,9 +29,9 @@ Typical causes include:
 
 - an existing stable key was assigned a different memory ID;
 - an existing ID was assigned to a different key;
-- two declarations use the same key or ID;
-- a declaration moved outside its authority's range;
-- the bootstrap policy or sealed declaration set changed during the life of an
+- two component requests use the same key;
+- a namespace grant changed owner or a retained ID became excluded;
+- the bootstrap policy, host pool or sealed request set changed during the life of an
   already bootstrapped runtime.
 
 Compare the new declarations with the last working application version and the
@@ -45,20 +45,11 @@ the corrected declarations against a copy or representative fixture first.
 
 ## “No eligible free slot” or `MemoryResolutionError::Exhausted`
 
-Automatic allocation uses only free IDs in a matching current `Allowed` range.
-The following do not count as free space:
-
-- governance IDs;
-- fixed allocations;
-- `Reserved` ranges;
-- omitted historical allocations;
-- reservations; and
-- retired allocations.
-
-Confirm that the requesting authority has an `Allowed` range, that its spelling
-matches the request, and that at least one ID has never been claimed. If more
-capacity is required, grant a new non-overlapping eligible range after checking
-the host's complete layout. Do not reuse an omitted or retired ID.
+New keys use unoccupied IDs from the common host pool. Governance, physical
+exclusions and all retained records are unavailable. Omitted keys, reservations
+and retirement tombstones never release space. Check namespace admission and
+pool occupancy; only remove an exclusion after separately resolving its custody.
+Do not reuse a retained ID or assign per-component numeric partitions.
 
 ## “Runtime has not completed bootstrap validation”
 
@@ -113,23 +104,15 @@ ordinary opens. If the application must inspect a known historical journal,
 include it through the maintained declaration or recovered-admission path before
 commit. Naming it only in an open call grants nothing.
 
-## “The requested memory ID does not match”
+## “The authority or pool is rejected”
 
-`RuntimeOpenError::MemoryIdMismatch` means the stable key is committed, but for
-a different ID than the caller supplied. Correct the caller or use a key-based
-open after resolving the committed ID. Do not change the durable declaration to
-match an accidental caller value.
+Match the component's named owner to the host's namespace grant. Prefixes end
+in a dot and must not overlap. Current and historical requests must also have
+eligible physical IDs. Custom policy cannot replace the pool's admission checks.
 
-## “The authority or range is rejected”
-
-Use the same explicit authority value for the component's range and its key
-declarations. Fixed declarations must be inside a matching permitted range when
-the host registers user ranges. Fresh automatic requests and historical
-selection require explicit current grants; a custom policy alone does not
-supply their placement pool.
-
-`Reserved` permits fixed or matching historical claims. Use `Allowed` when a
-range must supply new automatic allocations.
+`UnmanagedAllocation` identifies a populated eligible ID without a ledger record.
+Exclude that ID explicitly after identifying its physical custodian. Memory
+cannot infer ownership or safely allocate over its bytes.
 
 ## “A retired store cannot be opened again”
 

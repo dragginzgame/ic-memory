@@ -7,8 +7,10 @@ static RELEASE_BLOCKING_HOOK: AtomicUsize = AtomicUsize::new(0);
 
 fn register_from_eager_init() {
     EAGER_INIT_RUNS.fetch_add(1, Ordering::SeqCst);
-    register_static_memory_manager_declaration(101, "eager", "audit", "eager.audit.v1")
-        .expect("eager declaration");
+    register_memory_request(
+        MemoryRequest::new("eager", "eager.audit.v1", SchemaMetadata::default()).unwrap(),
+    )
+    .expect("eager declaration");
 }
 
 fn block_during_sealing() {
@@ -34,155 +36,18 @@ fn no_registration() -> Result<(), StaticMemoryDeclarationError> {
 }
 
 #[test]
-fn registers_and_seals_static_memory_declarations() {
-    let _guard = TEST_REGISTRY_LOCK.lock().expect("test lock poisoned");
-    reset_static_memory_declarations_for_tests();
-
-    register_static_memory_manager_declaration(100, "icydb", "users", "icydb.users.data.v1")
-        .expect("register declaration");
-
-    let snapshot = sealed_declaration_snapshot().expect("snapshot");
-    let registrations = snapshot.registered_declarations();
-    assert_eq!(registrations.len(), 1);
-    assert_eq!(registrations[0].authority(), "icydb");
-    assert_eq!(
-        registrations[0].declaration().stable_key().as_str(),
-        "icydb.users.data.v1"
-    );
-
-    assert_eq!(snapshot.allocation_snapshot().len(), 2);
-
-    let err = register_static_memory_manager_declaration(101, "icydb", "orders", "icydb.orders.v1")
-        .expect_err("late registration must fail");
-    assert_eq!(err, StaticMemoryDeclarationError::RegistrySealed);
-}
-
-#[test]
-fn registers_static_memory_ranges() {
-    let _guard = TEST_REGISTRY_LOCK.lock().expect("test lock poisoned");
-    reset_static_memory_declarations_for_tests();
-
-    register_static_memory_manager_range(
-        100,
-        109,
-        "crate_a",
-        MemoryManagerRangeMode::Reserved,
-        Some("crate A stores".to_string()),
-    )
-    .expect("register range");
-
-    let snapshot = sealed_declaration_snapshot().expect("snapshot");
-    let ranges = snapshot.registered_ranges();
-    assert_eq!(ranges.len(), 1);
-    assert_eq!(ranges[0].authority(), "crate_a");
-    assert_eq!(ranges[0].record().range().start(), 100);
-    assert_eq!(ranges[0].record().range().end(), 109);
-
-    let late = StaticMemoryRangeDeclaration::new(ranges[0].record().clone()).unwrap();
-    assert_eq!(
-        register_static_memory_range_declaration(late).unwrap_err(),
-        StaticMemoryDeclarationError::RegistrySealed
-    );
-}
-
-#[test]
-fn static_range_declaration_uses_record_authority() {
-    let record = MemoryManagerAuthorityRecord::new(
-        MemoryManagerIdRange::new(100, 109).expect("range"),
-        "record_authority",
-        MemoryManagerRangeMode::Reserved,
-        None,
-    )
-    .expect("record");
-
-    let range = StaticMemoryRangeDeclaration::new(record).expect("external range");
-
-    assert_eq!(range.authority(), "record_authority");
-}
-
-#[test]
-fn snapshot_rejects_duplicate_static_memory_declarations() {
-    let _guard = TEST_REGISTRY_LOCK.lock().expect("test lock poisoned");
-    reset_static_memory_declarations_for_tests();
-
-    register_static_memory_manager_declaration(100, "icydb", "users", "icydb.users.data.v1")
-        .expect("register first declaration");
-    register_static_memory_manager_declaration(100, "icydb", "orders", "icydb.orders.v1")
-        .expect("register duplicate slot declaration");
-
-    let err = sealed_declaration_snapshot().expect_err("duplicate slot must fail");
-    defer_eager_init(|| {});
-    let repeated = sealed_declaration_snapshot().expect_err("seal failure is stable");
-    assert!(matches!(
-        err,
-        StaticMemoryDeclarationError::Declaration(crate::DeclarationSnapshotError::DuplicateSlot(
-            _
-        ))
-    ));
-    assert_eq!(repeated, err);
-}
-
-#[test]
 fn external_registration_rejects_internal_stable_key_namespace() {
     let _guard = TEST_REGISTRY_LOCK.lock().expect("test lock poisoned");
     reset_static_memory_declarations_for_tests();
 
-    let err = register_static_memory_manager_declaration(
-        1,
-        "external",
-        "governance",
-        "ic_memory.spoof.v1",
-    )
-    .expect_err("internal stable key must be unavailable externally");
+    let err = MemoryRequest::new("external", "ic_memory.spoof.v1", SchemaMetadata::default())
+        .and_then(register_memory_request)
+        .expect_err("internal stable key must be unavailable externally");
 
     assert!(matches!(
         err,
         StaticMemoryDeclarationError::ReservedStableKey { stable_key }
             if stable_key == "ic_memory.spoof.v1"
-    ));
-}
-
-#[test]
-fn external_registration_rejects_internal_authority_identity() {
-    let _guard = TEST_REGISTRY_LOCK.lock().expect("test lock poisoned");
-    reset_static_memory_declarations_for_tests();
-
-    let declaration_err = register_static_memory_manager_declaration(
-        100,
-        IC_MEMORY_AUTHORITY_OWNER,
-        "users",
-        "app.users.v1",
-    )
-    .expect_err("internal declaration authority must be unavailable externally");
-    let range_err = register_static_memory_manager_range(
-        100,
-        109,
-        IC_MEMORY_AUTHORITY_OWNER,
-        MemoryManagerRangeMode::Reserved,
-        None,
-    )
-    .expect_err("internal range authority must be unavailable externally");
-
-    assert!(matches!(
-        declaration_err,
-        StaticMemoryDeclarationError::ReservedAuthority { .. }
-    ));
-    assert!(matches!(
-        range_err,
-        StaticMemoryDeclarationError::ReservedAuthority { .. }
-    ));
-    // Record decoding accepts the governance owner's valid text, but cannot
-    // bypass the independent external-registration namespace restriction.
-    let record = serde_json::from_value(serde_json::json!({
-        "range": { "start": 100, "end": 109 },
-        "authority": IC_MEMORY_AUTHORITY_OWNER,
-        "mode": "Reserved",
-        "purpose": null,
-    }))
-    .unwrap();
-    assert!(matches!(
-        StaticMemoryRangeDeclaration::new(record),
-        Err(StaticMemoryDeclarationError::ReservedAuthority { .. })
     ));
 }
 
@@ -198,13 +63,7 @@ fn eager_hooks_run_once_before_the_canonical_snapshot_is_published() {
 
     assert_eq!(EAGER_INIT_RUNS.load(Ordering::SeqCst), 1);
     assert!(first.shares_storage_with(&second));
-    assert_eq!(
-        first.registered_declarations()[0]
-            .declaration()
-            .stable_key()
-            .as_str(),
-        "eager.audit.v1"
-    );
+    assert_eq!(first.requests()[0].stable_key().as_str(), "eager.audit.v1");
 }
 
 #[test]
@@ -219,237 +78,6 @@ fn deferred_constructor_registration_errors_are_reported_by_snapshot_requests() 
     let repeated = sealed_declaration_snapshot().expect_err("preserved registration failure");
     assert_eq!(error, StaticMemoryDeclarationError::RegistrySealed);
     assert_eq!(repeated, error);
-}
-
-#[test]
-fn snapshot_order_is_independent_of_registration_order() {
-    let _guard = TEST_REGISTRY_LOCK.lock().expect("test lock poisoned");
-    reset_static_memory_declarations_for_tests();
-    register_static_memory_manager_range(
-        102,
-        102,
-        "order",
-        MemoryManagerRangeMode::Reserved,
-        Some("z".to_string()),
-    )
-    .expect("z range");
-    register_static_memory_manager_range(
-        101,
-        101,
-        "order",
-        MemoryManagerRangeMode::Reserved,
-        Some("a".to_string()),
-    )
-    .expect("a range");
-    register_static_memory_manager_declaration(102, "order", "z", "order.z.v1")
-        .expect("z declaration");
-    register_static_memory_manager_declaration(101, "order", "a", "order.a.v1")
-        .expect("a declaration");
-    let first = sealed_declaration_snapshot().expect("first snapshot");
-
-    reset_static_memory_declarations_for_tests();
-    register_static_memory_manager_range(
-        101,
-        101,
-        "order",
-        MemoryManagerRangeMode::Reserved,
-        Some("a".to_string()),
-    )
-    .expect("a range");
-    register_static_memory_manager_range(
-        102,
-        102,
-        "order",
-        MemoryManagerRangeMode::Reserved,
-        Some("z".to_string()),
-    )
-    .expect("z range");
-    register_static_memory_manager_declaration(101, "order", "a", "order.a.v1")
-        .expect("a declaration");
-    register_static_memory_manager_declaration(102, "order", "z", "order.z.v1")
-        .expect("z declaration");
-    let second = sealed_declaration_snapshot().expect("second snapshot");
-
-    assert_eq!(first, second);
-    let explicit = SealedDeclarationSnapshot::new(
-        first.registered_declarations(),
-        first.registered_ranges(),
-        first.requests(),
-    )
-    .expect("borrowed snapshot inputs");
-    assert_eq!(explicit, first);
-    assert_eq!(
-        crate::test_cbor::to_vec(first.allocation_snapshot()).expect("first bytes"),
-        crate::test_cbor::to_vec(second.allocation_snapshot()).expect("second bytes")
-    );
-    assert_eq!(first.fingerprint(), second.fingerprint());
-    assert_eq!(first.fingerprint().algorithm_version(), 1);
-    assert_eq!(first.fingerprint().value(), 18_277_250_388_931_193_270);
-}
-
-#[test]
-fn snapshot_overlap_errors_preserve_bound_order_despite_differing_metadata() {
-    for first_end in [100, 109] {
-        let first = StaticMemoryRangeDeclaration::new(
-            MemoryManagerAuthorityRecord::new(
-                MemoryManagerIdRange::new(100, first_end).unwrap(),
-                "z",
-                MemoryManagerRangeMode::Reserved,
-                Some("z purpose".to_string()),
-            )
-            .unwrap(),
-        )
-        .unwrap();
-        let second = StaticMemoryRangeDeclaration::new(
-            MemoryManagerAuthorityRecord::new(
-                MemoryManagerIdRange::new(100, 109).unwrap(),
-                "a",
-                MemoryManagerRangeMode::Allowed,
-                Some("a purpose".to_string()),
-            )
-            .unwrap(),
-        )
-        .unwrap();
-
-        for ranges in [
-            [first.clone(), second.clone()],
-            [second.clone(), first.clone()],
-        ] {
-            assert_eq!(
-                SealedDeclarationSnapshot::new(&[], &ranges, &[]).unwrap_err(),
-                StaticMemoryDeclarationError::Range(
-                    MemoryManagerRangeAuthorityError::OverlappingRanges {
-                        existing_start: 100,
-                        existing_end: first_end,
-                        candidate_start: 100,
-                        candidate_end: 109,
-                    }
-                )
-            );
-        }
-    }
-}
-
-#[test]
-fn large_snapshot_permutations_preserve_all_metadata_and_fingerprints() {
-    let declarations: Vec<_> = (10..=254_u8)
-        .map(|id| {
-            StaticMemoryDeclaration::new(
-                "app",
-                AllocationDeclaration::memory_manager_with_schema(
-                    format!("app.store{id:03}.v1"),
-                    id,
-                    format!("Store {id}"),
-                    SchemaMetadata::new(Some(u32::from(id))).unwrap(),
-                )
-                .unwrap(),
-            )
-            .unwrap()
-        })
-        .collect();
-    let ranges: Vec<_> = (10..=254_u8)
-        .map(|id| {
-            StaticMemoryRangeDeclaration::new(
-                MemoryManagerAuthorityRecord::new(
-                    MemoryManagerIdRange::new(id, id).unwrap(),
-                    "app",
-                    if id % 2 == 0 {
-                        MemoryManagerRangeMode::Allowed
-                    } else {
-                        MemoryManagerRangeMode::Reserved
-                    },
-                    Some(format!("Store {id} range")),
-                )
-                .unwrap(),
-            )
-            .unwrap()
-        })
-        .collect();
-    let canonical = SealedDeclarationSnapshot::new(&declarations, &ranges, &[]).unwrap();
-    let order: Vec<_> = (0..declarations.len())
-        .step_by(2)
-        .chain((1..declarations.len()).step_by(2))
-        .collect();
-    for order in [(0..declarations.len()).rev().collect::<Vec<_>>(), order] {
-        let permuted_declarations: Vec<_> = order
-            .iter()
-            .map(|&index| declarations[index].clone())
-            .collect();
-        // Independent range order keeps both canonicalization owners exercised.
-        let permuted_ranges: Vec<_> = order
-            .iter()
-            .rev()
-            .map(|&index| ranges[index].clone())
-            .collect();
-        let permuted =
-            SealedDeclarationSnapshot::new(&permuted_declarations, &permuted_ranges, &[]).unwrap();
-        assert_eq!(permuted, canonical);
-        assert_eq!(permuted.fingerprint(), canonical.fingerprint());
-    }
-}
-
-#[test]
-fn equal_fixed_sort_keys_reject_independently_of_label_and_schema_order() {
-    let first = StaticMemoryDeclaration::new(
-        "app",
-        AllocationDeclaration::memory_manager("app.rows.v1", 100, "first").unwrap(),
-    )
-    .unwrap();
-    let second = StaticMemoryDeclaration::new(
-        "app",
-        AllocationDeclaration::memory_manager_with_schema(
-            "app.rows.v1",
-            100,
-            "second",
-            SchemaMetadata::new(Some(2)).unwrap(),
-        )
-        .unwrap(),
-    )
-    .unwrap();
-    for pair in [[first.clone(), second.clone()], [second, first]] {
-        let mut declarations: Vec<_> = (110..=173_u8)
-            .map(|id| {
-                StaticMemoryDeclaration::new(
-                    "app",
-                    AllocationDeclaration::memory_manager_unlabeled(
-                        format!("app.store{id}.v1"),
-                        id,
-                    )
-                    .unwrap(),
-                )
-                .unwrap()
-            })
-            .collect();
-        declarations.extend(pair);
-        assert_eq!(
-            SealedDeclarationSnapshot::new(&declarations, &[], &[]).unwrap_err(),
-            StaticMemoryDeclarationError::Declaration(
-                crate::DeclarationSnapshotError::DuplicateSlot(
-                    crate::MemoryManagerSlot::new(100).unwrap()
-                )
-            )
-        );
-    }
-}
-
-#[test]
-fn snapshot_fingerprint_covers_linked_declaration_authority() {
-    let _guard = TEST_REGISTRY_LOCK.lock().expect("test lock poisoned");
-    reset_static_memory_declarations_for_tests();
-    register_static_memory_manager_declaration(101, "authority_a", "rows", "fingerprint.rows.v1")
-        .expect("first declaration");
-    let first = sealed_declaration_snapshot()
-        .expect("first snapshot")
-        .fingerprint();
-
-    reset_static_memory_declarations_for_tests();
-    register_static_memory_manager_declaration(101, "authority_b", "rows", "fingerprint.rows.v1")
-        .expect("second declaration");
-    let second = sealed_declaration_snapshot()
-        .expect("second snapshot")
-        .fingerprint();
-
-    assert_ne!(first, second);
 }
 
 #[test]
@@ -468,7 +96,7 @@ fn concurrent_snapshot_requests_share_one_complete_seal() {
     });
 
     assert!(first.shares_storage_with(&second));
-    assert_eq!(first.registered_declarations().len(), 1);
+    assert_eq!(first.requests().len(), 1);
 }
 
 #[test]
@@ -484,7 +112,8 @@ fn registration_from_another_thread_fails_after_sealing_begins() {
         while BLOCKING_HOOK_STARTED.load(Ordering::SeqCst) == 0 {
             std::thread::yield_now();
         }
-        let late = register_static_memory_manager_declaration(101, "late", "late", "late.rows.v1")
+        let late = MemoryRequest::new("late", "late.rows.v1", SchemaMetadata::default())
+            .and_then(register_memory_request)
             .expect_err("concurrent late registration");
         assert_eq!(late, StaticMemoryDeclarationError::RegistrySealed);
         RELEASE_BLOCKING_HOOK.store(1, Ordering::SeqCst);
@@ -531,141 +160,69 @@ fn recursive_snapshot_request_from_eager_hook_is_typed() {
 }
 
 #[test]
-fn request_permutations_are_canonical_and_duplicate_keys_reject() {
-    let requests: Vec<_> = ["app.a.v1", "app.m.v1", "app.z.v1"]
-        .iter()
-        .map(|key| MemoryRequest::new("app", key, SchemaMetadata::default()).unwrap())
-        .collect();
-    let expected = SealedDeclarationSnapshot::new(&[], &[], &requests).unwrap();
-    for order in [
-        [0, 1, 2],
-        [0, 2, 1],
-        [1, 0, 2],
-        [1, 2, 0],
-        [2, 0, 1],
-        [2, 1, 0],
-    ] {
-        let permuted: Vec<_> = order.iter().map(|i| requests[*i].clone()).collect();
-        let actual = SealedDeclarationSnapshot::new(&[], &[], &permuted).unwrap();
-        assert_eq!(actual, expected);
-        assert_eq!(actual.fingerprint(), expected.fingerprint());
-    }
-    let conflicting =
-        MemoryRequest::new("other", "app.m.v1", SchemaMetadata::new(Some(2)).unwrap()).unwrap();
-    for duplicate in [
-        vec![requests[1].clone(), conflicting.clone()],
-        vec![conflicting, requests[1].clone()],
-    ] {
-        assert!(matches!(
-            SealedDeclarationSnapshot::new(&[], &[], &duplicate),
-            Err(StaticMemoryDeclarationError::DuplicateRequest { .. })
-        ));
-    }
-    let fixed = StaticMemoryDeclaration::new(
-        "app",
-        AllocationDeclaration::memory_manager_unlabeled("app.m.v1", 100).unwrap(),
+fn registers_and_seals_static_memory_declarations() {
+    let _guard = TEST_REGISTRY_LOCK.lock().unwrap();
+    reset_static_memory_declarations_for_tests();
+    register_memory_request(
+        MemoryRequest::new("db", "db.rows.v1", SchemaMetadata::default()).unwrap(),
     )
     .unwrap();
-    assert!(matches!(
-        SealedDeclarationSnapshot::new(std::slice::from_ref(&fixed), &[], &requests),
-        Err(StaticMemoryDeclarationError::DuplicateRequest { .. })
-    ));
-    // A later request/request conflict must not hide the earlier fixed/request
-    // conflict, and an earlier request/request conflict still takes precedence.
-    for (duplicates, expected) in [
-        (
-            vec![
-                requests[2].clone(),
-                requests[1].clone(),
-                requests[2].clone(),
-            ],
-            "app.m.v1",
-        ),
-        (
-            vec![
-                requests[1].clone(),
-                requests[0].clone(),
-                requests[0].clone(),
-            ],
-            "app.a.v1",
-        ),
-    ] {
-        for reversed in [false, true] {
-            let mut duplicates = duplicates.clone();
-            if reversed {
-                duplicates.reverse();
-            }
-            assert!(matches!(
-                SealedDeclarationSnapshot::new(std::slice::from_ref(&fixed), &[], &duplicates),
-                Err(StaticMemoryDeclarationError::DuplicateRequest { stable_key })
-                    if stable_key.as_str() == expected
-            ));
-        }
-    }
+    let sealed = sealed_declaration_snapshot().unwrap();
+    assert_eq!(sealed.requests().len(), 1);
+    assert_eq!(
+        register_memory_request(sealed.requests()[0].clone()),
+        Err(StaticMemoryDeclarationError::RegistrySealed)
+    );
 }
 
 #[test]
-fn resolved_history_permutations_match_fully_sealed_declarations_and_fingerprints() {
-    let range = StaticMemoryRangeDeclaration::new(
-        MemoryManagerAuthorityRecord::new(
-            MemoryManagerIdRange::new(100, 110).unwrap(),
-            "app",
-            MemoryManagerRangeMode::Allowed,
-            None,
+fn external_registration_rejects_internal_authority_identity() {
+    assert!(matches!(
+        MemoryRequest::new(
+            IC_MEMORY_AUTHORITY_OWNER,
+            "app.rows.v1",
+            SchemaMetadata::default()
+        ),
+        Err(StaticMemoryDeclarationError::ReservedAuthority { .. })
+    ));
+}
+
+#[test]
+fn request_permutations_are_canonical_and_duplicate_keys_reject() {
+    let requests: Vec<_> = (0..245)
+        .map(|i| {
+            MemoryRequest::new(
+                "app",
+                &format!("app.rows{i}.v1"),
+                SchemaMetadata::new(Some(i + 1)).unwrap(),
+            )
+            .unwrap()
+        })
+        .collect();
+    let first = SealedDeclarationSnapshot::new(&requests).unwrap();
+    let reversed: Vec<_> = requests.iter().rev().cloned().collect();
+    let second = SealedDeclarationSnapshot::new(&reversed).unwrap();
+    assert_eq!(first, second);
+    assert_eq!(first.fingerprint(), second.fingerprint());
+    let mut conflict = requests;
+    conflict
+        .push(MemoryRequest::new("foreign", "app.rows0.v1", SchemaMetadata::default()).unwrap());
+    assert!(matches!(
+        SealedDeclarationSnapshot::new(&conflict),
+        Err(StaticMemoryDeclarationError::DuplicateRequest { .. })
+    ));
+}
+
+#[test]
+fn snapshot_fingerprint_covers_linked_declaration_authority() {
+    let make = |owner| {
+        SealedDeclarationSnapshot::new(&[MemoryRequest::new(
+            owner,
+            "app.rows.v1",
+            SchemaMetadata::default(),
         )
-        .unwrap(),
-    )
-    .unwrap();
-    let fixed = |key, id| {
-        StaticMemoryDeclaration::new(
-            "app",
-            AllocationDeclaration::memory_manager_unlabeled(key, id).unwrap(),
-        )
+        .unwrap()])
         .unwrap()
     };
-    let request = |key| MemoryRequest::new("app", key, SchemaMetadata::default()).unwrap();
-    let mut store = crate::LedgerCommitStore::default();
-    let genesis = crate::AllocationLedger::new(0, Vec::new()).unwrap();
-    let _pending = crate::AllocationBootstrap::new(&mut store)
-        .initialize_validate_and_commit(
-            &genesis,
-            DeclarationSnapshot::new(vec![
-                fixed("app.m.v1", 101).into_declaration(),
-                fixed("app.n.v1", 104).into_declaration(),
-            ])
-            .unwrap(),
-            &crate::GenericRangePolicy,
-        )
-        .unwrap();
-    let recovered = store.recover().unwrap();
-    let original = SealedDeclarationSnapshot::new(
-        &[fixed("app.fixed.v1", 100)],
-        std::slice::from_ref(&range),
-        &[request("app.z.v1"), request("app.a.v1")],
-    )
-    .unwrap();
-    let original_fingerprint = original.fingerprint();
-    let expected = SealedDeclarationSnapshot::new(
-        &[
-            fixed("app.fixed.v1", 100),
-            fixed("app.a.v1", 102),
-            fixed("app.z.v1", 103),
-            fixed("app.m.v1", 101),
-            fixed("app.n.v1", 104),
-        ],
-        &[range],
-        &[],
-    )
-    .unwrap();
-    for historical in [
-        vec![request("app.n.v1"), request("app.m.v1")],
-        vec![request("app.m.v1"), request("app.n.v1")],
-    ] {
-        let resolved = original.resolve(recovered.ledger(), historical).unwrap();
-        assert_eq!(resolved, expected);
-        assert_eq!(resolved.fingerprint(), expected.fingerprint());
-        assert_ne!(resolved.fingerprint(), original_fingerprint);
-        assert_eq!(original.fingerprint(), original_fingerprint);
-        assert!(!resolved.shares_storage_with(&original));
-    }
+    assert_ne!(make("app").fingerprint(), make("foreign").fingerprint());
 }

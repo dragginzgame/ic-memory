@@ -59,20 +59,14 @@ fn record(
 // Keep timed phases and their reset boundaries together for measurement review.
 #[allow(clippy::too_many_lines)]
 fn main() {
-    ic_memory::register_static_memory_manager_range(
-        100,
-        139,
-        "fixture",
-        ic_memory::MemoryManagerRangeMode::Reserved,
-        None,
-    )
-    .unwrap();
     for id in 100..140 {
-        ic_memory::register_static_memory_manager_declaration(
-            id,
-            "fixture",
-            "small",
-            format!("fixture.store{id}.v1"),
+        ic_memory::register_memory_request(
+            ic_memory::MemoryRequest::new(
+                "fixture",
+                &format!("fixture.store{id}.v1"),
+                ic_memory::SchemaMetadata::default(),
+            )
+            .unwrap(),
         )
         .unwrap();
     }
@@ -97,7 +91,7 @@ fn main() {
         );
         memory.reset();
         let start = Instant::now();
-        runtime.bootstrap(&declarations, &Allow).unwrap();
+        runtime.bootstrap(&declarations, &pool(), &Allow).unwrap();
         let elapsed = start.elapsed().as_micros();
         record(
             bucket,
@@ -110,7 +104,7 @@ fn main() {
         let start = Instant::now();
         for id in 100..128 {
             let handle = runtime
-                .open_memory(&format!("fixture.store{id}.v1"), id)
+                .open_memory(&format!("fixture.store{id}.v1"))
                 .unwrap();
             black_box(Cell::init(handle, 7_u64));
         }
@@ -124,7 +118,7 @@ fn main() {
         );
         let unopened = runtime.memory_allocations().unwrap();
         assert_eq!(unopened.memories[139].allocated_bytes, 0);
-        let handle = runtime.open_memory("fixture.store128.v1", 128).unwrap();
+        let handle = runtime.open_memory("fixture.store128.v1").unwrap();
         let growing = StableVec::<[u8; 1024], RuntimeMemory<Metered>>::init(handle.clone());
         memory.reset();
         let start = Instant::now();
@@ -191,7 +185,7 @@ fn main() {
             start.elapsed().as_micros(),
             &report,
         );
-        runtime.bootstrap(&declarations, &Allow).unwrap();
+        runtime.bootstrap(&declarations, &pool(), &Allow).unwrap();
         let recovered = runtime.memory_allocations().unwrap();
         memory.reset();
         let start = Instant::now();
@@ -212,7 +206,7 @@ fn main() {
         for _ in 0..64 {
             drop(runtime);
             runtime = MemoryRuntime::new(memory.clone()).unwrap();
-            runtime.bootstrap(&declarations, &Allow).unwrap();
+            runtime.bootstrap(&declarations, &pool(), &Allow).unwrap();
         }
         record(
             bucket,
@@ -235,4 +229,12 @@ fn main() {
         assert_eq!(memory.counts().writes, 0);
         assert_eq!(memory.counts().grows, 0);
     }
+}
+
+fn pool() -> ic_memory::MemoryAllocationPool {
+    ic_memory::MemoryAllocationPool::new(
+        vec![ic_memory::MemoryAuthority::new("fixture", "fixture.").unwrap()],
+        vec![],
+    )
+    .unwrap()
 }

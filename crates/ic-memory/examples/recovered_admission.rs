@@ -2,10 +2,9 @@
 //! to complete declarations; real journal/commit safety remains consumer-owned.
 use ic_memory::ic_stable_structures::{Memory, VectorMemory};
 use ic_memory::{
-    AllocationPolicy, AllocationState, BootstrapAdmission, MemoryManagerAuthorityRecord,
-    MemoryManagerIdRange, MemoryManagerRangeMode, MemoryManagerSlot, MemoryRequest, MemoryRuntime,
-    PolicyIdentity, PolicyIdentityError, RuntimeBootstrapPolicy, SchemaMetadata,
-    SealedDeclarationSnapshot, StableKey, StaticMemoryRangeDeclaration,
+    AllocationPolicy, AllocationState, BootstrapAdmission, MemoryManagerSlot, MemoryRequest,
+    MemoryRuntime, PolicyIdentity, PolicyIdentityError, RuntimeBootstrapPolicy, SchemaMetadata,
+    SealedDeclarationSnapshot, StableKey,
 };
 
 const CONTROL: &str = "db.main.control.v1";
@@ -68,30 +67,20 @@ fn prepare_database(admission: &mut BootstrapAdmission<'_>) -> Result<(), &'stat
 }
 
 fn declarations(keys: &[&str]) -> SealedDeclarationSnapshot {
-    let grant = StaticMemoryRangeDeclaration::new(
-        MemoryManagerAuthorityRecord::new(
-            MemoryManagerIdRange::new(100, 110).unwrap(),
-            "db",
-            MemoryManagerRangeMode::Allowed,
-            None,
-        )
-        .unwrap(),
-    )
-    .unwrap();
     let requests: Vec<_> = keys
         .iter()
         .map(|key| MemoryRequest::new("db", key, SchemaMetadata::default()).unwrap())
         .collect();
-    SealedDeclarationSnapshot::new(&[], &[grant], &requests).unwrap()
+    SealedDeclarationSnapshot::new(&requests).unwrap()
 }
 
 fn main() {
     let backing = VectorMemory::default();
     let mut runtime = MemoryRuntime::new(backing.clone()).unwrap();
     runtime
-        .bootstrap(&declarations(&[CONTROL, OLD_JOURNAL]), &HostPolicy)
+        .bootstrap(&declarations(&[CONTROL, OLD_JOURNAL]), &pool(), &HostPolicy)
         .unwrap();
-    let journal = runtime.open_memory_by_key(OLD_JOURNAL).unwrap();
+    let journal = runtime.open_memory(OLD_JOURNAL).unwrap();
     journal.grow(1).unwrap();
     journal.write(0, b"debt");
     drop(journal);
@@ -99,7 +88,7 @@ fn main() {
 
     let mut runtime = MemoryRuntime::new(backing).unwrap();
     let current = declarations(&[CONTROL, "db.main.new.journal.v1"]);
-    let committed = runtime.bootstrap(&current, &HostPolicy).unwrap();
+    let committed = runtime.bootstrap(&current, &pool(), &HostPolicy).unwrap();
     assert_eq!(committed.generation(), 2); // One commit, including discovered journals.
     let journals: Vec<_> = committed
         .declarations()
@@ -108,7 +97,7 @@ fn main() {
         .map(|d| d.stable_key().clone())
         .collect();
     for key in journals {
-        let journal = runtime.open_memory_by_key(key.as_str()).unwrap();
+        let journal = runtime.open_memory(key.as_str()).unwrap();
         if journal.size() != 0 {
             let mut marker = [0; 4];
             journal.read(0, &mut marker);
@@ -118,9 +107,17 @@ fn main() {
     }
     assert_eq!(
         runtime
-            .bootstrap(&current, &HostPolicy)
+            .bootstrap(&current, &pool(), &HostPolicy)
             .unwrap()
             .generation(),
         2
     );
+}
+
+fn pool() -> ic_memory::MemoryAllocationPool {
+    ic_memory::MemoryAllocationPool::new(
+        vec![ic_memory::MemoryAuthority::new("db", "db.").unwrap()],
+        vec![],
+    )
+    .unwrap()
 }

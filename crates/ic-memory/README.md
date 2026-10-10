@@ -131,7 +131,7 @@ does not silently repair, move, discard, or reinterpret a conflicting
 allocation. A failed attempt publishes no permission to open stores.
 
 Treat the error as an upgrade-safety signal: keep the existing stable memory,
-inspect the declared keys, IDs, ranges, policy, and diagnostics, then correct
+inspect the requested keys, host namespace grants, exclusions, policy and diagnostics, then correct
 the new application version. Do not erase the allocation ledger or replace it
 with an empty one to make the error disappear. See the
 [symptom-based troubleshooting guide](https://github.com/dragginzgame/ic-memory/blob/main/docs/troubleshooting.md) for safe next
@@ -149,33 +149,18 @@ intentional: reusing the location could make a rollback open unrelated data.
 
 ## Terminology
 
-- **Stable memory** is persistent storage that survives an Internet Computer
-  canister upgrade.
-- A **stable key** is a permanent, human-readable name for one store, such as
-  `app.orders.v1`.
-- A **memory ID** or **slot** is the numbered `MemoryManager` storage location
-  behind that name.
-- An **authority** is an ownership label. It prevents one component from
-  claiming storage assigned to another component.
-- A **range grant** is a group of memory IDs that an authority may use.
-- **Bootstrap** is the check-and-commit step that must succeed before the
-  application opens its stores.
-- The **allocation ledger** is `ic-memory`'s durable record of which stable key
-  owns which slot.
+- A **stable key** is a permanent store name, such as `app.orders.v1`.
+- A **memory ID** is the physical `MemoryManager` location behind that key.
+- An **authority** names the linked component requesting a key.
+- A **namespace grant** admits that authority's keys under a host-selected prefix.
+- The **allocation pool** contains eligible application IDs shared by all owners.
+- **Bootstrap** recovers, admits, resolves, validates and commits before opening.
+- The **allocation ledger** retains key-to-ID bindings and retirement tombstones.
 
-## Choose an integration style
-
-Most integrations use one of these paths:
-
-<p align="center">
-  <img src="https://raw.githubusercontent.com/dragginzgame/shared-assets/main/ic-memory/ic-memory-allocation-styles.svg" alt="Integration styles: fixed allocation lets a component declare a specific memory ID; automatic allocation lets the host assign an ID from an Allowed range; host adoption lets a library use an ID already committed by the bootstrapped host." width="900">
-</p>
-<p align="center"><em>Choose who assigns the memory ID without changing its durable ownership.</em></p>
-
-Fixed and automatic declarations may coexist in one host. The application that
-owns the concrete runtime still bootstraps the combined layout exactly once.
-Libraries adopting that runtime verify their own requirements and then open
-their committed keys; they do not bootstrap independently.
+The application owns one pool and one bootstrap per backing memory. Libraries
+contribute key requests, verify that the host included them, and open their
+committed keys. Owner labels are current host policy; they are not persisted
+ownership history, caller authentication or a sandbox for linked code.
 
 ## Quick start for developers
 
@@ -183,7 +168,7 @@ Add the crate:
 
 ```toml
 [dependencies]
-ic-memory = "0.33.4"
+ic-memory = "0.34"
 ```
 
 `ic-memory` re-exports its exact `ic-stable-structures` dependency through
@@ -201,113 +186,47 @@ type CounterStore = Cell<u64, RuntimeMemory<DefaultMemoryImpl>>;
 
 A separate `ic-stable-structures` dependency is unnecessary for those imports.
 
-### Declare a fixed storage location
+### Declare keys; let the host allocate
 
-Give the component an authority, grant it a range, and declare the permanent
-key and ID of each store:
+Components name their owner and permanent keys without choosing IDs:
 
 ```rust,no_run
 const MEMORY_AUTHORITY: &str = "example_app";
-
-ic_memory::ic_memory_range!(
-    authority = MEMORY_AUTHORITY,
-    start = 120,
-    end = 129,
-);
-
 ic_memory::ic_memory_declaration!(
     authority = MEMORY_AUTHORITY,
     key = "example_app.users.v1",
-    label = "UsersStore",
-    id = 120,
 );
 
 fn initialize_stable_storage() -> Result<(), Box<dyn std::error::Error>> {
-    ic_memory::bootstrap_default_memory_manager()?;
-    let users = ic_memory::open_default_memory_manager_memory(
-        "example_app.users.v1",
-        120,
+    let pool = ic_memory::MemoryAllocationPool::new(
+        vec![ic_memory::MemoryAuthority::new(MEMORY_AUTHORITY, "example_app.")?],
+        vec![],
     )?;
+    ic_memory::bootstrap_default_memory_manager(&pool)?;
+    let users = ic_memory::open_default_memory_manager_memory("example_app.users.v1")?;
     drop(users);
     Ok(())
 }
 ```
 
-Call the bootstrap function from both the canister's initialization and
-post-upgrade lifecycle before code touches any stable collection.
+Call this host bootstrap from initialization and post-upgrade before deferred
+stable collections open. Hosts needing admission or custom bucket geometry use
+the policy or configuration bootstrap helpers with the same explicit pool.
 
-```rust,ignore
-fn bootstrap_memory() {
-    ic_memory::bootstrap_default_memory_manager()
-        .expect("stable-memory allocation layout must be valid");
-}
+Known keys retain their committed IDs. New requests are sorted by key and take
+the lowest unclaimed ID in the common pool. Current, omitted, reserved and
+retired records occupy their IDs permanently. Namespace grants do not divide
+space between components. Exhaustion rejects the entire attempt.
 
-#[ic_cdk::init]
-fn init() {
-    bootstrap_memory();
-}
-
-#[ic_cdk::post_upgrade]
-fn post_upgrade() {
-    bootstrap_memory();
-}
-```
-
-These lifecycle functions must run before any thread-local or deferred
-initialization opens a stable collection. Applications using a custom policy or
-bucket configuration call the corresponding bootstrap helper in the same
-locations.
-
-The default range mode is `Reserved`: it permits declared fixed IDs but does
-not provide new automatic allocations.
-
-### Let the host assign a location
-
-Libraries can request a durable key without choosing an ID. The application
-that owns the runtime grants an explicit `Allowed` pool:
-
-```rust,no_run
-ic_memory::ic_memory_range!(
-    authority = "example_app",
-    start = 10,
-    end = 254,
-    mode = Allowed,
-);
-ic_memory::ic_memory_declaration!(
-    authority = "example_app",
-    key = "example_app.users.v1",
-);
-
-fn initialize() -> Result<(), Box<dyn std::error::Error>> {
-    ic_memory::bootstrap_default_memory_manager()?;
-    let assigned_id =
-        ic_memory::default_memory_manager_memory_id("example_app.users.v1")?;
-    let users =
-        ic_memory::open_default_memory_manager_memory_by_key("example_app.users.v1")?;
-    drop((assigned_id, users));
-    Ok(())
-}
-```
-
-Known keys keep their committed IDs. New requests are sorted by stable key and
-receive the lowest unclaimed ID in their authority's `Allowed` ranges. Fixed,
-reserved, omitted, and retired allocations remain unavailable. If no eligible
-ID remains, bootstrap returns `MemoryResolutionError::Exhausted`.
-
-For examples of both allocation styles, see
-[`examples/key_only.rs`](examples/key_only.rs) and
+See [`examples/key_only.rs`](examples/key_only.rs) and
 [`examples/composed_host.rs`](examples/composed_host.rs).
 
 ## Applications composed from several libraries
 
-Every linked crate contributes declarations to one immutable registry. The
-application grants each component only its intended range and bootstraps the
-combined layout once.
-
-<p align="center">
-  <img src="https://raw.githubusercontent.com/dragginzgame/shared-assets/main/ic-memory/ic-memory-library-ownership.svg" alt="Library A owns storage locations 100 through 109 and Library B owns locations 110 through 119 inside one application. Both contribute declarations to one combined layout check." width="800">
-</p>
-<p align="center"><em>Libraries contribute requirements; the application owns one combined bootstrap.</em></p>
+Every linked crate contributes requests to one immutable registry. The host
+admits disjoint namespaces for their named owners and supplies explicit physical
+exclusions for unmanaged `MemoryManager` clients. All components draw from the
+same remaining pool. The application bootstraps the combined layout once.
 
 Libraries adopting an already bootstrapped host can verify that all of their
 requirements were included without rerunning bootstrap or replacing the host's
@@ -324,10 +243,10 @@ fn adopt_host() -> Result<(), Box<dyn std::error::Error>> {
 }
 ```
 
-Duplicate stable keys, duplicate memory IDs, overlapping ranges, and
-out-of-range declarations fail before stable structures open. Hosts must also
-declare or reserve allocations used by raw `MemoryManager` clients; diagnostics
-cannot infer ownership from bytes alone.
+Duplicate keys, overlapping namespace grants, foreign owner claims and excluded
+historical IDs fail before application stores open. Populated IDs without a
+ledger record must be explicitly excluded by the host; bootstrap refuses to
+infer custody from stored bytes.
 
 The default runtime reserves IDs `0..=9` and keys under `ic_memory.*` for its
 own governance records. ID `0` contains the allocation ledger. Application
@@ -382,16 +301,15 @@ mistake unrelated data for the retired store.
 No. One owner bootstraps each concrete runtime. Libraries verify their
 requirements against the host's committed layout and open only their keys.
 
-<p><img src="https://raw.githubusercontent.com/dragginzgame/shared-assets/main/ic-memory/ic-faq-question.svg" alt="" width="22"> <strong>When should I use fixed versus automatic allocation?</strong></p>
+<p><img src="https://raw.githubusercontent.com/dragginzgame/shared-assets/main/ic-memory/ic-faq-question.svg" alt="" width="22"> <strong>What does each library declare?</strong></p>
 
-Use fixed IDs when the application deliberately manages its layout. Use
-automatic allocation when a host should place reusable components within
-explicitly granted ranges. Both preserve the assigned ID after commitment.
+Each library declares permanent keys and its owner label. The host admits the
+namespace and owns physical exclusions; Memory assigns IDs and retains them.
 
 <p><img src="https://raw.githubusercontent.com/dragginzgame/shared-assets/main/ic-memory/ic-faq-question.svg" alt="" width="22"> <strong>Can an upgrade add a new store safely?</strong></p>
 
-Yes, provided its key is new, its fixed ID or automatic range is eligible, and
-the complete layout passes current policy and historical validation.
+Yes, provided its key is new, the host admits its namespace and owner, the
+common pool has space, and the complete layout passes admission and validation.
 
 ## Operations and advanced integration
 

@@ -1,29 +1,25 @@
 error[E0451]: fields `stable_key` and `slot` of struct `AllocationRetirement` are private
-  --> tests/ui/fabricate_allocation_records.rs:10:46
-   |
-10 |     let _retirement = AllocationRetirement { stable_key, slot };
-   |                                              ^^^^^^^^^^  ^^^^ private field
-   |                                              |
-   |                                              private field
+ --> tests/ui/fabricate_allocation_records.rs:9:46
+  |
+9 |     let _retirement = AllocationRetirement { stable_key, slot };
+  |                                              ^^^^^^^^^^  ^^^^ private field
+  |                                              |
+  |                                              private field
 
-error[E0451]: fields `range`, `authority`, `mode` and `purpose` of struct `MemoryManagerAuthorityRecord` are private
-  --> tests/ui/fabricate_allocation_records.rs:14:9
+error[E0451]: fields `authority` and `key_prefix` of struct `MemoryAuthority` are private
+  --> tests/ui/fabricate_allocation_records.rs:12:9
    |
-13 |     let _authority = MemoryManagerAuthorityRecord {
-   |                      ---------------------------- in this type
-14 |         range,
-   |         ^^^^^ private field
-15 |         authority: "app".to_string(),
+11 |     let _authority = MemoryAuthority {
+   |                      --------------- in this type
+12 |         authority: "app".to_string(),
    |         ^^^^^^^^^ private field
-16 |         mode: MemoryManagerRangeMode::Allowed,
-   |         ^^^^ private field
-17 |         purpose: None,
-   |         ^^^^^^^ private field
+13 |         key_prefix: "app.".to_string(),
+   |         ^^^^^^^^^^ private field
 
 error[E0451]: field `schema_version` of struct `SchemaMetadata` is private
-  --> tests/ui/fabricate_allocation_records.rs:21:9
+  --> tests/ui/fabricate_allocation_records.rs:17:9
    |
-20 |     let _schema = SchemaMetadata {
+16 |     let _schema = SchemaMetadata {
    |                   -------------- in this type
-21 |         schema_version: None,
+17 |         schema_version: None,
    |         ^^^^^^^^^^^^^^ private field

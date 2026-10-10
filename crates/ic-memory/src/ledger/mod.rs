@@ -185,7 +185,7 @@ mod tests {
                 DeclarationSnapshot::new(vec![declaration("app.users.v1", 100, Some(version))])
                     .unwrap();
             let pending = crate::AllocationBootstrap::new(&mut store)
-                .validate_and_commit(snapshot, &crate::GenericRangePolicy)
+                .validate_and_commit(snapshot, &crate::GenericAllocationPolicy)
                 .unwrap();
             let committed = pending.confirm_persisted();
             assert_eq!(committed.generation(), 65_530 + u64::from(version));
@@ -239,7 +239,7 @@ mod tests {
         let before = store.clone();
         let result = crate::AllocationBootstrap::new(&mut store).validate_and_commit(
             DeclarationSnapshot::new(Vec::new()).unwrap(),
-            &crate::GenericRangePolicy,
+            &crate::GenericAllocationPolicy,
         );
         assert!(matches!(
             result,
@@ -716,7 +716,7 @@ mod tests {
         let validated = crate::validate_allocations(
             &recovered,
             DeclarationSnapshot::new(vec![declaration("app.users.v1", 100, Some(1))]).unwrap(),
-            &crate::GenericRangePolicy,
+            &crate::GenericAllocationPolicy,
         )
         .unwrap();
         let ledger = AllocationLedger::new(u64::MAX, Vec::new()).unwrap();
@@ -748,7 +748,7 @@ mod tests {
         let validated = crate::validate_allocations(
             &other_recovered,
             DeclarationSnapshot::new(vec![declaration("app.users.v1", 101, None)]).unwrap(),
-            &crate::GenericRangePolicy,
+            &crate::GenericAllocationPolicy,
         )
         .unwrap();
         let before = ledger.clone();

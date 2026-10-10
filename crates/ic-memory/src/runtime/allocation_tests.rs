@@ -1,6 +1,6 @@
 use super::{
     AllocationBinding, MemoryManagerLayoutError, MemoryRuntime, RuntimeConstructionError,
-    RuntimeDiagnosticError, RuntimeOpenError, layout, policy::GenericRangePolicy,
+    RuntimeDiagnosticError, RuntimeOpenError, layout, policy::GenericAllocationPolicy,
 };
 use crate::{IC_MEMORY_LEDGER_STABLE_KEY, MEMORY_MANAGER_LEDGER_ID, registry::TEST_REGISTRY_LOCK};
 use ic_stable_structures::{
@@ -101,15 +101,15 @@ fn numeric_summary_matches_detailed_accounting_before_and_after_bootstrap_and_re
         MemoryRuntime::new_with_config(memory.clone(), super::MemoryManagerConfig::new(8).unwrap())
             .unwrap();
     summary_matches_report(&runtime, &memory);
-    let declarations = super::request_tests::snapshot(&["app.rows.v1"], "app", 100, 101, &[]);
+    let declarations = super::request_tests::snapshot(&["app.rows.v1"], "app");
     runtime
-        .bootstrap(&declarations, &GenericRangePolicy)
+        .bootstrap(
+            &declarations,
+            &super::request_tests::pool(),
+            &GenericAllocationPolicy,
+        )
         .unwrap();
-    runtime
-        .open_memory_by_key("app.rows.v1")
-        .unwrap()
-        .grow(9)
-        .unwrap();
+    runtime.open_memory("app.rows.v1").unwrap().grow(9).unwrap();
     runtime.memory(121).grow(1).unwrap();
     memory.grow(3);
     summary_matches_report(&runtime, &memory);
@@ -133,46 +133,33 @@ fn full_external_id_domain_preserves_bounded_read_only_attribution() {
     let declarations: Vec<_> = ids
         .clone()
         .map(|id| {
-            crate::StaticMemoryDeclaration::new(
+            crate::MemoryRequest::new(
                 "app",
-                crate::AllocationDeclaration::memory_manager(
-                    format!("app.slot{id}.v1"),
-                    id,
-                    "rows",
-                )
-                .unwrap(),
+                &format!("app.slot{id:03}.v1"),
+                crate::SchemaMetadata::default(),
             )
             .unwrap()
         })
         .collect();
-    let ranges: Vec<_> = ids
-        .clone()
-        .map(|id| {
-            crate::StaticMemoryRangeDeclaration::new(
-                crate::MemoryManagerAuthorityRecord::new(
-                    crate::MemoryManagerIdRange::new(id, id).unwrap(),
-                    "app",
-                    crate::MemoryManagerRangeMode::Allowed,
-                    None,
-                )
-                .unwrap(),
-            )
-            .unwrap()
-        })
-        .collect();
-    let snapshot = crate::SealedDeclarationSnapshot::new(&declarations, &ranges, &[]).unwrap();
+    let snapshot = crate::SealedDeclarationSnapshot::new(&declarations).unwrap();
     let memory = Metered::default();
     let mut runtime =
         MemoryRuntime::new_with_config(memory.clone(), super::MemoryManagerConfig::new(1).unwrap())
             .unwrap();
-    runtime.bootstrap(&snapshot, &GenericRangePolicy).unwrap();
     runtime
-        .open_memory_by_key("app.slot16.v1")
+        .bootstrap(
+            &snapshot,
+            &super::request_tests::pool(),
+            &GenericAllocationPolicy,
+        )
+        .unwrap();
+    runtime
+        .open_memory("app.slot016.v1")
         .unwrap()
         .grow(1)
         .unwrap();
     runtime
-        .open_memory_by_key("app.slot254.v1")
+        .open_memory("app.slot254.v1")
         .unwrap()
         .grow(2)
         .unwrap();
@@ -186,11 +173,11 @@ fn full_external_id_domain_preserves_bounded_read_only_attribution() {
         assert_eq!(
             row.binding,
             AllocationBinding::Current {
-                stable_key: format!("app.slot{id}.v1"),
+                stable_key: format!("app.slot{id:03}.v1"),
                 owner: "app".to_string(),
             }
         );
-        assert_eq!(row.range_claim.as_ref().unwrap().authority, "app");
+        assert_eq!(row.pool_eligible, Some(true));
     }
     assert_eq!(memory.counts().read_bytes, 34_848);
     assert_eq!(memory.counts().reads, 2);
@@ -207,9 +194,13 @@ fn bounded_conservation_bindings_and_no_effects() {
     let memory = Metered::default();
     let mut runtime = MemoryRuntime::new(memory.clone()).unwrap();
     runtime
-        .bootstrap(&declarations, &GenericRangePolicy)
+        .bootstrap(
+            &declarations,
+            &super::tests::pool(),
+            &GenericAllocationPolicy,
+        )
         .unwrap();
-    let rows = runtime.open_memory("runtime_tests.rows.v1", 120).unwrap();
+    let rows = runtime.open_memory("runtime_tests.rows.v1").unwrap();
     let zero = runtime.memory_allocations().unwrap();
     assert_eq!(zero.memories[120].allocated_buckets, 0);
     assert!(matches!(
@@ -240,16 +231,12 @@ fn bounded_conservation_bindings_and_no_effects() {
     assert_eq!(memory.bytes.borrow().as_slice(), before);
     assert_eq!(report.current_generation, Some(generation));
     assert!(matches!(
-        runtime.open_memory(IC_MEMORY_LEDGER_STABLE_KEY, 0),
+        runtime.open_memory(IC_MEMORY_LEDGER_STABLE_KEY),
         Err(RuntimeOpenError::ReservedStableKey { .. })
     ));
     assert!(matches!(
-        runtime.open_memory("unknown.rows.v1", 121),
+        runtime.open_memory("unknown.rows.v1"),
         Err(RuntimeOpenError::StableKeyNotCommitted(_))
-    ));
-    assert!(matches!(
-        runtime.open_memory("runtime_tests.rows.v1", 121),
-        Err(RuntimeOpenError::MemoryIdMismatch { .. })
     ));
     assert_eq!(runtime.memory_allocations().unwrap(), report);
 }
@@ -261,7 +248,11 @@ fn diagnostics_never_read_even_a_corrupt_unbounded_ledger() {
     let memory = Metered::default();
     let mut runtime = MemoryRuntime::new(memory.clone()).unwrap();
     runtime
-        .bootstrap(&declarations, &GenericRangePolicy)
+        .bootstrap(
+            &declarations,
+            &super::tests::pool(),
+            &GenericAllocationPolicy,
+        )
         .unwrap();
     // Advertise a huge stable-cell value; bounded attribution must not decode it.
     runtime
@@ -396,16 +387,24 @@ fn explicit_configuration_validates_before_effects_and_replays() {
     let mut runtime = MemoryRuntime::new_with_config(memory.clone(), config).unwrap();
     assert_eq!(runtime.memory_manager_config(), config);
     runtime
-        .bootstrap(&declarations, &GenericRangePolicy)
+        .bootstrap(
+            &declarations,
+            &super::tests::pool(),
+            &GenericAllocationPolicy,
+        )
         .unwrap();
-    let handle = runtime.open_memory("runtime_tests.rows.v1", 120).unwrap();
+    let handle = runtime.open_memory("runtime_tests.rows.v1").unwrap();
     handle.grow(9).unwrap();
     handle.write(8 * 65_536 - 1, &[4, 5, 6]);
     drop(handle);
     let generation = runtime.committed_allocations().unwrap().generation();
     memory.reset();
     runtime
-        .bootstrap(&declarations, &GenericRangePolicy)
+        .bootstrap(
+            &declarations,
+            &super::tests::pool(),
+            &GenericAllocationPolicy,
+        )
         .unwrap();
     assert_eq!(
         runtime.committed_allocations().unwrap().generation(),
@@ -429,9 +428,13 @@ fn explicit_configuration_validates_before_effects_and_replays() {
     assert_eq!(unbound.physical_extent, before.physical_extent);
     assert_eq!(unbound.memories[120].binding, AllocationBinding::Unknown);
     runtime
-        .bootstrap(&declarations, &GenericRangePolicy)
+        .bootstrap(
+            &declarations,
+            &super::tests::pool(),
+            &GenericAllocationPolicy,
+        )
         .unwrap();
-    let handle = runtime.open_memory("runtime_tests.rows.v1", 120).unwrap();
+    let handle = runtime.open_memory("runtime_tests.rows.v1").unwrap();
     let mut bytes = [0; 3];
     handle.read(8 * 65_536 - 1, &mut bytes);
     assert_eq!(bytes, [4, 5, 6]);
@@ -454,28 +457,35 @@ fn default_configuration_is_bound_before_repeated_bootstrap() {
     super::tests::declarations();
     std::thread::spawn(|| {
         let config = super::MemoryManagerConfig::new(16).unwrap();
-        let committed =
-            super::bootstrap_default_memory_manager_with_config(config, &GenericRangePolicy)
-                .unwrap();
+        let committed = super::bootstrap_default_memory_manager_with_config(
+            config,
+            &super::tests::pool(),
+            &GenericAllocationPolicy,
+        )
+        .unwrap();
         let before = super::default_memory_manager_memory_allocations().unwrap();
         assert_eq!(before.bucket_size_pages, 16);
         assert!(
             super::bootstrap_default_memory_manager_with_config(
                 super::MemoryManagerConfig::default(),
-                &GenericRangePolicy
+                &super::tests::pool(),
+                &GenericAllocationPolicy
             )
             .is_err()
         );
-        let replay =
-            super::bootstrap_default_memory_manager_with_config(config, &GenericRangePolicy)
-                .unwrap();
+        let replay = super::bootstrap_default_memory_manager_with_config(
+            config,
+            &super::tests::pool(),
+            &GenericAllocationPolicy,
+        )
+        .unwrap();
         assert_eq!(replay.generation(), committed.generation());
         assert_eq!(
             super::default_memory_manager_memory_allocations().unwrap(),
             before
         );
         assert_eq!(
-            super::bootstrap_default_memory_manager()
+            super::bootstrap_default_memory_manager(&super::tests::pool())
                 .unwrap()
                 .generation(),
             committed.generation()
