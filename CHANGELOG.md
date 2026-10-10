@@ -1,6 +1,6 @@
 # Changelog
 
-## [0.35.3]
+## [0.35.3] - 2026-10-10
 
 - Adopt Shared Tooling 0.3.4 and Binaryen 133. Run `make install-ic-tools` to
   refresh the selected bundle; previous installations remain retained.
