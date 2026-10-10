@@ -26,6 +26,12 @@ uses a patch. Maintain one numbered, undated pending entry, `## [X.Y.Z]`, in bot
 without changing package versions. Preparation refuses mismatched or duplicate
 identities and preserves historical entries.
 
+Release preparation updates a unique package README dependency example to the
+selected candidate, accepting any old requirement, TOML spacing and string or
+inline-table syntax. Missing, ambiguous or unsupported examples produce a
+nonblocking reminder and remain unchanged. Review examples during ordinary
+documentation maintenance; their spelling is not a release identity gate.
+
 Implementation and pending notes must be committed through an authorized
 contribution workflow before releasing. The selected source must be clean, on
 the selected branch, with no active build.

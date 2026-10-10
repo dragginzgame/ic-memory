@@ -964,6 +964,64 @@ fn inherited_compiler_configuration_refuses_preparation() {
 }
 
 #[test]
+fn release_normalizes_dependency_examples_without_requiring_the_previous_version() {
+    for (original, expected) in [
+        ("ic-memory = \"0.34\"\n", "ic-memory = \"0.13.0\"\n"),
+        (
+            "# café\r\n  ic-memory='0.1' # retain \"comment\"\r\n",
+            "# café\r\n  ic-memory=\"0.13.0\" # retain \"comment\"\r\n",
+        ),
+        (
+            "ic-memory = { features = [\"example\"], version = '0.13', default-features = false }\n",
+            "ic-memory = { features = [\"example\"], version = \"0.13.0\", default-features = false }\n",
+        ),
+        ("ic-memory = \"0.13.0\"", "ic-memory = \"0.13.0\""),
+    ] {
+        let fixture = Fixture::new();
+        fixture
+            .repo
+            .exec
+            .state
+            .borrow_mut()
+            .source
+            .insert(PACKAGE_README.to_owned(), original.to_owned());
+        fs::write(fixture.repo.root.join(PACKAGE_README), original).unwrap();
+        fixture.release();
+        fixture.repo.publish(true).unwrap();
+        assert_eq!(
+            fs::read_to_string(fixture.repo.root.join(PACKAGE_README)).unwrap(),
+            expected
+        );
+    }
+}
+
+#[test]
+fn missing_ambiguous_or_unsupported_dependency_examples_do_not_block_release() {
+    for readme in [
+        "# Guide without a dependency example\n",
+        "ic-memory = \"0.12\"\nic-memory = \"0.13\"\n",
+        "ic-memory = \"unterminated\n",
+        "ic-memory = { path = \"../ic-memory\" }\n",
+    ] {
+        let fixture = Fixture::new();
+        fixture
+            .repo
+            .exec
+            .state
+            .borrow_mut()
+            .source
+            .insert(PACKAGE_README.to_owned(), readme.to_owned());
+        fs::write(fixture.repo.root.join(PACKAGE_README), readme).unwrap();
+        fixture.release();
+        fixture.repo.publish(true).unwrap();
+        assert_eq!(
+            fs::read_to_string(fixture.repo.root.join(PACKAGE_README)).unwrap(),
+            readme
+        );
+    }
+}
+
+#[test]
 fn release_versions_and_pending_notes_preserve_dependency_versions_and_history() {
     for invalid in ["0.01.3", "0.12", "0.12.3-dev", "0.12.+3"] {
         assert!(version_parts(invalid).is_err());

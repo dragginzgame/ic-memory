@@ -13,6 +13,9 @@
 - Reject hidden unsafe Make modes and authenticate exact-ID CI artifact readback.
   [#47](https://github.com/dragginzgame/ic-memory/issues/47),
   [Shared #93](https://github.com/dragginzgame/shared-tooling/issues/93).
+- Update README dependency examples automatically during release preparation;
+  missing or ambiguous examples produce reminders instead of blocking release.
+  [#49](https://github.com/dragginzgame/ic-memory/issues/49).
 
 [Detailed notes](docs/changelog/0.34.md)
 

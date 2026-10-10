@@ -378,6 +378,40 @@ fn replace_workspace_version(text: &str, previous: &str, version: &str) -> Resul
     Ok(result)
 }
 
+// README examples are advisory documentation, not the release identity.
+// Use TOML spans to preserve comments, spacing and other dependency options.
+fn release_readme(text: &str, version: &str) -> Option<String> {
+    let mut matches = Vec::new();
+    let mut offset = 0;
+    for line in text.split_inclusive('\n') {
+        if let Ok(mut entries) =
+            toml::from_str::<BTreeMap<String, toml::Spanned<toml::Value>>>(line)
+            && let Some(value) = entries.remove("ic-memory")
+        {
+            let span = if value.get_ref().is_str() {
+                Some(value.span())
+            } else {
+                toml::from_str::<BTreeMap<String, BTreeMap<String, toml::Spanned<toml::Value>>>>(
+                    line,
+                )
+                .ok()
+                .and_then(|mut entries| entries.remove("ic-memory"))
+                .and_then(|mut fields| fields.remove("version"))
+                .filter(|value| value.get_ref().is_str())
+                .map(|value| value.span())
+            };
+            matches.push(span.map(|span| offset + span.start..offset + span.end));
+        }
+        offset += line.len();
+    }
+    let [Some(span)] = matches.as_slice() else {
+        return None;
+    };
+    let mut updated = text.to_owned();
+    updated.replace_range(span.clone(), &format!("\"{version}\""));
+    Some(updated)
+}
+
 fn release_changelog(text: &str, version: &str, date: &str) -> Result<String> {
     require(valid_date(date), "invalid UTC release date")?;
     let headings: Vec<_> = text
@@ -746,11 +780,7 @@ impl<E: Execute> Repository<E> {
         let previous = &selection.previous;
         let version = &selection.version;
         let readme = self.text(PACKAGE_README, Some(source))?;
-        let old = format!("ic-memory = \"{previous}\"");
-        require(
-            readme.lines().filter(|line| *line == old).count() == 1,
-            "README must contain exactly one current dependency example",
-        )?;
+        let readme = release_readme(&readme, version).unwrap_or(readme);
         let [major, minor, _] = version_parts(version)?;
         let detail = format!("docs/changelog/{major}.{minor}.md");
         Ok(BTreeMap::from([
@@ -766,10 +796,7 @@ impl<E: Execute> Repository<E> {
                     version,
                 )?,
             ),
-            (
-                PACKAGE_README.to_owned(),
-                readme.replacen(&old, &format!("ic-memory = \"{version}\""), 1),
-            ),
+            (PACKAGE_README.to_owned(), readme),
             (
                 "CHANGELOG.md".to_owned(),
                 release_changelog(
@@ -913,6 +940,16 @@ impl<E: Execute> Repository<E> {
     fn preflight(&self, selection: &ReleaseSelection) -> Result<()> {
         self.configuration()?;
         self.check_selection(selection)?;
+        if release_readme(
+            &self.text(PACKAGE_README, Some(&selection.source))?,
+            &selection.version,
+        )
+        .is_none()
+        {
+            eprintln!(
+                "Reminder: review {PACKAGE_README}'s dependency examples; no unique supported version example was found, so release preparation will leave them unchanged."
+            );
+        }
         require(
             self.git(&["rev-parse", "HEAD"])? == selection.source,
             "source HEAD differs from the saved release",
