@@ -16,7 +16,7 @@ implementation and qualification without asking again. It does not authorize
 unrelated sibling edits, commits, pushes, releases or publication.
 
 The existing tooling snapshot at revision
-`88a73139a0f083344c41a6f6f4b5c3a8aca7dc1d` is recorded in
+`fa452afaa5012866eb1c20820dfa8038c106e7ec` is recorded in
 [.shared-tooling.snapshot](.shared-tooling.snapshot). It identifies the vendored
 files, hashes and executable modes; it does not freeze the active local policy.
 Keep its provenance accurate and never edit vendored files in place. Do not
@@ -26,7 +26,7 @@ also applies within its activation scope and is included in this recorded snapsh
 These instructions are the repository's local overlay.
 
 The single 90-file snapshot uses reviewed committed Shared Tooling at that
-revision, whose committed source `VERSION` is 0.3.0. The manifest records that
+revision, whose committed source `VERSION` is 0.3.1. The manifest records that
 display version separately from its authoritative commit identity. It includes
 the archiver, tool-evidence selector, their fixtures and the shared
 retention action. It replaces the supplemental archive manifest and its duplicate
@@ -73,6 +73,9 @@ installer and fixtures are available through explicit `install-rust-tools` and
 `rust-tools-check`; the required aggregate now owns all twelve common
 host/IC/Cargo executables in sequence. Product runtime-server setup remains explicit and separate; the
 two-workspace formatter uses the selected local cargo-sort and pinned rustfmt.
+The aggregate first performs read-only platform/catalog and Rust/Cargo
+preflight through the existing installers before any installation. Host-tool
+failures identify the selected tool, expected version, path and repair command.
 The Rust installer refuses redirected install/build/receipt paths before tool
 execution and after Cargo returns. Tool-command fixtures normalize their physical
 scratch root; the IC installer uses the included canonical pin parser.

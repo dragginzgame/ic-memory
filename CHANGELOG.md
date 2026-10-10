@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.35.1]
+
+- Adopt Shared Tooling 0.3.1: common setup refuses unsupported hosts or unavailable
+  Rust/Cargo before installation starts; host-tool failures report the selected
+  tool, expected version, path and repair command.
+  [#51](https://github.com/dragginzgame/ic-memory/issues/51),
+  [Shared #101](https://github.com/dragginzgame/shared-tooling/issues/101).
+
+[Detailed notes](docs/changelog/0.35.md)
+
 ## [0.35.0] - 2026-10-10
 
 - **Breaking tooling setup:** adopt Shared Tooling 0.3.0's complete host, IC and

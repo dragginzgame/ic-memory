@@ -3764,3 +3764,50 @@ publication, fixture Git history creation or sibling source edit occurs. Final
 qualification prose is added after the passing code gate and checked separately.
 Consumer delivery/native acceptance stays in [#50](https://github.com/dragginzgame/ic-memory/issues/50);
 upstream toolset ownership is [Shared #98](https://github.com/dragginzgame/shared-tooling/issues/98).
+
+## 0.35.1 Shared 0.3.1 setup preflight
+
+On delivered Memory **0.35.0**, `13c664158e652bb7b42a26da3cac072aa1467141`,
+the compatible pending **0.35.1** batch refreshes the existing 90-file selection
+through the canonical exporter from committed Shared **0.3.1**,
+`fa452afaa5012866eb1c20820dfa8038c106e7ec`. The source checkout is clean;
+the consumer's working changes remain unstaged/uncommitted.
+
+The existing IC and Rust installers supply silent read-only platform/catalog
+and checkout-selected Rust/Cargo preflight before aggregate installation starts.
+Host failures report tool/version/path/reason/repair details while authenticating
+bytes before execution. No local replacement wrapper, new gate or tool pin is
+added. Narrow setup commands, offline admission, formatter coverage and explicit
+Testkit setup retain their existing owners.
+
+Evidence is retained under `target/qualification/0.35.1-shared031/`:
+
+- `refresh.log` verifies the exact committed export; `admission.log` checks all
+  twelve installed common tools offline. `setup-reuse-offline.log` passes actual
+  aggregate setup reuse with `CARGO_NET_OFFLINE=true`, including both preflights.
+- `portable.log` passes aggregate ordering/refusal, host/IC/Rust installation,
+  consumer release dispatch and actual archive round trips on genuine GNU Make
+  3.81/Bash 3.2.57 on Linux. Preflight-owner fixtures prove unsupported/missing/
+  unavailable prerequisites stop before installation or product extensions,
+  and successful preflight preserves retained receipts/build evidence.
+  Asset, Cargo and release effects in these fixtures are substitutes.
+- `validate.log` passes full `make validate`: strict Clippy, 241 library tests,
+  public/compile-fail/tooling/doctests, release/hook/evidence fixtures, rustdoc,
+  Wasm checks/five size budgets, development packaging and Rust 1.88 all targets.
+- `lint.log` passes workflow/ShellCheck lint. `docs-2.log` passes the seven
+  changed documents' local references. The earlier `docs.log` retains an
+  unavailable checker invocation; the corrected run uses the committed shared
+  documentation checker rather than introducing another local helper.
+- `source-head.txt`, `qualified.diff` and `inputs.sha256` bind executable
+  qualification to the delivered base plus actual working changes. Final
+  qualification prose and issue links are added afterward and checked separately.
+
+Both root and independent manifests/locks remain byte-identical to captured
+inputs. Host filesystem/artifact 0.12.0, development Rust 1.99/MSRV 1.88,
+formatter pins, stable-structures and Testkit/PocketIC selections are unchanged.
+No staging, commit, tag, push, release, publication, fixture Git history or sibling
+source mutation occurred. Local Linux/portable fixtures do not establish native
+macOS, installed runtime composition or live release acceptance.
+[#51](https://github.com/dragginzgame/ic-memory/issues/51) owns consumer delivery
+and native acceptance; [Shared #101](https://github.com/dragginzgame/shared-tooling/issues/101)
+owns the reusable repair.

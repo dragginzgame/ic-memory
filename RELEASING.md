@@ -53,7 +53,9 @@ Both maintained workspaces track their `Cargo.lock`. The root lock is a required
 source-bound qualification input. Release preflight prepares the existing
 common tool selection with `make install-tools`,
 then admits it through `make tools-check check-format-tools` before the full
-gate. Setup follows coherent saved-source admission/cache preparation and is not
+gate. Common setup first checks platform/catalog and Rust/Cargo availability
+without downloads or automatic toolchain installation. Setup follows coherent
+saved-source admission/cache preparation and is not
 replayed against interrupted metadata. Common setup includes the pinned Cargo
 tools; rustfmt/toolchain bootstrap and runtime-server setup retain their explicit
 owners. Standalone validation remains offline and checks all common tools plus

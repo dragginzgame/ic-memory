@@ -90,6 +90,11 @@ make check-pins test-pins
 ```
 
 Make selects those local paths automatically. Setup does not edit shell profiles.
+Before installing any common tools, aggregate setup checks the platform/catalog
+and probes Rust/Cargo in this checkout without automatic toolchain installation.
+Prepare a supported host and the declared toolchain before retrying a refusal.
+Offline host checks identify the failing tool, expected version, selected path
+and repair command; they still authenticate payloads before execution.
 The reviewed `make/tools.mk` owns installation, offline checks and LOC targets.
 Existing jq/yq/ripgrep-only checkouts must run `make install-host-tools` once to
 add pinned cloc 2.10, then `make host-tools-check` before offline qualification.
