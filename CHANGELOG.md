@@ -1,6 +1,6 @@
 # Changelog
 
-## [0.35.4]
+## [0.35.4] - 2026-10-10
 
 - Correct allocation-policy guidance to describe host namespace grants and the
   shared physical pool before application validation.
