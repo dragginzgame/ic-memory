@@ -16,7 +16,7 @@ implementation and qualification without asking again. It does not authorize
 unrelated sibling edits, commits, pushes, releases or publication.
 
 The existing tooling snapshot at revision
-`169d77b8440568c5200eede971625126181f7bb2` is recorded in
+`34e5ad7aac3599306c9572bb547f2239d09df1a3` is recorded in
 [.shared-tooling.snapshot](.shared-tooling.snapshot). It identifies the vendored
 files, hashes and executable modes; it does not freeze the active local policy.
 Keep its provenance accurate and never edit vendored files in place. Do not
@@ -26,7 +26,7 @@ also applies within its activation scope and is included in this recorded snapsh
 These instructions are the repository's local overlay.
 
 The single 91-file snapshot uses reviewed committed Shared Tooling at that
-revision, whose committed source `VERSION` is 0.3.4. The manifest records that
+revision, whose committed source `VERSION` is 0.3.7. The manifest records that
 display version separately from its authoritative commit identity. It includes
 the archiver, tool-evidence selector, their fixtures and the shared
 retention action. It replaces the supplemental archive manifest and its duplicate
@@ -35,6 +35,16 @@ the shared selector; full tool retention remains the command default, while CI
 explicitly selects compact retention for freshly verified complete active sets.
 Failed, unknown and unselected bundles remain full. Never attribute subsequent
 dirty sibling fixes to this committed export.
+Shared 0.3.6 makes all three hook index-tree observations preserve Git failure
+status. Memory's consumer fixture qualifies matching-output failures separately
+from normal two-workspace formatting. Its selected Cargo-tool installer also
+supports explicit lockfile selection; Memory retains its existing independent
+Testkit CLI version selection and both workspace lockfiles. The common hook
+adoption checker is not selected; Memory owns its actual formatter integration.
+Shared 0.3.7 explicitly fails mandatory portable assertions and rejects missing
+Cargo host identity or non-executable candidates before activation. Memory's
+routine CI adopts workflow/ref cancellation while preserving every required
+host and gate; interrupted revisions remain unqualified on unfinished hosts.
 The shared IC bundle contains five tools. PocketIC selection, provisioning,
 offline admission and managed lifecycle belong to the published Testkit CLI,
 selected independently in the root Makefile. `install-runtime-server` is explicit

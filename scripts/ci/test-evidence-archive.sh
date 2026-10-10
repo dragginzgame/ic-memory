@@ -31,32 +31,32 @@ bash "$ROOT/scripts/ci/archive-evidence.sh" "$fixture/evidence.tar.gz" \
     "$fixture/source" fixtures "$fixture/other" outcome.txt > "$fixture/archive-path"
 tar -xzf "$fixture/evidence.tar.gz" -C "$fixture/unpacked"
 cmp "$fixture/source/fixtures/"$'line\nbreak:payload' "$fixture/unpacked/fixtures/"$'line\nbreak:payload'
-[[ "$(perl -e 'printf "%o", (stat($ARGV[0]))[2] & 0777' "$fixture/unpacked/fixtures/"$'line\nbreak:payload')" == 640 ]]
-[[ -x "$fixture/unpacked/fixtures/executable" && -L "$fixture/unpacked/fixtures/link" ]]
-[[ "$(readlink "$fixture/unpacked/fixtures/link")" == ../outside && ! -e "$fixture/unpacked/fixtures/link" ]]
-[[ ! -e "$fixture/unpacked/fixtures/.git" && ! -e "$fixture/unpacked/outside" ]]
+[[ "$(perl -e 'printf "%o", (stat($ARGV[0]))[2] & 0777' "$fixture/unpacked/fixtures/"$'line\nbreak:payload')" == 640 ]] || exit 1
+[[ -x "$fixture/unpacked/fixtures/executable" && -L "$fixture/unpacked/fixtures/link" ]] || exit 1
+[[ "$(readlink "$fixture/unpacked/fixtures/link")" == ../outside && ! -e "$fixture/unpacked/fixtures/link" ]] || exit 1
+[[ ! -e "$fixture/unpacked/fixtures/.git" && ! -e "$fixture/unpacked/outside" ]] || exit 1
 cmp "$fixture/other/outcome.txt" "$fixture/unpacked/outcome.txt"
 cp "$fixture/evidence.tar.gz" "$fixture/before.tar.gz"
 if bash "$ROOT/scripts/ci/archive-evidence.sh" "$fixture/evidence.tar.gz" "$fixture/source" fixtures; then exit 1; fi
 cmp "$fixture/before.tar.gz" "$fixture/evidence.tar.gz"
 for path in missing ../outside /outside alias/executable $'parent\n/executable'; do
     if bash "$ROOT/scripts/ci/archive-evidence.sh" "$fixture/rejected.tar.gz" "$fixture/source" "$path"; then exit 1; fi
-    [[ ! -e "$fixture/rejected.tar.gz" ]]
+    [[ ! -e "$fixture/rejected.tar.gz" ]] || exit 1
 done
 if bash "$ROOT/scripts/ci/archive-evidence.sh" "$fixture/rejected.tar.gz" \
     "$fixture/source" fixtures "$fixture/source" fixtures/executable; then exit 1; fi
 if bash "$ROOT/scripts/ci/archive-evidence.sh" "$fixture/source/fixtures/self.tar.gz" "$fixture/source" fixtures; then exit 1; fi
-[[ ! -e "$fixture/rejected.tar.gz" && ! -e "$fixture/source/fixtures/self.tar.gz" ]]
+[[ ! -e "$fixture/rejected.tar.gz" && ! -e "$fixture/source/fixtures/self.tar.gz" ]] || exit 1
 # Output symlinks cannot redirect writes, and failed writers retain diagnostics.
 ln -s "$fixture/absent" "$fixture/output-link"
 if bash "$ROOT/scripts/ci/archive-evidence.sh" "$fixture/output-link" "$fixture/source" fixtures; then exit 1; fi
-[[ ! -e "$fixture/absent" && -L "$fixture/output-link" ]]
+[[ ! -e "$fixture/absent" && -L "$fixture/output-link" ]] || exit 1
 mkfifo "$fixture/occupied-pipe"
 # Keep a reader open so an accidental small write fails the test without hanging.
 exec 9<> "$fixture/occupied-pipe"
 if bash "$ROOT/scripts/ci/archive-evidence.sh" "$fixture/occupied-pipe" "$fixture/other" outcome.txt; then exit 1; fi
 exec 9>&-
-[[ -p "$fixture/occupied-pipe" ]]
+[[ -p "$fixture/occupied-pipe" ]] || exit 1
 # Resolve relative operands literally, even under inherited directory search.
 mkdir -p "$fixture/operands/-P" "$fixture/search/-P" "$fixture/operands/unpacked"
 printf 'selected root\n' > "$fixture/operands/-P/--help"
@@ -71,17 +71,17 @@ printf 'wrong source\n' > "$fixture/root/payload"
 printf 'selected source\n' > "$fixture/"$'root\n/payload'
 archive="$fixture/"$'destination\n/archive\n'
 bash "$ROOT/scripts/ci/archive-evidence.sh" "$archive" "$fixture/"$'root\n' payload > "$fixture/newlines.log"
-[[ -f "$archive" && ! -e "$fixture/"$'destination\n/archive' ]]
+[[ -f "$archive" && ! -e "$fixture/"$'destination\n/archive' ]] || exit 1
 tar -xOf "$archive" ./payload > "$fixture/selected-payload"
 cmp "$fixture/"$'root\n/payload' "$fixture/selected-payload"
 mkdir "$fixture/bin"
 printf '#!%s\nprintf "partial archive"\nexit 23\n' "$BASH" > "$fixture/bin/tar"
 chmod +x "$fixture/bin/tar"
 if PATH="$fixture/bin:$PATH" bash "$ROOT/scripts/ci/archive-evidence.sh" "$fixture/partial.tar.gz" "$fixture/source" fixtures; then exit 1; fi
-[[ "$(cat "$fixture/partial.tar.gz")" == 'partial archive' && -f "$fixture/source/fixtures/executable" ]]
+[[ "$(cat "$fixture/partial.tar.gz")" == 'partial archive' && -f "$fixture/source/fixtures/executable" ]] || exit 1
 # A whole filesystem selection contains every output. Use substituted tar so
 # a regression cannot archive the host; refusal must precede output creation.
 if PATH="$fixture/bin:$PATH" bash "$ROOT/scripts/ci/archive-evidence.sh" "$fixture/rejected.tar.gz" / .; then exit 1; fi
-[[ ! -e "$fixture/rejected.tar.gz" ]]
+[[ ! -e "$fixture/rejected.tar.gz" ]] || exit 1
 echo 'Evidence archive bytes, modes, links, selection and failure retention passed'
 fixture_complete=true

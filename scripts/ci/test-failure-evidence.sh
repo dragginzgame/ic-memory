@@ -38,7 +38,7 @@ if TMPDIR="$temp_root/ic-memory-fixtures" TEST_VERSION_STATUS=9 \
 else
     status=$?
 fi
-[[ "$status" == 1 ]]
+[[ "$status" == 1 ]] || exit 1
 printf 'original_status=%s\n' "$status" > "$temp_root/validation.log"
 printf 'selected dependency diagnostics\n' > "$temp_root/dependencies.log"
 printf 'runtime setup failure\n' > "$temp_root/runtime-setup.log"
@@ -70,16 +70,16 @@ ln -s host-set.test "$repository_root/.tools/host"
 
 # Relative entry points must ignore inherited CDPATH when locating helpers.
 archive="$(cd "$ROOT" && CDPATH="$ROOT" bash scripts/ci/collect-failure-evidence.sh "$temp_root" "$repository_root")"
-[[ -f "$archive" && "${archive##*/}" == evidence.tar.gz ]]
+[[ -f "$archive" && "${archive##*/}" == evidence.tar.gz ]] || exit 1
 bash "$ROOT/scripts/ci/verify-file-checksum.sh" --print sha256 "$archive" > "$fixture/archive.sha256"
 (cd "$ROOT" && CDPATH="$ROOT" bash scripts/ci/verify-failure-evidence.sh "$fixture" "$archive")
 
 # Retries create separate archives and preserve original evidence and gate status.
 cp "$archive" "$fixture/saved.tar.gz"
 retry="$(bash "$ROOT/scripts/ci/collect-failure-evidence.sh" "$temp_root" "$repository_root")"
-[[ "$archive" != "$retry" && -f "$retry" ]]
+[[ "$archive" != "$retry" && -f "$retry" ]] || exit 1
 cmp "$archive" "$fixture/saved.tar.gz"
-[[ "$(cat "$temp_root/validation.log")" == original_status=1 ]]
+[[ "$(cat "$temp_root/validation.log")" == original_status=1 ]] || exit 1
 
 # Compact selection keeps unknown/unverified bundles and the primary failure.
 compact="$(bash "$ROOT/scripts/ci/collect-failure-evidence.sh" "$temp_root" "$repository_root" compact)"
@@ -87,15 +87,27 @@ cp "$fixture/archive.sha256" "$fixture/original.sha256"
 bash "$ROOT/scripts/ci/verify-file-checksum.sh" --print sha256 "$compact" > "$fixture/archive.sha256"
 bash "$ROOT/scripts/ci/verify-failure-evidence.sh" "$fixture" "$compact"
 mv "$fixture/original.sha256" "$fixture/archive.sha256"
+# Valid archive bytes and a matching input log must not admit the wrong status.
+# The verifier's conditional assertions need explicit failure on Bash 3.2.
+cp "$temp_root/validation.log" "$fixture/original-validation.log"
+printf 'original_status=2\n' > "$temp_root/validation.log"
+contradicted="$(bash "$ROOT/scripts/ci/collect-failure-evidence.sh" "$temp_root" "$repository_root")"
+cp "$fixture/archive.sha256" "$fixture/original.sha256"
+bash "$ROOT/scripts/ci/verify-file-checksum.sh" --print sha256 "$contradicted" > "$fixture/archive.sha256"
+if bash "$ROOT/scripts/ci/verify-failure-evidence.sh" "$fixture" "$contradicted" > "$fixture/contradicted-status.log" 2>&1; then
+    echo 'expected original failure-status refusal' >&2; exit 1
+fi
+mv "$fixture/original.sha256" "$fixture/archive.sha256"
+mv "$fixture/original-validation.log" "$temp_root/validation.log"
 if bash "$ROOT/scripts/ci/collect-failure-evidence.sh" "$temp_root" "$repository_root" invalid > "$fixture/invalid-mode.log" 2>&1; then
     echo 'expected invalid selection refusal' >&2; exit 1
 fi
 
 # An early failure with no selected inputs produces no artifact, not an empty tar.
 mkdir "$fixture/empty-temp" "$fixture/empty-repository"
-[[ -z "$(bash "$ROOT/scripts/ci/collect-failure-evidence.sh" "$fixture/empty-temp" "$fixture/empty-repository")" ]]
+[[ -z "$(bash "$ROOT/scripts/ci/collect-failure-evidence.sh" "$fixture/empty-temp" "$fixture/empty-repository")" ]] || exit 1
 empty_entries=("$fixture/empty-temp"/*)
-[[ ${#empty_entries[@]} == 0 ]]
+[[ ${#empty_entries[@]} == 0 ]] || exit 1
 
 # Caller selection must not trim a newline from a root before shared admission.
 mkdir "$fixture/selection" "$fixture/selection"$'\n' "$fixture/selection-repo" "$fixture/selection-unpacked"
@@ -113,13 +125,13 @@ if PATH="$fixture/bin:$PATH" bash "$ROOT/scripts/ci/collect-failure-evidence.sh"
     "$temp_root" "$repository_root" > "$fixture/failed-output" 2> "$fixture/failed-error"; then
     echo 'expected archive failure' >&2; exit 1
 fi
-[[ ! -s "$fixture/failed-output" && -s "$fixture/failed-error" ]]
+[[ ! -s "$fixture/failed-output" && -s "$fixture/failed-error" ]] || exit 1
 partial=0
 printf 'partial archive' > "$fixture/partial-content"
 for path in "$temp_root"/ic-memory-evidence.*/evidence.tar.gz; do
     if cmp -s "$path" "$fixture/partial-content"; then partial=$((partial + 1)); fi
 done
-[[ "$partial" == 1 && "$(cat "$temp_root/validation.log")" == original_status=1 ]]
+[[ "$partial" == 1 && "$(cat "$temp_root/validation.log")" == original_status=1 ]] || exit 1
 # The hosted verifier must reject wrong/corrupt payloads before extracting them.
 printf 'wrong archive\n' > "$fixture/corrupt.tar.gz"
 unpacked_before=("$fixture"/unpacked.*)
@@ -127,11 +139,11 @@ if bash "$ROOT/scripts/ci/verify-failure-evidence.sh" "$fixture" "$fixture/corru
     echo 'expected checksum refusal' >&2; exit 1
 fi
 unpacked_after=("$fixture"/unpacked.*)
-(( ${#unpacked_before[@]} == ${#unpacked_after[@]} ))
+(( ${#unpacked_before[@]} == ${#unpacked_after[@]} )) || exit 1
 if bash "$ROOT/scripts/ci/test-failure-evidence.sh" "$fixture" > "$fixture/occupied.log" 2>&1; then
     echo 'expected occupied fixture refusal' >&2; exit 1
 fi
-[[ "$(cat "$temp_root/validation.log")" == original_status=1 ]]
+[[ "$(cat "$temp_root/validation.log")" == original_status=1 ]] || exit 1
 if [[ "$retained" == true && -n "${GITHUB_OUTPUT:-}" ]]; then
     printf 'path=%s\n' "$archive" >> "$GITHUB_OUTPUT"
 fi

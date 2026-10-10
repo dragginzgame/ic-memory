@@ -49,7 +49,7 @@ case "$1 $2" in
                 printf '%s' "${GH_CI_TEST_LOG_ERROR-}" >&2
                 exit "${GH_CI_TEST_LOG_STATUS:-0}" ;;
             --json)
-                [[ "$5" == status,conclusion && "$6" == --jq ]]
+                [[ "$5" == status,conclusion && "$6" == --jq ]] || exit 1
                 printf '%s\n' "${GH_CI_TEST_STATE-$'completed\tfailure'}"
                 exit "${GH_CI_TEST_STATE_STATUS:-0}" ;;
         esac
@@ -101,7 +101,7 @@ refuse 2 --all-workflows --run 42
 refuse 2 --all-workflows --logs
 refuse 2 --limit 0
 refuse 2 --commit
-[[ ! -s "$GH_CI_TEST_LOG" ]]
+[[ ! -s "$GH_CI_TEST_LOG" ]] || exit 1
 
 # Partial output on failed observations must never dispatch run inspection.
 GH_CI_TEST_GIT_STATUS=9 refuse 1 --commit HEAD --all-workflows
@@ -135,6 +135,6 @@ GH_CI_TEST_LOG_TEXT='partial failure log' GH_CI_TEST_LOG_ERROR='fetch interrupte
 grep -F 'partial failure log' "$fixture/output"
 retained="$(sed -n 's/^CI log observation retained: //p' "$fixture/output")"
 [[ -d "$retained" && "$(cat "$retained/failed.log")" == 'partial failure log' &&
-   "$(cat "$retained/errors.log")" == 'fetch interrupted' ]]
+   "$(cat "$retained/errors.log")" == 'fetch interrupted' ]] || exit 1
 echo 'CI inspection selection and failure tests passed'
 fixture_complete=true

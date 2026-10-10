@@ -143,12 +143,12 @@ fn validate_policy_identity_name(name: &str) -> Result<(), PolicyIdentityError> 
 /// integration reject declarations that do not belong to its namespace or
 /// substrate-specific range before staging a generation.
 ///
-/// In the default `MemoryManager` runtime, registered range claims are checked
-/// before this policy, and this policy receives external declarations only.
-/// The internal allocation-ledger declaration remains exclusively governed by
-/// ic-memory. Framework adapters should decide whether registered range claims
-/// or their own policy is authoritative for application ID space, then register
-/// ranges accordingly.
+/// [`crate::MemoryRuntime`] admits host namespace grants and physical pool
+/// eligibility during resolution, before this policy's validation callbacks.
+/// These callbacks receive external declarations only; the internal
+/// allocation-ledger declaration remains exclusively governed by ic-memory.
+/// Framework policies may add restrictions within the host's grants and pool;
+/// they cannot expand the pool or replace host ownership admission.
 ///
 
 pub trait AllocationPolicy {

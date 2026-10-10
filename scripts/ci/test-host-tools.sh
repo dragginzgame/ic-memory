@@ -126,7 +126,7 @@ for tool in jq yq rg cloc; do
     tail -2 "$fixture/install.log" > "$fixture/diagnostic"
     grep -F "tool=$tool expected=$expected path=$consumer/.tools/$original/bin/$tool reason=missing-or-invalid-executable" "$fixture/diagnostic"
     grep -F 'make install-host-tools' "$fixture/diagnostic"
-    [[ ! -s "$fixture/executions" && "$(readlink "$consumer/.tools/host")" == "$original" ]]
+    [[ ! -s "$fixture/executions" && "$(readlink "$consumer/.tools/host")" == "$original" ]] || exit 1
     mv "$fixture/removed-tool" "$consumer/.tools/host/bin/$tool"
 done
 TEST_VERSION_STATUS=9 refuse install --check
@@ -251,7 +251,7 @@ for key in RIPGREP_VERSION CLOC_VERSION; do
     : > "$fixture/executions"
     refuse install --check
     refuse install
-    [[ ! -s "$fixture/executions" && "$(wc -l < "$fixture/downloads")" == "$before" ]]
+    [[ ! -s "$fixture/executions" && "$(wc -l < "$fixture/downloads")" == "$before" ]] || exit 1
     cp "$fixture/complete-pins" "$pins"
 done
 echo 'Complete host tool installation, offline checks and retained failure tests passed'

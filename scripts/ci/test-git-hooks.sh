@@ -99,21 +99,21 @@ cp README.md unrelated-before
 printf 'untracked edit\n' > unrelated.rs
 tree="$(git write-tree)"
 expect_failure make --no-print-directory fmt-check
-[[ "$(git write-tree)" == "$tree" && "$(cat crates/hook-fixture/src/lib.rs)" == 'pub fn fixture( ){}' ]]
+[[ "$(git write-tree)" == "$tree" && "$(cat crates/hook-fixture/src/lib.rs)" == 'pub fn fixture( ){}' ]] || exit 1
 CARGO_NET_OFFLINE=true RUSTUP_AUTO_INSTALL=0 bash .githooks/pre-commit > output
-[[ "$(git show :crates/hook-fixture/src/lib.rs)" == 'pub fn fixture() {}' ]]
-[[ "$(git show :testing/runtime-qualification/crates/hook-fixture/src/lib.rs)" == 'pub fn fixture() {}' ]]
+[[ "$(git show :crates/hook-fixture/src/lib.rs)" == 'pub fn fixture() {}' ]] || exit 1
+[[ "$(git show :testing/runtime-qualification/crates/hook-fixture/src/lib.rs)" == 'pub fn fixture() {}' ]] || exit 1
 cmp unrelated-before README.md
-[[ "$(git show :README.md)" == "$(git show HEAD:README.md)" ]]
-[[ "$(cat unrelated.rs)" == 'untracked edit' && -z "$(git ls-files -- unrelated.rs)" ]]
+[[ "$(git show :README.md)" == "$(git show HEAD:README.md)" ]] || exit 1
+[[ "$(cat unrelated.rs)" == 'untracked edit' && -z "$(git ls-files -- unrelated.rs)" ]] || exit 1
 make --no-print-directory fmt-check > output
 for workspace in . testing/runtime-qualification; do
     grep -qF '# Keep this comment and the selected path/feature policy.' "$workspace/Cargo.toml"
 done
-[[ ! -e Cargo.lock && ! -e testing/runtime-qualification/Cargo.lock && ! -e target && ! -e testing/runtime-qualification/target ]]
+[[ ! -e Cargo.lock && ! -e testing/runtime-qualification/Cargo.lock && ! -e target && ! -e testing/runtime-qualification/target ]] || exit 1
 tree="$(git write-tree)"
 bash .githooks/pre-commit > output
-[[ "$(git write-tree)" == "$tree" ]]
+[[ "$(git write-tree)" == "$tree" ]] || exit 1
 
 for path in crates/hook-fixture/src/lib.rs Cargo.toml crates/hook-fixture/Cargo.toml Makefile ci/tool-versions.env; do
     new_fixture "partial-${path//\//-}"
@@ -129,7 +129,7 @@ for path in crates/hook-fixture/src/lib.rs Cargo.toml crates/hook-fixture/Cargo.
     cp "$path" before
     tree="$(git write-tree)"
     expect_failure bash .githooks/pre-commit
-    [[ "$(git write-tree)" == "$tree" && "$(cat testing/runtime-qualification/crates/hook-fixture/src/lib.rs)" == 'pub fn fixture( ){}' ]]
+    [[ "$(git write-tree)" == "$tree" && "$(cat testing/runtime-qualification/crates/hook-fixture/src/lib.rs)" == 'pub fn fixture( ){}' ]] || exit 1
     cmp before "$path"
 done
 
@@ -139,8 +139,50 @@ git add -- Makefile
 tree="$(git write-tree)"
 cp crates/hook-fixture/src/lib.rs before
 expect_failure bash .githooks/pre-commit
-[[ "$(git write-tree)" == "$tree" ]]
+[[ "$(git write-tree)" == "$tree" ]] || exit 1
 cmp before crates/hook-fixture/src/lib.rs
+
+# Matching stdout does not admit a failed index observation. Fail each real Git
+# write-tree call after printing its tree, without refreshing real fixture files.
+real_git="$(command -v git)"
+for observation in 1 2 3; do
+    new_fixture "failed-tree-$observation"
+    printf 'unrelated working edit\n' >> README.md
+    cp README.md unrelated-before
+    git write-tree > tree-before
+    cp .git/index index-before
+    cp crates/hook-fixture/src/lib.rs before
+    mkdir mock-bin
+    cat > mock-bin/git <<'GIT'
+#!/usr/bin/env bash
+set -euo pipefail
+printf '%s\n' "$*" >> "$HOOK_TEST_STATE/commands"
+if [[ "$*" == write-tree ]]; then
+    count=0
+    [[ ! -f "$HOOK_TEST_STATE/count" ]] || read -r count < "$HOOK_TEST_STATE/count"
+    count=$((count + 1))
+    printf '%s\n' "$count" > "$HOOK_TEST_STATE/count"
+    "$HOOK_TEST_GIT" "$@"
+    if [[ "$count" == "$HOOK_TEST_OBSERVATION" ]]; then
+        echo 'injected write-tree observation failure' >&2
+        exit 23
+    fi
+    exit 0
+fi
+exec "$HOOK_TEST_GIT" "$@"
+GIT
+    chmod +x mock-bin/git
+    status=0
+    PATH="$PWD/mock-bin:$PATH" HOOK_TEST_GIT="$real_git" \
+        HOOK_TEST_STATE="$PWD/mock-bin" HOOK_TEST_OBSERVATION="$observation" \
+        CARGO_NET_OFFLINE=true RUSTUP_AUTO_INSTALL=0 \
+        bash .githooks/pre-commit > output 2>&1 || status=$?
+    [[ "$status" == 23 && "$(cat mock-bin/count)" == "$observation" ]] || exit 1
+    [[ "$(tail -n 1 mock-bin/commands)" == write-tree ]] || exit 1
+    cmp index-before .git/index
+    cmp before crates/hook-fixture/src/lib.rs
+    cmp unrelated-before README.md
+done
 
 for mode in i n q t v; do
     new_fixture "make-mode-$mode"
@@ -149,7 +191,7 @@ for mode in i n q t v; do
     tree="$(git write-tree)"
     cp crates/hook-fixture/src/lib.rs before
     expect_failure env MAKEFLAGS="$mode" bash .githooks/pre-commit
-    [[ "$(git write-tree)" == "$tree" && ! -e "$fixture/formatter-$mode" ]]
+    [[ "$(git write-tree)" == "$tree" && ! -e "$fixture/formatter-$mode" ]] || exit 1
     cmp before crates/hook-fixture/src/lib.rs
 done
 
@@ -163,7 +205,7 @@ hook:
 	+@bash .githooks/pre-commit
 MAKE
 make --no-print-directory -j2 -f parent.make hook HOOK_SELECTION=kept > output
-[[ "$(cat "$fixture/formatter-selection")" == kept ]]
+[[ "$(cat "$fixture/formatter-selection")" == kept ]] || exit 1
 
 # Prepared checkout-local Rust tools must remain visible inside the isolated
 # index export even when the caller has no Cargo tools on its shell PATH.
@@ -183,23 +225,23 @@ for admission in prepared missing wrong-version; do
     cp crates/hook-fixture/src/lib.rs before
     if [[ "$admission" == prepared ]]; then
         CARGO_HOME="$PWD/.tools/cargo-home" PATH=/usr/bin:/bin bash .githooks/pre-commit > output 2>&1
-        [[ "$(git show :crates/hook-fixture/src/lib.rs)" == 'pub fn fixture() {}' ]]
-        [[ "$(git show :testing/runtime-qualification/crates/hook-fixture/src/lib.rs)" == 'pub fn fixture() {}' ]]
+        [[ "$(git show :crates/hook-fixture/src/lib.rs)" == 'pub fn fixture() {}' ]] || exit 1
+        [[ "$(git show :testing/runtime-qualification/crates/hook-fixture/src/lib.rs)" == 'pub fn fixture() {}' ]] || exit 1
     else
         expect_failure env CARGO_HOME="$PWD/.tools/cargo-home" PATH=/usr/bin:/bin bash .githooks/pre-commit
-        [[ "$(git write-tree)" == "$tree" ]]
+        [[ "$(git write-tree)" == "$tree" ]] || exit 1
         cmp before crates/hook-fixture/src/lib.rs
     fi
-    [[ ! -e Cargo.lock && ! -e testing/runtime-qualification/Cargo.lock && ! -e target && ! -e testing/runtime-qualification/target ]]
+    [[ ! -e Cargo.lock && ! -e testing/runtime-qualification/Cargo.lock && ! -e target && ! -e testing/runtime-qualification/target ]] || exit 1
 done
 
 new_fixture installation
 bash scripts/dev/install-git-hooks.sh > output
-[[ "$(git config --local --get core.hooksPath)" == .githooks ]]
+[[ "$(git config --local --get core.hooksPath)" == .githooks ]] || exit 1
 bash scripts/dev/install-git-hooks.sh > output
 git config --local core.hooksPath private-hooks
 expect_failure bash scripts/dev/install-git-hooks.sh
-[[ "$(git config --local --get core.hooksPath)" == private-hooks ]]
+[[ "$(git config --local --get core.hooksPath)" == private-hooks ]] || exit 1
 
 # macOS temporary roots can have logical aliases (/var and /private/var).
 # Exercise the public setup target through an alias without replacing hooks.
@@ -209,17 +251,17 @@ ln -s "$PWD" "$fixture/installer-alias"
     cd "$fixture/installer-alias"
     make --no-print-directory install-hooks > output
 )
-[[ "$(git config --local --get core.hooksPath)" == .githooks ]]
+[[ "$(git config --local --get core.hooksPath)" == .githooks ]] || exit 1
 
 # Qualify the actual two-workspace formatter in a literal newline-ending root.
 new_fixture $'installation-root\n'
 bash scripts/dev/install-git-hooks.sh > output
 bash scripts/dev/install-git-hooks.sh >> output
-[[ "$(git config --local --get core.hooksPath)" == .githooks ]]
+[[ "$(git config --local --get core.hooksPath)" == .githooks ]] || exit 1
 CARGO_NET_OFFLINE=true RUSTUP_AUTO_INSTALL=0 bash .githooks/pre-commit >> output
-[[ "$(git show :crates/hook-fixture/src/lib.rs)" == 'pub fn fixture() {}' ]]
-[[ "$(git show :testing/runtime-qualification/crates/hook-fixture/src/lib.rs)" == 'pub fn fixture() {}' ]]
-[[ ! -e Cargo.lock && ! -e testing/runtime-qualification/Cargo.lock && ! -e target && ! -e testing/runtime-qualification/target ]]
+[[ "$(git show :crates/hook-fixture/src/lib.rs)" == 'pub fn fixture() {}' ]] || exit 1
+[[ "$(git show :testing/runtime-qualification/crates/hook-fixture/src/lib.rs)" == 'pub fn fixture() {}' ]] || exit 1
+[[ ! -e Cargo.lock && ! -e testing/runtime-qualification/Cargo.lock && ! -e target && ! -e testing/runtime-qualification/target ]] || exit 1
 
 echo 'Consumer hook selection, partial staging, failure isolation, setup and both-workspace formatting passed'
 fixture_complete=true

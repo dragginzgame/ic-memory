@@ -31,7 +31,7 @@ cat > "$fixture/tool-stub" <<'SCRIPT'
 #!/usr/bin/env bash
 set -euo pipefail
 if [[ "${JOBSERVER_TEST_REQUIRED:-0}" == 1 && ( "${0##*/}" == install-rust-tools.sh || "${0##*/}" == cloc.sh ) ]]; then
-    [[ "${MAKEFLAGS:-}" =~ --jobserver-(auth|fds)=([0-9]+),([0-9]+) ]]
+    [[ "${MAKEFLAGS:-}" =~ --jobserver-(auth|fds)=([0-9]+),([0-9]+) ]] || exit 1
     reader="${BASH_REMATCH[2]}"; writer="${BASH_REMATCH[3]}"
     : <&"$reader"
     : >&"$writer"
@@ -40,7 +40,7 @@ name="${0##*/}"
 printf '%s' "$name" >> "$TOOL_COMMAND_LOG"
 printf ' <%s>' "$@" >> "$TOOL_COMMAND_LOG"
 printf '\n' >> "$TOOL_COMMAND_LOG"
-[[ "$PATH" == "$TOOL_COMMAND_CONSUMER/.tools/host/bin:$TOOL_COMMAND_CONSUMER/.tools/ic/bin:"* ]]
+[[ "$PATH" == "$TOOL_COMMAND_CONSUMER/.tools/host/bin:$TOOL_COMMAND_CONSUMER/.tools/ic/bin:"* ]] || exit 1
 if [[ "${!#}" == --preflight ]]; then
     [[ "${TOOL_COMMAND_PREFLIGHT_FAIL:-}" != "$name" ]] || exit 24
     exit 0
@@ -58,8 +58,8 @@ help:
 	@echo consumer help
 MAKE
 # Including common commands must not make bare `make` install anything.
-[[ "$(make --no-print-directory -C "$consumer")" == 'consumer help' ]]
-[[ ! -e "$TOOL_COMMAND_LOG" ]]
+[[ "$(make --no-print-directory -C "$consumer")" == 'consumer help' ]] || exit 1
+[[ ! -e "$TOOL_COMMAND_LOG" ]] || exit 1
 
 make --no-print-directory -j4 -C "$consumer" install-tools > "$fixture/install.log" 2>&1
 cat > "$fixture/expected" <<EOF
@@ -93,7 +93,7 @@ for target in install-tools tools-check; do
         > "$fixture/$target-failed.log" 2>&1; then
         echo "accepted failed common step: $target ($failed)" >&2; exit 1
     fi
-    [[ "$(wc -l < "$TOOL_COMMAND_LOG" | tr -d ' ')" == "$count" ]]
+    [[ "$(wc -l < "$TOOL_COMMAND_LOG" | tr -d ' ')" == "$count" ]] || exit 1
   done
 done
 
@@ -141,7 +141,7 @@ for target in install-tools tools-check install-rust-tools rust-tools-check cloc
                 [[ "$source" != hidden ]] || flags+=(MFLAGS=)
                 make -C "$consumer" "$mode" "$target" "${flags[@]}" > "$fixture/unsafe.log" 2>&1 || status=$?
             fi
-            [[ "$status" == 2 && ! -s "$TOOL_COMMAND_LOG" ]]
+            [[ "$status" == 2 && ! -s "$TOOL_COMMAND_LOG" ]] || exit 1
         done
     done
 done
@@ -153,7 +153,7 @@ if make --no-print-directory -C "$consumer" cloc-tooling > "$fixture/no-fleet.lo
     echo 'accepted unselected fleet report' >&2; exit 1
 fi
 grep -F 'Fleet tooling reports are optional: run make cloc-tooling in Shared Tooling' "$fixture/no-fleet.log"
-[[ ! -s "$TOOL_COMMAND_LOG" ]]
+[[ ! -s "$TOOL_COMMAND_LOG" ]] || exit 1
 
 # Explicitly selected fleet tooling remains available through the same include.
 cat > "$snapshot/scripts/dev/cloc-tooling.pl" <<'PERL'
@@ -178,13 +178,13 @@ install-product install-second check-product check-second:
 MAKE
 : > "$TOOL_COMMAND_LOG"
 make --no-print-directory -j4 -C "$consumer" install-tools > "$fixture/rust-install.log" 2>&1
-[[ "$(sed -n '5p' "$TOOL_COMMAND_LOG")" == "install-rust-tools.sh <--consumer> <$consumer> <--versions> <$consumer/ci/tool-versions.env>" ]]
+[[ "$(sed -n '5p' "$TOOL_COMMAND_LOG")" == "install-rust-tools.sh <--consumer> <$consumer> <--versions> <$consumer/ci/tool-versions.env>" ]] || exit 1
 printf 'install-product\ninstall-second\n' > "$fixture/product-expected"
 tail -2 "$TOOL_COMMAND_LOG" > "$fixture/product-actual"
 cmp "$fixture/product-expected" "$fixture/product-actual"
 : > "$TOOL_COMMAND_LOG"
 make --no-print-directory -j4 -C "$consumer" tools-check RUST_TOOL_VERSIONS="$consumer/rust pins.env" > "$fixture/rust-check.log" 2>&1
-[[ "$(sed -n '3p' "$TOOL_COMMAND_LOG")" == "install-rust-tools.sh <--consumer> <$consumer> <--versions> <$consumer/rust pins.env> <--check>" ]]
+[[ "$(sed -n '3p' "$TOOL_COMMAND_LOG")" == "install-rust-tools.sh <--consumer> <$consumer> <--versions> <$consumer/rust pins.env> <--check>" ]] || exit 1
 printf 'check-product\ncheck-second\n' > "$fixture/product-expected"
 tail -2 "$TOOL_COMMAND_LOG" > "$fixture/product-actual"
 cmp "$fixture/product-expected" "$fixture/product-actual"
@@ -200,7 +200,7 @@ for target in install-tools tools-check; do
             *-second) expected_count=5 ;;
         esac
         [[ "$target" != install-tools ]] || expected_count=$((expected_count + 2))
-        [[ "$(wc -l < "$TOOL_COMMAND_LOG" | tr -d ' ')" == "$expected_count" ]]
+        [[ "$(wc -l < "$TOOL_COMMAND_LOG" | tr -d ' ')" == "$expected_count" ]] || exit 1
     done
 done
 # Neither preflight failure may reach any installation or product extension.
@@ -217,7 +217,7 @@ cp "$TOOL_COMMAND_LOG" "$fixture/expected"
 printf '.DEFAULT_GOAL := help\n' > "$fixture/prefixed.mk"
 cat "$consumer/Makefile" >> "$fixture/prefixed.mk"
 cp "$fixture/prefixed.mk" "$consumer/Makefile"
-[[ "$(make --no-print-directory -C "$consumer")" == 'consumer help' ]]
+[[ "$(make --no-print-directory -C "$consumer")" == 'consumer help' ]] || exit 1
 cmp "$fixture/expected" "$TOOL_COMMAND_LOG"
 # Exercise the actual preflight owners through the actual parallel aggregate.
 # Host setup remains a recording stub: refusal must happen before it is called.
@@ -233,7 +233,7 @@ for tool in cargo rustc; do
     cat > "$fixture/bin/$tool" <<'SCRIPT'
 #!/usr/bin/env bash
 set -euo pipefail
-[[ "$PWD" == "$TOOL_COMMAND_CONSUMER" && "$RUSTUP_AUTO_INSTALL" == 0 && "$1" == --version ]]
+[[ "$PWD" == "$TOOL_COMMAND_CONSUMER" && "$RUSTUP_AUTO_INSTALL" == 0 && "$1" == --version ]] || exit 1
 printf '%s\n' "${0##*/}" >> "$TOOL_PREFLIGHT_PROBES"
 if [[ "${TOOL_PREFLIGHT_BROKEN:-}" == "${0##*/}" ]]; then echo 'selected toolchain unavailable' >&2; exit 29; fi
 printf '%s 1.0.0\n' "${0##*/}"
@@ -259,9 +259,9 @@ for failure in platform rustc cargo missing-rustc missing-cargo; do
     if PATH="$fixture/bin" TOOL_PREFLIGHT_ARCH="$arch" TOOL_PREFLIGHT_BROKEN="$broken" \
         "$real_make" --no-print-directory -j4 -C "$consumer" install-tools \
         > "$fixture/preflight-$failure.log" 2>&1; then exit 1; fi
-    [[ ! -s "$TOOL_COMMAND_LOG" && ! -e "$consumer/.tools/rust" ]]
+    [[ ! -s "$TOOL_COMMAND_LOG" && ! -e "$consumer/.tools/rust" ]] || exit 1
     case "$failure" in
-        platform) [[ ! -s "$TOOL_PREFLIGHT_PROBES" ]]; grep -F 'Linux:aarch64' "$fixture/preflight-$failure.log" ;;
+        platform) [[ ! -s "$TOOL_PREFLIGHT_PROBES" ]] || exit 1; grep -F 'Linux:aarch64' "$fixture/preflight-$failure.log" ;;
         *) grep -F "tool=${failure#missing-}" "$fixture/preflight-$failure.log"
            grep -Ei 'prepare' "$fixture/preflight-$failure.log" >/dev/null ;;
     esac
@@ -275,7 +275,7 @@ for mode in ic rust; do
     else args+=(--versions "$consumer/ci/tool-versions.env"); fi
     PATH="$fixture/bin" TOOL_COMMAND_CONSUMER="$cold" CARGO_NET_OFFLINE=true \
         bash "$snapshot/scripts/dev/install-$mode-tools.sh" "${args[@]}" > "$fixture/preflight-$mode.out"
-    [[ ! -s "$fixture/preflight-$mode.out" && ! -e "$cold/.tools" ]]
+    [[ ! -s "$fixture/preflight-$mode.out" && ! -e "$cold/.tools" ]] || exit 1
 done
 # Repeat preflight over retained Rust state without probing or replacing its tools.
 mkdir -p "$cold/.tools/rust/build" "$cold/.tools/rust/bin"
@@ -290,7 +290,7 @@ for mode in ic rust; do
     args=(--consumer "$cold" --check --preflight)
     status=0
     bash "$snapshot/scripts/dev/install-$mode-tools.sh" "${args[@]}" > "$fixture/conflicting-modes.log" 2>&1 || status=$?
-    [[ "$status" == 2 ]]
+    [[ "$status" == 2 ]] || exit 1
 done
 echo 'Shared tool Make commands passed (substitute installers and reports)'
 fixture_complete=true

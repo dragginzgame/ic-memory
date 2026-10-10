@@ -31,8 +31,8 @@ cp "$ROOT/scripts/ci/check-make-execution.sh" "$FIXTURE/scripts/ci/"
 cat > "$FIXTURE/scripts/ci/run-release.sh" <<'STUB'
 #!/usr/bin/env bash
 set -euo pipefail
-[[ "$RELEASE_DELIVERY" == direct ]]
-[[ "$RELEASE_CACHE_PREPARE" == 1 ]]
+[[ "$RELEASE_DELIVERY" == direct ]] || exit 1
+[[ "$RELEASE_CACHE_PREPARE" == 1 ]] || exit 1
 printf '%s\n' "$*" >> runner-events
 exit "${RELEASE_TEST_STATUS:-0}"
 STUB
@@ -131,8 +131,8 @@ printf '%s\n' 'patch fixture reviewed' 'patch fixture reviewed' \
     'major fixture reviewed' 'major fixture reviewed' \
     'resume 0.1.1 fixture reviewed' 'resume 0.1.1 fixture reviewed' > "$FIXTURE/expected-runner-events"
 cmp "$FIXTURE/expected-runner-events" "$FIXTURE/runner-events"
-[[ ! -e "$FIXTURE/external-runner-events" ]]
-[[ ! -e "$FIXTURE/external-probe-events" ]]
+[[ ! -e "$FIXTURE/external-runner-events" ]] || exit 1
+[[ ! -e "$FIXTURE/external-probe-events" ]] || exit 1
 cat > "$FIXTURE/overrides.mk" <<'MAKE'
 RELEASE_REMOTE := recursive
 .PHONY: nested
@@ -143,8 +143,8 @@ recursive_make="$(command -v make) --no-print-directory -f Makefile -f overrides
 rm "$FIXTURE/runner-events"
 (cd "$FIXTURE"; make -j2 --no-print-directory -f Makefile -f overrides.mk nested \
     "MAKE=$recursive_make" "SHARED_TOOLING_ROOT=$external_root" RELEASE_CACHE_PREPARE=0)
-[[ "$(cat "$FIXTURE/runner-events")" == 'patch recursive main' ]]
-[[ ! -e "$FIXTURE/external-runner-events" && ! -e "$FIXTURE/external-probe-events" ]]
+[[ "$(cat "$FIXTURE/runner-events")" == 'patch recursive main' ]] || exit 1
+[[ ! -e "$FIXTURE/external-runner-events" && ! -e "$FIXTURE/external-probe-events" ]] || exit 1
 # Qualify descriptor handoff through actual consumer Cargo, formatter and helper
 # recipes. All executable effects below are substitutes, including publication.
 jobserver="$FIXTURE/jobserver"
@@ -158,7 +158,7 @@ export JOBSERVER_EVENTS="$jobserver/events"
 cat > "$jobserver/bin/cargo" <<'STUB'
 #!/usr/bin/env bash
 set -euo pipefail
-[[ "${MAKEFLAGS:-}" =~ --jobserver-(auth|fds)=([0-9]+),([0-9]+) ]]
+[[ "${MAKEFLAGS:-}" =~ --jobserver-(auth|fds)=([0-9]+),([0-9]+) ]] || exit 1
 reader="${BASH_REMATCH[2]}"; writer="${BASH_REMATCH[3]}"
 : <&"$reader"
 : >&"$writer"
@@ -192,15 +192,15 @@ case "$1" in
     target) printf '%s/custom target\n' "$PWD" ;;
     version) echo 0.25.14 ;;
     release-*)
-        [[ "$RELEASE_DELIVERY" == direct ]]
-        [[ "$RELEASE_KIND" == minor && "$RELEASE_PREVIOUS" == 0.25.14 && "$RELEASE_VERSION" == 0.26.0 ]]
-        [[ "$RELEASE_DATE" == 2026-10-05 && "$RELEASE_SOURCE" == aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa ]]
-        [[ "$RELEASE_REMOTE" == fixture && "$RELEASE_BRANCH" == reviewed ]]
+        [[ "$RELEASE_DELIVERY" == direct ]] || exit 1
+        [[ "$RELEASE_KIND" == minor && "$RELEASE_PREVIOUS" == 0.25.14 && "$RELEASE_VERSION" == 0.26.0 ]] || exit 1
+        [[ "$RELEASE_DATE" == 2026-10-05 && "$RELEASE_SOURCE" == aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa ]] || exit 1
+        [[ "$RELEASE_REMOTE" == fixture && "$RELEASE_BRANCH" == reviewed ]] || exit 1
         case "$1" in
             release-committed-check|release-tagged-check|release-push-check)
-                [[ "$RELEASE_COMMIT" == bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb ]]
+                [[ "$RELEASE_COMMIT" == bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb ]] || exit 1
                 ;;
-            *) [[ -z "$RELEASE_COMMIT" ]] ;;
+            *) [[ -z "$RELEASE_COMMIT" ]] || exit 1 ;;
         esac
         printf '%s\n' "$1" >> events
         if [[ "$1" == release-verify ]]; then
@@ -217,7 +217,7 @@ cd "$FIXTURE"
 selection=(RELEASE_KIND=minor RELEASE_PREVIOUS=0.25.14 RELEASE_VERSION=0.26.0
     RELEASE_DATE=2026-10-05 RELEASE_SOURCE=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
     RELEASE_REMOTE=fixture RELEASE_BRANCH=reviewed RELEASE_COMMIT= TOOL=./helper)
-[[ "$(make --no-print-directory -s release-version TOOL=./helper)" == 0.25.14 ]]
+[[ "$(make --no-print-directory -s release-version TOOL=./helper)" == 0.25.14 ]] || exit 1
 targets=(release-preflight release-prepare-version release-prepared-check release-files
     release-commit-check release-committed-check release-tagged-check release-push-check)
 for target in "${targets[@]}"; do
@@ -234,18 +234,18 @@ if make --no-print-directory release-verify "${selection[@]}" GATE_STATUS=7 > fa
     echo 'failed verification accepted' >&2; exit 1
 fi
 logs=("custom target/release-validation/attempts/"verify.*)
-[[ "${#logs[@]}" == 1 ]]
+[[ "${#logs[@]}" == 1 ]] || exit 1
 cp "${logs[0]}" saved-failure
 make --no-print-directory release-verify "${selection[@]}" GATE_STATUS=0 > success.log 2>&1
 logs=("custom target/release-validation/attempts/"verify.*)
-[[ "${#logs[@]}" == 2 ]]
+[[ "${#logs[@]}" == 2 ]] || exit 1
 failed=0
 passed=0
 for log in "${logs[@]}"; do
     if cmp -s saved-failure "$log"; then failed=$((failed + 1)); fi
     if [[ "$(cat "$log")" == $'gate stdout 0\ngate stderr 0' ]]; then passed=$((passed + 1)); fi
 done
-[[ "$failed" == 1 && "$passed" == 1 ]]
+[[ "$failed" == 1 && "$passed" == 1 ]] || exit 1
 
 # The actual Make launcher must reach the adapter while only the root lock is
 # prepared. Cargo/parser substitutes prove isolation and argument propagation.
@@ -286,24 +286,24 @@ cp Cargo.toml original-manifest
 cat > bin/cargo <<'STUB'
 #!/usr/bin/env bash
 set -euo pipefail
-[[ "$1" == +1.99.0 ]]
-[[ "$RUSTUP_AUTO_INSTALL" == 0 && "${CARGO_NET_OFFLINE-unset}" == "$CALLER_OFFLINE" ]]
+[[ "$1" == +1.99.0 ]] || exit 1
+[[ "$RUSTUP_AUTO_INSTALL" == 0 && "${CARGO_NET_OFFLINE-unset}" == "$CALLER_OFFLINE" ]] || exit 1
 case "$2" in
     fetch)
-        [[ "$3" == --locked ]]
+        [[ "$3" == --locked ]] || exit 1
         offset=4
         if [[ "${RELEASE_CACHE_PREPARE:-0}" != 1 ]]; then
-            [[ "$4" == --offline ]]
+            [[ "$4" == --offline ]] || exit 1
             offset=5
         fi
         if [[ $# -ge "$offset" ]]; then
-            [[ "${!offset}" == --manifest-path ]]
+            [[ "${!offset}" == --manifest-path ]] || exit 1
             offset=$((offset + 1))
             cmp expected-manifest "${!offset}"
             cmp Cargo.lock "$(dirname "${!offset}")/Cargo.lock"
             echo bootstrap-cache >> calls
         else
-            [[ $# == $((offset - 1)) ]]
+            [[ $# == $((offset - 1)) ]] || exit 1
             echo normal-cache >> calls
         fi
         if [[ "${CACHE_STATUS:-0}" != 0 ]]; then
@@ -319,28 +319,28 @@ case "$2" in
         fi
         ;;
     metadata)
-        [[ "$*" == '+1.99.0 metadata --locked --offline --no-deps --format-version 1' ]]
+        [[ "$*" == '+1.99.0 metadata --locked --offline --no-deps --format-version 1' ]] || exit 1
         echo metadata >> calls
         echo '{"target_directory":"fixture"}'
         ;;
     run)
-        [[ "${RELEASE_CACHE_PREPARE:-0}" == 0 ]]
-        [[ "$3" == --locked && "$4" == --offline && "$5" == --quiet ]]
+        [[ "${RELEASE_CACHE_PREPARE:-0}" == 0 ]] || exit 1
+        [[ "$3" == --locked && "$4" == --offline && "$5" == --quiet ]] || exit 1
         if [[ "$6" == --manifest-path ]]; then
-            [[ "$8" == --target-dir && "$9" == "$BOOTSTRAP_TARGET/repo-tool-bootstrap/build" ]]
-            [[ "${10}" == --example && "${11}" == repo-tool && "${12}" == -- ]]
-            [[ "${13}" == version || "${13}" == publish ]]
+            [[ "$8" == --target-dir && "$9" == "$BOOTSTRAP_TARGET/repo-tool-bootstrap/build" ]] || exit 1
+            [[ "${10}" == --example && "${11}" == repo-tool && "${12}" == -- ]] || exit 1
+            [[ "${13}" == version || "${13}" == publish ]] || exit 1
             cmp expected-manifest "$7"
             cmp Cargo.lock "$(dirname "$7")/Cargo.lock"
             cmp crates/ic-memory/Cargo.toml "$(dirname "$7")/crates/ic-memory/Cargo.toml"
             cmp crates/ic-memory/README.md "$(dirname "$7")/crates/ic-memory/README.md"
             cmp LICENSE "$(dirname "$7")/LICENSE"
-            [[ "$(readlink "$(dirname "$7")/crates/ic-memory/src")" == "$PWD/crates/ic-memory/src" ]]
-            [[ "$(readlink "$(dirname "$7")/crates/ic-memory/examples")" == "$PWD/crates/ic-memory/examples" ]]
+            [[ "$(readlink "$(dirname "$7")/crates/ic-memory/src")" == "$PWD/crates/ic-memory/src" ]] || exit 1
+            [[ "$(readlink "$(dirname "$7")/crates/ic-memory/examples")" == "$PWD/crates/ic-memory/examples" ]] || exit 1
             echo bootstrap >> calls
         else
-            [[ "$6" == --example && "$7" == repo-tool && "$8" == -- ]]
-            [[ "$9" == version || "$9" == publish ]]
+            [[ "$6" == --example && "$7" == repo-tool && "$8" == -- ]] || exit 1
+            [[ "$9" == version || "$9" == publish ]] || exit 1
             echo normal >> calls
         fi
         printf '%s\n' "${CARGO_NET_OFFLINE-unset}" > child-offline
@@ -354,8 +354,8 @@ STUB
 cat > bin/yq <<'STUB'
 #!/usr/bin/env bash
 set -euo pipefail
-[[ "$*" == '-p=json -r .target_directory' ]]
-[[ "$(cat)" == '{"target_directory":"fixture"}' ]]
+[[ "$*" == '-p=json -r .target_directory' ]] || exit 1
+[[ "$(cat)" == '{"target_directory":"fixture"}' ]] || exit 1
 printf '%s\n' "$BOOTSTRAP_TARGET"
 STUB
 chmod +x bin/cargo bin/yq
@@ -371,7 +371,7 @@ check_publication_environment() {
         if [[ "$offline" == unset ]]; then unset CARGO_NET_OFFLINE
         else export CARGO_NET_OFFLINE="$offline"; fi
         make --no-print-directory publish > "publish-$offline.log" 2>&1
-        [[ "$(cat child-offline)" == "$offline" ]]
+        [[ "$(cat child-offline)" == "$offline" ]] || exit 1
     done
     unset CARGO_NET_OFFLINE
     export CALLER_OFFLINE=unset
@@ -391,11 +391,11 @@ check_release_cache_preparation() {
         CACHE_MISSING=1 RELEASE_CACHE_PREPARE=1 bash scripts/dev/run-repo-tool.sh 1.99.0 version \
             > "release-cache-$offline.log" 2>&1 || status=$?
         if [[ "$offline" == true ]]; then
-            [[ "$status" == 101 && ! -s preparation-events ]]
+            [[ "$status" == 101 && ! -s preparation-events ]] || exit 1
             grep -F 'Run make fetch-dependencies' "release-cache-$offline.log"
             if grep -E '^(normal|bootstrap)$' calls; then exit 1; fi
         else
-            [[ "$status" == 0 && "$(cat preparation-events)" == prepared ]]
+            [[ "$status" == 0 && "$(cat preparation-events)" == prepared ]] || exit 1
             grep -Fx 0.12.3 "release-cache-$offline.log"
             grep -E '^(normal|bootstrap)$' calls
         fi
@@ -406,19 +406,19 @@ check_release_cache_preparation() {
     status=0
     CACHE_STATUS=9 RELEASE_CACHE_PREPARE=1 bash scripts/dev/run-repo-tool.sh 1.99.0 version \
         > release-network-failure.log 2>&1 || status=$?
-    [[ "$status" == 9 ]]
+    [[ "$status" == 9 ]] || exit 1
     if grep -E '^(normal|bootstrap)$' calls; then exit 1; fi
     cp saved-cache-calls calls
 }
 
-[[ "$(make --no-print-directory -s release-version)" == 0.12.3 ]]
-[[ "$(cat calls)" == $'normal-cache\nnormal' ]]
+[[ "$(make --no-print-directory -s release-version)" == 0.12.3 ]] || exit 1
+[[ "$(cat calls)" == $'normal-cache\nnormal' ]] || exit 1
 check_publication_environment
 check_release_cache_preparation
 cp calls successful-calls
 status=0
 CACHE_STATUS=101 bash scripts/dev/run-repo-tool.sh 1.99.0 version > cache-refusal.log 2>&1 || status=$?
-[[ "$status" == 101 ]]
+[[ "$status" == 101 ]] || exit 1
 grep -F 'simulated offline cache failure' cache-refusal.log
 grep -F 'Run make fetch-dependencies' cache-refusal.log
 printf '%s\n' normal-cache >> successful-calls
@@ -436,7 +436,7 @@ MANIFEST
 awk '!changed && $0 == "version = \"0.12.3\"" { $0 = "version = \"0.13.0\""; changed = 1 } { print }' \
     Cargo.lock > prepared-lock
 cp prepared-lock Cargo.lock
-[[ "$(make --no-print-directory -s release-version 2> bootstrap.log)" == 0.12.3 ]]
+[[ "$(make --no-print-directory -s release-version 2> bootstrap.log)" == 0.12.3 ]] || exit 1
 printf '%s\n' metadata bootstrap-cache bootstrap >> saved-calls
 cmp saved-calls calls
 check_publication_environment
@@ -446,7 +446,7 @@ cmp prepared-lock Cargo.lock
 cp calls successful-calls
 status=0
 CACHE_STATUS=101 bash scripts/dev/run-repo-tool.sh 1.99.0 version > bootstrap-cache-refusal.log 2>&1 || status=$?
-[[ "$status" == 101 ]]
+[[ "$status" == 101 ]] || exit 1
 grep -F 'simulated offline cache failure' bootstrap-cache-refusal.log
 grep -F 'Run make fetch-dependencies' bootstrap-cache-refusal.log
 printf '%s\n' metadata bootstrap-cache >> successful-calls
@@ -461,9 +461,9 @@ cmp prepared-lock Cargo.lock
 # Cargo's selected target is a literal path, including any terminal newline.
 normal_target="$BOOTSTRAP_TARGET"
 export BOOTSTRAP_TARGET="$PWD/newline target"$'\n\n'
-[[ "$(make --no-print-directory -s release-version 2> newline-target.log)" == 0.12.3 ]]
-[[ -d "$BOOTSTRAP_TARGET/repo-tool-bootstrap" ]]
-[[ ! -e "$PWD/newline target" ]]
+[[ "$(make --no-print-directory -s release-version 2> newline-target.log)" == 0.12.3 ]] || exit 1
+[[ -d "$BOOTSTRAP_TARGET/repo-tool-bootstrap" ]] || exit 1
+[[ ! -e "$PWD/newline target" ]] || exit 1
 cmp original-manifest Cargo.toml
 cmp prepared-lock Cargo.lock
 # Plausible parser output never overrides its failed observation status.
@@ -473,7 +473,7 @@ cp calls failed-parser-calls
 printf '%s\n' metadata >> failed-parser-calls
 status=0
 YQ="$PWD/bin/failed-yq" bash scripts/dev/run-repo-tool.sh 1.99.0 version > failed-parser.log 2>&1 || status=$?
-[[ "$status" == 23 ]]
+[[ "$status" == 23 ]] || exit 1
 cmp failed-parser-calls calls
 cmp original-manifest Cargo.toml
 cmp prepared-lock Cargo.lock

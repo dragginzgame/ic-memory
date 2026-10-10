@@ -21,8 +21,8 @@ mkdir "$fixture/bin"
 cat > "$fixture/bin/cargo" <<'SCRIPT'
 #!/usr/bin/env bash
 set -euo pipefail
-[[ "$CARGO_NET_OFFLINE" == true && "$RUSTUP_AUTO_INSTALL" == 0 ]]
-[[ "${RUSTUP_TOOLCHAIN:-}" == consumer-toolchain ]]
+[[ "$CARGO_NET_OFFLINE" == true && "$RUSTUP_AUTO_INSTALL" == 0 ]] || exit 1
+[[ "${RUSTUP_TOOLCHAIN:-}" == consumer-toolchain ]] || exit 1
 printf '%s\n' "$*" >> "$FORMAT_TOOLS_FIXTURE/calls"
 case "$*" in
     'sort --version') echo "cargo-sort ${TEST_SORT_VERSION:-2.1.4}"; exit "${TEST_SORT_STATUS:-0}" ;;
@@ -48,17 +48,17 @@ cp "$fixture/bin/cargo" "$fixture/selected cargo"
 check 2.1.4 "$fixture/selected cargo"
 cmp "$fixture/expected" "$fixture/calls"
 TEST_SORT_VERSION=2.1.40 refuse 2.1.4
-[[ "$(cat "$fixture/calls")" == 'sort --version' ]]
+[[ "$(cat "$fixture/calls")" == 'sort --version' ]] || exit 1
 # Matching stdout with a failed status must not admit a broken tool.
 TEST_SORT_STATUS=9 refuse 2.1.4
-[[ "$(cat "$fixture/calls")" == 'sort --version' ]]
+[[ "$(cat "$fixture/calls")" == 'sort --version' ]] || exit 1
 TEST_FMT_STATUS=9 refuse 2.1.4
 cmp "$fixture/expected" "$fixture/calls"
 refuse 2.1.4 "$fixture/missing cargo"
-[[ ! -s "$fixture/calls" ]]
+[[ ! -s "$fixture/calls" ]] || exit 1
 refuse latest
-[[ ! -s "$fixture/calls" ]]
+[[ ! -s "$fixture/calls" ]] || exit 1
 refuse
-[[ ! -s "$fixture/calls" ]]
+[[ ! -s "$fixture/calls" ]] || exit 1
 echo 'Formatter prerequisite checks passed'
 fixture_complete=true

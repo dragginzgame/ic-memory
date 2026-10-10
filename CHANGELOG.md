@@ -1,5 +1,27 @@
 # Changelog
 
+## [0.35.4]
+
+- Correct allocation-policy guidance to describe host namespace grants and the
+  shared physical pool before application validation.
+  [#44](https://github.com/dragginzgame/ic-memory/issues/44).
+- Refresh the selected release-helper libraries to IC Host 0.12.6, rejecting
+  invalid publication paths before creating directories.
+  [Host #54](https://github.com/dragginzgame/ic-host-tooling/issues/54).
+- Adopt Shared Tooling 0.3.7 so failed Git index checks stop pre-commit formatting
+  and staging, and portable checks reject failed assertions on Bash 3.2.
+  [#54](https://github.com/dragginzgame/ic-memory/issues/54),
+  [Shared #106](https://github.com/dragginzgame/shared-tooling/issues/106).
+- Enforce tooling-test and failure-evidence assertions on Bash 3.2, preventing
+  incorrect results from passing.
+  [#55](https://github.com/dragginzgame/ic-memory/issues/55),
+  [Shared #107](https://github.com/dragginzgame/shared-tooling/issues/107).
+- Keep only the newest CI run per workflow and branch or PR, cancelling older
+  queued and running checks while retaining the existing host matrix and gates
+  ([Shared #108](https://github.com/dragginzgame/shared-tooling/issues/108)).
+
+[Detailed notes](docs/changelog/0.35.md)
+
 ## [0.35.3] - 2026-10-10
 
 - Adopt Shared Tooling 0.3.4 and Binaryen 133. Run `make install-ic-tools` to
