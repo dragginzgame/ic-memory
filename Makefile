@@ -156,7 +156,8 @@ ensure-clean:
 # Full delivery suite; release/publication remain separately authorized.
 validate:
 	$(MAKE) --no-print-directory validate-toolchain
-	+cargo +$$($(TOOL) msrv) check --locked --offline --all-targets
+	+msrv="$$($(TOOL) msrv)" && \
+	  cargo "+$$msrv" check --locked --offline --all-targets
 
 validate-toolchain:
 	$(MAKE) --no-print-directory verify-shared-tooling tools-check check-format-tools

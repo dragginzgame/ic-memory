@@ -16,7 +16,7 @@ implementation and qualification without asking again. It does not authorize
 unrelated sibling edits, commits, pushes, releases or publication.
 
 The existing tooling snapshot at revision
-`34e5ad7aac3599306c9572bb547f2239d09df1a3` is recorded in
+`67285b28a98b7c4211ad32de726709d4e87edea4` is recorded in
 [.shared-tooling.snapshot](.shared-tooling.snapshot). It identifies the vendored
 files, hashes and executable modes; it does not freeze the active local policy.
 Keep its provenance accurate and never edit vendored files in place. Do not
@@ -26,7 +26,7 @@ also applies within its activation scope and is included in this recorded snapsh
 These instructions are the repository's local overlay.
 
 The single 91-file snapshot uses reviewed committed Shared Tooling at that
-revision, whose committed source `VERSION` is 0.3.7. The manifest records that
+revision, whose committed source `VERSION` is 0.3.8. The manifest records that
 display version separately from its authoritative commit identity. It includes
 the archiver, tool-evidence selector, their fixtures and the shared
 retention action. It replaces the supplemental archive manifest and its duplicate

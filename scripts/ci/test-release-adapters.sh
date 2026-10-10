@@ -100,6 +100,46 @@ status=0
 (cd "$FIXTURE"; make -j2 --no-print-directory -f Makefile -f tool-ordering.mk validate-toolchain) \
     > "$FIXTURE/tool-ordering.log" 2>&1 || status=$?
 [[ "$status" == 2 && ! -e "$FIXTURE/build-events" ]] || exit 1
+# MSRV output is usable only when its helper succeeds. Substitute the preceding
+# gate in recursive Make too, keeping this actual consumer dispatch effect-free.
+mkdir "$FIXTURE/msrv-bin"
+cat > "$FIXTURE/msrv-admission.mk" <<'MAKE'
+.PHONY: validate-toolchain
+validate-toolchain:
+	@:
+MAKE
+cat > "$FIXTURE/msrv-helper" <<'STUB'
+#!/usr/bin/env bash
+[[ "$#" == 1 && "$1" == msrv ]] || exit 1
+printf '1.88.0\n'
+exit "$MSRV_OBSERVATION_STATUS"
+STUB
+cat > "$FIXTURE/msrv-bin/cargo" <<'STUB'
+#!/usr/bin/env bash
+[[ "$#" == 5 && "$*" == '+1.88.0 check --locked --offline --all-targets' ]] || exit 1
+printf '%s\n' "$*" >> msrv-cargo-events
+exit "$MSRV_CARGO_STATUS"
+STUB
+chmod +x "$FIXTURE/msrv-helper" "$FIXTURE/msrv-bin/cargo"
+for result in read-failure success compiler-failure; do
+    observation=0
+    compilation=0
+    case "$result" in read-failure) observation=23 ;; compiler-failure) compilation=19 ;; esac
+    rm -f "$FIXTURE/msrv-cargo-events"
+    status=0
+    (cd "$FIXTURE"; PATH="$FIXTURE/msrv-bin:$PATH" \
+        MSRV_OBSERVATION_STATUS="$observation" MSRV_CARGO_STATUS="$compilation" \
+        make --no-print-directory -f Makefile -f msrv-admission.mk validate TOOL=./msrv-helper \
+        "MAKE=$(command -v make) --no-print-directory -f Makefile -f msrv-admission.mk") \
+        > "$FIXTURE/msrv-$result.log" 2>&1 || status=$?
+    if [[ "$result" == read-failure ]]; then
+        [[ "$status" == 2 && ! -e "$FIXTURE/msrv-cargo-events" ]] || exit 1
+    else
+        [[ "$(cat "$FIXTURE/msrv-cargo-events")" == '+1.88.0 check --locked --offline --all-targets' ]] || exit 1
+        if [[ "$result" == success ]]; then [[ "$status" == 0 ]] || exit 1
+        else [[ "$status" == 2 ]] || exit 1; fi
+    fi
+done
 (cd "$FIXTURE"; make --no-print-directory release-patch)
 [[ "$(cat "$FIXTURE/runner-events")" == 'patch origin main' ]] || exit 1
 # The previous inline assignment forced preparation for every release entrypoint.

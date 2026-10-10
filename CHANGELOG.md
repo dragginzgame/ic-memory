@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.35.5]
+
+- Reject invalid Rust toolchain pins before CI emits a compiler selection on
+  Bash 3.2, including the native runtime and MSRV jobs.
+  [#55](https://github.com/dragginzgame/ic-memory/issues/55).
+- Stop validation before compiler dispatch when the MSRV helper fails, even if
+  it prints the expected version.
+  [#56](https://github.com/dragginzgame/ic-memory/issues/56).
+
+[Detailed notes](docs/changelog/0.35.md)
+
 ## [0.35.4] - 2026-10-10
 
 - Correct allocation-policy guidance to describe host namespace grants and the
