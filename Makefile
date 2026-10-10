@@ -51,22 +51,35 @@ runtime-server-check:
 
 # Focused installed IO/upgrade qualification, separate from the library gates.
 # Build before launch so compilation does not consume the server lifetime.
-test-runtime: runtime-server-check
+test-runtime: runtime-server-check ic-tools-check
 	+cargo +$(VALIDATION_TOOLCHAIN) build --locked --offline --profile wasm-size --target wasm32-unknown-unknown --example wasm-io-qualification
 	+cargo +$(VALIDATION_TOOLCHAIN) build --locked --offline --manifest-path testing/runtime-qualification/Cargo.toml --target-dir target/runtime-qualification
 	@mkdir -p target/qualification/runtime
 	+@cli="$$($(TESTKIT_CLI) --check)" && \
+	  server="$$("$$cli" check --directory "$(TESTKIT_SERVER_DIRECTORY)")" && \
+	  optimizer="$(CURDIR)/.tools/ic/bin/wasm-opt" && \
 	  evidence="$$(mktemp -d target/qualification/runtime/attempt.XXXXXX)" && \
-	  shasum -a 256 Cargo.toml Cargo.lock .shared-tooling.snapshot \
+	  shasum -a 256 Cargo.toml Cargo.lock .shared-tooling.snapshot "$(IC_TOOL_PINS)" \
 	    testing/runtime-qualification/Cargo.toml testing/runtime-qualification/Cargo.lock \
 	    target/wasm32-unknown-unknown/wasm-size/examples/wasm_io_qualification.wasm \
-	    target/runtime-qualification/debug/ic-memory-runtime-qualification "$$cli" > "$$evidence/inputs.sha256" && \
-	  { env -u POCKET_IC_BIN -u IC_TESTKIT_POCKET_IC_URL \
-	    IC_MEMORY_QUALIFICATION_WASM="$(CURDIR)/target/wasm32-unknown-unknown/wasm-size/examples/wasm_io_qualification.wasm" \
-	    "$$cli" run --directory "$(TESTKIT_SERVER_DIRECTORY)" --ttl 900 \
-	    --server-stdout "$$evidence/server.stdout" --server-stderr "$$evidence/server.stderr" \
-	    -- "$(CURDIR)/target/runtime-qualification/debug/ic-memory-runtime-qualification" > "$$evidence/runtime.log" 2>&1; \
-	    status=$$?; cat "$$evidence/runtime.log"; exit "$$status"; }
+	    target/runtime-qualification/debug/ic-memory-runtime-qualification "$$cli" "$$server" "$$optimizer" > "$$evidence/inputs.sha256" && \
+	  for optimization in original O3 Os Oz; do \
+	    wasm="$(CURDIR)/$$evidence/$$optimization.wasm"; \
+	    if [ "$$optimization" = original ]; then \
+	      cp target/wasm32-unknown-unknown/wasm-size/examples/wasm_io_qualification.wasm "$$wasm" || exit "$$?"; \
+	    else \
+	      "$$optimizer" "$$evidence/original.wasm" --enable-bulk-memory-opt "-$$optimization" -o "$$wasm" > "$$evidence/$$optimization.optimizer.log" 2>&1 || \
+	        { status=$$?; cat "$$evidence/$$optimization.optimizer.log"; exit "$$status"; }; \
+	    fi; \
+	    shasum -a 256 "$$wasm" >> "$$evidence/inputs.sha256" || exit "$$?"; \
+	    echo "Runtime qualification: $$optimization ($$evidence)"; \
+	    env -u POCKET_IC_BIN -u IC_TESTKIT_POCKET_IC_URL IC_MEMORY_QUALIFICATION_WASM="$$wasm" \
+	      "$$cli" run --directory "$(TESTKIT_SERVER_DIRECTORY)" --ttl 900 \
+	      --server-stdout "$$evidence/$$optimization.server.stdout" --server-stderr "$$evidence/$$optimization.server.stderr" \
+	      -- "$(CURDIR)/target/runtime-qualification/debug/ic-memory-runtime-qualification" > "$$evidence/$$optimization.runtime.log" 2>&1; \
+	    status=$$?; cat "$$evidence/$$optimization.runtime.log" || exit "$$?"; \
+	    [ "$$status" = 0 ] || exit "$$status"; \
+	  done && cat "$$evidence/inputs.sha256"
 
 test-failure-evidence:
 	bash scripts/ci/test-evidence-archive.sh

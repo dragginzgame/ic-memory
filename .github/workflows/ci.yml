@@ -175,6 +175,8 @@ jobs:
         run: |
           make install-host-tools 2>&1 | tee "$RUNNER_TEMP/runtime-host-setup.log"
           make host-tools-check 2>&1 | tee "$RUNNER_TEMP/runtime-host-check.log"
+          make install-ic-tools 2>&1 | tee "$RUNNER_TEMP/runtime-ic-setup.log"
+          make ic-tools-check 2>&1 | tee "$RUNNER_TEMP/runtime-ic-check.log"
           make install-runtime-server 2>&1 | tee "$RUNNER_TEMP/runtime-setup.log"
       - name: Prepare both tracked dependency graphs
         shell: bash
@@ -184,7 +186,7 @@ jobs:
           shasum -a 256 Cargo.lock testing/runtime-qualification/Cargo.lock
           rustc -Vv
           uname -sm
-      - name: Qualify offline admission, installed IO and upgrade rollback
+      - name: Qualify original and optimized Wasm, installed IO and upgrade rollback
         shell: bash
         run: make test-runtime 2>&1 | tee "$RUNNER_TEMP/runtime.log"
       - name: Archive failed runtime qualification

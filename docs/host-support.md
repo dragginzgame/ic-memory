@@ -121,14 +121,20 @@ Memory lockfiles. Prepare it and Testkit's authenticated server selection explic
 ```sh
 make install-runtime-server
 make runtime-server-check
+make install-ic-tools
 cargo +1.99.0 fetch --locked --manifest-path testing/runtime-qualification/Cargo.toml
 make test-runtime
 ```
 
 Prepare the root cache with `make fetch-dependencies` too. The offline check
 prints Testkit's admitted absolute server path. `test-runtime` builds both supplied
-artifacts offline, then uses Testkit's managed `run` contract to own startup and
-teardown. The runner consumes `IC_TESTKIT_POCKET_IC_URL`; it never downloads or
+artifacts offline, then qualifies the original Wasm and the selected Binaryen
+133 `-O3`, `-Os` and `-Oz` outputs. Each receives the same startup, IO rejection
+and upgrade rollback checks through Testkit's managed `run` contract. Generated
+Wasm, input hashes and all optimizer/server/runtime logs remain under
+`target/qualification/runtime/`, including failures. Normal library builds and
+their Wasm budgets remain unoptimized. The runner consumes
+`IC_TESTKIT_POCKET_IC_URL`; it never downloads or
 spawns a server. The PocketIC client remains locked to 16.0.0; Testkit selects
 server 16.1.0. This new pairing requires installed IO/upgrade qualification on
 Linux and both macOS hosts, supplied by the separate runtime CI jobs. Historical

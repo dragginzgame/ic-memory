@@ -1,5 +1,51 @@
 # Runtime IO and maintainer improvements qualification
 
+## Binaryen 133 current-fixture qualification
+
+On 2026-10-10, local Linux qualification of the uncommitted **0.35.3** candidate
+based on released Memory 0.35.2 `0aec074fb3a15e913db25d07ca2bc2db9ef792fc`
+passed for the original fixture and Binaryen 133 `-O3`, `-Os` and `-Oz` outputs.
+The canonical 91-file snapshot selects Shared Tooling 0.3.4
+`169d77b8440568c5200eede971625126181f7bb2`. Host 0.12.3 is already selected in
+the incoming root lockfile; the independent graph remains unchanged.
+Rust 1.99.0, PocketIC client 16.0.0 and Testkit CLI 0.25.4/server 16.1.0 remain
+the selected compiler and runtime inputs.
+
+All four variants passed startup, 12 invalid-IO traps preserving the neighboring
+marker and prior mutation, rollback after a post-persistence trap and geometry
+conflict, clean upgrade retry advancing exactly one generation, and nine valid
+IO cases. The unchanged runner asserts state for each variant independently;
+its instruction measurements are not an equivalence or performance guarantee.
+The original fixture is 216,893 bytes; optimized outputs are 195,177 (`-O3`),
+194,740 (`-Os`) and 194,331 (`-Oz`) bytes. These are fixture measurements, not
+changes to the library's unoptimized budget probes.
+
+`make test-runtime` retains Wasm, input hashes and per-variant logs in
+`target/qualification/runtime/attempt.StvyQE/`. Setup, focused checks and the
+runtime transcript are under `target/qualification/0.35.3-shared034/`.
+Full `make validate` passes; its log binds the unchanged Rust graphs, strict
+Clippy, tests, rustdoc, development packaging, MSRV and five raw Wasm budgets.
+Subsequent evidence-output/collection changes are qualified by the affected
+tooling, release-adapter and installed-runtime checks. Genuine Bash 3.2.57 and
+GNU Make 3.81 on Linux also pass all four variants, retaining their inputs and
+logs in `target/qualification/runtime/attempt.hdiKQ1/`. The earlier portable
+attempt `attempt.FcOiUy/` remains retained too. This exercises portable
+commands on Linux; it is not native macOS execution.
+The first sandbox attempt could not bind localhost; the next native attempt
+passed original-Wasm checks but Binaryen refused `memory.copy`/`memory.fill`
+without feature admission. Both failures and their artifacts remain retained.
+The final command admits those instructions with `--enable-bulk-memory-opt`;
+it does not select `--all-features` or broaden the product's Wasm feature policy.
+Previous IC executable and pin hashes remain unchanged after installation.
+
+Native CI runs these checks on Linux, macOS Intel and Apple Silicon. This local
+Linux record does not establish macOS acceptance, delivery, publication or
+qualification of a composed Canic/IcyDB application. The adoption owner is
+[#53](https://github.com/dragginzgame/ic-memory/issues/53), with common pins owned
+by [Shared #102](https://github.com/dragginzgame/shared-tooling/issues/102).
+
+## Historical maintainer-improvements qualification
+
 This record describes local Linux execution on 2026-10-05 of the uncommitted
 maintainer-improvements candidate based on 0.25.13, HEAD
 `11b983517a0bce1e2c2ab3fe86da76f6c6aa62a1`. It is focused crate qualification,

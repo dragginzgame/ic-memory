@@ -1,9 +1,9 @@
 # ic-memory code hygiene overlay
 
 Use the unchanged [shared code hygiene method](../../../audits/code-hygiene.md)
-and [audit contract](../../../audits/README.md), recorded at Shared Tooling
-`88a73139a0f083344c41a6f6f4b5c3a8aca7dc1d` in
-[the snapshot](../../../.shared-tooling.snapshot). The shared method owns generic
+and [audit contract](../../../audits/README.md), whose exact Shared Tooling
+identity is recorded in [the snapshot](../../../.shared-tooling.snapshot).
+The shared method owns generic
 questions, severity, verdicts, evidence and repair authority. This overlay owns
 the crate-specific obligations below. An audit does not authorize fixes.
 
@@ -55,9 +55,13 @@ their selected cases with `--test-threads=1`.
   `test-tooling`, `test-release-adapters`, `test-release-runner`, `test-hooks`
   or `lint-tooling` as relevant. Scripts use disposable substitutes where effects
   would otherwise create commits, tags or publication; never run the real hook.
-- Check active builds before compilation or edits. Full validation, Wasm budgets,
-  packaging, installed PocketIC and broad MSRV qualification require explicit
-  request or configured CI. Audits do not automatically install tools or fetch.
+- Check active builds before compilation or edits. Inspection alone does not
+  activate full validation. An authorized code repair must pass `make validate`
+  before delivery under the current baseline's standing authority; that suite
+  includes Wasm budgets, development packaging and MSRV qualification.
+  Documentation-only work needs link, consistency and diff checks. Release,
+  publication and installed PocketIC qualification retain separate authority.
+  Audits do not automatically install tools or fetch.
 - Performance evidence follows the owning qualification procedure, for example
   [runtime IO](../../runtime-io-qualification.md). Bind matched bytes/instructions/
   timings to compiler, lock, artifact and workload; counts are inspection aids.

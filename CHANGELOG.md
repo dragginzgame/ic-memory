@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.35.3]
+
+- Adopt Shared Tooling 0.3.4 and Binaryen 133. Run `make install-ic-tools` to
+  refresh the selected bundle; previous installations remain retained.
+- Extend installed runtime qualification to the original Wasm and three
+  optimized variants, preserving failure evidence. Library builds and size
+  budgets remain unoptimized.
+  [#53](https://github.com/dragginzgame/ic-memory/issues/53),
+  [Shared #102](https://github.com/dragginzgame/shared-tooling/issues/102).
+- Refresh the selected release-helper libraries to IC Host 0.12.3.
+
+[Detailed notes](docs/changelog/0.35.md)
+
 ## [0.35.2] - 2026-10-10
 
 - Adopt Shared Tooling 0.3.2 and preserve Cargo's parallel-build coordination

@@ -20,7 +20,8 @@ tar -xzf "$2" -C "$unpacked"
 retained=("$unpacked/ic-memory-fixtures"/host-tools-test.*/Linux:x86_64/.tools/host-set.*/bin/yq)
 [[ ${#retained[@]} == 1 && -x "${retained[0]}" ]]
 for path in tools-setup.log tools-check.log dependencies.log validation.log \
-    runtime-host-setup.log runtime-host-check.log runtime-setup.log runtime.log formatting.failure; do
+    runtime-host-setup.log runtime-host-check.log runtime-ic-setup.log runtime-ic-check.log \
+    runtime-setup.log runtime.log formatting.failure; do
     cmp "$temp_root/$path" "$unpacked/$path"
 done
 [[ "$(cat "$unpacked/validation.log")" == original_status=1 ]]

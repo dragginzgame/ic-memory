@@ -16,7 +16,7 @@ implementation and qualification without asking again. It does not authorize
 unrelated sibling edits, commits, pushes, releases or publication.
 
 The existing tooling snapshot at revision
-`c16444bf006f17c5bb4dda5ad070a0f345da9623` is recorded in
+`169d77b8440568c5200eede971625126181f7bb2` is recorded in
 [.shared-tooling.snapshot](.shared-tooling.snapshot). It identifies the vendored
 files, hashes and executable modes; it does not freeze the active local policy.
 Keep its provenance accurate and never edit vendored files in place. Do not
@@ -26,7 +26,7 @@ also applies within its activation scope and is included in this recorded snapsh
 These instructions are the repository's local overlay.
 
 The single 91-file snapshot uses reviewed committed Shared Tooling at that
-revision, whose committed source `VERSION` is 0.3.2. The manifest records that
+revision, whose committed source `VERSION` is 0.3.4. The manifest records that
 display version separately from its authoritative commit identity. It includes
 the archiver, tool-evidence selector, their fixtures and the shared
 retention action. It replaces the supplemental archive manifest and its duplicate
@@ -43,6 +43,11 @@ supplied Wasm and independent runner with the prepared server. An old six-tool
 IC bundle fails the new offline check and requires explicit `install-ic-tools`;
 prior bundles, receipts and failure evidence stay retained. The runner reads
 `IC_TESTKIT_POCKET_IC_URL`; no retired server-path alias remains.
+Shared 0.3.4 selects Binaryen 133. Normal library Wasm builds and their budgets
+remain unoptimized. Installed `test-runtime` separately qualifies the supplied
+fixture and its `-O3`, `-Os` and `-Oz` outputs with the same startup, IO rejection
+and upgrade rollback checks. All four bundles, optimizer/server logs and input
+hashes remain retained; native CI owns Linux and both macOS host acceptance.
 The snapshot also includes single-document exception admission, checkout-local
 formatter lookup and the linked read-only release-source helper. Memory's Rust
 adapter retains ownership of release source admission; including the helper
