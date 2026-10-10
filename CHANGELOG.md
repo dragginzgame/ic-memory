@@ -1,6 +1,6 @@
 # Changelog
 
-## [0.35.5]
+## [0.35.5] - 2026-10-10
 
 - Reject invalid Rust toolchain pins before CI emits a compiler selection on
   Bash 3.2, including the native runtime and MSRV jobs.

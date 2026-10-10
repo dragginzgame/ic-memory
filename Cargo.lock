@@ -164,7 +164,7 @@ dependencies = [
 
 [[package]]
 name = "ic-memory"
-version = "0.35.4"
+version = "0.35.5"
 dependencies = [
  "ciborium",
  "ctor",
