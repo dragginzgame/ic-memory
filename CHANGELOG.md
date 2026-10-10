@@ -1,6 +1,6 @@
 # Changelog
 
-## [0.35.2]
+## [0.35.2] - 2026-10-10
 
 - Adopt Shared Tooling 0.3.2 and preserve Cargo's parallel-build coordination
   through Memory's formatting, build and release helpers.
