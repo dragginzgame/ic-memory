@@ -16,7 +16,7 @@ implementation and qualification without asking again. It does not authorize
 unrelated sibling edits, commits, pushes, releases or publication.
 
 The existing tooling snapshot at revision
-`5864f468d39f8f9d1bd26fca1afe0e20f25f1b5e` is recorded in
+`88a73139a0f083344c41a6f6f4b5c3a8aca7dc1d` is recorded in
 [.shared-tooling.snapshot](.shared-tooling.snapshot). It identifies the vendored
 files, hashes and executable modes; it does not freeze the active local policy.
 Keep its provenance accurate and never edit vendored files in place. Do not
@@ -25,8 +25,8 @@ attribute uncommitted shared files to that recorded revision. The live local
 also applies within its activation scope and is included in this recorded snapshot.
 These instructions are the repository's local overlay.
 
-The single 89-file snapshot uses reviewed committed Shared Tooling at that
-revision, whose committed source `VERSION` is 0.2.13. The manifest records that
+The single 90-file snapshot uses reviewed committed Shared Tooling at that
+revision, whose committed source `VERSION` is 0.3.0. The manifest records that
 display version separately from its authoritative commit identity. It includes
 the archiver, tool-evidence selector, their fixtures and the shared
 retention action. It replaces the supplemental archive manifest and its duplicate
@@ -62,7 +62,7 @@ selected, including the explicit independent qualification-manifest option.
 The snapshot includes the common
 audit methods, local host/IC setup, dependency checker, release-command checker
 and linked rules, including the standard Rust workspace layout. Cargo inheritance
-checks cover both approved workspace roots. The unchanged `make/tools.mk`
+checks cover both approved workspace roots. The reviewed `make/tools.mk`
 owns setup, offline tool checks and LOC commands. Its complete host set includes
 pinned cloc; existing installations must refresh explicitly. Rust LOC defaults
 to the root workspace; `CLOC_MANIFEST` explicitly selects the independent
@@ -70,8 +70,9 @@ qualification manifest without combining graphs. The retained local LOC fixture
 owns its target/manifest isolation; consumer dispatch needs no target workaround.
 Fleet/context fixture qualification stays upstream. The shared Rust-tool
 installer and fixtures are available through explicit `install-rust-tools` and
-`rust-tools-check`; the existing required host/IC aggregate and separate exact
-cargo-sort formatter setup remain unchanged.
+`rust-tools-check`; the required aggregate now owns all twelve common
+host/IC/Cargo executables in sequence. Product runtime-server setup remains explicit and separate; the
+two-workspace formatter uses the selected local cargo-sort and pinned rustfmt.
 The Rust installer refuses redirected install/build/receipt paths before tool
 execution and after Cargo returns. Tool-command fixtures normalize their physical
 scratch root; the IC installer uses the included canonical pin parser.
@@ -79,7 +80,7 @@ The reviewed `make/release.mk` owns standard release entrypoints and conflicting
 selection admission. Its `make/execution.mk` companion resolves the behavioral
 probe beside the selected include, independently of runtime tooling-root values.
 Memory retains direct-delivery admission, forced release-only
-cache preparation and all Rust metadata/validation/publication adapters. The
+cache preparation, complete common-tool preparation/admission and all Rust metadata/validation/publication adapters. The
 root-only formatting include is not selected: both maintained workspaces keep
 Memory's explicit compiler and formatting coverage.
 The release runner and its PR helper are exported unchanged. This consumer
@@ -96,7 +97,9 @@ inspection across workflows; use authenticated GitHub CLI and the shared
 maintenance rule's evidence checks. Relevant issue work in GitHub repositories
 owned by `dragginzgame` follows that rule's standing authority; issue actions in
 other GitHub repositories require explicit destination/action authorization.
-Inspection still does not authorize source repair.
+The selected CI helper and its failure-evidence fixture report unavailable
+failed-step logs and retain unsuccessful observations; successful runs may
+legitimately have none. Inspection still does not authorize source repair.
 
 Fleet inventory and exporter/verifier integration fixtures remain upstream-owned.
 The consumer does not vendor the fleet fixtures or unused exporter. Never create

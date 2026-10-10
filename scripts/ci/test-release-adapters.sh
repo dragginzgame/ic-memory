@@ -80,10 +80,10 @@ for target in release-patch release-minor release-major release-resume; do
 done
 # Parallel qualification must refuse missing tools before any build/test phase.
 cat > "$FIXTURE/tool-ordering.mk" <<'MAKE'
-.PHONY: verify-shared-tooling host-tools-check check-format-tools check-pins
+.PHONY: verify-shared-tooling tools-check check-format-tools check-pins
 verify-shared-tooling check-format-tools:
 	@:
-host-tools-check:
+tools-check:
 	@exit 23
 check-pins:
 	@echo reached > build-events

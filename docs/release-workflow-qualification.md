@@ -3665,3 +3665,102 @@ local Linux result. [#42](https://github.com/dragginzgame/ic-memory/issues/42),
 [#48](https://github.com/dragginzgame/ic-memory/issues/48),
 [Shared #95](https://github.com/dragginzgame/shared-tooling/issues/95),
 [Shared #96](https://github.com/dragginzgame/shared-tooling/issues/96).
+
+
+## 0.34.2 Shared 0.2.14 CI log evidence
+
+Continue from delivered Memory **0.34.1**,
+`fde94900b37ac91f47e5c18c97065fbe323a7e40`, with a clean incoming tree. The
+canonical exporter selects committed Shared **0.2.14**,
+`fd11692f31e7dfd44dcc2ca56634eaeab3569825`, from a clean exact-revision disposable
+checkout. Its 90-file selection adds the upstream CI-helper fixture alongside
+its existing production companion. Shared's concurrent uncommitted 0.3.0 toolset
+work is excluded; live local policy still applies under the maintainer exception.
+
+The adopted helper refuses unavailable failure evidence, preserves CLI status and
+retains partial logs/retrieval errors. Completed successful, neutral or skipped
+runs can have no failed-step logs. Memory includes the selected upstream fixture
+in its existing tooling gate rather than duplicating the helper or its tests.
+The canister API, durable format and setup targets are unchanged, so the pending
+candidate is compatible **0.34.2**.
+
+Evidence: `target/qualification/0.34.2-shared0214/`.
+
+- `refresh.log`: canonical export and exact 90-file verification pass.
+- `gh-ci.log`, `gh-ci-bash32.log`: selection, missing/partial-log refusal,
+  legitimate empty output, retrieval-status preservation and retained observation
+  checks pass on Bash 5 and genuine Bash 3.2.57 on Linux. CLI/Git effects are
+  substitutes; this is not native macOS acceptance.
+- `gh-ci-live-success.log`: the actual read-only helper accepts legitimately
+  absent failed-step logs for successful Memory 0.34.0 CI run 38038532089 at
+  `958080df899ebfa7bb9c2d4c93bb8664bd23575d`. This does not exercise a live failed
+  log fetch or qualify dirty source remotely.
+- `validate.log`: full `make validate` passes, including strict Clippy, Rust
+  tooling/public/compile-fail/doc tests, hook/release/evidence fixtures, rustdoc,
+  Wasm tests and size budgets, development packaging and Rust 1.88 all targets.
+- `lint.log`: workflow and shell lint pass. Updated document links and diff
+  whitespace are checked after qualification documentation is added.
+
+Captured root/independent manifest and lock inputs remain byte-identical. Host
+0.11.0, compiler, formatter, stable-structures and independent runtime/Testkit
+selections are unchanged. No staging, commit, push, release, publication, runtime
+provisioning, fixture Git history or sibling source edit occurred. This final
+record is documentation added after the passing code gate, not a new executable
+change. Matching-source native acceptance requires delivered Memory source.
+[Shared #97](https://github.com/dragginzgame/shared-tooling/issues/97) owns the
+upstream log repair; [Memory #50](https://github.com/dragginzgame/ic-memory/issues/50)
+separately owns the pending complete-toolset adoption.
+
+
+## 0.35.0 Shared 0.3.0 complete common tools
+
+The requested tooling continuation carries the unreleased 0.34.2 CI-log fix into
+pending **0.35.0**. The canonical exporter selects committed Shared **0.3.0**,
+`88a73139a0f083344c41a6f6f4b5c3a8aca7dc1d`, from a clean disposable checkout.
+The 90-file selection excludes the sibling's concurrent dirty fleet-helper work.
+Live local policy remains separate under the maintainer exception. The earlier
+0.34.2 record retains its original inputs rather than being relabelled.
+
+Common setup/check now runs all twelve host, IC and Cargo tools sequentially.
+Memory release preflight prepares the aggregate for coherent admitted source,
+then checks it offline; interrupted metadata recovery does not replay setup.
+Standalone validation checks the complete set before builds. CI uses local Cargo
+tools rather than another global formatter installation, separates setup/check
+commands, and retains each new check/setup log through the existing collector.
+PocketIC setup stays explicit and outside the library gate.
+
+The removed host-installer options and expanded common setup contract require a
+minor release. Root and detail pending notes move together to 0.35.0; published
+0.34 history, package versions and both dependency graphs are unchanged. There
+is no canister API or durable-format change.
+
+Evidence: `target/qualification/0.35.0-shared030/`.
+
+- `refresh.log`: exact 90-file committed export verifies.
+- `setup.log`: real local setup reuses prepared host/IC bundles and installs the
+  selected Cargo executables. Cargo build/receipt evidence remains in `.tools/rust`.
+- `tools-check.log`, `setup-reuse-offline.log`: complete offline admission and
+  setup reuse pass; no new tool/version selection or compiler installation occurs.
+- `runtime-admission.log`: existing selected Testkit CLI/server passes offline
+  admission. No installed IO/upgrade or downstream composition run is claimed.
+- `portable.log`: complete-host/aggregate ordering, release adapters and actual
+  new-log archive round trips pass under genuine GNU Make 3.81/Bash 3.2.57 on
+  Linux. Asset/Cargo/release effects in these fixtures are substitutes; they do
+  not establish native macOS or live release acceptance.
+- `evidence.log`: full and compact archives preserve new setup/check logs, byte
+  identity, failure status and prior retry evidence.
+- `validate.log`: full `make validate` passes, including all 42 Rust tooling tests,
+  strict Clippy, maintained library/public/compile-fail/doc tests, rustdoc, hook/
+  release/evidence fixtures, Wasm tests and five budgets, development packaging,
+  and Rust 1.88 all-target compilation.
+- `lint-2.log`, `fmt-check-2.log`: final workflow/shell lint and two-workspace
+  formatting pass. Initial `lint.log` and `fmt-check.log` failures remain retained;
+  the workflow redirection style and Rust formatting are corrected before gates.
+
+Captured root and independent manifests/locks remain byte-identical. Host 0.11.0,
+Rust 1.99 development/Rust 1.88 MSRV, formatter pins, stable-structures and Testkit/
+PocketIC selections are preserved. No source staging, commit, tag, push, release,
+publication, fixture Git history creation or sibling source edit occurs. Final
+qualification prose is added after the passing code gate and checked separately.
+Consumer delivery/native acceptance stays in [#50](https://github.com/dragginzgame/ic-memory/issues/50);
+upstream toolset ownership is [Shared #98](https://github.com/dragginzgame/shared-tooling/issues/98).

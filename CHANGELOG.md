@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.35.0]
+
+- **Breaking tooling setup:** adopt Shared Tooling 0.3.0's complete host, IC and
+  Cargo toolset. Run `make install-tools`, then `make tools-check`; remove direct
+  `--with-ripgrep`/`--with-cloc` installer options. Validation checks the complete
+  set before builds, and release preflight prepares it.
+  [#50](https://github.com/dragginzgame/ic-memory/issues/50),
+  [Shared #98](https://github.com/dragginzgame/shared-tooling/issues/98).
+- Report unavailable CI failure logs and retain partial observations instead of
+  treating empty output as completed inspection.
+  [Shared #97](https://github.com/dragginzgame/shared-tooling/issues/97).
+
+[Detailed notes](docs/changelog/0.35.md)
+
 ## [0.34.1] - 2026-10-10
 
 - Adopt Shared Tooling 0.2.13, remove the duplicate Make flag parser, and check

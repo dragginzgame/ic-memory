@@ -989,16 +989,12 @@ impl<E: Execute> Repository<E> {
                 ],
             )?;
             // Only coherent, admitted release sources may prepare tools. The
-            // existing host selection is required by the offline full gate.
-            self.run("make", &["--no-print-directory", "install-host-tools"])?;
+            // complete common selection is required by the offline full gate.
+            self.run("make", &["--no-print-directory", "install-tools"])?;
         }
         self.run(
             "make",
-            &[
-                "--no-print-directory",
-                "host-tools-check",
-                "check-format-tools",
-            ],
+            &["--no-print-directory", "tools-check", "check-format-tools"],
         )?;
         require(
             fs::read(self.root.join("Cargo.lock"))? == lock,

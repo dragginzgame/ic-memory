@@ -20,8 +20,9 @@ repository_root="$2"
 [[ -d "$temp_root" && -d "$repository_root" ]] || { echo 'evidence roots must be existing directories' >&2; exit 1; }
 inputs=()
 shopt -s nullglob
-for path in "$temp_root/ic-memory-fixtures" "$temp_root/tools-setup.log" \
+for path in "$temp_root/ic-memory-fixtures" "$temp_root/tools-setup.log" "$temp_root/tools-check.log" \
     "$temp_root/dependencies.log" "$temp_root/validation.log" \
+    "$temp_root/runtime-host-setup.log" "$temp_root/runtime-host-check.log" \
     "$temp_root/runtime-setup.log" "$temp_root/runtime.log" "$temp_root"/formatting.*; do
     if [[ -e "$path" || -L "$path" ]]; then
         inputs+=("$temp_root" "${path#"$temp_root/"}")

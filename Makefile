@@ -30,9 +30,9 @@ TESTKIT_CLI := RUSTUP_TOOLCHAIN=$(VALIDATION_TOOLCHAIN) bash scripts/dev/install
 TESTKIT_SERVER_DIRECTORY := $(CURDIR)/.tools/ic-testkit-server
 
 help:
-	@echo 'Setup: install-tools (host then IC tools), fetch-dependencies, install-hooks; prepare Rust/cargo-sort separately.'
+	@echo 'Setup: install-tools (host, IC, Cargo tools), fetch-dependencies, install-hooks; prepare the Rust toolchain first.'
 	@echo 'Focused checks: tools-check, test-tools, test-failure-evidence, verify-shared-tooling, check-pins, test-pins, test-tooling, test-release-adapters, test-release-runner, test-hooks, fmt-check, lint-tooling.'
-	@echo 'Formatting: fmt. Full gates require explicit qualification: validate, validate-toolchain.'
+	@echo 'Formatting: fmt. Full delivery checks: validate, validate-toolchain.'
 	@echo 'Installed runtime: install-runtime-server (explicit Testkit setup), runtime-server-check (offline), test-runtime (prepared server and locked caches).'
 	@echo 'Report: cloc (root workspace; CLOC_MANIFEST selects an independent Cargo manifest). Fleet reports run in Shared Tooling.'
 	@echo 'Maintainer releases: release-patch, release-minor, release-major; normal targets recover unfinished releases.'
@@ -73,6 +73,7 @@ test-failure-evidence:
 	bash scripts/ci/test-failure-evidence.sh
 
 test-tools: test-failure-evidence
+	bash scripts/ci/test-gh-ci.sh
 	bash scripts/ci/test-tool-commands.sh
 	bash scripts/ci/test-host-tools.sh
 	bash scripts/ci/test-ic-tools.sh
@@ -144,7 +145,7 @@ validate:
 	cargo +$$($(TOOL) msrv) check --locked --offline --all-targets
 
 validate-toolchain:
-	$(MAKE) --no-print-directory verify-shared-tooling host-tools-check check-format-tools
+	$(MAKE) --no-print-directory verify-shared-tooling tools-check check-format-tools
 	$(MAKE) --no-print-directory check-pins test-pins test-tools test-tooling test-release-adapters test-release-runner test-hooks fmt-check
 	cargo +$(VALIDATION_TOOLCHAIN) clippy --locked --offline --all-targets -- -D warnings
 	cargo +$(VALIDATION_TOOLCHAIN) test --locked --offline -- --test-threads=1

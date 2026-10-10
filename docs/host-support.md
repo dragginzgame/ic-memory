@@ -59,18 +59,19 @@ when recording release qualification; retain failed runs and their limitations.
 
 ## Developer setup and formatting
 
-Install the exact manifest formatter separately from validation, then activate
-the reviewed hook once per clone (also run the installer after setup updates):
+Prepare the complete local common toolset after installing the declared Rust
+toolchain, then activate the reviewed hook once per clone:
 
 ```sh
-source ci/tool-versions.env
-cargo +1.99.0 install cargo-sort --version "$SHARED_TOOLING_CARGO_SORT_VERSION" --locked
+make install-tools
+make tools-check
 make install-hooks
 git config --get core.hooksPath # .githooks
 make fmt-check
 ```
 
-CI installs the same cargo-sort 2.1.4 explicitly. `make fmt` sorts manifests and
+CI uses this same setup, including local cargo-sort 2.1.4.
+`make fmt` sorts manifests and
 formats Rust in both the root workspace and `testing/runtime-qualification`.
 `make fmt-check` checks the same inputs without changing them. Neither command
 builds, installs tools, fetches dependencies or changes selected lockfiles.
@@ -79,12 +80,12 @@ pin and available rustfmt under the selected validation toolchain. Admission is
 offline and probes versions only; unavailable tools fail before formatting.
 Bare `make` prints available commands rather than preparing dependencies.
 
-Prepare the common host and IC tool sets explicitly for the detected host:
+Common setup covers host, IC and Cargo tools sequentially for the detected host:
 
 ```sh
 make install-tools
 make tools-check
-export PATH="$PWD/.tools/host/bin:$PWD/.tools/ic/bin:$PATH"
+export PATH="$PWD/.tools/host/bin:$PWD/.tools/ic/bin:$PWD/.tools/rust/bin:$PATH"
 make check-pins test-pins
 ```
 
@@ -157,16 +158,18 @@ its local workspace fixture and workspace report remain available. The two fleet
 reporter copies are also retired at the maintainer's explicit selection.
 See [#34](https://github.com/dragginzgame/ic-memory/issues/34).
 
-The shared include also provides explicit `make install-rust-tools` and offline
-`make rust-tools-check` for the optional cargo-sort/cargo-sort-derives/Candid
-extractor set. Its reviewed pins are in `ci/tool-versions.env`, and installation
-uses the already selected Cargo toolchain with retained build output under
-`.tools/rust/build`. These commands are separate from the current required
-host/IC aggregate; the exact cargo-sort formatting prerequisite above remains.
-Make adds `.tools/rust/bin` to PATH; interactive use can add that path to the
-shell export. See [Rust setup](local-setup.md#rust-development-tools). Fixture
-qualification substitutes Cargo installation; it does not prove a native tool
-build or implicitly prepare this optional set.
+The common aggregate includes cargo-sort, cargo-sort-derives and
+candid-extractor alongside the host and five IC tools. Narrow
+`make install-rust-tools` and offline `make rust-tools-check` remain useful for
+explicit setup retries; they do not establish readiness of the complete set.
+Reviewed pins stay in `ci/tool-versions.env`. Setup uses the declared Cargo
+toolchain and retains builds under `.tools/rust/build`; it never installs a
+compiler implicitly. Normal validation checks all common tools offline before
+builds, and formatting retains its exact two-workspace rustfmt/cargo-sort checks.
+Make selects `.tools/rust/bin` itself; interactive shells use the export above.
+See [Rust setup](local-setup.md#rust-development-tools). Fixture substitutes
+qualify routing and refusal; actual setup/check and native CI supply separate
+evidence for installed tools.
 The installer rejects symlinked or wrong-type installation/build directories,
 executables and Cargo receipts before probing tools, and checks those paths again
 after Cargo returns. Existing host/IC bundle links retain their separate setup
@@ -186,8 +189,8 @@ Rejected checksums or versions preserve the selected executable and retain the
 failed candidate. Snapshot integrity and focused Linux checks are separate from
 native macOS qualification; see the
 [adoption evidence](release-workflow-qualification.md#0283-shared-cargo-and-installer-adoption).
-Both host installation and offline verification select the shared
-`--with-ripgrep` option. It authenticates ripgrep 15.2.0 and its PCRE2 support
+Host installation and offline verification always authenticate the complete
+jq/yq/ripgrep/cloc set, including ripgrep 15.2.0 and its PCRE2 support
 alongside jq/yq; CI uses this same set rather than a separate package-manager
 installation. Prepare the expanded host set with `make install-host-tools`
 before offline checks. Previous selections and rejected candidates are retained.
@@ -275,7 +278,7 @@ archive with `bash scripts/ci/verify-failure-evidence.sh FIXTURE ARCHIVE`; diges
 refusal happens before extraction. Existing fixture destinations are refused.
 The archiver and tool selector share the single recorded
 [tooling snapshot](../.shared-tooling.snapshot); `make verify-shared-tooling`
-checks all 76 exports. The collector's optional third argument is `full` (default)
+checks all recorded exports. The collector's optional third argument is `full` (default)
 or `compact`. CI selects `compact`: complete active host/IC sets that pass fresh
 offline checks retain caller pins, check logs and IC receipts; failed, unknown
 and unselected bundles remain complete. Concurrent tool-set mutation must stop
@@ -286,6 +289,11 @@ For interactive CI inspection, use the unchanged shared helper:
 ```sh
 GH_REPO=dragginzgame/ic-memory bash scripts/dev/gh-ci.sh --commit HEAD --all-workflows --limit 100
 ```
+
+When `--logs` cannot retrieve failed-step evidence, the helper reports the gap
+and retains partial logs and retrieval errors. Empty output is accepted only for
+a completed successful, neutral or skipped run. Follow up through the selected
+run's job details; missing logs do not establish a completed failure diagnosis.
 
 This requires an authenticated GitHub CLI session. The bounded listing is evidence
 for the resolved commit; apply the [maintenance rule](../rules/agent-maintenance.md)

@@ -74,19 +74,16 @@ jobs:
           toolchain: ${{ steps.pin.outputs.channel }}
           components: clippy, rustfmt
           targets: wasm32-unknown-unknown
-      - name: Install exact manifest formatter
-        shell: bash
-        env:
-          RUSTUP_TOOLCHAIN: ${{ steps.pin.outputs.channel }}
-        run: |
-          source ci/tool-versions.env
-          cargo install cargo-sort --version "$SHARED_TOOLING_CARGO_SORT_VERSION" --locked
-      - name: Install and verify repository-local host and IC tools
+      - name: Install and verify repository-local common tools
         shell: bash
         run: |
-          make install-tools tools-check 2>&1 | tee "$RUNNER_TEMP/tools-setup.log"
-          echo "$PWD/.tools/host/bin" >> "$GITHUB_PATH"
-          echo "$PWD/.tools/ic/bin" >> "$GITHUB_PATH"
+          make install-tools 2>&1 | tee "$RUNNER_TEMP/tools-setup.log"
+          make tools-check 2>&1 | tee "$RUNNER_TEMP/tools-check.log"
+          {
+            echo "$PWD/.tools/host/bin"
+            echo "$PWD/.tools/ic/bin"
+            echo "$PWD/.tools/rust/bin"
+          } >> "$GITHUB_PATH"
       - name: Check both workspaces without changing files
         run: make fmt-check
       - name: Exercise hook isolation on the native host
@@ -176,7 +173,9 @@ jobs:
       - name: Prepare host tools, selected CLI and Testkit server
         shell: bash
         run: |
-          make install-host-tools host-tools-check install-runtime-server 2>&1 | tee "$RUNNER_TEMP/runtime-setup.log"
+          make install-host-tools 2>&1 | tee "$RUNNER_TEMP/runtime-host-setup.log"
+          make host-tools-check 2>&1 | tee "$RUNNER_TEMP/runtime-host-check.log"
+          make install-runtime-server 2>&1 | tee "$RUNNER_TEMP/runtime-setup.log"
       - name: Prepare both tracked dependency graphs
         shell: bash
         run: |

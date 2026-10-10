@@ -56,6 +56,41 @@ for tool in jq yq; do
         printf 'export SHARED_TOOLING_%s_SHA256_%s=%s\n' "$key" "$host" "${digest%% *}" >> "$pins"
     done
 done
+printf 'export SHARED_TOOLING_RIPGREP_VERSION=15.2.0\n' >> "$pins"
+cat > "$fixture/rg" <<'SCRIPT'
+#!/usr/bin/env bash
+echo executed >> "$HOST_TOOLS_FIXTURE/executions"
+case "$1" in
+    --version) echo "ripgrep ${TEST_RG_VERSION:-15.2.0} (rev abc123)" ;;
+    --pcre2-version) [[ "${TEST_PCRE2:-yes}" == yes ]] || exit 1; echo 'PCRE2 available' ;;
+    *) exit 2 ;;
+esac
+SCRIPT
+for host in LINUX_AMD64 LINUX_ARM64 DARWIN_AMD64 DARWIN_ARM64; do
+    case "$host" in
+        LINUX_AMD64) target=x86_64-unknown-linux-musl ;;
+        LINUX_ARM64) target=aarch64-unknown-linux-musl ;;
+        DARWIN_AMD64) target=x86_64-apple-darwin ;;
+        DARWIN_ARM64) target=aarch64-apple-darwin ;;
+    esac
+    directory="ripgrep-15.2.0-$target"
+    mkdir "$fixture/$directory"
+    cp "$fixture/rg" "$fixture/$directory/rg"
+    tar -czf "$fixture/assets/$directory.tar.gz" -C "$fixture" "$directory/rg"
+    digest="$(shasum -a 256 "$fixture/assets/$directory.tar.gz")"
+    printf 'export SHARED_TOOLING_RIPGREP_SHA256_%s=%s\n' "$host" "${digest%% *}" >> "$pins"
+done
+
+cat > "$fixture/cloc" <<'SCRIPT'
+#!/usr/bin/env bash
+echo executed >> "$HOST_TOOLS_FIXTURE/executions"
+echo "${TEST_CLOC_VERSION:-2.10}"
+exit "${TEST_CLOC_STATUS:-0}"
+SCRIPT
+cp "$fixture/cloc" "$fixture/assets/cloc-2.10.pl"
+digest="$(shasum -a 256 "$fixture/cloc")"
+printf 'export SHARED_TOOLING_CLOC_VERSION=2.10\nexport SHARED_TOOLING_CLOC_SHA256=%s\n' "${digest%% *}" >> "$pins"
+
 consumer="$fixture/consumer"
 install() {
     printf 'install %s for %s\n' "$*" "$consumer" >> "$fixture/install.log"
@@ -68,6 +103,7 @@ for host in Linux:x86_64 Linux:arm64 Darwin:x86_64 Darwin:arm64; do
     export TEST_OS="${host%:*}" TEST_ARCH="${host#*:}"
     consumer="$fixture/$host"; mkdir "$consumer"
     install > /dev/null 2>&1
+    for tool in jq yq rg cloc; do [[ -x "$consumer/.tools/host/bin/$tool" ]] || exit 1; done
     before="$(wc -l < "$fixture/downloads")"
     install --check > /dev/null 2>&1
     install > /dev/null 2>&1
@@ -104,90 +140,50 @@ echo changed >> "$consumer/.tools/host/bin/yq"
 refuse install
 [[ -d "$consumer/.tools/.host-tools.lock" ]] || exit 1
 
-# ripgrep is explicitly selected; existing two-parser consumers need no new pins.
+# Authenticate ripgrep before executing it, retaining failed candidates.
 cp "$fixture/jq" "$fixture/assets/jq-macos-arm64"
-printf 'export SHARED_TOOLING_RIPGREP_VERSION=15.2.0\n' >> "$pins"
-cat > "$fixture/rg" <<'SCRIPT'
-#!/usr/bin/env bash
-echo executed >> "$HOST_TOOLS_FIXTURE/executions"
-case "$1" in
-    --version) echo "ripgrep ${TEST_RG_VERSION:-15.2.0} (rev abc123)" ;;
-    --pcre2-version) [[ "${TEST_PCRE2:-yes}" == yes ]] || exit 1; echo 'PCRE2 available' ;;
-    *) exit 2 ;;
-esac
-SCRIPT
-for host in LINUX_AMD64 LINUX_ARM64 DARWIN_AMD64 DARWIN_ARM64; do
-    case "$host" in
-        LINUX_AMD64) target=x86_64-unknown-linux-musl ;;
-        LINUX_ARM64) target=aarch64-unknown-linux-musl ;;
-        DARWIN_AMD64) target=x86_64-apple-darwin ;;
-        DARWIN_ARM64) target=aarch64-apple-darwin ;;
-    esac
-    directory="ripgrep-15.2.0-$target"
-    mkdir "$fixture/$directory"
-    cp "$fixture/rg" "$fixture/$directory/rg"
-    tar -czf "$fixture/assets/$directory.tar.gz" -C "$fixture" "$directory/rg"
-    digest="$(shasum -a 256 "$fixture/assets/$directory.tar.gz")"
-    printf 'export SHARED_TOOLING_RIPGREP_SHA256_%s=%s\n' "$host" "${digest%% *}" >> "$pins"
-done
-for host in Linux:x86_64 Linux:arm64 Darwin:x86_64 Darwin:arm64; do
-    export TEST_OS="${host%:*}" TEST_ARCH="${host#*:}"
-    consumer="$fixture/rg-$host"; mkdir "$consumer"
-    refuse install --with-ripgrep --check
-    install --with-ripgrep > /dev/null 2>&1
-    before="$(wc -l < "$fixture/downloads")"
-    install --with-ripgrep --check > /dev/null 2>&1
-    install --with-ripgrep > /dev/null 2>&1
-    [[ "$(wc -l < "$fixture/downloads")" == "$before" ]] || exit 1
-done
+consumer="$fixture/rg-corruption"; mkdir "$consumer"
+install > /dev/null 2>&1
 original="$(readlink "$consumer/.tools/host")"
 echo corrupt >> "$consumer/.tools/host/bin/rg"
 : > "$fixture/executions"
-refuse install --with-ripgrep --check
+refuse install --check
 [[ ! -s "$fixture/executions" ]] || exit 1
 cp "$fixture/assets/ripgrep-15.2.0-aarch64-apple-darwin.tar.gz" "$fixture/authentic-ripgrep.tar.gz"
 echo corrupt >> "$fixture/assets/ripgrep-15.2.0-aarch64-apple-darwin.tar.gz"
-refuse install --with-ripgrep
+refuse install
 [[ ! -s "$fixture/executions" && "$(readlink "$consumer/.tools/host")" == "$original" ]] || exit 1
 # Restore the exact authenticated bytes. Repacking can change gzip/tar headers
 # on native hosts even when the executable payload is unchanged.
 cp "$fixture/authentic-ripgrep.tar.gz" "$fixture/assets/ripgrep-15.2.0-aarch64-apple-darwin.tar.gz"
 : > "$fixture/executions"
-TEST_PCRE2=no refuse install --with-ripgrep
+TEST_PCRE2=no refuse install
 [[ -s "$fixture/executions" ]] || exit 1
 : > "$fixture/executions"
-TEST_RG_VERSION=15.2.00 refuse install --with-ripgrep
+TEST_RG_VERSION=15.2.00 refuse install
 [[ -s "$fixture/executions" ]] || exit 1
 [[ "$(readlink "$consumer/.tools/host")" == "$original" ]] || exit 1
-install --with-ripgrep > /dev/null 2>&1
+install > /dev/null 2>&1
 [[ "$(readlink "$consumer/.tools/host")" != "$original" ]] || exit 1
 
-# The optional cloc payload is identical on every host and needs no native build.
-cat > "$fixture/cloc" <<'SCRIPT'
-#!/usr/bin/env bash
-echo executed >> "$HOST_TOOLS_FIXTURE/executions"
-echo "${TEST_CLOC_VERSION:-2.10}"
-exit "${TEST_CLOC_STATUS:-0}"
-SCRIPT
-cp "$fixture/cloc" "$fixture/assets/cloc-2.10.pl"
-digest="$(shasum -a 256 "$fixture/cloc")"
-printf 'export SHARED_TOOLING_CLOC_VERSION=2.10\nexport SHARED_TOOLING_CLOC_SHA256=%s\n' "${digest%% *}" >> "$pins"
+# Incomplete prior sets are replaced explicitly, never repaired by a check.
 for host in Linux:x86_64 Linux:arm64 Darwin:x86_64 Darwin:arm64; do
     export TEST_OS="${host%:*}" TEST_ARCH="${host#*:}"
     consumer="$fixture/cloc-$host"; mkdir "$consumer"
-    # Adding cloc upgrades an existing authenticated selection atomically.
-    install --with-ripgrep
+    # Model an incomplete retained installation without a second install mode.
+    install
     original="$(readlink "$consumer/.tools/host")"
-    refuse install --with-ripgrep --with-cloc --check
+    rm "$consumer/.tools/host/bin/cloc"
+    refuse install --check
     [[ "$(readlink "$consumer/.tools/host")" == "$original" ]] || exit 1
-    install --with-ripgrep --with-cloc
+    install
     [[ "$(readlink "$consumer/.tools/host")" != "$original" && -d "$consumer/.tools/$original" ]] || exit 1
     before="$(wc -l < "$fixture/downloads")"
-    install --with-ripgrep --with-cloc --check
-    install --with-ripgrep --with-cloc
+    install --check
+    install
     [[ "$(wc -l < "$fixture/downloads")" == "$before" ]] || exit 1
     (cd "$fixture"; CDPATH="$fixture" bash "$ROOT/scripts/dev/install-host-tools.sh" \
-        --consumer "${consumer#"$fixture/"}" --versions "$pins" --with-ripgrep --with-cloc --check) > /dev/null 2>&1
+        --consumer "${consumer#"$fixture/"}" --versions "$pins" --check) > /dev/null 2>&1
     bash "$ROOT/scripts/ci/test-tool-evidence.sh" "$consumer" host "$pins"
     # A malformed active link must not authenticate its newline-trimmed sibling.
     original="$(readlink "$consumer/.tools/host")"
@@ -196,8 +192,8 @@ for host in Linux:x86_64 Linux:arm64 Darwin:x86_64 Darwin:arm64; do
         ln -s "$target" "$consumer/.tools/host"
         [[ ! -e "$consumer/.tools/host/bin" ]] || exit 1
         : > "$fixture/executions"
-        refuse install --with-ripgrep --with-cloc --check
-        refuse install --with-ripgrep --with-cloc
+        refuse install --check
+        refuse install
         [[ ! -s "$fixture/executions" && "$(wc -l < "$fixture/downloads")" == "$before" &&
            ! -e "$consumer/.tools/.host-tools.lock" ]] || exit 1
         perl -e 'my $s=readlink($ARGV[0]); exit(defined($s) && $s eq $ARGV[1] ? 0 : 1)' \
@@ -205,24 +201,30 @@ for host in Linux:x86_64 Linux:arm64 Darwin:x86_64 Darwin:arm64; do
     done
     rm "$consumer/.tools/host"
     ln -s "$original" "$consumer/.tools/host"
-    install --with-ripgrep --with-cloc --check
+    install --check
 done
 original="$(readlink "$consumer/.tools/host")"
-TEST_CLOC_STATUS=9 refuse install --with-ripgrep --with-cloc --check
-TEST_CLOC_VERSION=2.100 refuse install --with-ripgrep --with-cloc
+TEST_CLOC_STATUS=9 refuse install --check
+TEST_CLOC_VERSION=2.100 refuse install
 [[ "$(readlink "$consumer/.tools/host")" == "$original" ]] || exit 1
 echo corrupt >> "$consumer/.tools/host/bin/cloc"
 : > "$fixture/executions"
-refuse install --with-ripgrep --with-cloc --check
+refuse install --check
 [[ ! -s "$fixture/executions" ]] || exit 1
 echo corrupt >> "$fixture/assets/cloc-2.10.pl"
-refuse install --with-ripgrep --with-cloc
+refuse install
 [[ ! -s "$fixture/executions" && "$(readlink "$consumer/.tools/host")" == "$original" ]] || exit 1
 cp "$fixture/cloc" "$fixture/assets/cloc-2.10.pl"
-install --with-ripgrep --with-cloc
-# cloc can be selected without ripgrep, and a parser-only pin file stays valid.
-consumer="$fixture/cloc-only"; mkdir "$consumer"
-install --with-cloc
-install --with-cloc --check
-[[ ! -e "$consumer/.tools/host/bin/rg" ]] || exit 1
-echo 'Host tool installation, offline checks and retained failure tests passed'
+install
+# The complete roster is required even when no consumer command uses each tool.
+for key in RIPGREP_VERSION CLOC_VERSION; do
+    cp "$pins" "$fixture/complete-pins"
+    printf 'unset SHARED_TOOLING_%s\n' "$key" >> "$pins"
+    before="$(wc -l < "$fixture/downloads")"
+    : > "$fixture/executions"
+    refuse install --check
+    refuse install
+    [[ ! -s "$fixture/executions" && "$(wc -l < "$fixture/downloads")" == "$before" ]]
+    cp "$fixture/complete-pins" "$pins"
+done
+echo 'Complete host tool installation, offline checks and retained failure tests passed'

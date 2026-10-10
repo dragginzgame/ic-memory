@@ -553,20 +553,13 @@ impl Execute for Substitute {
                 }
                 Ok(String::new())
             }
-            "make" if args == ["--no-print-directory", "install-host-tools"] => {
+            "make" if args == ["--no-print-directory", "install-tools"] => {
                 if state.fail.as_deref() == Some("tool-setup") {
                     return Err("fixture tool setup failure".into());
                 }
                 Ok(String::new())
             }
-            "make"
-                if args
-                    == [
-                        "--no-print-directory",
-                        "host-tools-check",
-                        "check-format-tools",
-                    ] =>
-            {
+            "make" if args == ["--no-print-directory", "tools-check", "check-format-tools"] => {
                 if state.fail.as_deref() == Some("tool-check") {
                     return Err("fixture offline tool admission failure".into());
                 }
@@ -1004,9 +997,9 @@ fn release_tool_setup_and_offline_admission_precede_gates_and_version_mutation()
             .position(|call| call.iter().any(|value| value == argument))
             .unwrap()
     };
-    assert!(position("fetch") < position("install-host-tools"));
-    assert!(position("install-host-tools") < position("host-tools-check"));
-    assert!(position("host-tools-check") < position("validate"));
+    assert!(position("fetch") < position("install-tools"));
+    assert!(position("install-tools") < position("tools-check"));
+    assert!(position("tools-check") < position("validate"));
     assert!(position("validate") < position("update"));
 }
 

@@ -44,7 +44,7 @@ runs:
         inputs=()
         shopt -s nullglob
         for path in "$temp_root/portable-regression.log" "$temp_root/portable-fixtures" \
-            "$temp_root"/host-tools-*.log "$temp_root"/ic-tools-*.log "$temp_root"/rust-tools-*.log \
+            "$temp_root"/tools-*.log "$temp_root"/host-tools-*.log "$temp_root"/ic-tools-*.log "$temp_root"/rust-tools-*.log \
             "$temp_root"/formatting.*; do
           if [[ -e "$path" || -L "$path" ]]; then inputs+=("$temp_root" "${path#"$temp_root/"}"); fi
         done

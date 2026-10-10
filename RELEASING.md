@@ -51,13 +51,13 @@ make fetch-dependencies
 
 Both maintained workspaces track their `Cargo.lock`. The root lock is a required
 source-bound qualification input. Release preflight prepares the existing
-checksum-pinned host selection with `make install-host-tools`,
-then admits it through `make host-tools-check check-format-tools` before the full
+common tool selection with `make install-tools`,
+then admits it through `make tools-check check-format-tools` before the full
 gate. Setup follows coherent saved-source admission/cache preparation and is not
-replayed against interrupted metadata. Cargo-sort/rustfmt preparation retains its
-documented separate owner; release preparation does not install unrelated Cargo
-tools or the runtime server. Standalone validation remains offline and checks
-host/formatter prerequisites before builds, including under parallel Make.
+replayed against interrupted metadata. Common setup includes the pinned Cargo
+tools; rustfmt/toolchain bootstrap and runtime-server setup retain their explicit
+owners. Standalone validation remains offline and checks all common tools plus
+formatter prerequisites before builds, including under parallel Make.
 
 Release preflight checks the selected cache with `cargo fetch --locked --offline`; it never retries
 online or regenerates the lockfile. Validation, version refresh and packaging
