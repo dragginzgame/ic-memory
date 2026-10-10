@@ -6,7 +6,16 @@ ROOT="$0"
 ROOT="$(cd -P "${ROOT%/*}/../.." && printf '%s/.' "$PWD")"
 ROOT="${ROOT%/.}"
 fixture="$(mktemp -d "${TMPDIR:-/tmp}/gh-ci-test.XXXXXX")"
-trap 'if [[ $? == 0 ]]; then rm -rf "$fixture"; else echo "CI inspection fixtures retained: $fixture" >&2; fi' EXIT
+# Bash 3.2 can enter EXIT with status zero after nounset; require completion too.
+fixture_complete=false
+finish() {
+    local status=$?
+    [[ "$fixture_complete" == true || "$status" != 0 ]] || status=1
+    if [[ "$status" == 0 ]]; then rm -rf "$fixture"
+    else echo "CI inspection fixtures retained: $fixture" >&2; fi
+    exit "$status"
+}
+trap finish EXIT
 mkdir "$fixture/bin"
 export GH_CI_TEST_LOG="$fixture/calls"
 export GH_CI_TEST_SHA=0123456789012345678901234567890123456789
@@ -128,3 +137,4 @@ retained="$(sed -n 's/^CI log observation retained: //p' "$fixture/output")"
 [[ -d "$retained" && "$(cat "$retained/failed.log")" == 'partial failure log' &&
    "$(cat "$retained/errors.log")" == 'fetch interrupted' ]]
 echo 'CI inspection selection and failure tests passed'
+fixture_complete=true

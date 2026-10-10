@@ -3811,3 +3811,50 @@ macOS, installed runtime composition or live release acceptance.
 [#51](https://github.com/dragginzgame/ic-memory/issues/51) owns consumer delivery
 and native acceptance; [Shared #101](https://github.com/dragginzgame/shared-tooling/issues/101)
 owns the reusable repair.
+
+## 0.35.2 Shared 0.3.2 parallel Cargo and fixture completion
+
+On delivered Memory **0.35.1** `34795a3b7868c29028075633061385f6403b9486`,
+pending compatible **0.35.2** adopts committed Shared **0.3.2**
+`c16444bf006f17c5bb4dda5ad070a0f345da9623` through the canonical exporter.
+The 91-file selection adds the linked advisory README task; no schedule, prose
+rewrite or release gate is activated. The root-only shared formatter remains
+unselected; Memory owns its two-workspace compiler/formatting roster.
+
+Shared tool recipes and Memory's own Cargo/formatter/compiled helper recipes
+preserve Make jobserver descriptors. The existing execution guard still refuses
+unsafe Make modes before substituted effects. Shared completion fixes remain
+canonical exports. Three consumer-owned fixtures also require explicit completion
+before success/cleanup, retaining unfinished evidence and original nonzero
+failure status. No vendored source is edited in place.
+
+Evidence: `target/qualification/0.35.2-shared032/`.
+
+- `before.log` and `before/` reproduce both bugs against released source with
+  substitutes: Bash 3.2 nounset falsely returns zero/removes evidence, and a
+  parallel Cargo descriptor probe encounters a closed descriptor.
+- `retention.log`, `adapters.log`, `portable.log` qualify actual fixture handlers
+  and consumer Make routes with substituted effects on current Bash/Make and
+  genuine Bash 3.2.57/GNU Make 3.81 on Linux. Early zero exits, nounset, command
+  failures and completed success/failure have the expected status/retention.
+  Actual formatting recipes still cover both maintained workspaces.
+- `setup-reuse-offline.log` and `admission.log` pass real parallel common setup
+  reuse and offline admission with the existing selected installations.
+- `validate.log` passes full `make validate`, including strict Clippy, 241 library
+  tests, public/compile-fail/tooling/doc tests, release/hook/evidence fixtures,
+  rustdoc, Wasm checks/five budgets, development packaging and Rust 1.88 all targets.
+- `lint.log` and `docs.log` pass workflow/ShellCheck and local-reference checks.
+  `source-head.txt`, `qualified.diff`, the new consumer test copy and
+  `inputs.sha256` bind executable qualification to its actual inputs. Final
+  qualification prose and issue links are checked separately after the gate.
+
+Both maintained manifests/locks are byte-identical to captured inputs. Delivered
+Host filesystem/artifact 0.12.2 was already selected; no dependency upgrade is
+performed. Compiler/formatter/stable-structures/Testkit/PocketIC selections,
+canister API and durable format remain unchanged. No source staging, commit,
+push, release, publication, fixture Git history or sibling mutation occurs.
+Local Linux/substitute checks do not qualify native macOS, actual installed
+composition or live delivery. [#52](https://github.com/dragginzgame/ic-memory/issues/52)
+owns delivery/native acceptance; reusable fixes belong to
+[Shared #99](https://github.com/dragginzgame/shared-tooling/issues/99) and
+[Shared #103](https://github.com/dragginzgame/shared-tooling/issues/103).

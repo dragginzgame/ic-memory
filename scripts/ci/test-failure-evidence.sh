@@ -18,7 +18,15 @@ if [[ $# == 1 ]]; then
 else
     fixture="$(mktemp -d "${TMPDIR:-/tmp}/failure-evidence.XXXXXX")"
 fi
-trap 'if [[ $? == 0 && "$retained" == false ]]; then rm -rf "$fixture"; else printf "Failure-evidence fixture retained: %s\n" "$fixture" >&2; fi' EXIT
+fixture_complete=false
+finish() {
+    local status=$?
+    [[ "$fixture_complete" == true || "$status" != 0 ]] || status=1
+    if [[ "$status" == 0 && "$retained" == false ]]; then rm -rf "$fixture"
+    else printf 'Failure-evidence fixture retained: %s\n' "$fixture" >&2; fi
+    exit "$status"
+}
+trap finish EXIT
 mkdir -p "$fixture/temp/ic-memory-fixtures" "$fixture/repository"
 temp_root="$fixture/temp"
 repository_root="$fixture/repository"
@@ -126,3 +134,4 @@ if [[ "$retained" == true && -n "${GITHUB_OUTPUT:-}" ]]; then
     printf 'path=%s\n' "$archive" >> "$GITHUB_OUTPUT"
 fi
 echo 'Consumer evidence selections, retained host failure, archive round trip and retry/failure preservation passed'
+fixture_complete=true

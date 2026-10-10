@@ -8,7 +8,16 @@ ROOT="$(cd -P "${ROOT%/*}/../.." && printf '%s/.' "$PWD")"
 ROOT="${ROOT%/.}"
 consumer="$1"; kind="$2"; pins="$3"
 fixture="$(mktemp -d "${TMPDIR:-/tmp}/tool-evidence-test.XXXXXX")"
-trap 'if [[ $? == 0 ]]; then rm -rf "$fixture"; else printf "Tool evidence fixture retained: %s\n" "$fixture" >&2; fi' EXIT
+# Bash 3.2 can enter EXIT with status zero after nounset; require completion too.
+fixture_complete=false
+finish() {
+    local status=$?
+    [[ "$fixture_complete" == true || "$status" != 0 ]] || status=1
+    if [[ "$status" == 0 ]]; then rm -rf "$fixture"
+    else printf "Tool evidence fixture retained: %s\n" "$fixture" >&2; fi
+    exit "$status"
+}
+trap finish EXIT
 active="$(readlink "$consumer/.tools/$kind")"
 candidate="$consumer/.tools/$kind-set.evidenceCandidate"
 mkdir "$candidate"
@@ -125,3 +134,4 @@ cmp "$fixture/action-temp/portable-regression.log" "$fixture/action-unpacked/por
 cmp "$candidate/payload" "$fixture/action-unpacked/.tools/$kind-set.evidenceCandidate/payload"
 rm -rf "$candidate"
 echo 'Successful tool compaction, failed verification, unknown selections and actual collector passed'
+fixture_complete=true

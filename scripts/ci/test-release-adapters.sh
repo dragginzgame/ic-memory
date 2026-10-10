@@ -13,7 +13,15 @@ ROOT="$(cd -P "${ROOT%/*}/../.." && printf '%s/.' "$PWD")"
 ROOT="${ROOT%/.}"
 bash "$ROOT/scripts/ci/check-release-commands.sh" "$ROOT" rust-toolchain.toml ci/tool-versions.env make/tools.mk make/release.mk make/execution.mk scripts/ci/check-make-execution.sh
 FIXTURE="$(mktemp -d "${TMPDIR:-/tmp}/ic-memory-release-adapters.XXXXXX")"
-trap 'if [[ $? == 0 ]]; then rm -rf "$FIXTURE"; else printf "Consumer release-adapter fixture retained: %s\n" "$FIXTURE" >&2; fi' EXIT
+fixture_complete=false
+finish() {
+    local status=$?
+    [[ "$fixture_complete" == true || "$status" != 0 ]] || status=1
+    if [[ "$status" == 0 ]]; then rm -rf "$FIXTURE"
+    else printf 'Consumer release-adapter fixture retained: %s\n' "$FIXTURE" >&2; fi
+    exit "$status"
+}
+trap finish EXIT
 mkdir -p "$FIXTURE/ci" "$FIXTURE/make"
 cp "$ROOT/Makefile" "$ROOT/rust-toolchain.toml" "$FIXTURE/"
 cp "$ROOT/ci/tool-versions.env" "$FIXTURE/ci/"
@@ -137,6 +145,45 @@ rm "$FIXTURE/runner-events"
     "MAKE=$recursive_make" "SHARED_TOOLING_ROOT=$external_root" RELEASE_CACHE_PREPARE=0)
 [[ "$(cat "$FIXTURE/runner-events")" == 'patch recursive main' ]]
 [[ ! -e "$FIXTURE/external-runner-events" && ! -e "$FIXTURE/external-probe-events" ]]
+# Qualify descriptor handoff through actual consumer Cargo, formatter and helper
+# recipes. All executable effects below are substitutes, including publication.
+jobserver="$FIXTURE/jobserver"
+mkdir -p "$jobserver/bin" "$jobserver/make" "$jobserver/ci" "$jobserver/scripts/ci"
+cp "$ROOT/Makefile" "$ROOT/rust-toolchain.toml" "$jobserver/"
+cp "$ROOT/make/tools.mk" "$ROOT/make/release.mk" "$ROOT/make/execution.mk" "$jobserver/make/"
+cp "$ROOT/ci/tool-versions.env" "$jobserver/ci/"
+cp "$ROOT/scripts/ci/check-make-execution.sh" "$ROOT/scripts/ci/check-format-tools.sh" \
+    "$ROOT/scripts/ci/run-formatting.sh" "$jobserver/scripts/ci/"
+export JOBSERVER_EVENTS="$jobserver/events"
+cat > "$jobserver/bin/cargo" <<'STUB'
+#!/usr/bin/env bash
+set -euo pipefail
+[[ "${MAKEFLAGS:-}" =~ --jobserver-(auth|fds)=([0-9]+),([0-9]+) ]]
+reader="${BASH_REMATCH[2]}"; writer="${BASH_REMATCH[3]}"
+: <&"$reader"
+: >&"$writer"
+printf '%s\n' "$*" >> "$JOBSERVER_EVENTS"
+[[ "$*" != 'sort --version' ]] || echo 'cargo-sort 2.1.4'
+exit 0
+STUB
+cat > "$jobserver/helper" <<'STUB'
+#!/usr/bin/env bash
+set -euo pipefail
+cargo helper "$@"
+case "$1" in target) echo "$PWD/target" ;; version) echo 0.35.1 ;; esac
+STUB
+chmod +x "$jobserver/bin/cargo" "$jobserver/helper"
+parallel=(-j4)
+if make --help | grep -q -- --jobserver-style; then parallel+=(--jobserver-style=pipe); fi
+for target in fmt fmt-check test-tooling test fetch-dependencies wasm-size version \
+    release-version release-preflight release-verify qualify-release package publish publish-dry-run; do
+    (cd "$jobserver"; PATH="$jobserver/bin:$PATH" make --no-print-directory "${parallel[@]}" \
+        "$target" TOOL=./helper) > "$jobserver/$target.log" 2>&1
+done
+grep -F 'sort --workspace testing/runtime-qualification' "$JOBSERVER_EVENTS"
+grep -F 'fmt --manifest-path testing/runtime-qualification/Cargo.toml --all' "$JOBSERVER_EVENTS"
+grep -F 'helper release-verify' "$JOBSERVER_EVENTS"
+grep -F 'helper publish --dry-run' "$JOBSERVER_EVENTS"
 mkdir -p "$FIXTURE/custom target"
 cat > "$FIXTURE/helper" <<'STUB'
 #!/usr/bin/env bash
@@ -445,3 +492,4 @@ cmp saved-calls calls
 cmp original-manifest Cargo.toml
 cmp conflicting-lock Cargo.lock
 echo 'Consumer selection forwarding, attempt retention and launcher checks passed (substitutes only).'
+fixture_complete=true

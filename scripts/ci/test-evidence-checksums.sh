@@ -7,10 +7,14 @@ ROOT="${BASH_SOURCE[0]}"
 ROOT="$(cd -P "${ROOT%/*}/../.." && printf '%s/.' "$PWD")"
 ROOT="${ROOT%/.}"
 TEMPORARY="$(mktemp -d "${TMPDIR:-/tmp}/blob-evidence-checksums.XXXXXX")"
+fixture_complete=false
 finish() {
     local status=$?
+    # Bash 3.2 may report zero after nounset before assertions finish.
+    [[ "$fixture_complete" == true || "$status" != 0 ]] || status=1
     if [[ "$status" == 0 ]]; then rm -rf "$TEMPORARY";
     else echo "Checksum fixture/evidence retained: $TEMPORARY" >&2; fi
+    exit "$status"
 }
 trap finish EXIT
 cp "$ROOT/scripts/ci/verify-evidence-checksums.sh" "$ROOT/scripts/ci/verify-file-checksum.sh" "$TEMPORARY/"
@@ -58,3 +62,4 @@ fi
 cmp text.manifest before.manifest
 [[ "$(cat 'selected file')" == abc ]] || exit 1
 echo 'Evidence-checksum tests: PASS (read-only GNU/Perl paths and refusals).'
+fixture_complete=true

@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.35.2]
+
+- Adopt Shared Tooling 0.3.2 and preserve Cargo's parallel-build coordination
+  through Memory's formatting, build and release helpers.
+  [Shared #99](https://github.com/dragginzgame/shared-tooling/issues/99).
+- Fail incomplete tooling tests and retain their evidence, including Bash 3.2
+  errors that previously could appear successful.
+  [Shared #103](https://github.com/dragginzgame/shared-tooling/issues/103).
+  [#52](https://github.com/dragginzgame/ic-memory/issues/52).
+
+[Detailed notes](docs/changelog/0.35.md)
+
 ## [0.35.1] - 2026-10-10
 
 - Adopt Shared Tooling 0.3.1: common setup refuses unsupported hosts or unavailable

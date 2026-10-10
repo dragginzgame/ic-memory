@@ -10,7 +10,16 @@ ROOT="${ROOT%/.}"
 # below still select explicit targets; an enclosing consumer must not select it.
 unset CARGO_TARGET_DIR
 FIXTURE="$(mktemp -d "${TMPDIR:-/tmp}/shared-tooling-cloc-test.XXXXXX")"
-trap 'if [[ $? == 0 ]]; then rm -rf "$FIXTURE"; else printf "Failed cloc fixture retained: %s\n" "$FIXTURE" >&2; fi' EXIT
+# Bash 3.2 can enter EXIT with status zero after nounset; require completion too.
+fixture_complete=false
+finish() {
+    local status=$?
+    [[ "$fixture_complete" == true || "$status" != 0 ]] || status=1
+    if [[ "$status" == 0 ]]; then rm -rf "$FIXTURE"
+    else printf "Failed cloc fixture retained: %s\n" "$FIXTURE" >&2; fi
+    exit "$status"
+}
+trap finish EXIT
 
 for command in cargo cloc jq; do
     command -v "$command" >/dev/null 2>&1 || {
@@ -191,3 +200,4 @@ selected_after="$(bash "$ROOT/scripts/dev/cloc.sh" --manifest "$independent/Carg
 [[ "$(printf '%s\n' "$selected_after" | awk '$1 == "independent-probe" { print $2,$3,$5,$6 }')" == '1 0 0 0' ]]
 [[ "$(printf '%s\n' "$selected_after" | awk '$1 == "alpha" { print }')" == '' ]]
 echo 'cloc tests, including independent workspace selection, passed'
+fixture_complete=true

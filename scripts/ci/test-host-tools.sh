@@ -6,14 +6,18 @@ ROOT="$0"
 ROOT="$(cd -P "${ROOT%/*}/../.." && printf '%s/.' "$PWD")"
 ROOT="${ROOT%/.}"
 fixture="$(mktemp -d "${TMPDIR:-/tmp}/host-tools-test.XXXXXX")"
+fixture_complete=false
 finish() {
     local status=$?
+    # Bash 3.2 may report zero after nounset before assertions finish.
+    [[ "$fixture_complete" == true || "$status" != 0 ]] || status=1
     if [[ "$status" == 0 ]]; then rm -rf "$fixture"
     else
         echo "Host tool fixtures retained: $fixture" >&2
         echo "Host tool fixture stopped with status $status" >&2
         if [[ -f "$fixture/install.log" ]]; then tail -n 80 "$fixture/install.log" >&2; fi
     fi
+    exit "$status"
 }
 trap finish EXIT
 mkdir "$fixture/bin" "$fixture/assets" "$fixture/consumer"
@@ -251,3 +255,4 @@ for key in RIPGREP_VERSION CLOC_VERSION; do
     cp "$fixture/complete-pins" "$pins"
 done
 echo 'Complete host tool installation, offline checks and retained failure tests passed'
+fixture_complete=true

@@ -13,15 +13,17 @@ root="${root%/.}"
 # Keep inherited hook/index variables from redirecting fixture Git operations.
 while IFS= read -r variable; do unset "$variable"; done < <(git rev-parse --local-env-vars)
 fixture="$(mktemp -d "${TMPDIR:-/tmp}/ic-memory-hooks.XXXXXX")"
+fixture_complete=false
 cleanup_fixture() {
     local fixture_status="$1" fixture_command="$2"
+    [[ "$fixture_complete" == true || "$fixture_status" != 0 ]] || fixture_status=1
     if [[ "$fixture_status" == 0 ]]; then
         rm -rf -- "$fixture"
     else
         printf 'Hook fixture failed in %s: %s\nRetained fixture: %s\n' "$PWD" "$fixture_command" "$fixture" >&2
         if [[ -f output ]]; then cat output >&2; fi
     fi
-    return "$fixture_status"
+    exit "$fixture_status"
 }
 trap 'cleanup_fixture "$?" "$BASH_COMMAND"' EXIT
 source_commit="$(git -C "$root" rev-parse HEAD)"
@@ -220,3 +222,4 @@ CARGO_NET_OFFLINE=true RUSTUP_AUTO_INSTALL=0 bash .githooks/pre-commit >> output
 [[ ! -e Cargo.lock && ! -e testing/runtime-qualification/Cargo.lock && ! -e target && ! -e testing/runtime-qualification/target ]]
 
 echo 'Consumer hook selection, partial staging, failure isolation, setup and both-workspace formatting passed'
+fixture_complete=true

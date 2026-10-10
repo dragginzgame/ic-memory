@@ -8,17 +8,34 @@ ROOT="$(cd -P "${ROOT%/*}/../.." && printf '%s/.' "$PWD")"
 ROOT="${ROOT%/.}"
 fixture="$(mktemp -d "${TMPDIR:-/tmp}/shared-tool-commands.XXXXXX")"
 fixture="$(cd "$fixture" && pwd -P)"
-trap 'if [[ $? == 0 ]]; then rm -rf "$fixture"; else printf "Failed tool command fixture retained: %s\n" "$fixture" >&2; fi' EXIT
+# Bash 3.2 can enter EXIT with status zero after nounset; require completion too.
+fixture_complete=false
+finish() {
+    local status=$?
+    [[ "$fixture_complete" == true || "$status" != 0 ]] || status=1
+    if [[ "$status" == 0 ]]; then rm -rf "$fixture"
+    else printf "Failed tool command fixture retained: %s\n" "$fixture" >&2; fi
+    exit "$status"
+}
+trap finish EXIT
 unset MAKEFLAGS MFLAGS MAKEOVERRIDES GNUMAKEFLAGS MAKEFILES
 consumer="$fixture/consumer with spaces"
 snapshot="$consumer/vendor/shared-tooling"
 mkdir -p "$snapshot/make" "$snapshot/scripts/dev" "$consumer/.tools/host/bin" "$consumer/.tools/ic/bin"
-cp "$ROOT/make/tools.mk" "$snapshot/make/"
+cp "$ROOT/make/tools.mk" "$ROOT/make/execution.mk" "$snapshot/make/"
+mkdir -p "$snapshot/scripts/ci"
+cp "$ROOT/scripts/ci/check-make-execution.sh" "$snapshot/scripts/ci/"
 export TOOL_COMMAND_LOG="$fixture/commands"
 export TOOL_COMMAND_CONSUMER="$consumer"
 cat > "$fixture/tool-stub" <<'SCRIPT'
 #!/usr/bin/env bash
 set -euo pipefail
+if [[ "${JOBSERVER_TEST_REQUIRED:-0}" == 1 && ( "${0##*/}" == install-rust-tools.sh || "${0##*/}" == cloc.sh ) ]]; then
+    [[ "${MAKEFLAGS:-}" =~ --jobserver-(auth|fds)=([0-9]+),([0-9]+) ]]
+    reader="${BASH_REMATCH[2]}"; writer="${BASH_REMATCH[3]}"
+    : <&"$reader"
+    : >&"$writer"
+fi
 name="${0##*/}"
 printf '%s' "$name" >> "$TOOL_COMMAND_LOG"
 printf ' <%s>' "$@" >> "$TOOL_COMMAND_LOG"
@@ -103,6 +120,31 @@ make --no-print-directory -C "$consumer" cloc CLOC_MANIFEST=testing/Cargo.toml \
     > "$fixture/manifest.log" 2>&1
 printf 'cloc.sh <--manifest> <testing/Cargo.toml> <%s>\n' "$consumer" > "$fixture/expected"
 cmp "$fixture/expected" "$TOOL_COMMAND_LOG"
+
+# Standalone tools.mk consumers get both valid jobserver descriptors and the
+# existing execution admission guard. Probe the aggregate/preflight and direct
+# Rust routes, then refuse unsafe modes before any substituted installer runs.
+parallel=(-j4)
+if make --help | grep -q -- --jobserver-style; then parallel+=(--jobserver-style=pipe); fi
+for target in install-tools tools-check install-rust-tools rust-tools-check cloc; do
+    JOBSERVER_TEST_REQUIRED=1 make "${parallel[@]}" --no-print-directory -C "$consumer" "$target" \
+        > "$fixture/jobserver-$target.log" 2>&1
+    for mode in -n -t -q -i --dry-run --touch --question --ignore-errors; do
+        for source in direct inherited cleared hidden; do
+            : > "$TOOL_COMMAND_LOG"
+            status=0
+            if [[ "$source" == inherited ]]; then
+                MAKEFLAGS="$mode" make -C "$consumer" "$target" > "$fixture/unsafe.log" 2>&1 || status=$?
+            else
+                flags=(--no-print-directory)
+                [[ "$source" != cleared && "$source" != hidden ]] || flags+=(MAKEFLAGS=)
+                [[ "$source" != hidden ]] || flags+=(MFLAGS=)
+                make -C "$consumer" "$mode" "$target" "${flags[@]}" > "$fixture/unsafe.log" 2>&1 || status=$?
+            fi
+            [[ "$status" == 2 && ! -s "$TOOL_COMMAND_LOG" ]]
+        done
+    done
+done
 
 # Ordinary setup/check/LOC commands above work without any fleet reporter.
 # An omitted optional report must explain its owner, without invoking a sibling.
@@ -201,7 +243,9 @@ done
 chmod +x "$fixture/bin/uname"
 export TOOL_PREFLIGHT_PROBES="$fixture/preflight-probes"
 # Keep only these prerequisites in PATH to model genuinely absent Rust commands.
-for tool in bash make awk sort; do ln -s "$(command -v "$tool")" "$fixture/bin/$tool"; done
+for tool in bash make awk sort grep; do ln -s "$(command -v "$tool")" "$fixture/bin/$tool"; done
+# GNU Make may execute the guard's printf directly instead of via a shell builtin.
+ln -s "$(type -P printf)" "$fixture/bin/printf"
 real_make="$(command -v make)"
 for failure in platform rustc cargo missing-rustc missing-cargo; do
     : > "$TOOL_COMMAND_LOG"
@@ -249,3 +293,4 @@ for mode in ic rust; do
     [[ "$status" == 2 ]]
 done
 echo 'Shared tool Make commands passed (substitute installers and reports)'
+fixture_complete=true

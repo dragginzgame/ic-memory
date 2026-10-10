@@ -6,7 +6,16 @@ ROOT="$0"
 ROOT="$(cd -P "${ROOT%/*}/../.." && printf '%s/.' "$PWD")"
 ROOT="${ROOT%/.}"
 fixture="$(mktemp -d "${TMPDIR:-/tmp}/evidence-archive.XXXXXX")"
-trap 'if [[ $? == 0 ]]; then rm -rf "$fixture"; else printf "Archive fixture retained: %s\n" "$fixture" >&2; fi' EXIT
+# Bash 3.2 can enter EXIT with status zero after nounset; require completion too.
+fixture_complete=false
+finish() {
+    local status=$?
+    [[ "$fixture_complete" == true || "$status" != 0 ]] || status=1
+    if [[ "$status" == 0 ]]; then rm -rf "$fixture"
+    else printf "Archive fixture retained: %s\n" "$fixture" >&2; fi
+    exit "$status"
+}
+trap finish EXIT
 mkdir -p "$fixture/source/fixtures/.git" "$fixture/other" "$fixture/unpacked"
 printf 'private Git configuration\n' > "$fixture/source/fixtures/.git/config"
 printf 'retained input\n' > "$fixture/source/fixtures/"$'line\nbreak:payload'
@@ -75,3 +84,4 @@ if PATH="$fixture/bin:$PATH" bash "$ROOT/scripts/ci/archive-evidence.sh" "$fixtu
 if PATH="$fixture/bin:$PATH" bash "$ROOT/scripts/ci/archive-evidence.sh" "$fixture/rejected.tar.gz" / .; then exit 1; fi
 [[ ! -e "$fixture/rejected.tar.gz" ]]
 echo 'Evidence archive bytes, modes, links, selection and failure retention passed'
+fixture_complete=true

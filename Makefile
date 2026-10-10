@@ -42,20 +42,20 @@ install-hooks:
 
 # Explicit network setup; ordinary tool/library gates never provision a server.
 install-runtime-server: host-tools-check
-	@cli="$$($(TESTKIT_CLI))" && "$$cli" setup --directory "$(TESTKIT_SERVER_DIRECTORY)"
+	+@cli="$$($(TESTKIT_CLI))" && "$$cli" setup --directory "$(TESTKIT_SERVER_DIRECTORY)"
 
 # Both CLI receipt/bytes and server archive/bytes are checked without downloads.
 runtime-server-check:
-	@{ cli="$$($(TESTKIT_CLI) --check)" && "$$cli" check --directory "$(TESTKIT_SERVER_DIRECTORY)"; } || \
+	+@{ cli="$$($(TESTKIT_CLI) --check)" && "$$cli" check --directory "$(TESTKIT_SERVER_DIRECTORY)"; } || \
 	  { status=$$?; echo 'Prepare the selected CLI and server with make install-runtime-server.' >&2; exit "$$status"; }
 
 # Focused installed IO/upgrade qualification, separate from the library gates.
 # Build before launch so compilation does not consume the server lifetime.
 test-runtime: runtime-server-check
-	cargo +$(VALIDATION_TOOLCHAIN) build --locked --offline --profile wasm-size --target wasm32-unknown-unknown --example wasm-io-qualification
-	cargo +$(VALIDATION_TOOLCHAIN) build --locked --offline --manifest-path testing/runtime-qualification/Cargo.toml --target-dir target/runtime-qualification
+	+cargo +$(VALIDATION_TOOLCHAIN) build --locked --offline --profile wasm-size --target wasm32-unknown-unknown --example wasm-io-qualification
+	+cargo +$(VALIDATION_TOOLCHAIN) build --locked --offline --manifest-path testing/runtime-qualification/Cargo.toml --target-dir target/runtime-qualification
 	@mkdir -p target/qualification/runtime
-	@cli="$$($(TESTKIT_CLI) --check)" && \
+	+@cli="$$($(TESTKIT_CLI) --check)" && \
 	  evidence="$$(mktemp -d target/qualification/runtime/attempt.XXXXXX)" && \
 	  shasum -a 256 Cargo.toml Cargo.lock .shared-tooling.snapshot \
 	    testing/runtime-qualification/Cargo.toml testing/runtime-qualification/Cargo.lock \
@@ -73,40 +73,41 @@ test-failure-evidence:
 	bash scripts/ci/test-failure-evidence.sh
 
 test-tools: test-failure-evidence
+	bash scripts/ci/test-consumer-fixture-retention.sh
 	bash scripts/ci/test-gh-ci.sh
 	bash scripts/ci/test-tool-commands.sh
 	bash scripts/ci/test-host-tools.sh
 	bash scripts/ci/test-ic-tools.sh
 	bash scripts/ci/test-rust-tools.sh
 	bash scripts/ci/test-evidence-checksums.sh
-	RUSTUP_TOOLCHAIN=$(VALIDATION_TOOLCHAIN) RUSTUP_AUTO_INSTALL=0 CARGO_NET_OFFLINE=true bash scripts/ci/test-cloc.sh
+	+RUSTUP_TOOLCHAIN=$(VALIDATION_TOOLCHAIN) RUSTUP_AUTO_INSTALL=0 CARGO_NET_OFFLINE=true bash scripts/ci/test-cloc.sh
 
 # Network preparation is separate from offline checks; preserve tracked locks.
 fetch-dependencies:
-	cargo +$(VALIDATION_TOOLCHAIN) fetch --locked
+	+cargo +$(VALIDATION_TOOLCHAIN) fetch --locked
 
 verify-shared-tooling:
 	bash scripts/ci/verify-shared-tooling-snapshot.sh
 
 check-pins:
-	RUSTUP_TOOLCHAIN=$(VALIDATION_TOOLCHAIN) RUSTUP_AUTO_INSTALL=0 CARGO_NET_OFFLINE=true bash scripts/ci/check-dependency-pins.sh --cargo-inheritance
+	+RUSTUP_TOOLCHAIN=$(VALIDATION_TOOLCHAIN) RUSTUP_AUTO_INSTALL=0 CARGO_NET_OFFLINE=true bash scripts/ci/check-dependency-pins.sh --cargo-inheritance
 
 test-pins:
-	RUSTUP_TOOLCHAIN=$(VALIDATION_TOOLCHAIN) RUSTUP_AUTO_INSTALL=0 CARGO_NET_OFFLINE=true bash scripts/ci/test-dependency-pins.sh
-	RUSTUP_TOOLCHAIN=$(VALIDATION_TOOLCHAIN) RUSTUP_AUTO_INSTALL=0 CARGO_NET_OFFLINE=true bash scripts/ci/test-cargo-metadata.sh
+	+RUSTUP_TOOLCHAIN=$(VALIDATION_TOOLCHAIN) RUSTUP_AUTO_INSTALL=0 CARGO_NET_OFFLINE=true bash scripts/ci/test-dependency-pins.sh
+	+RUSTUP_TOOLCHAIN=$(VALIDATION_TOOLCHAIN) RUSTUP_AUTO_INSTALL=0 CARGO_NET_OFFLINE=true bash scripts/ci/test-cargo-metadata.sh
 
 check-format-tools:
-	@RUSTUP_TOOLCHAIN="$(VALIDATION_TOOLCHAIN)" bash scripts/ci/check-format-tools.sh "$(CARGO_SORT_VERSION)"
+	+@RUSTUP_TOOLCHAIN="$(VALIDATION_TOOLCHAIN)" bash scripts/ci/check-format-tools.sh "$(CARGO_SORT_VERSION)"
 
 fmt: check-format-tools
-	@RUSTUP_AUTO_INSTALL=0 CARGO_NET_OFFLINE=true bash scripts/ci/run-formatting.sh --write \
+	+@RUSTUP_AUTO_INSTALL=0 CARGO_NET_OFFLINE=true bash scripts/ci/run-formatting.sh --write \
 	  bash -ec 'cargo "+$$1" sort --workspace; \
 	    cargo "+$$1" sort --workspace testing/runtime-qualification; \
 	    cargo "+$$1" fmt --all; \
 	    cargo "+$$1" fmt --manifest-path testing/runtime-qualification/Cargo.toml --all' -- "$(VALIDATION_TOOLCHAIN)"
 
 fmt-check: check-format-tools
-	@RUSTUP_AUTO_INSTALL=0 CARGO_NET_OFFLINE=true bash scripts/ci/run-formatting.sh --check \
+	+@RUSTUP_AUTO_INSTALL=0 CARGO_NET_OFFLINE=true bash scripts/ci/run-formatting.sh --check \
 	  bash -ec 'cargo "+$$1" sort --workspace --check; \
 	    cargo "+$$1" sort --workspace --check testing/runtime-qualification; \
 	    cargo "+$$1" fmt --all -- --check; \
@@ -118,7 +119,7 @@ lint-tooling:
 	$${SHELLCHECK_BIN:-shellcheck} --shell=bash ci/tool-versions.env scripts/ci/*.sh scripts/dev/*.sh .githooks/pre-commit
 
 test-tooling:
-	cargo +$(VALIDATION_TOOLCHAIN) test --locked --offline --example repo-tool
+	+cargo +$(VALIDATION_TOOLCHAIN) test --locked --offline --example repo-tool
 
 test-release-runner:
 	bash scripts/ci/test-release-runner.sh
@@ -127,39 +128,39 @@ test-release-adapters:
 	bash scripts/ci/test-release-adapters.sh
 
 test-hooks: check-format-tools
-	RUSTUP_AUTO_INSTALL=0 CARGO_NET_OFFLINE=true bash scripts/ci/test-format-tools.sh
-	RUSTUP_AUTO_INSTALL=0 CARGO_NET_OFFLINE=true bash scripts/ci/test-git-hooks.sh
+	+RUSTUP_AUTO_INSTALL=0 CARGO_NET_OFFLINE=true bash scripts/ci/test-format-tools.sh
+	+RUSTUP_AUTO_INSTALL=0 CARGO_NET_OFFLINE=true bash scripts/ci/test-git-hooks.sh
 
 test:
-	cargo +$(VALIDATION_TOOLCHAIN) test --locked --offline -- --test-threads=1
+	+cargo +$(VALIDATION_TOOLCHAIN) test --locked --offline -- --test-threads=1
 
 version:
-	@$(TOOL) version
+	+@$(TOOL) version
 
 ensure-clean:
-	@$(TOOL) ensure-clean
+	+@$(TOOL) ensure-clean
 
 # Full delivery suite; release/publication remain separately authorized.
 validate:
 	$(MAKE) --no-print-directory validate-toolchain
-	cargo +$$($(TOOL) msrv) check --locked --offline --all-targets
+	+cargo +$$($(TOOL) msrv) check --locked --offline --all-targets
 
 validate-toolchain:
 	$(MAKE) --no-print-directory verify-shared-tooling tools-check check-format-tools
 	$(MAKE) --no-print-directory check-pins test-pins test-tools test-tooling test-release-adapters test-release-runner test-hooks fmt-check
-	cargo +$(VALIDATION_TOOLCHAIN) clippy --locked --offline --all-targets -- -D warnings
-	cargo +$(VALIDATION_TOOLCHAIN) test --locked --offline -- --test-threads=1
-	RUSTDOCFLAGS='-D warnings' cargo +$(VALIDATION_TOOLCHAIN) doc --locked --offline --no-deps
-	cargo +$(VALIDATION_TOOLCHAIN) check --locked --offline --target wasm32-unknown-unknown --tests
+	+cargo +$(VALIDATION_TOOLCHAIN) clippy --locked --offline --all-targets -- -D warnings
+	+cargo +$(VALIDATION_TOOLCHAIN) test --locked --offline -- --test-threads=1
+	+RUSTDOCFLAGS='-D warnings' cargo +$(VALIDATION_TOOLCHAIN) doc --locked --offline --no-deps
+	+cargo +$(VALIDATION_TOOLCHAIN) check --locked --offline --target wasm32-unknown-unknown --tests
 	$(MAKE) --no-print-directory wasm-size
 	# Validate working-tree edits; release admission separately requires clean source.
-	cargo +$(VALIDATION_TOOLCHAIN) package --locked --offline --allow-dirty
+	+cargo +$(VALIDATION_TOOLCHAIN) package --locked --offline --allow-dirty
 
 wasm-size:
-	cargo +$(VALIDATION_TOOLCHAIN) build --locked --offline --profile wasm-size --target wasm32-unknown-unknown \
+	+cargo +$(VALIDATION_TOOLCHAIN) build --locked --offline --profile wasm-size --target wasm32-unknown-unknown \
 		--example wasm-core-size-probe --example wasm-diagnostics-size-probe --example wasm-key-only-size-probe --example wasm-admission-size-probe \
 		--example wasm-runtime-integration-size-probe
-	@$(TOOL) wasm-size
+	+@$(TOOL) wasm-size
 
 # Preserve checkout-local routing and cache preparation for all caller settings.
 # GNU Make 3.81 cannot combine target-specific override and export. Reclassify
@@ -172,15 +173,15 @@ release-patch release-minor release-major release-resume: export SHARED_TOOLING_
 release-patch release-minor release-major release-resume: export RELEASE_CACHE_PREPARE := 1
 
 release-version:
-	@$(TOOL) version
+	+@$(TOOL) version
 
 release-preflight release-prepare-version release-prepared-check release-files release-commit-check release-committed-check release-tagged-check release-push-check:
-	@$(TOOL) $@
+	+@$(TOOL) $@
 
 # Preserve every gate attempt, including failures. The adapter owns the gate;
 # these logs use Cargo's selected target directory, including overrides.
 release-verify:
-	@set -eu; \
+	+@set -eu; \
 	log_dir="$$($(TOOL) target)/release-validation/attempts"; \
 	mkdir -p "$$log_dir"; \
 	log_file="$$(mktemp "$$log_dir/verify.XXXXXX")"; \
@@ -190,13 +191,13 @@ release-verify:
 	exit "$$result"
 
 qualify-release:
-	$(TOOL) qualify-release
+	+$(TOOL) qualify-release
 
 package: ensure-clean
-	cargo +$(VALIDATION_TOOLCHAIN) package --locked --offline
+	+cargo +$(VALIDATION_TOOLCHAIN) package --locked --offline
 
 publish:
-	$(TOOL) publish
+	+$(TOOL) publish
 
 publish-dry-run:
-	$(TOOL) publish --dry-run
+	+$(TOOL) publish --dry-run

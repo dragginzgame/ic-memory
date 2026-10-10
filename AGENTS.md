@@ -16,7 +16,7 @@ implementation and qualification without asking again. It does not authorize
 unrelated sibling edits, commits, pushes, releases or publication.
 
 The existing tooling snapshot at revision
-`fa452afaa5012866eb1c20820dfa8038c106e7ec` is recorded in
+`c16444bf006f17c5bb4dda5ad070a0f345da9623` is recorded in
 [.shared-tooling.snapshot](.shared-tooling.snapshot). It identifies the vendored
 files, hashes and executable modes; it does not freeze the active local policy.
 Keep its provenance accurate and never edit vendored files in place. Do not
@@ -25,8 +25,8 @@ attribute uncommitted shared files to that recorded revision. The live local
 also applies within its activation scope and is included in this recorded snapshot.
 These instructions are the repository's local overlay.
 
-The single 90-file snapshot uses reviewed committed Shared Tooling at that
-revision, whose committed source `VERSION` is 0.3.1. The manifest records that
+The single 91-file snapshot uses reviewed committed Shared Tooling at that
+revision, whose committed source `VERSION` is 0.3.2. The manifest records that
 display version separately from its authoritative commit identity. It includes
 the archiver, tool-evidence selector, their fixtures and the shared
 retention action. It replaces the supplemental archive manifest and its duplicate
@@ -76,6 +76,10 @@ two-workspace formatter uses the selected local cargo-sort and pinned rustfmt.
 The aggregate first performs read-only platform/catalog and Rust/Cargo
 preflight through the existing installers before any installation. Host-tool
 failures identify the selected tool, expected version, path and repair command.
+The tool include also admits Make execution before dispatch and preserves Cargo
+jobserver descriptors. Selected shared fixtures require explicit completion
+before successful cleanup. The linked README freshness task is advisory only;
+adoption enables no schedule, prose rewrite or release gate.
 The Rust installer refuses redirected install/build/receipt paths before tool
 execution and after Cargo returns. Tool-command fixtures normalize their physical
 scratch root; the IC installer uses the included canonical pin parser.
