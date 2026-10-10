@@ -3566,3 +3566,102 @@ error, followed by the existing byte/mode/link comparison. This implements
 readback boundary. Local workflow lint proves syntax, not hosted availability.
 Hosted acceptance of the working snapshot, wrapper, guard and readback remains
 pending; the green 0.33.4 run is evidence only for released 0.33.4.
+
+## 0.34.1 canonical Make admission
+
+Prepared on delivered 0.34.0, `958080df899ebfa7bb9c2d4c93bb8664bd23575d`.
+The canonical exporter ran from a clean disposable checkout of reviewed Shared
+**0.2.11**, `83efac446348dea024798a331d77933b24b429dc`, whose
+[all-host upstream run](https://github.com/dragginzgame/shared-tooling/actions/runs/38034912323)
+passed. The unchanged 89-file selection now records that revision/version;
+Memory's duplicate flag parser is removed. Active live-local shared policy
+remains separately authorized; subsequent 0.2.12/0.2.13 source is not attributed
+to this export. [#42](https://github.com/dragginzgame/ic-memory/issues/42),
+[#47](https://github.com/dragginzgame/ic-memory/issues/47),
+[#48](https://github.com/dragginzgame/ic-memory/issues/48).
+
+Evidence under `target/qualification/0.34.1-shared0211/`:
+
+- `focused-modern.log`: snapshot verification, actual Make dispatch with
+  substitute release effects, two-workspace hook isolation, evidence-retention
+  round trips and formatting pass. Unsafe direct/inherited modes still refuse
+  under original, cleared and replaced `MAKEFLAGS`; new cases refuse erased
+  command-line/Makefile `MFLAGS`. Normal recursive/parallel dispatch and failure
+  propagation pass without the local parser.
+- `focused-portable.log`: the same adapter, hook and evidence fixtures pass with
+  GNU Make 3.81 and Bash 3.2.57 built on Linux. This proves tool portability on
+  Linux, not native macOS execution.
+- `repo-tool-host0102.log`: all 41 Rust release-tool tests pass with the incoming
+  selected Host filesystem/artifact 0.10.2 lock. `clippy-host0102.log` and
+  `msrv-host0102.log` record strict example Clippy and Rust 1.88 compilation.
+- `pins-lint.log`: declaration/metadata fixtures, actionlint and ShellCheck pass.
+
+The root manifest, incoming selected root lock and independent runtime lock match
+captured inputs. No fixture commit/tag/push/publication, real-index staging, full
+validation, package/release command, installed runtime or sibling source edit
+was invoked. There are no removed Rust functions, methods or types in this
+adoption; the deleted local parser was a Make variable/expression.
+
+This is uncommitted compatible 0.34.1 preparation. Its own native hosted
+acceptance requires delivered source. The completed 0.33.4 all-host run qualifies
+older fixes only; 0.34.0 CI remains separate from these dirty changes. Coordinated
+downstream composition is still tracked by #44 rather than this tooling evidence.
+
+## 0.34.1 Shared 0.2.13 and Host 0.11.0
+
+This supersedes the earlier 0.2.11/Host 0.10.2 preparation above without relabelling
+its evidence. The maintainer requests current Shared Tooling and IC Host. The
+incoming root catalog and lock already select Host filesystem/artifact 0.11.0;
+Memory uses neither Host's process crate nor its changed process-limit API.
+Its existing durable writer retains original, cleanup and publication-state
+errors, including Host's improved cleanup diagnostics. Canister API and durable
+formats are unchanged; the candidate remains compatible **0.34.1**.
+
+The canonical exporter selects committed Shared **0.2.13**,
+`5864f468d39f8f9d1bd26fca1afe0e20f25f1b5e`, through a clean exact-revision disposable
+checkout. The first refresh refused the sibling after new concurrent dirty edits;
+those bytes remain excluded from the 89-file export. Live local policy still
+applies separately under the maintainer's existing exception. The new verifier
+refuses supplied/resolved line-break directory paths and accepts ordinary aliases.
+The selected Cargo installer reports exact missing/invalid executable identities.
+
+Coherent admitted release preflight prepares the existing host-tool selection,
+then checks host/formatter admission offline before the gate. Interrupted
+metadata recovery checks the retained selection without replaying setup.
+Standalone validation separates prerequisite checks from builds/tests, so parallel
+Make cannot race them. Runtime admission names its existing explicit setup target
+and retains failure status. Development validation packages working-tree edits;
+release validation and the separate maintainer package target still require clean
+source. No new dependency selector or installer is introduced.
+
+Evidence: `target/qualification/0.34.1-shared0213-host0110/`.
+
+- `validate.log`: full `make validate` passes, including shared integrity and
+  tooling/runner/hook fixtures, strict Clippy, library/public/compile-fail/doc
+  tests, rustdoc, Wasm tests and five raw-size budgets, development package
+  verification and Rust 1.88 all-target compilation.
+- `repo-tool-2.log`: all 42 focused Rust tooling tests pass against Host 0.11.0.
+  The new rejection/ordering case preserves source metadata on setup/check
+  failure before validation or version mutation.
+- `adapters-runtime-admission.log`: actual Make-to-adapter fixtures qualify
+  early missing-tool refusal under parallel Make; existing selected Testkit CLI
+  and PocketIC server pass offline admission. This does not run installed IO or
+  coordinated downstream lifecycle qualification.
+- `portable.log`: release-adapter, hook and retained-evidence fixtures pass under
+  genuine GNU Make 3.81/Bash 3.2.57 on Linux; this is not native macOS acceptance.
+- `path-admission.log`: supplied and resolved invalid directory aliases refuse
+  before manifest selection; a normal spaced alias verifies all 89 files.
+- `root-metadata.json`, `runtime-metadata.json`: both cheap locked graph checks
+  pass. The independent runtime graph does not contain Host and needs no update.
+  `lint.log` records passing actionlint and ShellCheck.
+
+The root manifest, root lock and both independent manifest/lock inputs match
+captured incoming bytes. Compiler, formatter, CLI/server and stable-structures
+selections remain unchanged. No commit, push, release, publication, fixture Git
+history creation or sibling edit was performed. Qualification documentation was
+updated after the successful code gate; it adds no executable changes.
+Upstream new-source CI and native Memory acceptance remain independent of this
+local Linux result. [#42](https://github.com/dragginzgame/ic-memory/issues/42),
+[#48](https://github.com/dragginzgame/ic-memory/issues/48),
+[Shared #95](https://github.com/dragginzgame/shared-tooling/issues/95),
+[Shared #96](https://github.com/dragginzgame/shared-tooling/issues/96).

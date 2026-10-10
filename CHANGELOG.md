@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.34.1]
+
+- Adopt Shared Tooling 0.2.13, remove the duplicate Make flag parser, and check
+  required tools before builds. Release preflight prepares the selected host tools.
+  [#42](https://github.com/dragginzgame/ic-memory/issues/42),
+  [#47](https://github.com/dragginzgame/ic-memory/issues/47),
+  [#48](https://github.com/dragginzgame/ic-memory/issues/48).
+- Refresh release-helper libraries to IC Host 0.11.0 and validate working-tree
+  packages without requiring a development commit. Release source stays checked.
+
+[Detailed notes](docs/changelog/0.34.md)
+
 ## [0.34.0] - 2026-10-10
 
 - **Breaking:** components request permanent keys and owners from one host-owned

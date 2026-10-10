@@ -52,6 +52,20 @@ for target in release-patch release-minor release-major release-resume; do
     done
 done
 for target in release-patch release-minor release-major release-resume; do
+    for source in command-line makefile; do
+        status=0
+        if [[ "$source" == command-line ]]; then
+            (cd "$FIXTURE"; make -i --no-print-directory "$target" MAKEFLAGS= MFLAGS=) \
+                > "$FIXTURE/mflags-$target-$source.log" 2>&1 || status=$?
+        else
+            printf 'MFLAGS :=\n' > "$FIXTURE/erased-mflags.mk"
+            (cd "$FIXTURE"; make -i --no-print-directory -f erased-mflags.mk -f Makefile "$target" MAKEFLAGS=) \
+                > "$FIXTURE/mflags-$target-$source.log" 2>&1 || status=$?
+        fi
+        [[ "$status" == 2 && ! -e "$FIXTURE/runner-events" ]] || exit 1
+    done
+done
+for target in release-patch release-minor release-major release-resume; do
     for delivery in pr invalid; do
         if (cd "$FIXTURE"; make --no-print-directory "$target" RELEASE_DELIVERY="$delivery") \
             > "$FIXTURE/command-$target-$delivery.log" 2>&1; then
@@ -64,6 +78,20 @@ for target in release-patch release-minor release-major release-resume; do
         [[ ! -e "$FIXTURE/runner-events" ]] || exit 1
     done
 done
+# Parallel qualification must refuse missing tools before any build/test phase.
+cat > "$FIXTURE/tool-ordering.mk" <<'MAKE'
+.PHONY: verify-shared-tooling host-tools-check check-format-tools check-pins
+verify-shared-tooling check-format-tools:
+	@:
+host-tools-check:
+	@exit 23
+check-pins:
+	@echo reached > build-events
+MAKE
+status=0
+(cd "$FIXTURE"; make -j2 --no-print-directory -f Makefile -f tool-ordering.mk validate-toolchain) \
+    > "$FIXTURE/tool-ordering.log" 2>&1 || status=$?
+[[ "$status" == 2 && ! -e "$FIXTURE/build-events" ]] || exit 1
 (cd "$FIXTURE"; make --no-print-directory release-patch)
 [[ "$(cat "$FIXTURE/runner-events")" == 'patch origin main' ]] || exit 1
 # The previous inline assignment forced preparation for every release entrypoint.

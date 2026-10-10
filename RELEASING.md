@@ -35,6 +35,12 @@ documentation maintenance; their spelling is not a release identity gate.
 Implementation and pending notes must be committed through an authorized
 contribution workflow before releasing. The selected source must be clean, on
 the selected branch, with no active build.
+
+Development `make validate` qualifies working-tree edits, including packaging
+with `--allow-dirty`; this does not create release receipts or admit dirty release
+source. The release adapter and the separate `make package` command retain their
+clean-source checks.
+
 Preserve the tracked dependency selections. Release entry points prepare the
 selected cache automatically before compiling the helper; for ordinary offline
 checks, prepare it explicitly:
@@ -44,8 +50,16 @@ make fetch-dependencies
 ```
 
 Both maintained workspaces track their `Cargo.lock`. The root lock is a required
-source-bound qualification input. Release preflight
-checks the selected cache with `cargo fetch --locked --offline`; it never retries
+source-bound qualification input. Release preflight prepares the existing
+checksum-pinned host selection with `make install-host-tools`,
+then admits it through `make host-tools-check check-format-tools` before the full
+gate. Setup follows coherent saved-source admission/cache preparation and is not
+replayed against interrupted metadata. Cargo-sort/rustfmt preparation retains its
+documented separate owner; release preparation does not install unrelated Cargo
+tools or the runtime server. Standalone validation remains offline and checks
+host/formatter prerequisites before builds, including under parallel Make.
+
+Release preflight checks the selected cache with `cargo fetch --locked --offline`; it never retries
 online or regenerates the lockfile. Validation, version refresh and packaging
 remain offline. A root-version refresh may change only the `ic-memory` entry,
 never dependency selection. Cache preparation remains a distinct step: the

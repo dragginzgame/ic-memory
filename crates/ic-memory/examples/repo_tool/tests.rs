@@ -553,6 +553,25 @@ impl Execute for Substitute {
                 }
                 Ok(String::new())
             }
+            "make" if args == ["--no-print-directory", "install-host-tools"] => {
+                if state.fail.as_deref() == Some("tool-setup") {
+                    return Err("fixture tool setup failure".into());
+                }
+                Ok(String::new())
+            }
+            "make"
+                if args
+                    == [
+                        "--no-print-directory",
+                        "host-tools-check",
+                        "check-format-tools",
+                    ] =>
+            {
+                if state.fail.as_deref() == Some("tool-check") {
+                    return Err("fixture offline tool admission failure".into());
+                }
+                Ok(String::new())
+            }
             "make"
                 if args
                     == [
@@ -961,6 +980,34 @@ fn inherited_compiler_configuration_refuses_preparation() {
             .iter()
             .any(|call| call[0] == "make")
     );
+}
+
+#[test]
+fn release_tool_setup_and_offline_admission_precede_gates_and_version_mutation() {
+    for phase in ["tool-setup", "tool-check"] {
+        let fixture = Fixture::new();
+        fixture.fail(phase);
+        assert!(fixture.prepare().is_err());
+        fixture.assert_original();
+        assert!(!fixture.repo.exec.state.borrow().calls.iter().any(|call| {
+            call.iter()
+                .any(|argument| argument == "validate" || argument == "update")
+        }));
+    }
+    let fixture = Fixture::new();
+    fixture.prepare().unwrap();
+    let state = fixture.repo.exec.state.borrow();
+    let position = |argument: &str| {
+        state
+            .calls
+            .iter()
+            .position(|call| call.iter().any(|value| value == argument))
+            .unwrap()
+    };
+    assert!(position("fetch") < position("install-host-tools"));
+    assert!(position("install-host-tools") < position("host-tools-check"));
+    assert!(position("host-tools-check") < position("validate"));
+    assert!(position("validate") < position("update"));
 }
 
 #[test]

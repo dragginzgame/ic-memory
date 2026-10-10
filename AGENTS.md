@@ -16,7 +16,7 @@ implementation and qualification without asking again. It does not authorize
 unrelated sibling edits, commits, pushes, releases or publication.
 
 The existing tooling snapshot at revision
-`43a0dc46cdc3c77e70a68e192561642ed50a3e0f` is recorded in
+`5864f468d39f8f9d1bd26fca1afe0e20f25f1b5e` is recorded in
 [.shared-tooling.snapshot](.shared-tooling.snapshot). It identifies the vendored
 files, hashes and executable modes; it does not freeze the active local policy.
 Keep its provenance accurate and never edit vendored files in place. Do not
@@ -26,7 +26,7 @@ also applies within its activation scope and is included in this recorded snapsh
 These instructions are the repository's local overlay.
 
 The single 89-file snapshot uses reviewed committed Shared Tooling at that
-revision, whose committed source `VERSION` is 0.2.10. The manifest records that
+revision, whose committed source `VERSION` is 0.2.13. The manifest records that
 display version separately from its authoritative commit identity. It includes
 the archiver, tool-evidence selector, their fixtures and the shared
 retention action. It replaces the supplemental archive manifest and its duplicate
@@ -106,11 +106,13 @@ The shared Make execution checker guards the runner, hook and consumer Rust
 validation adapter before gate dispatch. It refuses inherited Make modes that
 skip execution or ignore failures, preserving ordinary selections and jobserver
 settings. Qualify rejection through real Make with substituted release effects.
-Memory adds parse-time admission using normalized `MAKEFLAGS` and `MFLAGS` to
-reject unsafe modes hidden by command-line `MAKEFLAGS` replacement, before
-any recipe can dispatch. The immutable common guard remains unchanged; its
-canonical repair remains owned by
-[Shared #30](https://github.com/dragginzgame/shared-tooling/issues/30).
+The canonical Shared 0.2.11 include and behavioral probe admit `MAKEFLAGS` and
+GNU Make's generated `MFLAGS` independently before any recipe can dispatch.
+They reject erased Makefile/command-line `MFLAGS` evidence and hidden unsafe
+modes even when `MAKEFLAGS` is replaced. Memory's duplicate flag parser is removed;
+actual consumer fixtures qualify rejection and ordinary recursive/parallel calls.
+[Shared #30](https://github.com/dragginzgame/shared-tooling/issues/30) owns the
+delivered common repair; Memory's native adoption remains separately qualified.
 
 Follow the shared [contribution rules](rules/contributions.md). Ordinary fixes
 remain local; an explicit commit or PR request authorizes its scoped Git workflow.
@@ -134,8 +136,14 @@ and prerequisites are declared in [docs/host-support.md](docs/host-support.md).
   `make test-failure-evidence`, `make fmt-check`, `make lint-tooling`, or an appropriately
   selected Rust test. `make runtime-server-check` and `make test-runtime` are
   focused installed qualification with explicitly prepared tools and both caches.
-- Full gates: `make validate`, `make validate-toolchain`, `make wasm-size` and
-  package/release qualification. Run these only on explicit request or in CI.
+- Full delivery suite: run `make validate` before reporting a completed code
+  change as ready, under the current shared baseline's standing validation
+  authority. Reuse passing evidence for unchanged inputs; documentation-only
+  work needs link/consistency/diff checks. Inspection alone does not activate the
+  full suite. Development packaging qualifies working-tree edits; release
+  admission and the separate `make package` target still require clean source.
+  Release, publication and installed runtime qualification retain their separate
+  authority. Never commit merely to satisfy a check.
 - Dependency preparation: `make fetch-dependencies` is a separate network step.
   Both maintained workspaces track their existing selected lockfiles. The
   independent graph is prepared separately with

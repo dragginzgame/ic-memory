@@ -1,10 +1,4 @@
 .DEFAULT_GOAL := help
-# Shared #30: MFLAGS retains modes hidden by command-line MAKEFLAGS replacement.
-# Keep this consumer admission outside the immutable shared snapshot.
-override _memory_make_execution_flags := $(filter-out --% %=%,$(firstword $(MAKEFLAGS)) $(MFLAGS))
-ifneq ($(strip $(foreach mode,i n t q,$(findstring $(mode),$(_memory_make_execution_flags)))),)
-$(error ic-memory requires Make recipe execution and failure propagation; remove ignore-errors, dry-run, touch and question modes)
-endif
 .PHONY: help test version ensure-clean fetch-dependencies verify-shared-tooling check-pins test-pins \
         install-tools tools-check install-host-tools host-tools-check install-ic-tools ic-tools-check test-tools test-failure-evidence \
         fmt fmt-check check-format-tools install-hooks lint-tooling test-hooks test-tooling validate validate-toolchain wasm-size \
@@ -52,7 +46,8 @@ install-runtime-server: host-tools-check
 
 # Both CLI receipt/bytes and server archive/bytes are checked without downloads.
 runtime-server-check:
-	@cli="$$($(TESTKIT_CLI) --check)" && "$$cli" check --directory "$(TESTKIT_SERVER_DIRECTORY)"
+	@{ cli="$$($(TESTKIT_CLI) --check)" && "$$cli" check --directory "$(TESTKIT_SERVER_DIRECTORY)"; } || \
+	  { status=$$?; echo 'Prepare the selected CLI and server with make install-runtime-server.' >&2; exit "$$status"; }
 
 # Focused installed IO/upgrade qualification, separate from the library gates.
 # Build before launch so compilation does not consume the server lifetime.
@@ -143,19 +138,21 @@ version:
 ensure-clean:
 	@$(TOOL) ensure-clean
 
-# Full gates: explicitly requested qualification or configured CI only.
+# Full delivery suite; release/publication remain separately authorized.
 validate:
 	$(MAKE) --no-print-directory validate-toolchain
 	cargo +$$($(TOOL) msrv) check --locked --offline --all-targets
 
 validate-toolchain:
-	$(MAKE) --no-print-directory verify-shared-tooling host-tools-check check-pins test-pins test-tools test-tooling test-release-adapters test-release-runner test-hooks fmt-check
+	$(MAKE) --no-print-directory verify-shared-tooling host-tools-check check-format-tools
+	$(MAKE) --no-print-directory check-pins test-pins test-tools test-tooling test-release-adapters test-release-runner test-hooks fmt-check
 	cargo +$(VALIDATION_TOOLCHAIN) clippy --locked --offline --all-targets -- -D warnings
 	cargo +$(VALIDATION_TOOLCHAIN) test --locked --offline -- --test-threads=1
 	RUSTDOCFLAGS='-D warnings' cargo +$(VALIDATION_TOOLCHAIN) doc --locked --offline --no-deps
 	cargo +$(VALIDATION_TOOLCHAIN) check --locked --offline --target wasm32-unknown-unknown --tests
 	$(MAKE) --no-print-directory wasm-size
-	cargo +$(VALIDATION_TOOLCHAIN) package --locked --offline
+	# Validate working-tree edits; release admission separately requires clean source.
+	cargo +$(VALIDATION_TOOLCHAIN) package --locked --offline --allow-dirty
 
 wasm-size:
 	cargo +$(VALIDATION_TOOLCHAIN) build --locked --offline --profile wasm-size --target wasm32-unknown-unknown \
