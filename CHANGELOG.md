@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.35.11]
+
+- Adopt Shared Tooling 0.6.3 so normal release targets restart interrupted direct
+  preparation from clean descendant commits with retained intent and fresh gates
+  ([#62](https://github.com/dragginzgame/ic-memory/issues/62),
+  [Shared #126](https://github.com/dragginzgame/shared-tooling/issues/126)).
+- Retain older prepared-package receipts before fresh preparation so committed
+  metadata rollback does not block release restart
+  ([#65](https://github.com/dragginzgame/ic-memory/issues/65)).
+- Update release-helper dependencies to IC Host 0.14.0; Memory's callers are unchanged.
+
+[Detailed notes](docs/changelog/0.35.md)
+
 ## [0.35.10] - 2026-10-11
 
 - Adopt Shared Tooling 0.6.1 so failed Cargo setup stops with the original

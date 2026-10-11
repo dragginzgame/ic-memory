@@ -121,6 +121,24 @@ only its selected release. Conflicting payload, history, index, destination, tag
 or unfinished intent stops recovery.
 Inspect a stale lock's recorded owner before manual removal; do not steal it.
 
+If HEAD becomes a clean descendant commit after a `prepare` plan was saved,
+the normal direct target can supersede that local preparation before staging.
+The commit records the metadata disposition; it does not prove preparation never
+ran. The runner requires no staging evidence, unchanged destination and current
+metadata at the saved base or candidate. It archives the original intent, selects
+the requested increment from current metadata, then repeats preflight and the
+full gate. A committed candidate therefore becomes the base for the next increment.
+See the [restart contract](docs/releases.md#source-changes-after-saved-preparation-intent).
+Memory's preparation adapter changes local metadata and evidence only; existing
+validation receipts are retained before replacement. Dirty or divergent source
+still refuses restart. Unchanged HEAD and explicit resume retain exact recovery;
+staging and later phases reconcile their exact effects. Adoption and ordinary
+repair do not authorize a real release or recovery.
+After fresh successful validation, Memory also retains an older prepared receipt
+for the same release/destination and ancestor source before replacing it during
+new preparation. Retention failure preserves active evidence; unrelated or corrupt
+receipts refuse. Immutable package archives are kept.
+
 Preflight and validation failures restart fresh gates through the normal target,
 preserving prior attempts. Optional explicit selection uses the same checks:
 

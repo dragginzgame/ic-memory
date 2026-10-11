@@ -692,7 +692,7 @@ impl Execute for Substitute {
                     }
                     Ok(String::new())
                 }
-                ["merge-base", "--is-ancestor", "release", "HEAD"]
+                ["merge-base", "--is-ancestor", _, _]
                     if state.fail.as_deref() == Some("history") =>
                 {
                     Err("fixture unrelated history".into())
@@ -718,6 +718,24 @@ impl Execute for Substitute {
                         .join("\n"))
                 }
                 ["diff", "--name-only", "source", ..] => changed(&state.source),
+                ["diff", "--name-only", "fix", ..] => changed(
+                    state
+                        .descendant
+                        .as_ref()
+                        .ok_or("missing fixture descendant")?,
+                ),
+                ["diff", "--cached", "--name-only" | "--summary", "fix", ..] => {
+                    if state.staged {
+                        changed(
+                            state
+                                .descendant
+                                .as_ref()
+                                .ok_or("missing fixture descendant")?,
+                        )
+                    } else {
+                        Ok(String::new())
+                    }
+                }
                 ["diff", "--name-only"] => {
                     if state.staged {
                         Ok(String::new())
@@ -1567,6 +1585,76 @@ fn validation_lock_cannot_be_rebound_to_an_uncommitted_graph() {
         call.get(2)
             .is_some_and(|arg| matches!(arg.as_str(), "update" | "package"))
     }));
+}
+
+#[test]
+fn committed_preparation_restart_retains_receipts_before_fresh_preparation() {
+    let mut fixture = Fixture::new();
+    fixture.prepare().unwrap();
+    let validation = fixture.repo.validation_path("0.13.0").unwrap();
+    let prepared = fixture.repo.receipt_path("0.13.0", true).unwrap();
+    let old_validation = fs::read(&validation).unwrap();
+    let old_prepared = fs::read(&prepared).unwrap();
+    let old_evidence: PackageEvidence = serde_json::from_slice(&old_prepared).unwrap();
+    let archive = fixture
+        .repo
+        .retained_package(&old_evidence.package_sha256)
+        .unwrap();
+    let old_archive = fs::read(&archive).unwrap();
+    // Substitute a clean descendant committing rollback to the original metadata.
+    // No real Git commit, tag or release effect is created.
+    let mut descendant = fixture.repo.exec.state.borrow().source.clone();
+    descendant.insert("source.rs".to_owned(), "// committed fix\n".to_owned());
+    for (path, text) in &descendant {
+        fs::write(fixture.repo.root.join(path), text).unwrap();
+    }
+    fixture.repo.exec.state.borrow_mut().descendant = Some(descendant);
+    fixture.selection.source = "fix".to_owned();
+    fixture.repo.preflight(&fixture.selection).unwrap();
+    fixture.fail("validate");
+    assert!(fixture.repo.verify(&fixture.selection).is_err());
+    assert_eq!(fs::read(&validation).unwrap(), old_validation);
+    assert_eq!(fs::read(&prepared).unwrap(), old_prepared);
+    fixture.repo.exec.state.borrow_mut().fail = None;
+    for conflict in ["destination", "receipt"] {
+        let bytes = if conflict == "destination" {
+            let mut foreign: serde_json::Value = serde_json::from_slice(&old_prepared).unwrap();
+            foreign["validation"]["selection"]["remote"] = serde_json::json!("other");
+            serde_json::to_vec(&foreign).unwrap()
+        } else {
+            b"corrupted prepared receipt".to_vec()
+        };
+        fs::write(&prepared, &bytes).unwrap();
+        assert!(
+            fixture.repo.verify(&fixture.selection).is_err(),
+            "{conflict}"
+        );
+        assert_eq!(fs::read(&prepared).unwrap(), bytes);
+        assert_eq!(fs::read(&validation).unwrap(), old_validation);
+        fs::write(&prepared, &old_prepared).unwrap();
+    }
+    fixture.fail("history");
+    assert!(fixture.repo.verify(&fixture.selection).is_err());
+    assert_eq!(fs::read(&prepared).unwrap(), old_prepared);
+    assert_eq!(fs::read(&validation).unwrap(), old_validation);
+    fixture.repo.exec.state.borrow_mut().fail = None;
+    let attempts = validation.parent().unwrap().join("attempts");
+    fs::write(&attempts, b"blocked retention directory").unwrap();
+    assert!(fixture.repo.verify(&fixture.selection).is_err());
+    assert_eq!(fs::read(&prepared).unwrap(), old_prepared);
+    assert_eq!(fs::read(&validation).unwrap(), old_validation);
+    fs::remove_file(&attempts).unwrap();
+    fixture.repo.verify(&fixture.selection).unwrap();
+    fixture.repo.prepare_selected(&fixture.selection).unwrap();
+    let current: PackageEvidence = serde_json::from_slice(&fs::read(&prepared).unwrap()).unwrap();
+    assert_eq!(current.validation.selection.source, "fix");
+    let retained: Vec<_> = fs::read_dir(attempts)
+        .unwrap()
+        .map(|entry| fs::read(entry.unwrap().path()).unwrap())
+        .collect();
+    assert!(retained.contains(&old_validation));
+    assert!(retained.contains(&old_prepared));
+    assert_eq!(fs::read(&archive).unwrap(), old_archive);
 }
 
 #[test]

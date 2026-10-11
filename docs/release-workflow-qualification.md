@@ -3918,3 +3918,66 @@ await Memory delivery; no full local product gate, installed Wasm scenario or
 new native macOS acceptance is claimed. [#62](https://github.com/dragginzgame/ic-memory/issues/62)
 retains that acceptance. Host's old-source Apple Silicon Rust fixture failure is
 reported with raw logs in [Host #65](https://github.com/dragginzgame/ic-host-tooling/issues/65).
+
+## Shared Tooling 0.6.2 and Host 0.13.5 qualification
+
+Compatible pending Memory 0.35.11 selects committed Shared
+`7f1ca16b0dfa98021d2671017ecb7de767409b0e` through the canonical refresh, with
+the unchanged 94-file roster. The incoming Host artifacts/fs 0.13.5 lock selection
+is preserved. Host's committed library source is unchanged from 0.13.4.
+
+The canonical release runner passes under modern Bash and genuine Bash 3.2.57,
+including changed-source refusal for saved preparation intent, retained original
+evidence and fresh gates after simulated, separately inspected retirement.
+These fixtures substitute Git and metadata effects; no real release or recovery
+was performed. Memory's guide distinguishes its in-memory backups from a durable
+pre-mutation journal; absent receipts cannot establish no-effect proof.
+
+All 44 helper tests, warning-denied Clippy and Rust 1.88 helper checking pass
+against Host 0.13.5. Consumer release adapters, lint, pins/metadata, installed
+host/IC/Cargo admission and two-workspace formatting pass. Tool build identities
+are unchanged, so no reinstall is required. Both incoming locks and 25 prior
+binary/receipt/input/log hashes remain unchanged. Evidence is retained in
+`/tmp/memory-shared062-*.log`, `/tmp/memory-host0135-*.log` and
+`/tmp/memory-shared062-preserved.sha256`.
+
+Delivered Memory 0.35.10 is `a737670db9a5d4c998aad4fac356eb2e3174a5ec`.
+[Its matching CI](https://github.com/dragginzgame/ic-memory/actions/runs/38143177639)
+passes Linux lint, MSRV and installed runtime at inspection; Linux full testing
+is running and both macOS matrices are queued. This pending adoption has no
+remote run of its own. Full local product validation and new installed Wasm
+scenarios were not run; [#62](https://github.com/dragginzgame/ic-memory/issues/62)
+retains native acceptance.
+
+## Shared Tooling 0.6.3 and Host 0.14.0 qualification
+
+The same pending Memory 0.35.11 batch now canonically selects Shared
+`4fd979d13c32adb3cb2f51f213ebfc4f98339b3d` (0.6.3), with the unchanged 94-file
+roster. Both modern Bash and genuine Bash 3.2.57 pass its direct-preparation
+restart simulations, including committed base/candidate metadata, requested
+increments, retained intent, fresh validation failure and conflict refusal.
+Git/metadata effects remain substituted; no real release or recovery ran.
+
+A consumer regression reproduced stale prepared-package evidence blocking the
+same-candidate restart after committed metadata rollback. Memory now retains
+that admitted ancestor receipt alongside previous validation attempts after
+fresh successful gates. The regression checks failed validation, foreign
+destination, corrupt receipt, divergent ancestry and failed retention before
+successful fresh preparation, preserving prior receipt/archive bytes.
+[#65](https://github.com/dragginzgame/ic-memory/issues/65) owns this repair.
+
+All 45 helper tests, warning-denied helper Clippy and Rust 1.88 helper checking
+pass on the maintainer's incoming Host artifacts/fs 0.14.0 graph. Host's changed
+process APIs are outside this graph; its used artifact/filesystem source is
+unchanged. Release dispatch/lint, pin/metadata, installed-tool and formatter
+checks pass. Evidence is retained in `/tmp/memory-shared063-*.log` and
+`/tmp/memory-host0140-*.log`, including the failed reproduction. Incoming manifest
+and both locks remain byte-identical; tool identities and earlier generations
+are unchanged, so no reinstall is required. The 0.6.2 section above remains
+evidence of the superseded local attempt.
+
+Delivered Memory 0.35.10 CI now passes Linux and Apple Silicon testing plus Intel
+MSRV; other required macOS lanes remain unfinished at inspection. Pending source
+has no matching remote run. No full local product gate or new installed Wasm
+scenario was run; [#62](https://github.com/dragginzgame/ic-memory/issues/62) retains
+delivery/native acceptance.

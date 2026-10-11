@@ -1068,18 +1068,57 @@ impl<E: Execute> Repository<E> {
         )?;
         self.verify_inputs(&evidence, false)?;
         let path = self.validation_path(&selection.version)?;
-        if path.exists() {
-            let retained = path
+        let prepared_path = self.receipt_path(&selection.version, true)?;
+        let stale_prepared = if prepared_path.exists() {
+            let prepared: PackageEvidence = serde_json::from_slice(&fs::read(&prepared_path)?)?;
+            let previous = &prepared.validation.selection;
+            if previous.source == selection.source {
+                None
+            } else {
+                require(
+                    previous.kind == selection.kind
+                        && previous.previous == selection.previous
+                        && previous.version == selection.version
+                        && previous.remote == selection.remote
+                        && previous.branch == selection.branch,
+                    "superseded preparation identifies another release or destination",
+                )?;
+                require(
+                    prepared.package_head == previous.source,
+                    "superseded package evidence differs from its preparation source",
+                )?;
+                self.git(&[
+                    "merge-base",
+                    "--is-ancestor",
+                    &previous.source,
+                    &selection.source,
+                ])?;
+                Some(prepared_path)
+            }
+        } else {
+            None
+        };
+        for (receipt, kind) in std::iter::once((&path, "validated"))
+            .chain(stale_prepared.as_ref().map(|receipt| (receipt, "prepared")))
+            .filter(|(receipt, _)| receipt.exists())
+        {
+            let retained = receipt
                 .parent()
                 .ok_or("validation path has no parent")?
                 .join("attempts")
                 .join(format!(
-                    "{}-validated.{}.{}.json",
+                    "{}-{kind}.{}.{}.json",
                     selection.version,
                     std::process::id(),
                     SystemTime::now().duration_since(UNIX_EPOCH)?.as_nanos()
                 ));
-            self.exec.write_bytes(&retained, &fs::read(&path)?)?;
+            self.exec.write_bytes(&retained, &fs::read(receipt)?)?;
+        }
+        // Fresh successful validation supersedes only an admitted older source.
+        // Preserve both receipts first; unchanged-source recovery keeps its active
+        // prepared receipt and existing integrity checks.
+        if let Some(receipt) = stale_prepared {
+            fs::remove_file(receipt)?;
         }
         self.exec.write_json(&path, &evidence)
     }

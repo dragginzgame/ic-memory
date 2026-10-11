@@ -145,18 +145,18 @@ checksum = "ed5909b6e89a2db4456e54cd5f673791d7eca6732202bbf2a9cc504fe2f9b84a"
 
 [[package]]
 name = "ic-host-artifacts"
-version = "0.13.4"
+version = "0.14.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5b064d9265304be9f4377128372c4c4bf6dd5903d95dd60a23575462d2f893c4"
+checksum = "04f90382ac3aaf0c4c395b481bcec850cdba7d3825cd75a6eb6e4f6e4a83dbb6"
 dependencies = [
  "sha2",
 ]
 
 [[package]]
 name = "ic-host-fs"
-version = "0.13.4"
+version = "0.14.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "952bf86810c02a1874062e8db11f8e8e5ccf55a775e74f8095141bc6a488430e"
+checksum = "598a8fc71cac82e6f5f70ec32a5a0e9e76bdc11c9eae77acb8b3c741190630b6"
 dependencies = [
  "ic-host-artifacts",
  "rustix",
@@ -296,9 +296,9 @@ dependencies = [
 
 [[package]]
 name = "serde_json"
-version = "1.0.152"
+version = "1.0.153"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1741ab7a6cc54a03a89b5d563ed60075c277d9e3cfa73ad0c1f23f23974703c6"
+checksum = "aa62079d232416ecf7b2f938d389e28bbcd3677bcdb67b42e2f29c2433552176"
 dependencies = [
  "itoa",
  "memchr",
