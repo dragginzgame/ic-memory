@@ -19,6 +19,7 @@ repository_root="$2"
 [[ "$repository_root" == /* ]] || repository_root="$PWD/$repository_root"
 [[ -d "$temp_root" && -d "$repository_root" ]] || { echo 'evidence roots must be existing directories' >&2; exit 1; }
 inputs=()
+complete=true
 shopt -s nullglob
 for path in "$temp_root/ic-memory-fixtures" "$temp_root/tools-setup.log" "$temp_root/tools-check.log" \
     "$temp_root/dependencies.log" "$temp_root/validation.log" \
@@ -29,31 +30,78 @@ for path in "$temp_root/ic-memory-fixtures" "$temp_root/tools-setup.log" "$temp_
         inputs+=("$temp_root" "${path#"$temp_root/"}")
     fi
 done
-for path in "$repository_root/target/qualification" "$repository_root/target/release-validation" \
-    "$repository_root/.tools/rust" "$repository_root/.tools/ic-testkit-server"; do
-    if [[ -e "$path" || -L "$path" ]]; then
-        inputs+=("$repository_root" "${path#"$repository_root/"}")
+bundles=()
+select_tools=false
+diagnostics=""
+for local_root in target .tools; do
+    if [[ -L "$repository_root/$local_root" ]]; then
+        # Retain the final link, never its children. Their rejection must not
+        # discard independent logs or evidence from the other physical root.
+        inputs+=("$repository_root" "$local_root")
+        complete=false
+        [[ -n "$diagnostics" ]] || diagnostics="$(mktemp -d "$temp_root/tool-evidence.XXXXXX")"
+        printf 'Evidence incomplete: %s is a symlink; retaining the link without following its target.\n' \
+            "$local_root" >> "$diagnostics/local-selection.log"
+    else
+        case "$local_root" in
+            target) paths=(target/qualification target/release-validation) ;;
+            .tools)
+                paths=(.tools/ic-testkit-server)
+                bundles=("$repository_root"/.tools/host-set.* "$repository_root"/.tools/ic-set.*)
+                if [[ ${#bundles[@]} != 0 || -d "$repository_root/.tools/rust" ]]; then
+                    select_tools=true
+                fi
+                if [[ -L "$repository_root/.tools/rust" || ( -e "$repository_root/.tools/rust" && ! -d "$repository_root/.tools/rust" ) ]]; then
+                    # The shared selector owns physical Rust trees. Retain an
+                    # inadmissible leaf locally without traversing it.
+                    paths+=(.tools/rust)
+                    complete=false
+                    [[ -n "$diagnostics" ]] || diagnostics="$(mktemp -d "$temp_root/tool-evidence.XXXXXX")"
+                    printf 'Evidence incomplete: .tools/rust is not a physical directory; retaining the leaf without following it.\n' >> "$diagnostics/local-selection.log"
+                fi
+                ;;
+        esac
+        for path in "${paths[@]}"; do
+            if [[ -e "$repository_root/$path" || -L "$repository_root/$path" ]]; then
+                inputs+=("$repository_root" "$path")
+            fi
+        done
     fi
 done
-bundles=("$repository_root"/.tools/host-set.* "$repository_root"/.tools/ic-set.*)
-if [[ ${#bundles[@]} != 0 ]]; then
-    diagnostics="$(mktemp -d "$temp_root/tool-evidence.XXXXXX")"
+if [[ -n "$diagnostics" ]]; then
+    cat "$diagnostics/local-selection.log" >&2
+fi
+if [[ "$select_tools" == true ]]; then
+    [[ -n "$diagnostics" ]] || diagnostics="$(mktemp -d "$temp_root/tool-evidence.XXXXXX")"
     selector=(bash "$ROOT/scripts/ci/select-tool-evidence.sh" "$mode" "$repository_root" "$diagnostics")
     if [[ "$mode" == compact ]]; then
         selector+=("$repository_root/ci/tool-versions.env" "$repository_root/ci/ic-tools.tsv")
     fi
-    "${selector[@]}" > "$diagnostics/selection"
-    while IFS= read -r -d '' selection_root; do
-        IFS= read -r -d '' selection_path
+    selector_status=0
+    "${selector[@]}" > "$diagnostics/selection" 2> "$diagnostics/selection.log" || selector_status=$?
+    if [[ "$selector_status" != 0 ]]; then
+        complete=false
+        printf '%s\n' "$selector_status" > "$diagnostics/selection-status"
+        echo 'Tool evidence incomplete; retaining available product logs and selection diagnostics.' >&2
+        cat "$diagnostics/selection.log" >&2
+    fi
+    while IFS= read -r -d '' selection_root && IFS= read -r -d '' selection_path; do
         inputs+=("$selection_root" "$selection_path")
     done < "$diagnostics/selection"
-    if [[ -d "$diagnostics/host" || -d "$diagnostics/ic" ]]; then
+fi
+if [[ -n "$diagnostics" ]]; then
+    if [[ "$complete" == false || -d "$diagnostics/host" || -d "$diagnostics/ic" || -s "$diagnostics/selection.log" ]]; then
         inputs+=("$temp_root" "${diagnostics#"$temp_root/"}")
     else
-        rm "$diagnostics/selection"
+        rm "$diagnostics/selection" "$diagnostics/selection.log"
         rmdir "$diagnostics"
     fi
 fi
-[[ ${#inputs[@]} != 0 ]] || exit 0
-archive_dir="$(mktemp -d "$temp_root/ic-memory-evidence.XXXXXX")"
-bash "$ROOT/scripts/ci/archive-evidence.sh" "$archive_dir/evidence.tar.gz" "${inputs[@]}"
+if [[ ${#inputs[@]} != 0 ]]; then
+    archive_dir="$(mktemp -d "$temp_root/ic-memory-evidence.XXXXXX")"
+    bash "$ROOT/scripts/ci/archive-evidence.sh" "$archive_dir/evidence.tar.gz" "${inputs[@]}"
+fi
+# Publish completeness only after the selected evidence has been archived.
+if [[ -n "${GITHUB_OUTPUT:-}" ]]; then
+    printf 'collection-complete=%s\n' "$complete" >> "$GITHUB_OUTPUT"
+fi

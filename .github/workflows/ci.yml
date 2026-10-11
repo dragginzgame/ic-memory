@@ -83,7 +83,7 @@ jobs:
             echo "$PWD/.tools/ic/bin"
             echo "$PWD/.tools/rust/common/bin"
           } >> "$GITHUB_PATH"
-      - name: Qualify native shared host and IC reuse without downloads
+      - name: Qualify native shared host, IC and Cargo reuse offline
         shell: bash
         run: |
           sharing="$RUNNER_TEMP/ic-memory-fixtures/shared-tools"
@@ -101,6 +101,20 @@ jobs:
                 > "$sharing/$kind-$mode.log" 2>&1
             done
             test "$(cd ".tools/$kind" && pwd -P)" = "$(cd "$sharing/consumer/.tools/$kind" && pwd -P)"
+          done
+          cp rust-toolchain.toml "$sharing/consumer/"
+          for mode in install check; do
+            options=()
+            if [[ "$mode" == check ]]; then options=(--check); fi
+            CARGO_NET_OFFLINE=true RUSTUP_AUTO_INSTALL=0 \
+              bash scripts/dev/install-rust-tools.sh --consumer "$sharing/consumer" \
+              --versions "$PWD/ci/tool-versions.env" ${options[@]+"${options[@]}"} \
+              > "$sharing/rust-$mode.log" 2>&1
+          done
+          # Equal physical executables prove reuse of the prepared generation.
+          for tool in cargo-sort cargo-sort-derives candid-extractor; do
+            perl -MCwd=abs_path -e 'my ($a,$b)=map {abs_path($_)} @ARGV; exit(defined($a) && defined($b) && $a eq $b ? 0 : 1)' \
+              ".tools/rust/common/bin/$tool" "$sharing/consumer/.tools/rust/common/bin/$tool"
           done
       - name: Check both workspaces without changing files
         run: make fmt-check
@@ -164,6 +178,12 @@ jobs:
           path: ${{ steps.failure-evidence.outputs.path }}
           retention-days: 14
           if-no-files-found: error
+      - name: Report incomplete evidence after retention
+        if: ${{ failure() && steps.failure-evidence.outputs.collection-complete == 'false' }}
+        shell: bash
+        run: |
+          echo 'Evidence collection was incomplete; inspect retained selection diagnostics.' >&2
+          exit 1
 
   runtime:
     strategy:
@@ -224,6 +244,12 @@ jobs:
           path: ${{ steps.failure-evidence.outputs.path }}
           retention-days: 14
           if-no-files-found: error
+      - name: Report incomplete evidence after retention
+        if: ${{ failure() && steps.failure-evidence.outputs.collection-complete == 'false' }}
+        shell: bash
+        run: |
+          echo 'Evidence collection was incomplete; inspect retained selection diagnostics.' >&2
+          exit 1
 
   msrv:
     strategy:

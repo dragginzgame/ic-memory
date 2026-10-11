@@ -135,6 +135,45 @@ tar -xzf "$output" -C "$fixture/action-unpacked"
 cmp "$fixture/action-temp/portable-regression.log" "$fixture/action-unpacked/portable-regression.log"
 [[ ! -e "$fixture/action-unpacked/.tools/$active" ]] || exit 1
 cmp "$candidate/payload" "$fixture/action-unpacked/.tools/$kind-set.evidenceCandidate/payload"
+
+# A rejected store must not prevent uploading independent local evidence.
+mkdir -p "$fixture/rejected/consumer/.tools/host-set.failed" "$fixture/rejected/consumer/.tools/rust/build" "$fixture/rejected/outside"
+printf 'local failed payload\n' > "$fixture/rejected/consumer/.tools/host-set.failed/payload"
+printf 'local failed build\n' > "$fixture/rejected/consumer/.tools/rust/build/payload"
+printf 'never collect this\n' > "$fixture/rejected/outside/private"
+ln -s "$fixture/rejected/outside" "$fixture/rejected/store-link"
+mkdir "$fixture/rejected/writable-store"
+chmod 0777 "$fixture/rejected/writable-store"
+ln -s "$fixture/rejected/outside" "$fixture/rejected/consumer/.tools/ic-set.reference"
+yq -o json '.' "$ROOT/.github/actions/retain-failure-evidence/action.yml" |
+    jq -er '.runs.steps[] | select(.id == "completeness") | .run' > "$fixture/completeness.sh"
+for bad_store in "$fixture/rejected/store-link" relative-store "$fixture/rejected/new/./store" "$fixture/rejected/writable-store"; do
+    for compact in true false; do
+        attempt="$(mktemp -d "$fixture/rejected/attempt.XXXXXX")"
+        printf 'original setup failure\n' > "$attempt/tools-install.log"
+        SHARED_TOOLING_STORE="$bad_store" EVIDENCE_TEMP_ROOT="$attempt" \
+            EVIDENCE_REPOSITORY_ROOT="$fixture/rejected/consumer" \
+            EVIDENCE_ACTION_ROOT="$ROOT/.github/actions/retain-failure-evidence" \
+            EVIDENCE_COMPACT="$compact" GITHUB_OUTPUT="$attempt/output" RUNNER_TEMP="$attempt" \
+            "$BASH" --noprofile --norc -e -o pipefail "$fixture/collector.sh" > "$attempt/collector.log" 2>&1
+        grep -qx 'collection-complete=false' "$attempt/output"
+        output="$(sed -n 's/^path=//p' "$attempt/output")"
+        mkdir "$attempt/unpacked"
+        tar -xzf "$output" -C "$attempt/unpacked"
+        cmp "$attempt/tools-install.log" "$attempt/unpacked/tools-install.log"
+        for local_file in host-set.failed/payload rust/build/payload; do
+            cmp "$fixture/rejected/consumer/.tools/$local_file" "$attempt/unpacked/.tools/$local_file"
+        done
+        [[ -L "$attempt/unpacked/.tools/ic-set.reference" &&
+           -z "$(find "$attempt/unpacked" -type f -name private)" ]] || exit 1
+        detail=("$attempt/unpacked"/tool-evidence.*)
+        [[ ${#detail[@]} == 1 && "$(cat "${detail[0]}/selection-status")" != 0 &&
+           -s "${detail[0]}/selection.log" ]] || exit 1
+        if "$BASH" -e "$fixture/completeness.sh" > "$attempt/completeness.log" 2>&1; then
+            echo 'incomplete collection was reported as success' >&2; exit 1
+        fi
+    done
+done
 rm -rf "$candidate"
 echo 'Successful tool compaction, failed verification, unknown selections and actual collector passed'
 fixture_complete=true

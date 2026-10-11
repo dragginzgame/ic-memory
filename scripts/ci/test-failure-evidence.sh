@@ -88,10 +88,18 @@ printf 'unrelated store payload\n' > "$SHARED_TOOLING_STORE/unrelated/private"
 ln -s "$shared_bundle" "$repository_root/.tools/host-set.shared"
 ln -s "$shared_bundle" "$repository_root/.tools/host-set.sharedDuplicate"
 ln -s "$SHARED_TOOLING_STORE/unrelated" "$repository_root/.tools/ic-set.unknown"
+rust_bundle="$(source "$ROOT/scripts/dev/tool-store.sh"; tool_store_init rust evidence; printf '%s/set.evidence\n' "$store_slot")"
+(umask 077; mkdir -p "$rust_bundle/build")
+printf 'shared Cargo build failure\n' > "$rust_bundle/build/install.log"
+printf 'published source receipt\n' > "$rust_bundle/selection.json"
+ln -s "$rust_bundle" "$repository_root/.tools/rust/rust-set.shared"
+ln -s "$rust_bundle" "$repository_root/.tools/rust/rust-set.sharedDuplicate"
+ln -s "$SHARED_TOOLING_STORE/unrelated" "$repository_root/.tools/rust/rust-set.unknown"
 
 # Relative entry points must ignore inherited CDPATH when locating helpers.
-archive="$(cd "$ROOT" && CDPATH="$ROOT" bash scripts/ci/collect-failure-evidence.sh "$temp_root" "$repository_root")"
+archive="$(cd "$ROOT" && GITHUB_OUTPUT="$fixture/full-output" CDPATH="$ROOT" bash scripts/ci/collect-failure-evidence.sh "$temp_root" "$repository_root")"
 [[ -f "$archive" && "${archive##*/}" == evidence.tar.gz ]] || exit 1
+[[ "$(cat "$fixture/full-output")" == collection-complete=true ]] || exit 1
 bash "$ROOT/scripts/ci/verify-file-checksum.sh" --print sha256 "$archive" > "$fixture/archive.sha256"
 (cd "$ROOT" && CDPATH="$ROOT" bash scripts/ci/verify-failure-evidence.sh "$fixture" "$archive")
 
@@ -108,6 +116,19 @@ cp "$fixture/archive.sha256" "$fixture/original.sha256"
 bash "$ROOT/scripts/ci/verify-file-checksum.sh" --print sha256 "$compact" > "$fixture/archive.sha256"
 bash "$ROOT/scripts/ci/verify-failure-evidence.sh" "$fixture" "$compact"
 mv "$fixture/original.sha256" "$fixture/archive.sha256"
+# Rust-only checkouts must invoke the selector without any host/IC references.
+mkdir -p "$fixture/rust-only/.tools" "$fixture/rust-only-temp"
+cp -R "$repository_root/.tools/rust" "$fixture/rust-only/.tools/"
+rust_archive="$(GITHUB_OUTPUT="$fixture/rust-only-output" bash "$ROOT/scripts/ci/collect-failure-evidence.sh" "$fixture/rust-only-temp" "$fixture/rust-only")"
+[[ "$(cat "$fixture/rust-only-output")" == collection-complete=true ]] || exit 1
+mkdir "$fixture/rust-only-unpacked"
+tar -xzf "$rust_archive" -C "$fixture/rust-only-unpacked"
+rust_path="${rust_bundle#"$SHARED_TOOLING_STORE/"}"
+cmp "$rust_bundle/build/install.log" "$fixture/rust-only-unpacked/$rust_path/build/install.log"
+cmp "$repository_root/.tools/rust/build/cargo-attempt.test/install.log" "$fixture/rust-only-unpacked/.tools/rust/build/cargo-attempt.test/install.log"
+tar -tzf "$rust_archive" > "$fixture/rust-only-members"
+[[ "$(awk '{ sub(/^\.\//, "") } $0 == ".tools/rust/" { count++ } END { print count+0 }' "$fixture/rust-only-members")" == 1 ]] || exit 1
+[[ "$(awk -v member="$rust_path/build/install.log" '{ sub(/^\.\//, "") } $0 == member { count++ } END { print count+0 }' "$fixture/rust-only-members")" == 1 ]] || exit 1
 # Valid archive bytes and a matching input log must not admit the wrong status.
 # The verifier's conditional assertions need explicit failure on Bash 3.2.
 cp "$temp_root/validation.log" "$fixture/original-validation.log"
@@ -130,6 +151,137 @@ mkdir "$fixture/empty-temp" "$fixture/empty-repository"
 empty_entries=("$fixture/empty-temp"/*)
 [[ ${#empty_entries[@]} == 0 ]] || exit 1
 
+# Rejected store admission must not discard the independent failure logs. The
+# selector still owns which tool references may be retained; never follow an
+# unknown link while recovering product evidence.
+for selection_mode in full compact; do
+    for rejected_store in relative redirected; do
+        rejected="$fixture/rejected-$selection_mode-$rejected_store"
+        mkdir -p "$rejected/temp" "$rejected/repository/.tools/host-set.retained" \
+            "$rejected/repository/.tools/rust/build" "$rejected/private" "$rejected/unpacked"
+        cp "$temp_root/validation.log" "$rejected/temp/validation.log"
+        printf 'local installer diagnostics\n' > "$rejected/repository/.tools/host-set.retained/install.log"
+        printf 'local Cargo failure\n' > "$rejected/repository/.tools/rust/build/install.log"
+        printf 'must not be collected\n' > "$rejected/private/secret"
+        ln -s "$rejected/private" "$rejected/repository/.tools/ic-set.unknown"
+        rejected_path=relative
+        if [[ "$rejected_store" == redirected ]]; then
+            ln -s private "$rejected/store"
+            rejected_path="$rejected/store"
+        fi
+        rejected_archive="$(SHARED_TOOLING_STORE="$rejected_path" GITHUB_OUTPUT="$rejected/outputs" \
+            bash "$ROOT/scripts/ci/collect-failure-evidence.sh" "$rejected/temp" \
+            "$rejected/repository" "$selection_mode" 2> "$rejected/error")"
+        [[ -f "$rejected_archive" && -s "$rejected/error" && \
+            "$(cat "$rejected/outputs")" == collection-complete=false ]] || exit 1
+        tar -xzf "$rejected_archive" -C "$rejected/unpacked"
+        cmp "$temp_root/validation.log" "$rejected/unpacked/validation.log"
+        statuses=("$rejected/unpacked"/tool-evidence.*/selection-status)
+        [[ ${#statuses[@]} == 1 && "$(cat "${statuses[0]}")" == 1 ]] || exit 1
+        cmp "$rejected/temp/"tool-evidence.*/selection.log "${statuses[0]%/*}/selection.log"
+        [[ -s "${statuses[0]%/*}/selection.log" ]] || exit 1
+        cmp "$rejected/repository/.tools/host-set.retained/install.log" "$rejected/unpacked/.tools/host-set.retained/install.log"
+        cmp "$rejected/repository/.tools/rust/build/install.log" "$rejected/unpacked/.tools/rust/build/install.log"
+        [[ -L "$rejected/unpacked/.tools/ic-set.unknown" && \
+            "$(readlink "$rejected/unpacked/.tools/ic-set.unknown")" == "$rejected/private" ]] || exit 1
+        tar -tzf "$rejected_archive" > "$rejected/members"
+        if grep -q '/secret$' "$rejected/members"; then echo 'unadmitted store payload collected' >&2; exit 1; fi
+    done
+done
+
+# A redirected Rust leaf is retained without its outside build payload.
+for selection_mode in full compact; do
+    redirected="$fixture/redirected-rust-$selection_mode"
+    mkdir -p "$redirected/temp" "$redirected/repository/.tools" "$redirected/private" "$redirected/unpacked"
+    cp "$temp_root/validation.log" "$redirected/temp/validation.log"
+    printf 'outside Rust payload\n' > "$redirected/private/secret"
+    ln -s "$redirected/private" "$redirected/repository/.tools/rust"
+    redirected_archive="$(GITHUB_OUTPUT="$redirected/outputs" bash "$ROOT/scripts/ci/collect-failure-evidence.sh" \
+        "$redirected/temp" "$redirected/repository" "$selection_mode" 2> "$redirected/error")"
+    [[ "$(cat "$redirected/outputs")" == collection-complete=false && -s "$redirected/error" ]] || exit 1
+    tar -xzf "$redirected_archive" -C "$redirected/unpacked"
+    cmp "$temp_root/validation.log" "$redirected/unpacked/validation.log"
+    [[ -L "$redirected/unpacked/.tools/rust" && \
+        "$(readlink "$redirected/unpacked/.tools/rust")" == "$redirected/private" ]] || exit 1
+    tar -tzf "$redirected_archive" > "$redirected/members"
+    if grep -q '/secret$' "$redirected/members"; then echo 'redirected Rust payload collected' >&2; exit 1; fi
+done
+
+# Redirected checkout roots retain their final links and independent evidence,
+# never outside payloads. Physical evidence from the other root stays selected.
+for selection_mode in full compact; do
+    for redirected_root in target .tools both; do
+        redirected="$fixture/redirected-$redirected_root-$selection_mode"
+        mkdir -p "$redirected/temp" "$redirected/repository" "$redirected/unpacked"
+        cp "$temp_root/validation.log" "$redirected/temp/validation.log"
+        for path in rust ic-testkit-server host-set.retained qualification release-validation; do
+            mkdir -p "$redirected/outside/$path"
+            printf 'outside private payload\n' > "$redirected/outside/$path/private"
+        done
+        aliases=("$redirected_root")
+        [[ "$redirected_root" != both ]] || aliases=(target .tools)
+        for alias in "${aliases[@]}"; do
+            ln -s "$redirected/outside" "$redirected/repository/$alias"
+        done
+        physical=()
+        case "$redirected_root" in
+            target) physical=(.tools/rust .tools/ic-testkit-server .tools/host-set.retained) ;;
+            .tools) physical=(target/qualification target/release-validation) ;;
+        esac
+        for path in ${physical[@]+"${physical[@]}"}; do
+            mkdir -p "$redirected/repository/$path"
+            printf 'independent physical evidence\n' > "$redirected/repository/$path/local"
+        done
+        redirected_archive="$(GITHUB_OUTPUT="$redirected/outputs" \
+            bash "$ROOT/scripts/ci/collect-failure-evidence.sh" "$redirected/temp" \
+            "$redirected/repository" "$selection_mode" 2> "$redirected/error")"
+        [[ -f "$redirected_archive" && -s "$redirected/error" && \
+            "$(cat "$redirected/outputs")" == collection-complete=false ]] || exit 1
+        tar -xzf "$redirected_archive" -C "$redirected/unpacked"
+        cmp "$temp_root/validation.log" "$redirected/unpacked/validation.log"
+        for path in ${physical[@]+"${physical[@]}"}; do
+            cmp "$redirected/repository/$path/local" "$redirected/unpacked/$path/local"
+        done
+        # Listing archive members avoids traversing the preserved absolute links.
+        tar -tzf "$redirected_archive" > "$redirected/members"
+        for alias in "${aliases[@]}"; do
+            [[ -L "$redirected/unpacked/$alias" && \
+                "$(readlink "$redirected/unpacked/$alias")" == "$redirected/outside" ]] || exit 1
+            while IFS= read -r member; do
+                [[ "$member" != "./$alias/"* ]] || { echo 'redirected payload must not be archived' >&2; exit 1; }
+            done < "$redirected/members"
+        done
+        diagnostics=("$redirected/unpacked"/tool-evidence.*/local-selection.log)
+        [[ ${#diagnostics[@]} == 1 && -s "${diagnostics[0]}" ]] || exit 1
+        cmp "$redirected/error" "${diagnostics[0]}"
+    done
+done
+
+# A selector may fail after emitting admitted pairs. Retain those complete
+# selections, its exact status/stderr and product logs; ignore a trailing root
+# without a path. Substitute only selection, keeping the real collector/archive.
+partial_root="$fixture/partial-selector"
+mkdir -p "$partial_root/scripts/ci" "$partial_root/temp" "$partial_root/repository/.tools/host-set.selected" \
+    "$partial_root/unpacked"
+cp "$ROOT/scripts/ci/collect-failure-evidence.sh" "$ROOT/scripts/ci/archive-evidence.sh" "$partial_root/scripts/ci/"
+cat > "$partial_root/scripts/ci/select-tool-evidence.sh" <<'SELECTOR'
+#!/usr/bin/env bash
+printf '%s\0%s\0%s\0' "$2" '.tools/host-set.selected' "$2"
+printf 'controlled partial selector failure\n' >&2
+exit 17
+SELECTOR
+cp "$temp_root/validation.log" "$partial_root/temp/validation.log"
+printf 'admitted tool diagnostics\n' > "$partial_root/repository/.tools/host-set.selected/install.log"
+partial_archive="$(GITHUB_OUTPUT="$partial_root/outputs" bash "$partial_root/scripts/ci/collect-failure-evidence.sh" \
+    "$partial_root/temp" "$partial_root/repository" 2> "$partial_root/error")"
+[[ -f "$partial_archive" && "$(cat "$partial_root/outputs")" == collection-complete=false ]] || exit 1
+tar -xzf "$partial_archive" -C "$partial_root/unpacked"
+cmp "$temp_root/validation.log" "$partial_root/unpacked/validation.log"
+cmp "$partial_root/repository/.tools/host-set.selected/install.log" "$partial_root/unpacked/.tools/host-set.selected/install.log"
+statuses=("$partial_root/unpacked"/tool-evidence.*/selection-status)
+[[ ${#statuses[@]} == 1 && "$(cat "${statuses[0]}")" == 17 && \
+    "$(cat "${statuses[0]%/*}/selection.log")" == 'controlled partial selector failure' ]] || exit 1
+
 # Caller selection must not trim a newline from a root before shared admission.
 mkdir "$fixture/selection" "$fixture/selection"$'\n' "$fixture/selection-repo" "$fixture/selection-unpacked"
 printf 'selected root\n' > "$fixture/selection"$'\n/validation.log'
@@ -142,11 +294,11 @@ cmp "$fixture/selection"$'\n/validation.log' "$fixture/selection-unpacked/valida
 mkdir "$fixture/bin"
 printf '#!%s\nprintf "partial archive"\nexit 23\n' "$BASH" > "$fixture/bin/tar"
 chmod +x "$fixture/bin/tar"
-if PATH="$fixture/bin:$PATH" bash "$ROOT/scripts/ci/collect-failure-evidence.sh" \
+if PATH="$fixture/bin:$PATH" GITHUB_OUTPUT="$fixture/failed-fields" bash "$ROOT/scripts/ci/collect-failure-evidence.sh" \
     "$temp_root" "$repository_root" > "$fixture/failed-output" 2> "$fixture/failed-error"; then
     echo 'expected archive failure' >&2; exit 1
 fi
-[[ ! -s "$fixture/failed-output" && -s "$fixture/failed-error" ]] || exit 1
+[[ ! -s "$fixture/failed-output" && -s "$fixture/failed-error" && ! -s "$fixture/failed-fields" ]] || exit 1
 partial=0
 printf 'partial archive' > "$fixture/partial-content"
 for path in "$temp_root"/ic-memory-evidence.*/evidence.tar.gz; do

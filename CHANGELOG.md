@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.35.9]
+
+- Adopt Shared Tooling 0.6.0: Cargo tools reuse verified shared builds and
+  failure archives retain their local references and selected shared evidence.
+  Rerun common Rust and runtime-server setup/checks; existing PATH stays valid.
+  [#62](https://github.com/dragginzgame/ic-memory/issues/62),
+  [Shared #120](https://github.com/dragginzgame/shared-tooling/issues/120),
+  [#121](https://github.com/dragginzgame/shared-tooling/issues/121).
+
+- Preserve product failure logs when shared tool selection fails or local
+  tool/qualification roots are redirected. CI retains the available archive
+  and selection diagnostics before reporting incomplete evidence.
+  [#61](https://github.com/dragginzgame/ic-memory/issues/61).
+- Update locked release-helper dependencies to IC Host 0.13.2.
+
+[Detailed notes](docs/changelog/0.35.md)
+
 ## [0.35.8] - 2026-10-11
 
 - Adopt Shared Tooling 0.5.0: host/IC payloads share a verified per-user store.

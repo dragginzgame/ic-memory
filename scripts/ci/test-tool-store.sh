@@ -76,6 +76,12 @@ before="$(wc -l < "$fixture/downloads")"
 # A third checkout cannot race an owner of the same installation selection.
 consumer="$fixture/sharing-locked"; mkdir "$consumer"
 mkdir "$first_slot/install.lock"
+consumer="$second_consumer"
+store_refuse install --check
+diagnostic="$fixture/store-refusal.log"
+[[ "$store_test_kind" != host ]] || diagnostic="$fixture/install.log"
+grep -F "tool store installation locked: $first_slot/install.lock" "$diagnostic"
+consumer="$fixture/sharing-locked"
 store_refuse install
 [[ -d "$first_slot/install.lock" && ! -e "$consumer/.tools/$store_test_kind" &&
    "$(wc -l < "$fixture/downloads")" == "$before" ]] || exit 1

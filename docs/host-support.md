@@ -174,29 +174,39 @@ The common aggregate includes cargo-sort, cargo-sort-derives and
 candid-extractor alongside the host and five IC tools. Narrow
 `make install-rust-tools` and offline `make rust-tools-check` remain useful for
 explicit setup retries; they do not establish readiness of the complete set.
-Reviewed pins stay in `ci/tool-versions.env`. Setup uses the declared Cargo
-toolchain and retains failed candidates under `.tools/rust/build`; successful
-builds and receipts remain in their versioned slots. It never installs a compiler
-implicitly. Normal validation checks all common tools offline before
-builds, and formatting retains its exact two-workspace rustfmt/cargo-sort checks.
+Reviewed pins stay in `ci/tool-versions.env`. Shared Tooling 0.6.0 stores Cargo
+builds and receipts in its per-user store, selected through checkout-local
+references. Generations bind the exact prepared compiler, native environment,
+published crate source and packaged lockfile. Tool builds use a standard
+environment that excludes application flags, wrappers and arbitrary Cargo
+configuration. The managed source cache must remain available for offline
+checks and subsequent setup. Setup never installs a compiler implicitly.
+Normal validation checks all common tools offline before builds, and formatting
+retains its exact two-workspace rustfmt/cargo-sort checks.
+
 Make selects `.tools/rust/common/bin` itself; interactive shells use the export
-above. After adopting the slot layout, run `make install-rust-tools` followed by
-`make rust-tools-check`. Prepare host tools first. Existing installations and
-failed evidence remain retained; there is no fallback to the previous PATH.
-See [Rust setup](local-setup.md#rust-development-tools). Fixture substitutes
-qualify routing and refusal; actual setup/check and native CI supply separate
-evidence for installed tools.
-Shared Tooling 0.5.0 shares verified host/IC bundles through its per-user store;
-Cargo-built tools and their evidence remain local. Existing command paths stay
-`.tools/host/bin` and `.tools/ic/bin`. Adoption requires `make install-host-tools`
-and `make install-ic-tools`, followed by their offline checks. If selecting an
-explicit `SHARED_TOOLING_STORE`, use the same setting for setup, checks and failure
-collection. Never relocate binaries manually or select a sibling checkout's PATH.
-See [shared storage configuration](local-setup.md#shared-executable-storage).
-The installer rejects symlinked or wrong-type installation/build directories,
-executables and Cargo receipts before probing tools, and checks those paths again
-after Cargo returns. Existing host/IC bundle links retain their separate setup
-contract ([Shared Tooling #54](https://github.com/dragginzgame/shared-tooling/issues/54)).
+above. After adopting 0.6.0, run `make install-rust-tools` followed by
+`make rust-tools-check`, after host setup. Also run `make install-runtime-server`
+and `make runtime-server-check` for Memory's independently selected Testkit CLI.
+The adapters use its installer-returned path; the selected CLI/server versions
+remain unchanged. Existing physical slots, shared generations and failed build
+evidence remain retained. Older local slots do not satisfy the new offline check.
+Always run the offline check after setup: 0.6.0 has a known common-setup
+failure-reporting defect under held shared locks, tracked in
+[Shared #120](https://github.com/dragginzgame/shared-tooling/issues/120).
+See [Rust setup](local-setup.md#rust-development-tools).
+
+Verified host/IC bundles use the same per-user store; command paths stay
+`.tools/host/bin` and `.tools/ic/bin`. Use the same `SHARED_TOOLING_STORE` setting
+for setup, offline checks and failure collection. Never relocate binaries manually
+or select a sibling checkout's PATH. See
+[shared storage configuration](local-setup.md#shared-executable-storage).
+The shared selector owns both the complete local Rust tree and its admitted
+shared generations. Memory adds its product logs and server evidence without
+duplicating Rust selection. Failed store admission retains safe local evidence
+and diagnostics without following unadmitted references.
+Fixture substitutes qualify routing, refusal, Rust-only selection and archive
+deduplication; actual setup/check and native CI supply installed-tool evidence.
 
 `make check-pins` also checks Cargo inheritance against each manifest's owning
 workspace catalog. The independent runtime-qualification root keeps its approved
@@ -306,6 +316,16 @@ or `compact`. CI selects `compact`: complete active host/IC sets that pass fresh
 offline checks retain caller pins, check logs and IC receipts; failed, unknown
 and unselected bundles remain complete. Concurrent tool-set mutation must stop
 before evidence collection. Product logs and recovery evidence remain selected.
+If shared tool selection fails, the collector archives available product logs,
+complete selections already emitted by the selector and its stderr/status. It
+warns on stderr and sets `collection-complete=false` in `GITHUB_OUTPUT` when
+provided. CI uploads this archive before reporting incomplete tool collection;
+an archive path alone does not prove all tool payloads were retained. Store
+admission and reference resolution remain with the shared selector.
+If the checkout's `.tools` or `target` root is itself a symlink, the collector
+retains that link and product logs, skips its children and reports incomplete
+collection. Evidence from the other physical root stays selected. The archive
+never follows the link to collect outside payloads.
 
 For interactive CI inspection, use the unchanged shared helper:
 

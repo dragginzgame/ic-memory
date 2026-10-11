@@ -3858,3 +3858,33 @@ composition or live delivery. [#52](https://github.com/dragginzgame/ic-memory/is
 owns delivery/native acceptance; reusable fixes belong to
 [Shared #99](https://github.com/dragginzgame/shared-tooling/issues/99) and
 [Shared #103](https://github.com/dragginzgame/shared-tooling/issues/103).
+
+## Shared Tooling 0.6.0 adoption
+
+The canonical exporter selects 94 files from committed Shared Tooling
+`75180980a0c4e4252d8a915aaecfaefd92bf9a4e`, including the required Cargo build
+companion. Snapshot verification passes. Memory's pending work remains local
+and uncommitted for compatible 0.35.9; both incoming lockfiles and prior physical
+Rust executables/receipts remain byte-identical through setup.
+
+Actual Linux common Rust setup/check, selected Testkit 0.25.4 setup/check and the
+complete common offline admission pass with the existing PocketIC 16.1.0 server.
+A disposable second consumer reuses all three common Cargo executables and the
+selected Testkit CLI offline; resolved physical executables match the originals.
+This verifies installed selection/reuse, not Wasm runtime scenarios or macOS.
+
+Focused tool, pin, hook, formatting, release-adapter/runner, evidence and consumer
+fixture-retention checks pass, as do ShellCheck and Actionlint. Genuine Bash
+3.2.57 passes the updated Rust installer fixture and consumer evidence fixture.
+Round trips retain local and shared Rust failure/receipt bytes exactly once,
+exclude unadmitted outside payloads and preserve product logs on store refusal.
+Release fixtures substitute effects; no live release qualification is claimed.
+
+Common setup's conditional failure propagation under held shared locks remains
+an upstream defect documented by multiple consumers in
+[Shared #120](https://github.com/dragginzgame/shared-tooling/issues/120).
+Successful uncontended setup and subsequent offline admission do not qualify
+that negative contract. No consumer installer fork or lock removal is introduced.
+[#62](https://github.com/dragginzgame/ic-memory/issues/62) retains adoption/native
+acceptance; Shared source CI and the latest delivered Memory CI remain queued.
+The working-tree adoption has no matching remote run yet.
