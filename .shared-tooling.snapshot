@@ -1,8 +1,8 @@
 # Shared Tooling snapshot v1
-# version	0.3.8
+# version	0.3.9
 format	1
 source	https://github.com/dragginzgame/shared-tooling
-revision	67285b28a98b7c4211ad32de726709d4e87edea4
+revision	1ed2ca523186641e0e0cdf77e3cb10814c22a430
 file	429b7f96a30b4d890c6e7cd4e95db9d38af24d918c032b6232eba0c9f214ce8c	-	DRAGGINZGAME.md
 file	59f6cb0b47fcfa698396776bbb391737292ebf34457ad7c65803fe7b36961499	-	docs/principles/README.md
 file	9315c9faffa4f36cfab496342535bf49d728ddd2111e8e127cbc44b3fac89ce7	-	docs/principles/decision-artifact-discipline.md
@@ -38,7 +38,7 @@ file	ffdca09602c44c8aff8fc2a17588b20eb6a56e2e71fb6d42ad75087fdd65819b	-	audits/c
 file	1b64cf2ba0393ab329ec29eb05a696d47ef5933f5ab9bff6e1fe4a7e7b294075	-	audits/module-surface-hardening.md
 file	b33ecebfb524f9af496c0f4f4b24650b97833e20f1fca56eedb8604a0660e109	-	audits/module-cleanup.md
 file	15315edad497b9b165671c3f57e9f56e6ba1d206bbc635eb0ff51afaa8456bb3	-	docs/provenance.md
-file	2d83b2e50cda638a5fa1d2ee7fb674bd0e60b899f6041cf9c5ec0f8242dbf526	-	docs/local-setup.md
+file	e14f535f52dadbb6755acf0b43f07ce4b02f4124b4dc2c5f325863ad7c28d905	-	docs/local-setup.md
 file	95124b998fd786ed86190c78167ec4934655d1cca63c020cecaed61b9bec1d6b	-	docs/ic-tools.md
 file	82892e25292fe47c26035a0031aa4ad1996fcf181732163e75039bd657f2f84b	-	ci/tool-versions.env
 file	05da2ac2b805c7cf9597d4af75983efc1268d619a0fb1e42c7f6d3fdb481880b	-	ci/ic-tools.tsv
@@ -65,8 +65,8 @@ file	8a14c80cec16a2cb07454c4e0f741150bc8385cd51ebc720a84ee3af1cc63043	x	scripts/
 file	1fe8daffc7ebfd5c2fa742abca7770d7717954d07714445e5db8ffdde1ab8413	x	scripts/ci/test-tool-commands.sh
 file	aa9ad7cbac6fe5cef0aa78a322be56a71d07011749c05af5992277b8409798c9	x	scripts/ci/test-cloc.sh
 file	94a934651d5cb0c6f77fa429df277856dbda4c1a7441b2b8563e678c416258f6	-	audits/ic-canister-applications.md
-file	fd96b899926fc0cb7cebab8c5cfdb22757429205a2e5f2877d394df8896d033a	x	scripts/dev/install-rust-tools.sh
-file	d1d2bb5d63c823e160c8fc61b5eba4bff2f2ad1179c8dc2875511e5e06c0f1c7	x	scripts/ci/test-rust-tools.sh
+file	052ba97c1148adcc46df4d6d0f82a6113fddc2801fe8763f9d29c794a9440519	x	scripts/dev/install-rust-tools.sh
+file	cb57929a2195adbc09bd79ae9be846dfb4f5ef331638091f7f4dd67a2196c9ad	x	scripts/ci/test-rust-tools.sh
 file	05838a36f21bb4299617ae8965687791062c94d768181f5f97676cc577382153	-	rules/contributions.md
 file	775da89f655a3781059f433f80470ee6db9675e08942a805c111614183322fe1	-	scripts/ci/ic-tool-pins.awk
 file	5be336cb3e8045b2d2d536542a94944b376ee812b03f786a90b9d962ab697f13	x	scripts/ci/archive-evidence.sh

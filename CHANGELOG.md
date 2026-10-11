@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.35.6]
+
+- Keep failure-evidence qualification working when temporary directories are
+  selected through aliases, including macOS temporary paths.
+  [#57](https://github.com/dragginzgame/ic-memory/issues/57).
+- Adopt Shared Tooling 0.3.9 so Rust-tool setup and checks use the selected
+  checkout's configuration when invoked from elsewhere.
+  [#51](https://github.com/dragginzgame/ic-memory/issues/51),
+  [Shared #101](https://github.com/dragginzgame/shared-tooling/issues/101).
+
+[Detailed notes](docs/changelog/0.35.md)
+
 ## [0.35.5] - 2026-10-10
 
 - Reject invalid Rust toolchain pins before CI emits a compiler selection on

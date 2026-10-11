@@ -16,7 +16,7 @@ implementation and qualification without asking again. It does not authorize
 unrelated sibling edits, commits, pushes, releases or publication.
 
 The existing tooling snapshot at revision
-`67285b28a98b7c4211ad32de726709d4e87edea4` is recorded in
+`1ed2ca523186641e0e0cdf77e3cb10814c22a430` is recorded in
 [.shared-tooling.snapshot](.shared-tooling.snapshot). It identifies the vendored
 files, hashes and executable modes; it does not freeze the active local policy.
 Keep its provenance accurate and never edit vendored files in place. Do not
@@ -26,7 +26,7 @@ also applies within its activation scope and is included in this recorded snapsh
 These instructions are the repository's local overlay.
 
 The single 91-file snapshot uses reviewed committed Shared Tooling at that
-revision, whose committed source `VERSION` is 0.3.8. The manifest records that
+revision, whose committed source `VERSION` is 0.3.9. The manifest records that
 display version separately from its authoritative commit identity. It includes
 the archiver, tool-evidence selector, their fixtures and the shared
 retention action. It replaces the supplemental archive manifest and its duplicate
@@ -45,6 +45,10 @@ Shared 0.3.7 explicitly fails mandatory portable assertions and rejects missing
 Cargo host identity or non-executable candidates before activation. Memory's
 routine CI adopts workflow/ref cancellation while preserving every required
 host and gate; interrupted revisions remain unqualified on unfinished hosts.
+Shared 0.3.9 runs Rust preflight, installed-tool probes and Cargo installation
+from the selected consumer, preserving caller-relative catalogs, consumer-relative
+lockfiles and explicit toolchain overrides. Its validation-output classifier is
+not selected; Memory retains its own Rust validation and receipt adapters.
 The shared IC bundle contains five tools. PocketIC selection, provisioning,
 offline admission and managed lifecycle belong to the published Testkit CLI,
 selected independently in the root Makefile. `install-runtime-server` is explicit

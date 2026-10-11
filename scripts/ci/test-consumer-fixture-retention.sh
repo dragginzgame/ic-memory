@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Qualify actual fixture EXIT handlers without executing their test bodies.
+# Qualify fixture completion, evidence retention and the actual archive round trip.
 set -euo pipefail
 ROOT="${BASH_SOURCE[0]}"
 [[ "$ROOT" == /* ]] || ROOT="$PWD/$ROOT"
@@ -15,6 +15,9 @@ finish() {
     exit "$status"
 }
 trap finish EXIT
+[[ "$fixture" == /* ]] || fixture="$PWD/$fixture"
+fixture="$(cd -P "$fixture" && printf '%s/.' "$PWD")"
+fixture="${fixture%/.}"
 export RETENTION_SOURCE_ROOT="$ROOT" RETENTION_EXIT_PATH="$fixture/exit-path"
 for name in release-adapters failure-evidence git-hooks release-runner; do
     for failure in nounset command nonzero premature completed failed-completion; do
@@ -69,5 +72,12 @@ RETENTION_ASSERTION_EVENTS="$fixture/assertion-events" TMPDIR="$fixture" \
     "$BASH" "$assertion_root/scripts/ci/test-consumer-fixture-retention.sh" \
     > "$fixture/assertion.log" 2>&1 || status=$?
 [[ "$status" == 1 && "$(cat "$fixture/assertion-events")" == called ]] || exit 1
+# macOS and callers may select a temporary root through a directory alias.
+# Run the complete round trip so an earlier, unintended host-fixture failure
+# cannot masquerade as the controlled installed-tool failure.
+mkdir "$fixture/physical-temp"
+ln -s physical-temp "$fixture/aliased-temp"
+(cd "$fixture" && TMPDIR=aliased-temp "$BASH" "$ROOT/scripts/ci/test-failure-evidence.sh") \
+    > "$fixture/aliased-evidence.log" 2>&1
 echo 'Consumer fixture completion, failure status and evidence retention passed'
 fixture_complete=true

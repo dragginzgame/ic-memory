@@ -13,7 +13,6 @@ if [[ $# == 1 ]]; then
     [[ ! -e "$1" && ! -L "$1" ]] || { echo 'round-trip directory must be new' >&2; exit 1; }
     mkdir -- "$1"
     fixture="$1"
-    [[ "$fixture" == /* ]] || fixture="$PWD/$fixture"
     retained=true
 else
     fixture="$(mktemp -d "${TMPDIR:-/tmp}/failure-evidence.XXXXXX")"
@@ -27,6 +26,10 @@ finish() {
     exit "$status"
 }
 trap finish EXIT
+# Child installers use physical paths; give their fixture assertions the same root.
+[[ "$fixture" == /* ]] || fixture="$PWD/$fixture"
+fixture="$(cd -P "$fixture" && printf '%s/.' "$PWD")"
+fixture="${fixture%/.}"
 mkdir -p "$fixture/temp/ic-memory-fixtures" "$fixture/repository"
 temp_root="$fixture/temp"
 repository_root="$fixture/repository"
