@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Shared companions: scripts/ci/test-tool-evidence.sh
+# Shared companions: scripts/ci/test-tool-evidence.sh scripts/ci/test-tool-store.sh
 set -euo pipefail
 ROOT="$0"
 [[ "$ROOT" == /* ]] || ROOT="$PWD/$ROOT"
@@ -100,6 +100,7 @@ printf 'export SHARED_TOOLING_CLOC_VERSION=2.10\nexport SHARED_TOOLING_CLOC_SHA2
 
 consumer="$fixture/consumer"
 install() {
+    export SHARED_TOOLING_STORE="${HOST_SHARED_STORE:-$consumer/store}"
     printf 'install %s for %s\n' "$*" "$consumer" >> "$fixture/install.log"
     bash "$ROOT/scripts/dev/install-host-tools.sh" --consumer "$consumer" --versions "$pins" "$@" >> "$fixture/install.log" 2>&1
 }
@@ -127,7 +128,7 @@ for tool in jq yq rg cloc; do
     : > "$fixture/executions"
     refuse install --check
     tail -2 "$fixture/install.log" > "$fixture/diagnostic"
-    grep -F "tool=$tool expected=$expected path=$consumer/.tools/$original/bin/$tool reason=missing-or-invalid-executable" "$fixture/diagnostic"
+    grep -F "tool=$tool expected=$expected path=$(cd "$consumer/.tools/$original" && pwd -P)/bin/$tool reason=missing-or-invalid-executable" "$fixture/diagnostic"
     grep -F 'make install-host-tools' "$fixture/diagnostic"
     [[ ! -s "$fixture/executions" && "$(readlink "$consumer/.tools/host")" == "$original" ]] || exit 1
     mv "$fixture/removed-tool" "$consumer/.tools/host/bin/$tool"
@@ -258,4 +259,8 @@ for key in RIPGREP_VERSION CLOC_VERSION; do
     cp "$fixture/complete-pins" "$pins"
 done
 echo 'Complete host tool installation, offline checks and retained failure tests passed'
+export TEST_OS=Linux TEST_ARCH=x86_64
+store_test_kind=host
+# shellcheck source=scripts/ci/test-tool-store.sh
+source "$ROOT/scripts/ci/test-tool-store.sh"
 fixture_complete=true

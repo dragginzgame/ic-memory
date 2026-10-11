@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Shared companions: scripts/ci/test-tool-evidence.sh
+# Shared companions: scripts/ci/test-tool-evidence.sh scripts/ci/test-tool-store.sh
 set -euo pipefail
 
 ROOT="$0"
@@ -89,7 +89,10 @@ for tool in quill icp didc ic-wasm wasm-opt; do
     done
 done
 
-install() { bash "$ROOT/scripts/dev/install-ic-tools.sh" --consumer "$consumer" --pins "$selected_pins" "$@"; }
+install() {
+    export SHARED_TOOLING_STORE="${IC_SHARED_STORE:-$consumer/store}"
+    bash "$ROOT/scripts/dev/install-ic-tools.sh" --consumer "$consumer" --pins "$selected_pins" "$@"
+}
 expect_failure() {
     if "$@" > "$fixture/refusal.log" 2>&1; then echo 'IC tool rejection failed' >&2; exit 1; fi
 }
@@ -177,14 +180,15 @@ for host in Linux:x86_64 Darwin:x86_64 Darwin:arm64; do
     }
     cmp "$selected_pins" "$consumer/.tools/ic/pins.tsv"
     install --check > /dev/null 2>&1
-    # Even a receipt matching changed bytes must not bypass its version check.
+    # Even a receipt matching changed bytes must not bypass archive authentication.
     sed 's/wasm-opt version 132/wasm-opt version 133/' "$fixture/payload/wasm-opt" > "$consumer/.tools/ic/bin/wasm-opt"
     digest="$(shasum -a 256 "$consumer/.tools/ic/bin/wasm-opt")"
     awk -v hash="${digest%% *}" '$2 == "bin/wasm-opt" { printf "%s  %s\n", hash, $2; next } { print }' \
         "$consumer/.tools/ic/files.sha256" > "$fixture/changed-receipt"
     mv "$fixture/changed-receipt" "$consumer/.tools/ic/files.sha256"
+    : > "$fixture/executions"
     expect_failure install --check
-    rg -F 'wasm-opt version mismatch' "$fixture/refusal.log" > /dev/null
+    [[ ! -s "$fixture/executions" ]] || exit 1
 done
 export IC_TOOLS_TEST_OS=Linux IC_TOOLS_TEST_ARCH=x86_64
 consumer="$fixture/consumer Linux:x86_64"
@@ -314,4 +318,10 @@ ln -s "$fixture" "$consumer/.tools"
 expect_failure install
 
 echo 'IC tool installation, offline verification, retention and activation tests passed'
+export IC_TOOLS_TEST_OS=Linux IC_TOOLS_TEST_ARCH=x86_64
+selected_pins="$pins"
+cp "$fixture/payload/quill" "$fixture/assets/quill-linux-x86_64"
+store_test_kind=ic
+# shellcheck source=scripts/ci/test-tool-store.sh
+source "$ROOT/scripts/ci/test-tool-store.sh"
 fixture_complete=true

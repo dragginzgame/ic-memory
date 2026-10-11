@@ -19,6 +19,9 @@ finish() {
 }
 trap finish EXIT
 active="$(readlink "$consumer/.tools/$kind")"
+physical="$(cd "$consumer/.tools/$active" && pwd -P)"
+stored_parent="${physical%/*}"
+stored_path="${stored_parent##*/}/${physical##*/}"
 candidate="$consumer/.tools/$kind-set.evidenceCandidate"
 mkdir "$candidate"
 printf 'failed candidate\n' > "$candidate/payload"
@@ -44,12 +47,12 @@ choose_evidence full "$fixture/full"
 archive "$fixture/full" "$fixture/full.tar.gz"
 mkdir "$fixture/full-unpacked"
 tar -xzf "$fixture/full.tar.gz" -C "$fixture/full-unpacked"
-[[ -d "$fixture/full-unpacked/.tools/$active" ]] || exit 1
+[[ -d "$fixture/full-unpacked/$stored_path" ]] || exit 1
 choose_evidence compact "$fixture/compact"
 archive "$fixture/compact" "$fixture/compact.tar.gz"
 mkdir "$fixture/compact-unpacked"
 tar -xzf "$fixture/compact.tar.gz" -C "$fixture/compact-unpacked"
-[[ ! -e "$fixture/compact-unpacked/.tools/$active" && -s "$fixture/compact/$kind/check.log" ]] || exit 1
+[[ ! -e "$fixture/compact-unpacked/$stored_path" && -s "$fixture/compact/$kind/check.log" ]] || exit 1
 cmp "$pins" "$fixture/compact-unpacked/compact/$kind/caller-pins"
 cmp "$candidate/payload" "$fixture/compact-unpacked/.tools/$kind-set.evidenceCandidate/payload"
 [[ -L "$fixture/compact-unpacked/.tools/$kind-set.evidenceCandidate/link" ]] || exit 1
@@ -68,7 +71,7 @@ choose_evidence compact "$fixture/corrupt"
 archive "$fixture/corrupt" "$fixture/corrupt.tar.gz"
 mkdir "$fixture/corrupt-unpacked"
 tar -xzf "$fixture/corrupt.tar.gz" -C "$fixture/corrupt-unpacked"
-cmp "$payload" "$fixture/corrupt-unpacked/.tools/$active/bin/${payload##*/}"
+cmp "$payload" "$fixture/corrupt-unpacked/$stored_path/bin/${payload##*/}"
 cp -p "$fixture/original" "$payload"
 
 # Unmanaged, absent, dangling and newline-bearing links never suppress bundles.
@@ -82,7 +85,7 @@ for target in absent missing "$consumer/.tools/$active" "$active"$'\n'; do
     archive "$selection" "$selection.tar.gz"
     mkdir "$selection-unpacked"
     tar -xzf "$selection.tar.gz" -C "$selection-unpacked"
-    [[ -d "$selection-unpacked/.tools/$active" ]] || exit 1
+    [[ -d "$selection-unpacked/$stored_path" ]] || exit 1
 done
 rm -f "$consumer/.tools/$kind"
 ln -s "$active" "$consumer/.tools/$kind"
@@ -111,7 +114,7 @@ EVIDENCE_REAL_BASH="$BASH" EVIDENCE_RACE_KIND="$kind" \
 archive "$fixture/race" "$fixture/race.tar.gz"
 mkdir "$fixture/race-unpacked"
 tar -xzf "$fixture/race.tar.gz" -C "$fixture/race-unpacked"
-[[ -d "$fixture/race-unpacked/.tools/$active" && ! -e "$fixture/race/$kind/selection.txt" ]] || exit 1
+[[ -d "$fixture/race-unpacked/$stored_path" && ! -e "$fixture/race/$kind/selection.txt" ]] || exit 1
 rm "$consumer/.tools/$kind"
 ln -s "$active" "$consumer/.tools/$kind"
 rmdir "$consumer/.tools/$kind-set.evidenceRace"

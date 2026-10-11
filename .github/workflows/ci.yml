@@ -73,7 +73,7 @@ jobs:
           toolchain: ${{ steps.pin.outputs.channel }}
           components: clippy, rustfmt
           targets: wasm32-unknown-unknown
-      - name: Install and verify repository-local common tools
+      - name: Install and verify selected common tools
         shell: bash
         run: |
           make install-tools 2>&1 | tee "$RUNNER_TEMP/tools-setup.log"
@@ -81,8 +81,27 @@ jobs:
           {
             echo "$PWD/.tools/host/bin"
             echo "$PWD/.tools/ic/bin"
-            echo "$PWD/.tools/rust/bin"
+            echo "$PWD/.tools/rust/common/bin"
           } >> "$GITHUB_PATH"
+      - name: Qualify native shared host and IC reuse without downloads
+        shell: bash
+        run: |
+          sharing="$RUNNER_TEMP/ic-memory-fixtures/shared-tools"
+          mkdir -p "$sharing/consumer" "$sharing/bin"
+          printf '#!/bin/sh\necho unexpected-download >&2\nexit 91\n' > "$sharing/bin/curl"
+          chmod +x "$sharing/bin/curl"
+          for kind in host ic; do
+            pins=(--versions "$PWD/ci/tool-versions.env")
+            if [[ "$kind" == ic ]]; then pins=(--pins "$PWD/ci/ic-tools.tsv"); fi
+            for mode in install check; do
+              options=()
+              if [[ "$mode" == check ]]; then options=(--check); fi
+              PATH="$sharing/bin:$PATH" bash "scripts/dev/install-$kind-tools.sh" \
+                --consumer "$sharing/consumer" "${pins[@]}" ${options[@]+"${options[@]}"} \
+                > "$sharing/$kind-$mode.log" 2>&1
+            done
+            test "$(cd ".tools/$kind" && pwd -P)" = "$(cd "$sharing/consumer/.tools/$kind" && pwd -P)"
+          done
       - name: Check both workspaces without changing files
         run: make fmt-check
       - name: Exercise hook isolation on the native host

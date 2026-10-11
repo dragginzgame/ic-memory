@@ -33,6 +33,7 @@ fixture="${fixture%/.}"
 mkdir -p "$fixture/temp/ic-memory-fixtures" "$fixture/repository"
 temp_root="$fixture/temp"
 repository_root="$fixture/repository"
+export SHARED_TOOLING_STORE="$fixture/shared-store"
 
 # A real retained host-tool fixture, with all downloads/installations substituted.
 if TMPDIR="$temp_root/ic-memory-fixtures" TEST_VERSION_STATUS=9 \
@@ -56,9 +57,15 @@ printf 'unselected temporary file\n' > "$temp_root/unrelated"
 mkdir -p "$repository_root/target/qualification" "$repository_root/target/release-validation" \
     "$repository_root/.tools/host-set.test/bin" "$repository_root/.tools/ic-set.test/bin" \
     "$repository_root/.tools/rust/build/cargo-attempt.test" \
+    "$repository_root/.tools/rust/cargo-sort-2.1.4-bin-cargo-sort-release/installed/build" \
+    "$repository_root/.tools/rust/common-set.test/bin" \
     "$repository_root/.tools/ic-testkit-server/failed-attempt" \
     "$repository_root/.git" "$repository_root/target/unrelated"
 printf 'CLI build failure\n' > "$repository_root/.tools/rust/build/cargo-attempt.test/install.log"
+printf 'successful Cargo build evidence\n' > "$repository_root/.tools/rust/cargo-sort-2.1.4-bin-cargo-sort-release/installed/build/output"
+printf 'selected Cargo receipt\n' > "$repository_root/.tools/rust/cargo-sort-2.1.4-bin-cargo-sort-release/installed/selection.json"
+ln -s ../../cargo-sort-2.1.4-bin-cargo-sort-release/installed/bin/cargo-sort "$repository_root/.tools/rust/common-set.test/bin/cargo-sort"
+ln -s common-set.test "$repository_root/.tools/rust/common"
 printf 'server setup failure\n' > "$repository_root/.tools/ic-testkit-server/failed-attempt/version.stderr"
 printf 'qualification\n' > "$repository_root/target/qualification/"$'line\nbreak:payload'
 chmod 640 "$repository_root/target/qualification/"$'line\nbreak:payload'
@@ -70,6 +77,17 @@ printf 'private configuration\n' > "$repository_root/.git/config"
 printf 'unselected target\n' > "$repository_root/target/unrelated/file"
 ln -s ../unrelated/file "$repository_root/target/qualification/link"
 ln -s host-set.test "$repository_root/.tools/host"
+
+# Select a shared bundle through the canonical reference contract. Duplicate
+# local references retain it once; unrelated store entries and unknown links
+# must never widen this checkout's archive selection.
+shared_bundle="$(source "$ROOT/scripts/dev/tool-store.sh"; tool_store_init host evidence; printf '%s/set.evidence\n' "$store_slot")"
+(umask 077; mkdir -p "$shared_bundle/bin" "$SHARED_TOOLING_STORE/unrelated")
+printf 'selected shared payload\n' > "$shared_bundle/bin/tool"
+printf 'unrelated store payload\n' > "$SHARED_TOOLING_STORE/unrelated/private"
+ln -s "$shared_bundle" "$repository_root/.tools/host-set.shared"
+ln -s "$shared_bundle" "$repository_root/.tools/host-set.sharedDuplicate"
+ln -s "$SHARED_TOOLING_STORE/unrelated" "$repository_root/.tools/ic-set.unknown"
 
 # Relative entry points must ignore inherited CDPATH when locating helpers.
 archive="$(cd "$ROOT" && CDPATH="$ROOT" bash scripts/ci/collect-failure-evidence.sh "$temp_root" "$repository_root")"

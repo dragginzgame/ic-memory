@@ -16,7 +16,7 @@ implementation and qualification without asking again. It does not authorize
 unrelated sibling edits, commits, pushes, releases or publication.
 
 The existing tooling snapshot at revision
-`52e846369c39a1da371eac47ff97d94da925217e` is recorded in
+`a306180ce534227fcb98b882fba9a526d5d747e0` is recorded in
 [.shared-tooling.snapshot](.shared-tooling.snapshot). It identifies the vendored
 files, hashes and executable modes; it does not freeze the active local policy.
 Keep its provenance accurate and never edit vendored files in place. Do not
@@ -25,9 +25,11 @@ attribute uncommitted shared files to that recorded revision. The live local
 also applies within its activation scope and is included in this recorded snapshot.
 These instructions are the repository's local overlay.
 
-The single 91-file snapshot uses reviewed committed Shared Tooling at that
-revision, whose committed source `VERSION` is 0.3.12. The manifest records that
-display version separately from its authoritative commit identity. It includes
+The single 93-file snapshot uses reviewed committed Shared Tooling at that
+revision, whose committed source `VERSION` is 0.5.0. The manifest records that
+display version separately from its authoritative commit identity. This includes
+the corrected producer version and the package-impact guidance: contributor-only
+tooling changes use compatible library patch notes. It includes
 the archiver, tool-evidence selector, their fixtures and the shared
 retention action. It replaces the supplemental archive manifest and its duplicate
 verifier records. The consumer collector owns product log selection and calls
@@ -99,6 +101,24 @@ installer and fixtures are available through explicit `install-rust-tools` and
 `rust-tools-check`; the required aggregate now owns all twelve common
 host/IC/Cargo executables in sequence. Product runtime-server setup remains explicit and separate; the
 two-workspace formatter uses the selected local cargo-sort and pinned rustfmt.
+Common Cargo executables now share the selected-tool slot, receipt and byte
+admission engine. The complete projection at `.tools/rust/common/bin` activates
+only after all three pass; old installations, slots and failed builds remain.
+CI and hook callers use that projection. Explicit setup follows host preparation
+with `make install-rust-tools` and offline `make rust-tools-check`. Memory's
+retention fixture covers successful slot builds/receipts and projection links;
+the selected Testkit CLI path and PocketIC ownership remain unchanged.
+Shared Tooling owns the per-user host/IC executable store, tracked in
+[Shared #120](https://github.com/dragginzgame/shared-tooling/issues/120).
+The canonical installers select verified shared generations through local
+`.tools/host` and `.tools/ic` references. Cargo-built slots remain local.
+Use the same `SHARED_TOOLING_STORE` setting for setup, offline checks and evidence
+collection; never create a Memory-owned store or select a sibling PATH. The two
+explicit companion additions are `scripts/dev/tool-store.sh` and the shared
+installer fixture `scripts/ci/test-tool-store.sh`. Previous physical local bundles
+remain retained but are no longer admitted as active tools. The shared evidence
+selector owns reference resolution and physical bundle selection; Memory's
+round-trip fixture covers deduplication and exclusion of unrelated store entries.
 The aggregate first performs read-only platform/catalog and Rust/Cargo
 preflight through the existing installers before any installation. Host-tool
 failures identify the selected tool, expected version, path and repair command.
@@ -122,8 +142,10 @@ PR release adapters and their real-Git qualification fixture are not adopted.
 The canister audit addendum is linked guidance; product limits remain local.
 The common metadata fixture also includes its workspace-version reader. Product
 version parsing stays in the Rust release adapter. The linked tag-maintenance
-guide is documentation only; no tag-maintenance executable is adopted. CI and
-release checks use these immutable exports without a sibling checkout. The live
+guide is documentation only; no tag-maintenance executable is adopted. Release-note
+finalization uses the unchanged shared helper; Memory retains saved-source and
+payload admission plus its bare historical target-identity check. CI and release
+checks use these immutable exports without a sibling checkout. The live
 local policy exception above continues to govern subsequent uncommitted rule
 development. The read-only `scripts/dev/gh-ci.sh` helper supports exact-commit
 inspection across workflows; use authenticated GitHub CLI and the shared

@@ -48,11 +48,11 @@ runs:
             "$temp_root"/formatting.*; do
           if [[ -e "$path" || -L "$path" ]]; then inputs+=("$temp_root" "${path#"$temp_root/"}"); fi
         done
-        # Rust compilation evidence is independent of host/IC compaction. Avoid
-        # redirected parents; archive a final build symlink without following it.
+        # Retain failed builds and admitted slots/receipts independently of
+        # host/IC compaction. Never follow links inside the physical Rust root.
         if [[ ! -L "$repository_root/.tools" && ! -L "$repository_root/.tools/rust" ]]; then
-          path="$repository_root/.tools/rust/build"
-          if [[ -e "$path" || -L "$path" ]]; then inputs+=("$repository_root" .tools/rust/build); fi
+          path="$repository_root/.tools/rust"
+          if [[ -d "$path" ]]; then inputs+=("$repository_root" .tools/rust); fi
         fi
         case "${EVIDENCE_COMPACT:-false}" in
           false) selection=(full) ;;

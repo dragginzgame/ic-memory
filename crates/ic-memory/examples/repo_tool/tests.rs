@@ -48,6 +48,15 @@ impl Fixture {
             }
         };
         let source = BTreeMap::from([
+            (
+                CHANGELOG_FINALIZER.to_owned(),
+                fs::read_to_string(
+                    Path::new(env!("CARGO_MANIFEST_DIR"))
+                        .join("../..")
+                        .join(CHANGELOG_FINALIZER),
+                )
+                .unwrap(),
+            ),
             ("Cargo.lock".to_owned(), LOCK.to_owned()),
             ("Cargo.toml".to_owned(), MANIFEST.to_owned()),
             (PACKAGE_MANIFEST.to_owned(), PACKAGE.to_owned()),
@@ -1063,6 +1072,16 @@ fn missing_ambiguous_or_unsupported_dependency_examples_do_not_block_release() {
 
 #[test]
 fn release_versions_and_pending_notes_preserve_dependency_versions_and_history() {
+    let fixture = Fixture::new();
+    let finalize = |text: &str, version: &str| {
+        release_changelog(
+            &fixture.repo.root.join(CHANGELOG_FINALIZER),
+            text,
+            "0.12.3",
+            version,
+            "2026-10-05",
+        )
+    };
     for invalid in ["0.01.3", "0.12", "0.12.3-dev", "0.12.+3"] {
         assert!(version_parts(invalid).is_err());
     }
@@ -1070,18 +1089,21 @@ fn release_versions_and_pending_notes_preserve_dependency_versions_and_history()
     assert!(updated.contains("other = \"0.12.3\""));
     let current = "# Changelog\n\n## [0.13.0]\n\nChanges.\n\n## 0.12.3\n\nHistory.\n";
     assert_eq!(
-        release_changelog(current, "0.13.0", "2026-10-05").unwrap(),
+        finalize(current, "0.13.0").unwrap(),
         current.replacen("## [0.13.0]", "## [0.13.0] - 2026-10-05", 1)
     );
-    assert!(release_changelog(current, "0.12.4", "2026-10-05").is_err());
+    assert!(finalize(current, "0.12.4").is_err());
     assert_eq!(
-        release_changelog("## [0.13.0]\n\n## 0.12.3\nHistory", "0.13.0", "2026-10-05").unwrap(),
+        finalize("## [0.13.0]\n\n## 0.12.3\nHistory", "0.13.0").unwrap(),
         "## [0.13.0] - 2026-10-05\n\n## 0.12.3\nHistory"
     );
-    assert!(release_changelog("## [0.13.0]", "0.13.0", "2026-10-05").is_err());
+    assert_eq!(
+        finalize("## [0.13.0]", "0.13.0").unwrap(),
+        "## [0.13.0] - 2026-10-05\n"
+    );
     for historical in ["0.13.0", "[0.13.0]", "[0.13.0] - 2026-10-05"] {
         let duplicate = format!("{current}\n## {historical}\n\nAlready released.\n");
-        assert!(release_changelog(&duplicate, "0.13.0", "2026-10-05").is_err());
+        assert!(finalize(&duplicate, "0.13.0").is_err());
     }
     for date in [
         "2026-02-29",
@@ -1120,6 +1142,68 @@ fn empty_numbered_notes_prepare_without_weakening_release_identity() {
             "# Notes\n\n## [0.13.0] - 2026-10-05\n\n## [0.12.3] - 2026-10-04\n\nHistory without a final newline"
         );
     }
+}
+
+#[test]
+fn shared_note_finalization_preserves_history_and_refuses_conflicting_targets() {
+    for notes in [
+        "##\t[0.13.0]  \n\nChanges.\n\n## [0.12.3] - 2026-10-04\nHistory",
+        "## [0.13.0]",
+        "## [0.12.3]\n\nUndated published history",
+    ] {
+        let fixture = Fixture::new();
+        for path in ["CHANGELOG.md", "docs/changelog/0.13.md"] {
+            fs::write(fixture.repo.root.join(path), notes).unwrap();
+            fixture
+                .repo
+                .exec
+                .state
+                .borrow_mut()
+                .source
+                .insert(path.to_owned(), notes.to_owned());
+        }
+        fixture.repo.preflight(&fixture.selection).unwrap();
+        fixture.release();
+        fixture.repo.publish(true).unwrap();
+        for path in ["CHANGELOG.md", "docs/changelog/0.13.md"] {
+            let finalized = fs::read_to_string(fixture.repo.root.join(path)).unwrap();
+            assert!(finalized.starts_with("## [0.13.0] - 2026-10-05\n"));
+            if let Some(history) = notes.find("## [0.12.3]") {
+                assert!(finalized.ends_with(&notes[history..]));
+            }
+        }
+    }
+
+    for conflict in [
+        "##\t[0.13.1]  \nDifferent candidate\n",
+        "## [0.13.0]\n\n##\t[0.13.0]\t-\t2026-10-04  \nAlready released\n",
+    ] {
+        let fixture = Fixture::new();
+        fs::write(fixture.repo.root.join("CHANGELOG.md"), conflict).unwrap();
+        fixture
+            .repo
+            .exec
+            .state
+            .borrow_mut()
+            .source
+            .insert("CHANGELOG.md".to_owned(), conflict.to_owned());
+        assert!(fixture.repo.preflight(&fixture.selection).is_err());
+        assert!(fixture.prepare().is_err());
+        fixture.assert_original();
+    }
+}
+
+#[test]
+fn failed_shared_note_finalization_never_installs_partial_output() {
+    let fixture = Fixture::new();
+    let finalizer = fixture.repo.root.join(CHANGELOG_FINALIZER);
+    fs::write(&finalizer, "BEGIN { print \"partial output\"; exit 23 }").unwrap();
+    let error = fixture.prepare().unwrap_err().to_string();
+    assert!(error.contains("changelog finalization failed") && error.contains("23"));
+    fixture.assert_original();
+    fs::remove_file(finalizer).unwrap();
+    assert!(fixture.prepare().is_err());
+    fixture.assert_original();
 }
 
 #[test]

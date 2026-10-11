@@ -213,13 +213,13 @@ cargo_sort="$(command -v cargo-sort)"
 rustup="$(command -v rustup)"
 for admission in prepared missing wrong-version; do
     new_fixture "local-tools-$admission"
-    mkdir -p .tools/rust/bin .tools/cargo-home
-    for tool in cargo cargo-fmt rustc rustfmt rustup; do ln -s "$rustup" ".tools/rust/bin/$tool"; done
+    mkdir -p .tools/rust/common/bin .tools/cargo-home
+    for tool in cargo cargo-fmt rustc rustfmt rustup; do ln -s "$rustup" ".tools/rust/common/bin/$tool"; done
     case "$admission" in
-        prepared) cp "$cargo_sort" .tools/rust/bin/cargo-sort ;;
+        prepared) cp "$cargo_sort" .tools/rust/common/bin/cargo-sort ;;
         wrong-version)
-            printf '#!/bin/sh\necho "cargo-sort 0.0.0"\n' > .tools/rust/bin/cargo-sort
-            chmod +x .tools/rust/bin/cargo-sort ;;
+            printf '#!/bin/sh\necho "cargo-sort 0.0.0"\n' > .tools/rust/common/bin/cargo-sort
+            chmod +x .tools/rust/common/bin/cargo-sort ;;
     esac
     tree="$(git write-tree)"
     cp crates/hook-fixture/src/lib.rs before

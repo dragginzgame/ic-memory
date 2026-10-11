@@ -206,6 +206,10 @@ engine, including integer branches and an IC-style reply import. Evidence lives
 under `portable-fixtures/wasm-opt` for ordinary failure collection. This small
 smoke does not qualify consumer canister builds or deployment; those remain
 with the product owner.
+Each native job also selects host/IC tools in a second disposable checkout with
+downloads disabled and verifies that both checkouts resolve to the same physical
+bundles. The portable fixtures cover different selections, corrupt payloads,
+store locks and offline refusal using isolated stores.
 Failure-artifact collection runs after native qualification and includes installer
 logs and retained host/IC candidate directories as well as portable fixtures.
 It also selects the compact formatting runner's `formatting.*` failure logs from

@@ -56,6 +56,7 @@ impl Error for PreparationError {
 
 const PACKAGE_MANIFEST: &str = "crates/ic-memory/Cargo.toml";
 const PACKAGE_README: &str = "crates/ic-memory/README.md";
+const CHANGELOG_FINALIZER: &str = "scripts/ci/finalize-release-changelog.awk";
 const REPLACE_FILE_OPTIONS: WriteOptions = WriteOptions {
     mode: PublicationMode::Replace,
     permissions: 0o666,
@@ -412,38 +413,56 @@ fn release_readme(text: &str, version: &str) -> Option<String> {
     Some(updated)
 }
 
-fn release_changelog(text: &str, version: &str, date: &str) -> Result<String> {
+fn release_changelog(
+    finalizer: &Path,
+    text: &str,
+    previous: &str,
+    version: &str,
+    date: &str,
+) -> Result<String> {
+    version_parts(previous)?;
+    version_parts(version)?;
     require(valid_date(date), "invalid UTC release date")?;
-    let headings: Vec<_> = text
-        .lines()
-        .filter_map(|line| line.strip_prefix("## "))
-        .collect();
-    let first = headings.first().ok_or("missing changelog entry")?;
+    // Memory's published history includes bare version headings. Retain its
+    // target-identity refusal; the common helper owns candidate classification.
     require(
-        *first == format!("[{version}]"),
-        "top numbered pending entry must match the selected version",
-    )?;
-    require(
-        headings
-            .iter()
-            .filter(|heading| **heading == *first)
-            .count()
-            == 1,
-        "duplicate current changelog entry",
-    )?;
-    // Historical headings can retain their original bare or dated style.
-    // Detect the same release identity without rewriting any of their bytes.
-    require(
-        !headings.iter().skip(1).any(|heading| {
-            *heading == version
-                || *heading == format!("[{version}]")
-                || heading.starts_with(&format!("[{version}] - "))
+        !text.lines().any(|line| {
+            let mut words = line.split_whitespace();
+            words.next() == Some("##") && words.next() == Some(version)
         }),
         "selected version already exists",
     )?;
-    let heading = format!("## {first}\n");
-    require(text.contains(&heading), "invalid changelog heading")?;
-    Ok(text.replacen(&heading, &format!("## [{version}] - {date}\n"), 1))
+    let mut child = Command::new("awk")
+        .args([
+            "-v",
+            &format!("version={version}"),
+            "-v",
+            &format!("previous={previous}"),
+            "-v",
+            &format!("date={date}"),
+            "-f",
+        ])
+        .arg(finalizer)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()?;
+    let input = child
+        .stdin
+        .take()
+        .ok_or("changelog finalizer has no input pipe")?
+        .write_all(text.as_bytes());
+    let output = child.wait_with_output()?;
+    require(
+        output.status.success(),
+        &format!(
+            "changelog finalization failed ({}): {}",
+            output.status,
+            String::from_utf8_lossy(&output.stderr)
+        ),
+    )?;
+    input?;
+    Ok(String::from_utf8(output.stdout)?)
 }
 
 fn check_lock_update(before: &[u8], after: &str, previous: &str, version: &str) -> Result<()> {
@@ -783,6 +802,7 @@ impl<E: Execute> Repository<E> {
         let readme = release_readme(&readme, version).unwrap_or(readme);
         let [major, minor, _] = version_parts(version)?;
         let detail = format!("docs/changelog/{major}.{minor}.md");
+        let finalizer = self.root.join(CHANGELOG_FINALIZER);
         Ok(BTreeMap::from([
             (
                 "Cargo.lock".to_owned(),
@@ -800,14 +820,22 @@ impl<E: Execute> Repository<E> {
             (
                 "CHANGELOG.md".to_owned(),
                 release_changelog(
+                    &finalizer,
                     &self.text("CHANGELOG.md", Some(source))?,
+                    previous,
                     version,
                     &selection.date,
                 )?,
             ),
             (
                 detail.clone(),
-                release_changelog(&self.text(&detail, Some(source))?, version, &selection.date)?,
+                release_changelog(
+                    &finalizer,
+                    &self.text(&detail, Some(source))?,
+                    previous,
+                    version,
+                    &selection.date,
+                )?,
             ),
         ]))
     }

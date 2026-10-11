@@ -26,6 +26,13 @@ uses a patch. Maintain one numbered, undated pending entry, `## [X.Y.Z]`, in bot
 without changing package versions. Preparation refuses mismatched or duplicate
 identities and preserves historical entries.
 
+The Rust adapter calls the unchanged shared changelog finalizer with the saved
+previous version, selected version and UTC date. Heading whitespace and a
+candidate without a final newline do not block preparation. With no draft, the
+helper creates only the selected heading; it does not invent note content.
+Memory also rejects a selected identity already present in its bare historical
+headings. Helper failures stop before any candidate output is installed.
+
 Release preparation updates a unique package README dependency example to the
 selected candidate, accepting any old requirement, TOML spacing and string or
 inline-table syntax. Missing, ambiguous or unsupported examples produce a

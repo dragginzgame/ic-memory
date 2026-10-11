@@ -85,7 +85,7 @@ Common setup covers host, IC and Cargo tools sequentially for the detected host:
 ```sh
 make install-tools
 make tools-check
-export PATH="$PWD/.tools/host/bin:$PWD/.tools/ic/bin:$PWD/.tools/rust/bin:$PATH"
+export PATH="$PWD/.tools/host/bin:$PWD/.tools/ic/bin:$PWD/.tools/rust/common/bin:$PATH"
 make check-pins test-pins
 ```
 
@@ -103,8 +103,9 @@ See [common local setup](local-setup.md) for system bootstrap packages and
 and wasm-opt set. Shared Tooling 0.2.0 requires an explicit `make install-ic-tools`
 refresh: an old six-tool bundle fails the new offline check and stays retained.
 PocketIC setup belongs to Testkit and is separate from `install-tools`.
-Host and IC setup activate independently; previous selections
-and failed candidates stay under `.tools/`. `install-host-tools` and
+Host and IC setup activate independently. Verified payloads and failed candidates
+live in the shared per-user store, with retained references under `.tools/`;
+earlier physical local bundles remain intact. `install-host-tools` and
 `install-ic-tools` can prepare either set separately, with offline checks through
 `host-tools-check` and `ic-tools-check`. Ordinary validation never installs tools.
 CI explicitly installs and checks both sets on each declared native test host;
@@ -174,13 +175,24 @@ candid-extractor alongside the host and five IC tools. Narrow
 `make install-rust-tools` and offline `make rust-tools-check` remain useful for
 explicit setup retries; they do not establish readiness of the complete set.
 Reviewed pins stay in `ci/tool-versions.env`. Setup uses the declared Cargo
-toolchain and retains builds under `.tools/rust/build`; it never installs a
-compiler implicitly. Normal validation checks all common tools offline before
+toolchain and retains failed candidates under `.tools/rust/build`; successful
+builds and receipts remain in their versioned slots. It never installs a compiler
+implicitly. Normal validation checks all common tools offline before
 builds, and formatting retains its exact two-workspace rustfmt/cargo-sort checks.
-Make selects `.tools/rust/bin` itself; interactive shells use the export above.
+Make selects `.tools/rust/common/bin` itself; interactive shells use the export
+above. After adopting the slot layout, run `make install-rust-tools` followed by
+`make rust-tools-check`. Prepare host tools first. Existing installations and
+failed evidence remain retained; there is no fallback to the previous PATH.
 See [Rust setup](local-setup.md#rust-development-tools). Fixture substitutes
 qualify routing and refusal; actual setup/check and native CI supply separate
 evidence for installed tools.
+Shared Tooling 0.5.0 shares verified host/IC bundles through its per-user store;
+Cargo-built tools and their evidence remain local. Existing command paths stay
+`.tools/host/bin` and `.tools/ic/bin`. Adoption requires `make install-host-tools`
+and `make install-ic-tools`, followed by their offline checks. If selecting an
+explicit `SHARED_TOOLING_STORE`, use the same setting for setup, checks and failure
+collection. Never relocate binaries manually or select a sibling checkout's PATH.
+See [shared storage configuration](local-setup.md#shared-executable-storage).
 The installer rejects symlinked or wrong-type installation/build directories,
 executables and Cargo receipts before probing tools, and checks those paths again
 after Cargo returns. Existing host/IC bundle links retain their separate setup

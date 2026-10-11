@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.35.8]
+
+- Adopt Shared Tooling 0.5.0: host/IC payloads share a verified per-user store.
+  Rerun host/IC setup and offline checks; command paths stay unchanged and
+  previous bundles remain retained. [#60](https://github.com/dragginzgame/ic-memory/issues/60),
+  [Shared #120](https://github.com/dragginzgame/shared-tooling/issues/120).
+- Adopt the Rust-tool slot layout. Refresh shell PATH to
+  `.tools/rust/common/bin`, then run `make install-rust-tools` and
+  `make rust-tools-check` after host setup. Earlier installations and failure
+  evidence remain retained. [#59](https://github.com/dragginzgame/ic-memory/issues/59),
+  [Shared #118](https://github.com/dragginzgame/shared-tooling/issues/118).
+
+- Use shared release-note finalization so heading whitespace and a missing final
+  newline do not block release preparation; preserve history and reject
+  conflicting release identities. [#58](https://github.com/dragginzgame/ic-memory/issues/58).
+
+[Detailed notes](docs/changelog/0.35.md)
+
 ## [0.35.7] - 2026-10-11
 
 - Adopt Shared Tooling 0.3.12 so host-tool fixtures accept directory
