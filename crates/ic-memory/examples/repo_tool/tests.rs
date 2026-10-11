@@ -1658,6 +1658,63 @@ fn committed_preparation_restart_retains_receipts_before_fresh_preparation() {
 }
 
 #[test]
+fn preparation_restart_recovers_from_validation_receipt_publication_errors() {
+    for phase in ["write-before", "write-after"] {
+        let mut fixture = Fixture::new();
+        fixture.prepare().unwrap();
+        let validation = fixture.repo.validation_path("0.13.0").unwrap();
+        let prepared = fixture.repo.receipt_path("0.13.0", true).unwrap();
+        let old_validation = fs::read(&validation).unwrap();
+        let old_prepared = fs::read(&prepared).unwrap();
+        let evidence: PackageEvidence = serde_json::from_slice(&old_prepared).unwrap();
+        let archive = fixture
+            .repo
+            .retained_package(&evidence.package_sha256)
+            .unwrap();
+        let old_archive = fs::read(&archive).unwrap();
+        let mut descendant = fixture.repo.exec.state.borrow().source.clone();
+        descendant.insert("source.rs".to_owned(), "// committed fix\n".to_owned());
+        for (path, text) in &descendant {
+            fs::write(fixture.repo.root.join(path), text).unwrap();
+        }
+        fixture.repo.exec.state.borrow_mut().descendant = Some(descendant);
+        fixture.selection.source = "fix".to_owned();
+        fixture.repo.exec.state.borrow_mut().calls.clear();
+        fixture.fail(&format!("{phase}:0.13.0-validated.json"));
+        assert!(fixture.repo.verify(&fixture.selection).is_err(), "{phase}");
+        let visible: ValidationEvidence =
+            serde_json::from_slice(&fs::read(&validation).unwrap()).unwrap();
+        assert_eq!(
+            visible.selection.source,
+            if phase == "write-before" {
+                "source"
+            } else {
+                "fix"
+            }
+        );
+        assert!(!fixture.repo.exec.state.borrow().calls.iter().any(|call| {
+            call.get(2)
+                .is_some_and(|arg| matches!(arg.as_str(), "update" | "package"))
+        }));
+
+        // Retry through fresh validation, regardless of whether publication
+        // left the previous or replacement receipt visible.
+        fixture.repo.verify(&fixture.selection).unwrap();
+        fixture.repo.prepare_selected(&fixture.selection).unwrap();
+        let current: PackageEvidence =
+            serde_json::from_slice(&fs::read(&prepared).unwrap()).unwrap();
+        assert_eq!(current.validation.selection, fixture.selection);
+        let retained: Vec<_> = fs::read_dir(validation.parent().unwrap().join("attempts"))
+            .unwrap()
+            .map(|entry| fs::read(entry.unwrap().path()).unwrap())
+            .collect();
+        assert!(retained.contains(&old_validation));
+        assert!(retained.contains(&old_prepared));
+        assert_eq!(fs::read(&archive).unwrap(), old_archive);
+    }
+}
+
+#[test]
 fn interrupted_preparation_finishes_saved_candidate_without_revalidating() {
     for interruption in ["partial", "partial-lock", "manifest", "lock", "package"] {
         let fixture = Fixture::new();

@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.35.12]
+
+- Update locked development dependencies to IC Host 0.14.1 and serde_json 1.0.154;
+  library and durable contracts are unchanged.
+- Cover release restart after validation-receipt publication errors, including
+  errors reported after replacement ([#65](https://github.com/dragginzgame/ic-memory/issues/65)).
+
+[Detailed notes](docs/changelog/0.35.md)
+
 ## [0.35.11] - 2026-10-11
 
 - Adopt Shared Tooling 0.6.3 so normal release targets restart interrupted direct

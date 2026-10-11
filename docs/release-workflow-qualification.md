@@ -3981,3 +3981,64 @@ MSRV; other required macOS lanes remain unfinished at inspection. Pending source
 has no matching remote run. No full local product gate or new installed Wasm
 scenario was run; [#62](https://github.com/dragginzgame/ic-memory/issues/62) retains
 delivery/native acceptance.
+
+## Host 0.14.1 and delivered 0.35.11 acceptance
+
+Memory 0.35.11 delivery is verified at `415adcb39e8008df7a57ce7643bcfed44327d635`,
+with matching remote annotated tag object `b050380b8b84042fe6e1bba4bf5c5d3072637ed9`.
+Its AGENTS cleanup and receipt repair satisfy #64/#65's defined checks and are
+closed; broader native acceptance remains in #62.
+
+The next compatible 0.35.12 batch updates only the two Host artifacts/fs lock
+entries to 0.14.1. Reviewed Host `f766121c7282a78753ca32bdb4d069ba8424b517`
+has no library-source changes from 0.14.0. Full local `make validate` passes:
+tooling/release/hooks, 45 helper tests, 241 library tests, public/compile-fail
+boundaries, doctests/docs, strict Clippy, Wasm checks/budgets, working-tree
+packaging and Rust 1.88 all-target checks. Manifest and independent lock hashes
+are unchanged. Log: `/tmp/memory-host0141-validate.log`. No Git/release effect
+or new installed runtime scenario was executed by this local gate.
+
+Delivered-source Linux native CI independently proves offline reuse and the
+hosted failure-evidence round trip. Artifact `11705613914` has matching uploaded,
+downloaded and locally checked ZIP SHA-256
+`f4b980216b59822fc8bbb3fbcb14fb974b4a40b831029107a8027aebc0757d0c`.
+Safe tar-member reads verify original status 1 and local/shared Rust bytes once,
+without following links; private paths are excluded. Evidence remains under
+`/tmp/memory-03511-native-artifact/` and `/tmp/memory-03511-native-test.log`.
+These results bind to [0.35.11 CI](https://github.com/dragginzgame/ic-memory/actions/runs/38149478082),
+not the pending Host lock change. Other required native lanes remain unfinished.
+
+## Additional 0.35.12 receipt-publication recovery coverage
+
+The pending batch adds a process-substituted regression for a clean descendant
+restarting preparation after a validation-receipt write fails before replacement
+or reports an error after replacement. Either visible receipt state permits
+fresh validation and preparation on retry, while the prior validation/prepared
+receipts and immutable package archive remain retained. No production behavior
+changes or real release effects are involved; this extends #65's recovery proof.
+
+Full local `make validate` passes on base
+`415adcb39e8008df7a57ce7643bcfed44327d635` plus the pending Host 0.14.1 lock,
+test and note changes, including all 46 helper tests. Log:
+`/tmp/memory-03512-recovery-validate.log`. The initial formatter rejection and
+its corrected formatting are retained in `/tmp/memory-03512-recovery-fmt.log`,
+`/tmp/formatting.j36o5o` and `/tmp/memory-03512-recovery-format.log`.
+
+Delivered 0.35.11 Apple Silicon runtime CI now passes on its exact source.
+[Its job](https://github.com/dragginzgame/ic-memory/actions/runs/38149478082/job/114499740497)
+qualifies original/O3/Os/Oz Wasm, 12 invalid-IO traps per variant, neighboring
+marker/mutation preservation, post-persistence and geometry-conflict upgrade
+rollback, and a clean retry advancing exactly one generation. Raw log:
+`/tmp/memory-03511-apple-runtime.log`. These hosted results remain separate from
+the pending local test/lock changes; #62 retains the unfinished native lanes.
+
+## Incoming 0.35.12 JSON dependency qualification
+
+The incoming root lock additionally selects serde_json 1.0.154. The dependency
+remains development-only, with default/std features and no `preserve_order`;
+the changed optional map hashing path is outside this graph. Full `make validate`
+passes again on that selection: `/tmp/memory-03512-serde154-validate.log`.
+The root manifest, both selected locks and their unchanged identities are checked
+against `/tmp/memory-03512-incoming-serde154.sha256`. Earlier qualification logs
+remain bound to their previous serde_json 1.0.153 selection. No additional source
+change, dependency selection or release effect was performed in this review.
