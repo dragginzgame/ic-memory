@@ -1,8 +1,8 @@
 # Shared Tooling snapshot v1
-# version	0.3.9
+# version	0.3.12
 format	1
 source	https://github.com/dragginzgame/shared-tooling
-revision	1ed2ca523186641e0e0cdf77e3cb10814c22a430
+revision	52e846369c39a1da371eac47ff97d94da925217e
 file	429b7f96a30b4d890c6e7cd4e95db9d38af24d918c032b6232eba0c9f214ce8c	-	DRAGGINZGAME.md
 file	59f6cb0b47fcfa698396776bbb391737292ebf34457ad7c65803fe7b36961499	-	docs/principles/README.md
 file	9315c9faffa4f36cfab496342535bf49d728ddd2111e8e127cbc44b3fac89ce7	-	docs/principles/decision-artifact-discipline.md
@@ -17,7 +17,7 @@ file	8a6304b9096963fa5fe1881fa99ce1790b34d6ee0e0d0d0983f6d63da84817d2	x	scripts/
 file	c133d81786de40433b64fbc497db763151705d52e910607e768b8f986fc20548	x	scripts/ci/install-shellcheck.sh
 file	b5a6e8fb723a861b722834675e27b4b16f3d296112622c1b40cdc8714f575404	-	rules/changelogs.md
 file	bb2c1617f9171f96363f2fc6bb3955d34d8dce305c6b43961fbe08a7536d24f7	-	rules/cargo-dependencies.md
-file	dae76214fb4c8c698530b141a418ceab44f4c14fc8452b7a545bfe2e0c0c84fd	-	rules/git-hooks.md
+file	a2e8db2345679ff76696d0a92d325d9f4a516c66c2be49c0e98a75b0c59d3139	-	rules/git-hooks.md
 file	8b302f055416e2cce84cd036811e1e1c39311e890bc9cfca592201992abd4839	-	docs/releases.md
 file	29e1b926f5374bac5e4ac8ff4bf76e69fb61dfc6cb09f30bb140462ce00094e6	x	.githooks/pre-commit
 file	c1fcf72754976d3d2e5203226e97ef5f50eff4b5c0dabeb2a9b00cfcf0326645	x	scripts/dev/install-git-hooks.sh
@@ -38,7 +38,7 @@ file	ffdca09602c44c8aff8fc2a17588b20eb6a56e2e71fb6d42ad75087fdd65819b	-	audits/c
 file	1b64cf2ba0393ab329ec29eb05a696d47ef5933f5ab9bff6e1fe4a7e7b294075	-	audits/module-surface-hardening.md
 file	b33ecebfb524f9af496c0f4f4b24650b97833e20f1fca56eedb8604a0660e109	-	audits/module-cleanup.md
 file	15315edad497b9b165671c3f57e9f56e6ba1d206bbc635eb0ff51afaa8456bb3	-	docs/provenance.md
-file	e14f535f52dadbb6755acf0b43f07ce4b02f4124b4dc2c5f325863ad7c28d905	-	docs/local-setup.md
+file	57651f19930aba203b53f800ba11419366b2936d808e021a35635e78113f3c3f	-	docs/local-setup.md
 file	95124b998fd786ed86190c78167ec4934655d1cca63c020cecaed61b9bec1d6b	-	docs/ic-tools.md
 file	82892e25292fe47c26035a0031aa4ad1996fcf181732163e75039bd657f2f84b	-	ci/tool-versions.env
 file	05da2ac2b805c7cf9597d4af75983efc1268d619a0fb1e42c7f6d3fdb481880b	-	ci/ic-tools.tsv
@@ -46,9 +46,9 @@ file	5ce26182b709a900ab1d957569c4ace0d89c8947198a896e8284c5952f413ccb	x	scripts/
 file	2493607c508b016a9a869bb18cd65b6c8ab534b77554a5465fa0b97bc1fc15a5	x	scripts/dev/install-ic-tools.sh
 file	ab2202f89a077373fffac29f57527b88ccc65998f5c85c60a32081edd8338150	x	scripts/ci/verify-evidence-checksums.sh
 file	32ddc6af301567fce4d1d78cea5fe53450e7cffede28d5ad08d9c033ffb9d62d	x	scripts/ci/test-evidence-checksums.sh
-file	d509b74f8c8864abe84a440af6c7cca97cd9b11ff77102305bdefd648813a5e1	x	scripts/ci/test-host-tools.sh
+file	99746c3e01402cd1c1a1e417fbd39eae2b14b5056525e4fcf3c6f2e0a1528ba7	x	scripts/ci/test-host-tools.sh
 file	fe2c149109d53721296c2f79d6c11dd7e56b4d0a6ef022db19a024c55cf682e2	x	scripts/ci/test-ic-tools.sh
-file	eea5a0604ae646ce98402f7494c79e26c6a77f539db2da8ac8f1d583b23cd825	x	scripts/ci/check-release-commands.sh
+file	6fe7da8acbeb862b26047d08c63a95a5d2b93223bb9c929d65c56dd2f30551ac	x	scripts/ci/check-release-commands.sh
 file	189bcff0279a6729dd9c9cef6d8b506bf07bfb33d6d10b0cd0f5b11730638a8d	-	docs/verification-helpers.md
 file	e15dbf4612dddffa925e57e878db8bcbd7765c7b350ebbe41635e3df4d38bee5	x	scripts/ci/install-ci-tool.sh
 file	e1b8e9dfbcc7524065d7597e643a3157a80450fa2d477457ad8d8e8fa5b985bd	x	scripts/ci/test-cargo-metadata.sh

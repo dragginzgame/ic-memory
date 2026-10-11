@@ -16,7 +16,7 @@ implementation and qualification without asking again. It does not authorize
 unrelated sibling edits, commits, pushes, releases or publication.
 
 The existing tooling snapshot at revision
-`1ed2ca523186641e0e0cdf77e3cb10814c22a430` is recorded in
+`52e846369c39a1da371eac47ff97d94da925217e` is recorded in
 [.shared-tooling.snapshot](.shared-tooling.snapshot). It identifies the vendored
 files, hashes and executable modes; it does not freeze the active local policy.
 Keep its provenance accurate and never edit vendored files in place. Do not
@@ -26,7 +26,7 @@ also applies within its activation scope and is included in this recorded snapsh
 These instructions are the repository's local overlay.
 
 The single 91-file snapshot uses reviewed committed Shared Tooling at that
-revision, whose committed source `VERSION` is 0.3.9. The manifest records that
+revision, whose committed source `VERSION` is 0.3.12. The manifest records that
 display version separately from its authoritative commit identity. It includes
 the archiver, tool-evidence selector, their fixtures and the shared
 retention action. It replaces the supplemental archive manifest and its duplicate
@@ -49,6 +49,13 @@ Shared 0.3.9 runs Rust preflight, installed-tool probes and Cargo installation
 from the selected consumer, preserving caller-relative catalogs, consumer-relative
 lockfiles and explicit toolchain overrides. Its validation-output classifier is
 not selected; Memory retains its own Rust validation and receipt adapters.
+Shared 0.3.10 fixes host-fixture aliases and relative release-command fixture
+roots, including nested Make probes. The 0.3.11 source corrects its earlier
+version annotation; the snapshot records the current committed version and
+exact revision. The derive-macro guidance is selected without adding derive
+sorting to Memory's two-workspace formatting contract. The 0.3.12 common hook
+adoption checker and its integration fixture remain unselected; Memory's owned
+hook fixture continues to qualify its actual formatter integration.
 The shared IC bundle contains five tools. PocketIC selection, provisioning,
 offline admission and managed lifecycle belong to the published Testkit CLI,
 selected independently in the root Makefile. `install-runtime-server` is explicit

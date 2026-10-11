@@ -39,6 +39,11 @@ different support scopes require an explicitly approved exception.
 | Rust development | rustfmt and product compilation targets | Consumer toolchain setup and the [formatter prerequisite check](verification-helpers.md#formatter-prerequisites) |
 | Workflow-specific tools | ShellCheck, actionlint, Gitleaks, authenticated `gh`, Node/SDKs and other tools used by that repository | Explicit consumer setup; declare the tools required by each workflow |
 
+Use the derive sorter's documented
+[macro protection](../rules/git-hooks.md#derive-macros-and-dollar-prefixed-paths)
+for affected definitions.
+Tool availability and version checks do not establish semantic preservation.
+
 `make install-tools` and `make tools-check` cover all 12 common executables,
 regardless of the repository's implementation language or current use. They do
 not install a Rust toolchain or authenticate GitHub. Product and workflow-specific

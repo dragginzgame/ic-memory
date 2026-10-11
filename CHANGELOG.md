@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.35.7]
+
+- Adopt Shared Tooling 0.3.12 so host-tool fixtures accept directory
+  aliases and release-command checks support relative temporary directories.
+  [Shared #111](https://github.com/dragginzgame/shared-tooling/issues/111),
+  [#112](https://github.com/dragginzgame/shared-tooling/issues/112).
+- Update release-helper dependencies to IC Host 0.13.0, retaining Memory's
+  existing artifact and durable-write behavior.
+
+[Detailed notes](docs/changelog/0.35.md)
+
 ## [0.35.6] - 2026-10-11
 
 - Keep failure-evidence qualification working when temporary directories are

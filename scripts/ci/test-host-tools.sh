@@ -20,6 +20,9 @@ finish() {
     exit "$status"
 }
 trap finish EXIT
+[[ "$fixture" == /* ]] || fixture="$PWD/$fixture"
+fixture="$(cd -P "$fixture" && printf '%s/.' "$PWD")"
+fixture="${fixture%/.}"
 mkdir "$fixture/bin" "$fixture/assets" "$fixture/consumer"
 export HOST_TOOLS_FIXTURE="$fixture"
 cat > "$fixture/bin/uname" <<'SCRIPT'
