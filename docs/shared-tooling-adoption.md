@@ -13,7 +13,7 @@ The existing tooling snapshot at revision
 files, hashes and executable modes; it does not freeze the active local policy.
 Keep its provenance accurate and never edit vendored files in place. Do not
 attribute uncommitted shared files to that recorded revision. The live local
-[user-triggered maintenance rule](../rules/agent-maintenance.md)
+[user-triggered maintenance rule](../../shared-tooling/rules/agent-maintenance.md)
 also applies within its activation scope and is included in this recorded snapshot.
 These instructions are the repository's local overlay.
 
