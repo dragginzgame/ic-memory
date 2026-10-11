@@ -1,6 +1,6 @@
 # Changelog
 
-## [0.35.10]
+## [0.35.10] - 2026-10-11
 
 - Adopt Shared Tooling 0.6.1 so failed Cargo setup stops with the original
   error and preserves existing locks, selections and evidence.
