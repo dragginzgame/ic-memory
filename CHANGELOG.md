@@ -1,6 +1,6 @@
 # Changelog
 
-## [0.35.8]
+## [0.35.8] - 2026-10-11
 
 - Adopt Shared Tooling 0.5.0: host/IC payloads share a verified per-user store.
   Rerun host/IC setup and offline checks; command paths stay unchanged and
