@@ -1,6 +1,6 @@
 # Changelog
 
-## [0.35.7]
+## [0.35.7] - 2026-10-11
 
 - Adopt Shared Tooling 0.3.12 so host-tool fixtures accept directory
   aliases and release-command checks support relative temporary directories.
