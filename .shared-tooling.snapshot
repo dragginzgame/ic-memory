@@ -1,8 +1,8 @@
 # Shared Tooling snapshot v1
-# version	0.6.0
+# version	0.6.1
 format	1
 source	https://github.com/dragginzgame/shared-tooling
-revision	75180980a0c4e4252d8a915aaecfaefd92bf9a4e
+revision	731909525038c58d6f80b498e80f8630b11c685d
 file	e0e2b283d0bece7ad63bc21b0fca1495865ef04c0a522ac303c4d96cfd384685	-	DRAGGINZGAME.md
 file	59f6cb0b47fcfa698396776bbb391737292ebf34457ad7c65803fe7b36961499	-	docs/principles/README.md
 file	9315c9faffa4f36cfab496342535bf49d728ddd2111e8e127cbc44b3fac89ce7	-	docs/principles/decision-artifact-discipline.md
@@ -65,8 +65,8 @@ file	8a14c80cec16a2cb07454c4e0f741150bc8385cd51ebc720a84ee3af1cc63043	x	scripts/
 file	2a1d4b41b41e09523b44033211810fb89590a8a2ad7a86305fa5c67566ea1098	x	scripts/ci/test-tool-commands.sh
 file	aa9ad7cbac6fe5cef0aa78a322be56a71d07011749c05af5992277b8409798c9	x	scripts/ci/test-cloc.sh
 file	94a934651d5cb0c6f77fa429df277856dbda4c1a7441b2b8563e678c416258f6	-	audits/ic-canister-applications.md
-file	c7ba68be7e4a058a036c73147a80e3731aea3637315656887d9f721885488251	x	scripts/dev/install-rust-tools.sh
-file	869a921aab99c6d5ac46c7aa5bf863d2ab0c17584e8122825e0e95fb80eee557	x	scripts/ci/test-rust-tools.sh
+file	022de88d3905b3b008785100b02455a0230fac7b88d8b7541015dda940453c74	x	scripts/dev/install-rust-tools.sh
+file	8fba3b5db2ca97e2df129955ac7ecc0914291d5e9ec77d8972fffd03c1309c15	x	scripts/ci/test-rust-tools.sh
 file	8d32526932bdaf88a6c78ccc2358fb92a49bd89b7631572766deea51923d8f58	-	rules/contributions.md
 file	775da89f655a3781059f433f80470ee6db9675e08942a805c111614183322fe1	-	scripts/ci/ic-tool-pins.awk
 file	5be336cb3e8045b2d2d536542a94944b376ee812b03f786a90b9d962ab697f13	x	scripts/ci/archive-evidence.sh
@@ -94,6 +94,6 @@ file	cebc0fa4ee9944550350a492a3bc1084e28820e2c915e20351c336d87ce0359f	-	make/exe
 file	4ff0a961d5fb8639edf798d64bbe3abc0fcd83c6f703d7a6875c6f5174e76201	x	scripts/ci/run-formatting.sh
 file	6864ec72f2c5a9c912cf0aaa35704cfb72da367a52862e82588c1ba7eeba4369	x	scripts/ci/test-gh-ci.sh
 file	227ce86878264ff60aa24a70bb20140b8ef3c8332be640186e96f93805ed1062	-	tasks/readme-freshness.md
-file	1cf93faf09a8e4afe9e165b5bf6fb0884119165d38c7d0726c67a685b07e1d1a	-	scripts/dev/tool-store.sh
+file	d09d1ef8b6e5544832bb321eca736a407d9657ce25fe2ced0b35de0e8ad8792b	-	scripts/dev/tool-store.sh
 file	7011492452420a3cc651ffb52a559b6c36f9158936b96ea5652ee6a520b0871f	-	scripts/ci/test-tool-store.sh
-file	e0767020f19949ad5ff35855a83fa94549486ff614cf5d1f044c3688db3576d0	-	scripts/dev/cargo-tool-build.sh
+file	2d49252710ac5edf62cc9c3196147f544c5e2df9a0c4d2402e599452d2655eb6	-	scripts/dev/cargo-tool-build.sh

@@ -16,7 +16,7 @@ implementation and qualification without asking again. It does not authorize
 unrelated sibling edits, commits, pushes, releases or publication.
 
 The existing tooling snapshot at revision
-`75180980a0c4e4252d8a915aaecfaefd92bf9a4e` is recorded in
+`731909525038c58d6f80b498e80f8630b11c685d` is recorded in
 [.shared-tooling.snapshot](.shared-tooling.snapshot). It identifies the vendored
 files, hashes and executable modes; it does not freeze the active local policy.
 Keep its provenance accurate and never edit vendored files in place. Do not
@@ -26,7 +26,7 @@ also applies within its activation scope and is included in this recorded snapsh
 These instructions are the repository's local overlay.
 
 The single 94-file snapshot uses reviewed committed Shared Tooling at that
-revision, whose committed source `VERSION` is 0.6.0. The manifest records that
+revision, whose committed source `VERSION` is 0.6.1. The manifest records that
 display version separately from its authoritative commit identity. This includes
 the corrected producer version and the package-impact guidance: contributor-only
 tooling changes use compatible library patch notes. It includes
@@ -111,6 +111,8 @@ CI and hook callers use that projection. Explicit setup follows host preparation
 with `make install-rust-tools` and offline `make rust-tools-check`. Memory's
 retention fixture covers successful slot builds/receipts and projection links;
 the selected Testkit CLI version and PocketIC ownership remain unchanged.
+Shared 0.6.1 propagates Cargo acquisition, admission and publication failures
+explicitly, preserving the primary status, foreign locks and previous selections.
 Shared Tooling owns the per-user host/IC/Cargo executable store, tracked in
 [Shared #120](https://github.com/dragginzgame/shared-tooling/issues/120).
 The canonical installers select verified shared generations through local
@@ -120,9 +122,8 @@ Use the same `SHARED_TOOLING_STORE` setting for setup, offline checks and eviden
 collection; never create a Memory-owned store or select a sibling PATH. The Cargo
 build companion `scripts/dev/cargo-tool-build.sh` is explicitly selected alongside
 `scripts/dev/tool-store.sh` and the shared installer fixture. Previous physical
-local bundles
-remain retained but are no longer admitted as active tools. The shared evidence
-selector owns the local Rust tree, reference resolution and physical shared
+local bundles remain retained but are no longer admitted as active tools. The
+shared evidence selector owns the local Rust tree, reference resolution and physical shared
 generation selection; Memory does not duplicate that selection. Memory's
 round-trip fixture covers deduplication and exclusion of unrelated store entries.
 The aggregate first performs read-only platform/catalog and Rust/Cargo

@@ -3888,3 +3888,33 @@ that negative contract. No consumer installer fork or lock removal is introduced
 [#62](https://github.com/dragginzgame/ic-memory/issues/62) retains adoption/native
 acceptance; Shared source CI and the latest delivered Memory CI remain queued.
 The working-tree adoption has no matching remote run yet.
+
+## Shared Tooling 0.6.1 and Host 0.13.4 qualification
+
+Pending compatible Memory 0.35.10 selects the unchanged 94-file roster at committed
+Shared `731909525038c58d6f80b498e80f8630b11c685d`. The incoming root Host
+artifacts/fs 0.13.4 selection is preserved. All 44 helper tests, warning-denied
+helper Clippy and Rust 1.88 helper checking pass; Memory's used Host hashing and
+publication APIs are unchanged. The new sidecar opener has no Memory caller.
+
+Modern Bash and genuine Bash 3.2.57 pass the canonical Cargo failure-propagation
+fixture, including held locks and injected admission/reference/publication failure.
+An actual native common setup first refused Host's live extractor installation
+lock with script status 1 / Make status 2. It did not report a successful common
+PATH. After the owner completed, explicit setup and separate offline admission
+pass; no foreign lock or failed generation was removed.
+
+Common tools and unchanged Testkit 0.25.4 now use the updated build identity;
+Testkit admits the existing 16.1.0 server. A second disposable consumer reuses
+the common Cargo executables and selected CLI offline at identical physical
+paths. Twenty previous generation binary/receipt/input/log hashes and both
+incoming lockfile hashes remain unchanged. The local pin exception rationale
+now names the existing 16.0.0 client / Testkit-owned 16.1.0 server pairing;
+no pin or runtime behavior changes ([#63](https://github.com/dragginzgame/ic-memory/issues/63)).
+
+Focused tools, consumer evidence/retention, pins, formatter/hooks, release
+adapter/runner substitutes and lint checks pass. The refreshed native CI inputs
+await Memory delivery; no full local product gate, installed Wasm scenario or
+new native macOS acceptance is claimed. [#62](https://github.com/dragginzgame/ic-memory/issues/62)
+retains that acceptance. Host's old-source Apple Silicon Rust fixture failure is
+reported with raw logs in [Host #65](https://github.com/dragginzgame/ic-host-tooling/issues/65).

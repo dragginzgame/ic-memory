@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.35.10]
+
+- Adopt Shared Tooling 0.6.1 so failed Cargo setup stops with the original
+  error and preserves existing locks, selections and evidence.
+  [#62](https://github.com/dragginzgame/ic-memory/issues/62),
+  [Shared #120](https://github.com/dragginzgame/shared-tooling/issues/120),
+  [#124](https://github.com/dragginzgame/shared-tooling/issues/124).
+- Update locked release-helper dependencies to IC Host 0.13.4.
+- Correct the qualification exception rationale for the existing PocketIC
+  client/server pair; pins remain unchanged.
+  [#63](https://github.com/dragginzgame/ic-memory/issues/63).
+
+[Detailed notes](docs/changelog/0.35.md)
+
 ## [0.35.9] - 2026-10-11
 
 - Adopt Shared Tooling 0.6.0: Cargo tools reuse verified shared builds and

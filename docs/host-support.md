@@ -174,7 +174,7 @@ The common aggregate includes cargo-sort, cargo-sort-derives and
 candid-extractor alongside the host and five IC tools. Narrow
 `make install-rust-tools` and offline `make rust-tools-check` remain useful for
 explicit setup retries; they do not establish readiness of the complete set.
-Reviewed pins stay in `ci/tool-versions.env`. Shared Tooling 0.6.0 stores Cargo
+Reviewed pins stay in `ci/tool-versions.env`. Shared Tooling 0.6.1 stores Cargo
 builds and receipts in its per-user store, selected through checkout-local
 references. Generations bind the exact prepared compiler, native environment,
 published crate source and packaged lockfile. Tool builds use a standard
@@ -185,15 +185,15 @@ Normal validation checks all common tools offline before builds, and formatting
 retains its exact two-workspace rustfmt/cargo-sort checks.
 
 Make selects `.tools/rust/common/bin` itself; interactive shells use the export
-above. After adopting 0.6.0, run `make install-rust-tools` followed by
+above. After adopting 0.6.1, run `make install-rust-tools` followed by
 `make rust-tools-check`, after host setup. Also run `make install-runtime-server`
 and `make runtime-server-check` for Memory's independently selected Testkit CLI.
 The adapters use its installer-returned path; the selected CLI/server versions
 remain unchanged. Existing physical slots, shared generations and failed build
 evidence remain retained. Older local slots do not satisfy the new offline check.
-Always run the offline check after setup: 0.6.0 has a known common-setup
-failure-reporting defect under held shared locks, tracked in
-[Shared #120](https://github.com/dragginzgame/shared-tooling/issues/120).
+Shared 0.6.1 stops setup on lock, admission and activation failures, preserving
+the original status and existing selections. Always run the offline check after
+setup. See [Shared #120](https://github.com/dragginzgame/shared-tooling/issues/120).
 See [Rust setup](local-setup.md#rust-development-tools).
 
 Verified host/IC bundles use the same per-user store; command paths stay
