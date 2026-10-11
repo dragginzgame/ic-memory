@@ -1,6 +1,6 @@
 # Changelog
 
-## [0.35.6]
+## [0.35.6] - 2026-10-11
 
 - Keep failure-evidence qualification working when temporary directories are
   selected through aliases, including macOS temporary paths.
