@@ -1,6 +1,6 @@
 # Changelog
 
-## [0.35.12]
+## [0.35.12] - 2026-10-11
 
 - Update locked development dependencies to IC Host 0.14.1 and serde_json 1.0.154;
   library and durable contracts are unchanged.
