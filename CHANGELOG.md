@@ -1,6 +1,6 @@
 # Changelog
 
-## [0.35.9]
+## [0.35.9] - 2026-10-11
 
 - Adopt Shared Tooling 0.6.0: Cargo tools reuse verified shared builds and
   failure archives retain their local references and selected shared evidence.
