@@ -1,6 +1,6 @@
 # Changelog
 
-## [0.35.11]
+## [0.35.11] - 2026-10-11
 
 - Adopt Shared Tooling 0.6.3 so normal release targets restart interrupted direct
   preparation from clean descendant commits with retained intent and fresh gates
