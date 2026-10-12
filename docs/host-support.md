@@ -264,8 +264,10 @@ Focused tooling checks are `make shared-tooling-check tools-check test-tools che
 CI runs `make validate-toolchain` and the offline all-target MSRV check on each
 declared host. The full gate covers library/integration/compile-fail tests,
 doctests, strict Clippy, warning-denied documentation, Wasm compilation and raw
-size budgets, and package verification. Full gates run only on explicit request
-or in their configured CI pipeline.
+size budgets, and package verification. Before completed code changes are
+delivered as ready, `make validate` runs under the shared baseline's standing
+delivery authority. Inspection alone does not run the full suite. Release,
+publication and installed runtime qualification retain their separate authority.
 
 Release-flow tests separately cover Rust adapter recovery/input binding, actual
 Make dispatch/log retention and canonical runner reconciliation through

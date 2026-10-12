@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.35.15]
+
+- Adopt Shared Tooling 0.8.0: snapshot refresh derives companions and automatically
+  retires unchanged obsolete owned files, preserving the existing tooling payload
+  ([#62](https://github.com/dragginzgame/ic-memory/issues/62),
+  [Shared #131](https://github.com/dragginzgame/shared-tooling/issues/131)).
+- Update locked release-helper dependencies to IC Host 0.14.5; library contracts
+  and the independent runtime graph are unchanged.
+
+[Detailed notes](docs/changelog/0.35.md)
+
 ## [0.35.14] - 2026-10-12
 
 - Adopt Shared Tooling 0.6.6's staged-format receipt checks and macro-safe derive

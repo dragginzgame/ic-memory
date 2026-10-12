@@ -8,7 +8,7 @@ active engineering policy. Historical shared-version descriptions do not freeze
 that policy or establish new native qualification. Code paths are repository-relative.
 
 The existing tooling snapshot at revision
-`a15eb9d406d287697df9bc8fa96db8cda6721a71` is recorded in
+`045a6f22a9de497bfb3af90cb2571957384806f2` is recorded in
 [.shared-tooling.snapshot](../.shared-tooling.snapshot). It identifies the vendored
 files, hashes and executable modes; it does not freeze the active local policy.
 Keep its provenance accurate and never edit vendored files in place. Do not
@@ -18,8 +18,21 @@ also applies within its activation scope and is included in this recorded snapsh
 These instructions are the repository's local overlay.
 
 The single 98-file snapshot uses reviewed committed Shared Tooling at that
-revision, whose committed source `VERSION` is 0.6.6. The manifest records that
-display version separately from its authoritative commit identity. This includes
+revision, whose committed source `VERSION` is 0.8.0. The manifest records that
+display version separately from its authoritative commit identity. The 77 explicit
+roots
+select the reviewed governance catalog and Memory's maintained Make, hook, CI,
+archive and fixture entrypoints. Their generated companion closure preserves
+the existing 98 payload files. No file retirement, exporter/fleet fixture adoption
+or tool reinstall is needed. Subsequent refreshes reuse the manifest's recorded
+roots. Shared 0.8.0 automatically removes unchanged obsolete owned files outside
+their closure; `--retire-file` is removed. Review canonical preview and local
+callers/other-bundle ownership before refreshing, and keep directly used helpers
+as explicit entrypoints. This adoption removes no payloads. Follow the selected
+[snapshot procedure](consuming-snapshots.md#entrypoint-selection-in-070), keeping
+root intent distinct from derived payloads and independently reviewing local
+callers and other bundle ownership. Memory has one shared payload manifest.
+This includes
 the corrected producer version and the package-impact guidance: contributor-only
 tooling changes use compatible library patch notes. It includes
 the archiver, tool-evidence selector, their fixtures and the shared

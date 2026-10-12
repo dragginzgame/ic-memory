@@ -315,7 +315,9 @@ settings; the canonical correction is tracked in
 
 These tests create no commits/tags/pushes and perform no publication or full gate.
 They do not prove a live release or native macOS behavior. The declared native CI
-matrix includes them in `make validate-toolchain`. Full gates (`make validate`,
-`make validate-toolchain`, `make wasm-size`, package qualification) run only on
-explicit request or in configured CI. Current focused evidence is recorded in
+matrix includes them in `make validate-toolchain`. Before completed code changes
+are delivered as ready, `make validate` runs under the shared baseline's standing
+delivery authority. Inspection alone does not run the full suite. Release,
+publication and installed runtime qualification retain their separate authority.
+Current focused evidence is recorded in
 [release workflow qualification](docs/release-workflow-qualification.md).

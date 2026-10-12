@@ -4152,3 +4152,94 @@ No sibling source repair, real hook activation or release effect occurred.
 The optional shared checkpoint runner remains unselected; the existing Rust
 release-input/receipt adapter owns that boundary. #62 retains delivery and
 native acceptance; #66 retains the pending local fixture repair's delivery.
+
+## Host 0.14.4 and delivered 0.35.14 acceptance
+
+Released Memory `e53d83b253e6ed0e8e2d68be60094eaf240150ec` matches remote
+annotated `v0.35.14` object `e61aba2d3258f5c31d80782a1b4d0facdad06c6d`.
+It delivers the recorded 98-file Shared 0.6.6 snapshot and #66 fixture repair.
+[Exact-source CI](https://github.com/dragginzgame/ic-memory/actions/runs/38223139007)
+passes every Linux lane, including native setup/reuse/hooks and hosted archive
+verification; raw completed-job logs are `/tmp/memory-03514-{native-test,runtime}.log`.
+A clean committed-source export independently passes the release-adapter fixture
+on genuine Bash 3.2.57 (`/tmp/memory-03514-delivered-bash32.log`). #66 is closed;
+#62 still requires all six queued macOS lanes. Earlier observations stay bound
+to their original sources and graphs.
+
+The incoming root lock selects Host artifacts/fs 0.14.4. Both archive checksums
+match that lock and packaged VCS identifies `f93cd8854d500616a73eda713d215a20ff0617c7`.
+Host's library source is unchanged from 0.14.3. Locked preparation, both offline
+metadata graphs and full `make validate` pass, including strict Clippy, helper
+and public tests, documentation, Wasm budgets, working-tree packaging and MSRV.
+Evidence: `/tmp/memory-host0144-{fetch,validate}.log`; preserved input hashes:
+`/tmp/memory-host0144-inputs.sha256`. Requirements, features, compiler, tool
+selection and independent graph remain unchanged; compatible pending notes are
+0.35.15. The two current guides now agree with the standing delivery-validation
+rule. No sibling edit, real hook activation or release effect occurred.
+
+## Host 0.14.5 follow-up
+
+The same pending 0.35.15 batch now selects Host artifacts/fs 0.14.5,
+`bb8f1e71f3d4599618d0f4084d27fa637408f1fb`. This is a version-only release;
+Host library source is unchanged from 0.14.4. Published archive checksums and
+packaged VCS identity match the new lock. Locked fetching, both offline metadata
+graphs and full `make validate` pass on this selection. Evidence:
+`/tmp/memory-host0145-{fetch,validate}.log`, `/tmp/memory-host0145-inputs.sha256`.
+Manifest requirements/features, independent lock, compiler and tools are unchanged.
+The earlier Host 0.14.4 evidence remains labelled and retained. #62 still owns
+matching-source all-host acceptance, and #44 requires an application-owned
+combined fixture; neither review demonstrated a new local code defect. No
+sibling source, real index, Git ref or release effect was changed.
+
+## Shared entrypoint-selection adoption
+
+The pending compatible 0.35.15 batch selects committed Shared revision
+`8e8cc21265272e0234326c53a8c7bf9e7d8d77df`, containing its planned 0.7.0
+entrypoint work. Its committed `VERSION` remains 0.6.6. A clean temporary source
+checkout excludes the sibling's later dirty version and 0.8 retirement edits;
+neither is attributed to this export. The selected manifest records 77 reviewed
+governance/command/fixture roots, whose canonical closure preserves all 98
+previous payloads. Local callers and the single-manifest ownership were reviewed;
+no exporter/fleet fixtures or obsolete-file retirements were introduced.
+
+Snapshot, actual hook/formatting and tooling lint checks pass. Genuine Bash
+3.2.57 verifies the annotated manifest and reuses recorded roots for a repeat
+preview: all 98 rows KEEP and manifest bytes unchanged. Evidence:
+`/tmp/memory-shared070-{refresh,focused,bash32-verifier,bash32-repeat-preview}.log`.
+The initial dirty-source refusal and temporary-origin mismatch remain retained
+in the earlier preview logs; the corrected clean preview and refresh pass.
+
+The first full gate refused older prepared Cargo tools after host package
+updates changed their native identity. Two explicit setup attempts observed
+foreign shared-installation locks and stopped without removing them. After the
+owners finished, setup reused the matching builds and offline admission passed.
+Earlier slots and failed logs remain retained. Final full `make validate` passes
+on the unchanged Host 0.14.5 selection and recorded snapshot:
+`/tmp/memory-shared070-validate-retry.log`. The failed first gate and setup logs
+remain separately labelled; `/tmp/memory-shared070-inputs.sha256` verifies stable
+manifests, locks, tool selections and snapshot through qualification. No release,
+real hook activation, staging, Git ref or sibling source effect was performed.
+[#62](https://github.com/dragginzgame/ic-memory/issues/62) retains delivery/native
+acceptance; [Shared #131](https://github.com/dragginzgame/shared-tooling/issues/131)
+retains its producer and other-consumer obligations.
+
+## Shared Tooling 0.8.0 adoption
+
+The same pending 0.35.15 batch now selects committed Shared **0.8.0**,
+`045a6f22a9de497bfb3af90cb2571957384806f2`. Canonical preview and refresh reuse
+the recorded 77 roots and preserve all 98 payloads. The only payload changes
+from the previous selected revision are `docs/consuming-snapshots.md` and
+`docs/make-interface.md`; all executable bytes/modes, tool selections, compiler,
+manifests and locks are unchanged. The selected exporter now automatically
+retires unchanged obsolete owned files outside the derived closure, without
+`--retire-file`. No payload is obsolete or removed in this adoption.
+
+Snapshot/tool/formatter admission, local documentation consistency and genuine
+Bash 3.2.57 verifier/repeat preview pass. The repeat has 98 KEEP rows and leaves
+manifest bytes unchanged. Logs: `/tmp/memory-shared080-{preview,refresh,checks,bash32-verifier,bash32-preview}.log`;
+stable inputs: `/tmp/memory-shared080-inputs.sha256`. The preceding full pass
+`/tmp/memory-shared070-validate-retry.log` is reused for unchanged executable and
+dependency inputs, retaining its original snapshot identity. It is not relabelled
+as a full 0.8.0 run. No reinstall or additional full suite is needed for this
+documentation/provenance-only consumer delta. #62 retains final delivery and
+matching-source native acceptance; no real Git/release or sibling effect occurred.
