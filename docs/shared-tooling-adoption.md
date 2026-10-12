@@ -8,7 +8,7 @@ active engineering policy. Historical shared-version descriptions do not freeze
 that policy or establish new native qualification. Code paths are repository-relative.
 
 The existing tooling snapshot at revision
-`4532b66c1b43bab331978523ee97d29fe11a2f50` is recorded in
+`b1630b89482cc6071fc928a86962d79c9c11fdb7` is recorded in
 [.shared-tooling.snapshot](../.shared-tooling.snapshot). It identifies the vendored
 files, hashes and executable modes; it does not freeze the active local policy.
 Keep its provenance accurate and never edit vendored files in place. Do not
@@ -17,12 +17,13 @@ attribute uncommitted shared files to that recorded revision. The live local
 also applies within its activation scope and is included in this recorded snapshot.
 These instructions are the repository's local overlay.
 
-The single 99-file snapshot uses reviewed committed Shared Tooling at that
-revision, whose committed source `VERSION` is 0.9.4. The manifest records that
-display version separately from its authoritative commit identity. The 75 explicit
+The single 100-file snapshot uses reviewed committed Shared Tooling at that
+revision, whose committed source `VERSION` is 0.9.5. The manifest records that
+display version separately from its authoritative commit identity. The 76 explicit
 roots select the reviewed governance catalog and Memory's maintained Make, hook, CI,
 archive and fixture entrypoints. Their generated companion closure preserves
-the existing 98 payload files and adds Cargo tool freshness guidance. No file retirement, exporter/fleet fixture adoption
+all 99 existing payload files and adds the directly invoked CI artifact-discovery
+helper. No file retirement, exporter/fleet fixture adoption
 or tool reinstall is needed. Subsequent refreshes reuse the manifest's recorded
 roots. Shared 0.8.0 automatically removes unchanged obsolete owned files outside
 their closure; `--retire-file` is removed. Review canonical preview and local
@@ -76,6 +77,12 @@ in snapshot parsing, refresh observations and release recovery. The selected
 simulation fixture proves malformed saved source identities fail before effects
 without replacing the plan. Memory retains direct delivery; the PR helper is
 exported unchanged, while its real-Git producer fixture remains unselected.
+Shared 0.9.5 adds exact-ID artifact discovery as a directly used CI entrypoint.
+Memory's owned workflow supplies this attempt's upload ID, repository/run and
+explicit token, and bounds the read-only gate to two minutes before the existing
+download/digest/payload checks. The producer retry fixture assumes Shared's
+two-download workflow, so it stays upstream; Memory's failure-evidence fixture
+owns its one-download bindings without duplicating the retry policy.
 This includes
 the corrected producer version and the package-impact guidance: contributor-only
 tooling changes use compatible library patch notes. It includes

@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.35.19]
+
+- Adopt Shared Tooling 0.9.5 and wait for this run's exact uploaded evidence ID
+  before CI downloads it. Transient discovery absence gets bounded retries;
+  download digest and payload verification remain strict
+  ([Shared #63](https://github.com/dragginzgame/shared-tooling/issues/63),
+  [#62](https://github.com/dragginzgame/ic-memory/issues/62)).
+
+[Detailed notes](docs/changelog/0.35.md)
+
 ## [0.35.18] - 2026-10-12
 
 - Adopt Shared Tooling 0.9.4: use its common snapshot manifest reader and reject

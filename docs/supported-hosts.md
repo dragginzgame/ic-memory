@@ -242,7 +242,21 @@ and extracts the archive to check its payload against the original checksum
 manifest. Both full and compact evidence readbacks use the pinned download
 action's authenticated REST path, scoped to the current repository and run.
 Only the portable job grants `actions: read`; download digest mismatches fail
-before the independent payload checks. This transport selection follows
+before the independent payload checks. Before each download,
+`scripts/ci/wait-for-artifact.sh OWNER/REPO RUN_ID ARTIFACT_ID` checks the same
+run's paginated REST listing for the exact ID returned by this attempt's upload.
+It requires GitHub CLI, jq and an explicit `GH_TOKEN` with `actions: read`.
+Only absence from a successful listing is retried: six reads with 2, 4, 8, 16
+and 30 seconds of backoff. Each hosted discovery step has a two-minute timeout
+including API calls. API/authentication errors, malformed responses, expired or
+conflicting identities and exhausted discovery fail the gate. Downloads only run
+after successful discovery; their errors are not retried by this gate. A later
+visibility regression still fails the pinned downloader. No name fallback,
+other run/attempt selection, upload replay or evidence cleanup occurs.
+This addresses the repeated immediate visibility observation in
+[#63](https://github.com/dragginzgame/shared-tooling/issues/63); a local fixture
+cannot establish the service's root cause or native hosted recovery.
+The transport selection follows
 [the Blob readback report](https://github.com/dragginzgame/shared-tooling/issues/93);
 its original internal lookup failure has no proven cause, and local checks do
 not establish hosted acceptance of the new path.

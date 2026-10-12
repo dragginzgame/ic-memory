@@ -1,8 +1,8 @@
 # Shared Tooling snapshot v1
-# version	0.9.4
+# version	0.9.5
 format	1
 source	https://github.com/dragginzgame/shared-tooling
-revision	4532b66c1b43bab331978523ee97d29fe11a2f50
+revision	b1630b89482cc6071fc928a86962d79c9c11fdb7
 # entrypoint	DRAGGINZGAME.md
 # entrypoint	rules/contributions.md
 # entrypoint	rules/changelogs.md
@@ -78,6 +78,7 @@ revision	4532b66c1b43bab331978523ee97d29fe11a2f50
 # entrypoint	scripts/ci/test-make-consumer.sh
 # entrypoint	scripts/ci/select-tool-evidence.sh
 # entrypoint	tasks/cargo-tool-versions.md
+# entrypoint	scripts/ci/wait-for-artifact.sh
 file	9e69a457466c76b77d1b4acede62717a3d3599acfa4aa8c75ea0cb95780633db	-	DRAGGINZGAME.md
 file	8d32526932bdaf88a6c78ccc2358fb92a49bd89b7631572766deea51923d8f58	-	rules/contributions.md
 file	e7c1c56549860efff6a579913a1632eb19868d5e2e5e5e1ed2ba3ea7171db881	-	rules/changelogs.md
@@ -129,7 +130,7 @@ file	347901dc444808c8fcf0448bf9021cc0da3f5bce0eb460260f33dcbb8d54f69c	-	docs/loc
 file	68b77e120fe6ca0bac3bfa0499c27bd280471129c3dd66afa02715ccff9a21e3	-	docs/make-interface.md
 file	05da2ac2b805c7cf9597d4af75983efc1268d619a0fb1e42c7f6d3fdb481880b	-	ci/ic-tools.tsv
 file	7c1b2849ffce4e4b28fabe5eba2f7608b38dd08dc1478c25505ebd50c4e5d8a2	-	ci/tool-versions.env
-file	1ba74fc4246888827393a599049283d55f0da0f6b0042821441fcef1a7d3a56b	-	docs/supported-hosts.md
+file	e62c954dfeae00e36a1e25f40ee988cafb1adf2fa86cb0cb74122c70d8e75112	-	docs/supported-hosts.md
 file	1063002468575e2f821cfec71524bde06a64634bf30455d64d2d9fed872969d6	-	docs/tag-maintenance.md
 file	f23be73b6ba57902502a09d6d36e178f2be7ff2588ebe6a5b2624a19ad683ba6	-	scripts/distribution/governance-files.txt
 file	c385168599f833bbcd390eaf5ba2aa7507e5a9f05df0ec7264907c3a0de02289	-	make/consumer.mk
@@ -153,6 +154,7 @@ file	6864ec72f2c5a9c912cf0aaa35704cfb72da367a52862e82588c1ba7eeba4369	x	scripts/
 file	95d14fc4ff4352aab2a6d3d11d3c65273a730d5e8a8e4584af818ea2be8ae423	x	scripts/ci/test-make-consumer.sh
 file	50875aa80c211f8f5fded06bf75c7a9fc1fc99aac7590480de9be17d4753bf7f	x	scripts/ci/select-tool-evidence.sh
 file	a9ed416a02f737d420723642935de94ffdd53cf92f75bb06ab4b0bc1c68430dc	-	tasks/cargo-tool-versions.md
+file	252098ce2dc792d327934a01f8840d2c7231e673f1f91ed40ed7353c89d4cf04	x	scripts/ci/wait-for-artifact.sh
 file	4c981184847462ab3c01cac087e28309f8e054253fd95c7bbe56f643877aa708	x	scripts/ci/verify-file-checksum.sh
 file	a4682503812f210b951aede536cdd65642bfe266b02ab532853a1aeff64f9742	x	scripts/ci/verify-shared-tooling-snapshot.sh
 file	3d56ca1b0c5952b9534ece61b6754ca39e6ec1980d929f09de3dbd967a0c4977	-	scripts/ci/dependency-pins.jq

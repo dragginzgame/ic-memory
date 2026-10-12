@@ -4597,3 +4597,58 @@ This extends the compatible 0.35.18 draft without package-version/index changes.
 No sibling edit, fixture commit/tag/push, real hook activation, installation,
 dependency preparation, release effect, workflow control or evidence cleanup
 occurred during this adoption.
+
+## Shared 0.9.5 artifact discovery
+
+Memory **0.35.18** is delivered at remote main
+`2093b4b52ca9836626b669ad7b800bab0091e289`, matched by annotated `v0.35.18`
+object `898dbeed07a25f005f2c6e0ecbc8eb496b5c603d` targeting that commit.
+Its source selects Shared 0.9.4 and the maintainer's Host artifacts/fs **0.15.0**;
+earlier 0.14.9 preparation evidence is not relabelled for this delivered graph.
+The user reports publication; registry publication was not independently observed.
+
+Canonical clean-source refresh selects Shared **0.9.5**,
+`b1630b89482cc6071fc928a86962d79c9c11fdb7`, for compatible pending **0.35.19**.
+One explicit CI helper root adds one payload; the supported-hosts guide updates.
+The resulting 76 roots/100 payloads retain every previous file. Source pointer
+and logs: `/tmp/memory-shared095-source-root`,
+`/tmp/memory-shared095-{preview,refresh}.log`.
+
+The Memory workflow now supplies this attempt's upload ID, repository/run and
+explicit token to the canonical discovery helper, under its two-minute step
+timeout. Only successful listings omitting the exact ID get bounded retries.
+Download remains bound to successful discovery, the same upload ID, authenticated
+pinned transport and strict digest admission; independent payload checks remain.
+Shared owns retry policy, while Memory's existing failure-evidence fixture owns
+the actual consumer workflow's bindings. Its upstream retry fixture assumes
+Shared's two-download workflow and remains unselected in this snapshot.
+
+Full `make validate` and tooling lint pass on the actual Host 0.15.0 graph:
+`/tmp/memory-shared095-{validate,lint}.log`. Both dependency graphs, tool pins and
+compiler remain unchanged. Final hashes include the consumer workflow and fixture
+as well as snapshot/catalog/lock inputs: `/tmp/memory-shared095-inputs.sha256`.
+The producer discovery fixture passes on Bash 5.2 and genuine Bash 3.2.57,
+covering visibility recovery/exhaustion, pagination, wrong/expired/duplicate IDs,
+API/schema errors and unchanged transport bindings:
+`/tmp/memory-shared095-discovery-{bash5,bash32}.log`.
+Memory's real archive round trip and owned workflow fixture pass on both shells:
+`/tmp/memory-shared095-{evidence,evidence-bash32-final}.log`. The final Bash 3.2
+run follows the fixture's last whitespace edit; its earlier passing log remains
+at `/tmp/memory-shared095-evidence-bash32.log`.
+
+Sixteen isolated incorrect workflow bindings per shell reject before evidence
+creation (`/tmp/memory-shared095-wiring-final.log`, fixture pointer
+`/tmp/memory-shared095-wiring-root`). The preliminary mutation probe reused the
+same output directory across interpreters; its second pass stopped at existing
+directory admission before testing bindings. Those logs remain retained. The
+qualified repeat uses distinct, asserted-new output directories for each shell.
+Clean-source Bash 3.2 repeat preview has only KEEP rows and leaves the snapshot
+unchanged (`/tmp/memory-shared095-preview-bash32.log`). No live API helper or hosted
+upload/download was executed locally; CLI and sleeps in retry cases are substitutes.
+
+[#62](https://github.com/dragginzgame/ic-memory/issues/62) retains delivered-source
+native acceptance and pending-batch delivery/hosted proof.
+[Shared #63](https://github.com/dragginzgame/shared-tooling/issues/63) owns the
+producer discovery repair and all-host qualification. No sibling source edit,
+fixture commit/tag/push, real index/ref/version/release effect, tool installation,
+dependency preparation, workflow control or evidence cleanup occurred.
