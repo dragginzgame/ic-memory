@@ -95,7 +95,11 @@ and probes Rust/Cargo in this checkout without automatic toolchain installation.
 Prepare a supported host and the declared toolchain before retrying a refusal.
 Offline host checks identify the failing tool, expected version, selected path
 and repair command; they still authenticate payloads before execution.
-The reviewed `make/tools.mk` owns installation, offline checks and LOC targets.
+The reviewed `make/consumer.mk` selects the common modules for setup, checks,
+formatting, hooks and releases; `make/tools.mk` owns installation, offline checks
+and LOC targets. Memory supplies both-workspace formatter commands and its pinned
+compiler. Use `make shared-tooling-check` for snapshot integrity and
+`make format-tools-check` for prepared formatter admission.
 Existing jq/yq/ripgrep-only checkouts must run `make install-host-tools` once to
 add pinned cloc 2.10, then `make host-tools-check` before offline qualification.
 See [common local setup](local-setup.md) for system bootstrap packages and
@@ -254,7 +258,7 @@ historical runtime gates above.
 
 ## Native checks
 
-Focused tooling checks are `make verify-shared-tooling tools-check test-tools check-pins test-pins test-tooling test-hooks fmt-check`,
+Focused tooling checks are `make shared-tooling-check tools-check test-tools check-pins test-pins test-tooling test-hooks fmt-check`,
 `make test-release-adapters test-release-runner` and `make lint-tooling`. Compilation must wait for any existing build to finish.
 
 CI runs `make validate-toolchain` and the offline all-target MSRV check on each
@@ -310,7 +314,7 @@ fixture and emits its archive path to `GITHUB_OUTPUT` when set. Verify a downloa
 archive with `bash scripts/ci/verify-failure-evidence.sh FIXTURE ARCHIVE`; digest
 refusal happens before extraction. Existing fixture destinations are refused.
 The archiver and tool selector share the single recorded
-[tooling snapshot](../.shared-tooling.snapshot); `make verify-shared-tooling`
+[tooling snapshot](../.shared-tooling.snapshot); `make shared-tooling-check`
 checks all recorded exports. The collector's optional third argument is `full` (default)
 or `compact`. CI selects `compact`: complete active host/IC sets that pass fresh
 offline checks retain caller pins, check logs and IC receipts; failed, unknown

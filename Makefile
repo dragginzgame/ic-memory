@@ -1,7 +1,7 @@
 .DEFAULT_GOAL := help
-.PHONY: help test version ensure-clean fetch-dependencies verify-shared-tooling check-pins test-pins \
+.PHONY: help test version ensure-clean fetch-dependencies check-pins test-pins \
         install-tools tools-check install-host-tools host-tools-check install-ic-tools ic-tools-check test-tools test-failure-evidence \
-        fmt fmt-check check-format-tools install-hooks lint-tooling test-hooks test-tooling validate validate-toolchain wasm-size \
+        lint-tooling test-hooks test-tooling validate validate-toolchain wasm-size \
         install-runtime-server runtime-server-check test-runtime \
         test-release-runner test-release-adapters \
         release-version release-preflight release-verify release-prepare-version \
@@ -19,9 +19,18 @@ endif
 # The Rust helper parses the full TOML for its own compiler identity checks.
 VALIDATION_TOOLCHAIN ?= $(shell sed -n 's/^channel = "\([^"]*\)"$$/\1/p' rust-toolchain.toml)
 TOOL := bash scripts/dev/run-repo-tool.sh $(VALIDATION_TOOLCHAIN)
-CARGO_SORT_VERSION := $(shell sed -n 's/^export SHARED_TOOLING_CARGO_SORT_VERSION=//p' ci/tool-versions.env)
-include make/tools.mk
-include make/release.mk
+override SHARED_TOOLING_ROOT := $(CURDIR)
+# Both maintained workspaces retain the same complete formatter sequence.
+FORMAT_WRITE_COMMAND = bash -ec 'cargo "+$$1" sort --workspace; \
+    cargo "+$$1" sort --workspace testing/runtime-qualification; \
+    cargo "+$$1" fmt --all; \
+    cargo "+$$1" fmt --manifest-path testing/runtime-qualification/Cargo.toml --all' -- "$(VALIDATION_TOOLCHAIN)"
+FORMAT_CHECK_COMMAND = bash -ec 'cargo "+$$1" sort --workspace --check; \
+    cargo "+$$1" sort --workspace --check testing/runtime-qualification; \
+    cargo "+$$1" fmt --all -- --check; \
+    cargo "+$$1" fmt --manifest-path testing/runtime-qualification/Cargo.toml --all -- --check' -- "$(VALIDATION_TOOLCHAIN)"
+include make/consumer.mk
+fmt fmt-check format-tools-check: export RUSTUP_TOOLCHAIN := $(VALIDATION_TOOLCHAIN)
 
 # The published Testkit CLI owns PocketIC selection, admission and lifecycle.
 # Keep this tool graph outside both maintained workspace lockfiles.
@@ -31,14 +40,11 @@ TESTKIT_SERVER_DIRECTORY := $(CURDIR)/.tools/ic-testkit-server
 
 help:
 	@echo 'Setup: install-tools (host, IC, Cargo tools), fetch-dependencies, install-hooks; prepare the Rust toolchain first.'
-	@echo 'Focused checks: tools-check, test-tools, test-failure-evidence, verify-shared-tooling, check-pins, test-pins, test-tooling, test-release-adapters, test-release-runner, test-hooks, fmt-check, lint-tooling.'
+	@echo 'Focused checks: shared-tooling-check, tools-check, test-tools, test-failure-evidence, check-pins, test-pins, test-tooling, test-release-adapters, test-release-runner, test-hooks, fmt-check, lint-tooling.'
 	@echo 'Formatting: fmt. Full delivery checks: validate, validate-toolchain.'
 	@echo 'Installed runtime: install-runtime-server (explicit Testkit setup), runtime-server-check (offline), test-runtime (prepared server and locked caches).'
 	@echo 'Report: cloc (root workspace; CLOC_MANIFEST selects an independent Cargo manifest). Fleet reports run in Shared Tooling.'
 	@echo 'Maintainer releases: release-patch, release-minor, release-major; normal targets recover unfinished releases.'
-
-install-hooks:
-	bash scripts/dev/install-git-hooks.sh
 
 # Explicit network setup; ordinary tool/library gates never provision a server.
 install-runtime-server: host-tools-check
@@ -89,6 +95,7 @@ test-tools: test-failure-evidence
 	bash scripts/ci/test-consumer-fixture-retention.sh
 	bash scripts/ci/test-gh-ci.sh
 	bash scripts/ci/test-tool-commands.sh
+	bash scripts/ci/test-make-consumer.sh
 	bash scripts/ci/test-host-tools.sh
 	bash scripts/ci/test-ic-tools.sh
 	bash scripts/ci/test-rust-tools.sh
@@ -99,32 +106,12 @@ test-tools: test-failure-evidence
 fetch-dependencies:
 	+cargo +$(VALIDATION_TOOLCHAIN) fetch --locked
 
-verify-shared-tooling:
-	bash scripts/ci/verify-shared-tooling-snapshot.sh
-
 check-pins:
 	+RUSTUP_TOOLCHAIN=$(VALIDATION_TOOLCHAIN) RUSTUP_AUTO_INSTALL=0 CARGO_NET_OFFLINE=true bash scripts/ci/check-dependency-pins.sh --cargo-inheritance
 
 test-pins:
 	+RUSTUP_TOOLCHAIN=$(VALIDATION_TOOLCHAIN) RUSTUP_AUTO_INSTALL=0 CARGO_NET_OFFLINE=true bash scripts/ci/test-dependency-pins.sh
 	+RUSTUP_TOOLCHAIN=$(VALIDATION_TOOLCHAIN) RUSTUP_AUTO_INSTALL=0 CARGO_NET_OFFLINE=true bash scripts/ci/test-cargo-metadata.sh
-
-check-format-tools:
-	+@RUSTUP_TOOLCHAIN="$(VALIDATION_TOOLCHAIN)" bash scripts/ci/check-format-tools.sh "$(CARGO_SORT_VERSION)"
-
-fmt: check-format-tools
-	+@RUSTUP_AUTO_INSTALL=0 CARGO_NET_OFFLINE=true bash scripts/ci/run-formatting.sh --write \
-	  bash -ec 'cargo "+$$1" sort --workspace; \
-	    cargo "+$$1" sort --workspace testing/runtime-qualification; \
-	    cargo "+$$1" fmt --all; \
-	    cargo "+$$1" fmt --manifest-path testing/runtime-qualification/Cargo.toml --all' -- "$(VALIDATION_TOOLCHAIN)"
-
-fmt-check: check-format-tools
-	+@RUSTUP_AUTO_INSTALL=0 CARGO_NET_OFFLINE=true bash scripts/ci/run-formatting.sh --check \
-	  bash -ec 'cargo "+$$1" sort --workspace --check; \
-	    cargo "+$$1" sort --workspace --check testing/runtime-qualification; \
-	    cargo "+$$1" fmt --all -- --check; \
-	    cargo "+$$1" fmt --manifest-path testing/runtime-qualification/Cargo.toml --all -- --check' -- "$(VALIDATION_TOOLCHAIN)"
 
 # Install exact, checksum-verified tools separately; these checks are offline.
 lint-tooling:
@@ -140,7 +127,7 @@ test-release-runner:
 test-release-adapters:
 	bash scripts/ci/test-release-adapters.sh
 
-test-hooks: check-format-tools
+test-hooks: format-tools-check
 	+RUSTUP_AUTO_INSTALL=0 CARGO_NET_OFFLINE=true bash scripts/ci/test-format-tools.sh
 	+RUSTUP_AUTO_INSTALL=0 CARGO_NET_OFFLINE=true bash scripts/ci/test-git-hooks.sh
 
@@ -160,7 +147,7 @@ validate:
 	  cargo "+$$msrv" check --locked --offline --all-targets
 
 validate-toolchain:
-	$(MAKE) --no-print-directory verify-shared-tooling tools-check check-format-tools
+	$(MAKE) --no-print-directory shared-tooling-check tools-check format-tools-check
 	$(MAKE) --no-print-directory check-pins test-pins test-tools test-tooling test-release-adapters test-release-runner test-hooks fmt-check
 	+cargo +$(VALIDATION_TOOLCHAIN) clippy --locked --offline --all-targets -- -D warnings
 	+cargo +$(VALIDATION_TOOLCHAIN) test --locked --offline -- --test-threads=1
@@ -176,14 +163,12 @@ wasm-size:
 		--example wasm-runtime-integration-size-probe
 	+@$(TOOL) wasm-size
 
-# Preserve checkout-local routing and cache preparation for all caller settings.
+# Preserve release-only cache preparation for all caller settings.
 # GNU Make 3.81 cannot combine target-specific override and export. Reclassify
 # caller values first so these exported target policies can supersede them.
-override SHARED_TOOLING_ROOT := $(SHARED_TOOLING_ROOT)
 ifneq ($(origin RELEASE_CACHE_PREPARE),undefined)
 override RELEASE_CACHE_PREPARE := $(RELEASE_CACHE_PREPARE)
 endif
-release-patch release-minor release-major release-resume: export SHARED_TOOLING_ROOT := $(CURDIR)
 release-patch release-minor release-major release-resume: export RELEASE_CACHE_PREPARE := 1
 
 release-version:

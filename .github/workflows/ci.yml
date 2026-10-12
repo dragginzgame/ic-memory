@@ -22,7 +22,7 @@ jobs:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # reviewed Shared Tooling pin
         with:
           persist-credentials: false
-      - run: make verify-shared-tooling
+      - run: make shared-tooling-check
       - name: Install exact validation tools
         shell: bash
         run: |
@@ -207,7 +207,7 @@ jobs:
         with:
           toolchain: ${{ steps.pin.outputs.channel }}
           targets: wasm32-unknown-unknown
-      - run: make verify-shared-tooling
+      - run: make shared-tooling-check
       - name: Prepare host tools, selected CLI and Testkit server
         shell: bash
         run: |

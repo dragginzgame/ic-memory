@@ -1022,7 +1022,7 @@ impl<E: Execute> Repository<E> {
         }
         self.run(
             "make",
-            &["--no-print-directory", "tools-check", "check-format-tools"],
+            &["--no-print-directory", "tools-check", "format-tools-check"],
         )?;
         require(
             fs::read(self.root.join("Cargo.lock"))? == lock,

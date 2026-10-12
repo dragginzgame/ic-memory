@@ -11,7 +11,7 @@ ROOT="${BASH_SOURCE[0]}"
 [[ "$ROOT" == /* ]] || ROOT="$PWD/$ROOT"
 ROOT="$(cd -P "${ROOT%/*}/../.." && printf '%s/.' "$PWD")"
 ROOT="${ROOT%/.}"
-bash "$ROOT/scripts/ci/check-release-commands.sh" "$ROOT" rust-toolchain.toml ci/tool-versions.env make/tools.mk make/release.mk make/execution.mk scripts/ci/check-make-execution.sh
+bash "$ROOT/scripts/ci/check-release-commands.sh" "$ROOT" rust-toolchain.toml ci/tool-versions.env make/consumer.mk make/tools.mk make/release.mk make/rust-format.mk make/execution.mk scripts/ci/check-make-execution.sh
 FIXTURE="$(mktemp -d "${TMPDIR:-/tmp}/ic-memory-release-adapters.XXXXXX")"
 fixture_complete=false
 finish() {
@@ -25,7 +25,7 @@ trap finish EXIT
 mkdir -p "$FIXTURE/ci" "$FIXTURE/make"
 cp "$ROOT/Makefile" "$ROOT/rust-toolchain.toml" "$FIXTURE/"
 cp "$ROOT/ci/tool-versions.env" "$FIXTURE/ci/"
-cp "$ROOT/make/tools.mk" "$ROOT/make/release.mk" "$ROOT/make/execution.mk" "$FIXTURE/make/"
+cp "$ROOT/make/consumer.mk" "$ROOT/make/tools.mk" "$ROOT/make/release.mk" "$ROOT/make/rust-format.mk" "$ROOT/make/execution.mk" "$FIXTURE/make/"
 mkdir -p "$FIXTURE/scripts/ci"
 cp "$ROOT/scripts/ci/check-make-execution.sh" "$FIXTURE/scripts/ci/"
 cat > "$FIXTURE/scripts/ci/run-release.sh" <<'STUB'
@@ -88,8 +88,8 @@ for target in release-patch release-minor release-major release-resume; do
 done
 # Parallel qualification must refuse missing tools before any build/test phase.
 cat > "$FIXTURE/tool-ordering.mk" <<'MAKE'
-.PHONY: verify-shared-tooling tools-check check-format-tools check-pins
-verify-shared-tooling check-format-tools:
+.PHONY: shared-tooling-check tools-check format-tools-check check-pins
+shared-tooling-check format-tools-check:
 	@:
 tools-check:
 	@exit 23
@@ -190,7 +190,7 @@ rm "$FIXTURE/runner-events"
 jobserver="$FIXTURE/jobserver"
 mkdir -p "$jobserver/bin" "$jobserver/make" "$jobserver/ci" "$jobserver/scripts/ci"
 cp "$ROOT/Makefile" "$ROOT/rust-toolchain.toml" "$jobserver/"
-cp "$ROOT/make/tools.mk" "$ROOT/make/release.mk" "$ROOT/make/execution.mk" "$jobserver/make/"
+cp "$ROOT/make/consumer.mk" "$ROOT/make/tools.mk" "$ROOT/make/release.mk" "$ROOT/make/rust-format.mk" "$ROOT/make/execution.mk" "$jobserver/make/"
 cp "$ROOT/ci/tool-versions.env" "$jobserver/ci/"
 cp "$ROOT/scripts/ci/check-make-execution.sh" "$ROOT/scripts/ci/check-format-tools.sh" \
     "$ROOT/scripts/ci/run-formatting.sh" "$jobserver/scripts/ci/"
@@ -293,7 +293,7 @@ mkdir -p "$FIXTURE/bootstrap/scripts/dev" "$FIXTURE/bootstrap/bin" \
     "$FIXTURE/bootstrap/crates/ic-memory/src" "$FIXTURE/bootstrap/crates/ic-memory/examples" "$FIXTURE/bootstrap/ci" "$FIXTURE/bootstrap/make"
 cp "$ROOT/Makefile" "$ROOT/rust-toolchain.toml" "$FIXTURE/bootstrap/"
 cp "$ROOT/ci/tool-versions.env" "$FIXTURE/bootstrap/ci/"
-cp "$ROOT/make/tools.mk" "$ROOT/make/release.mk" "$ROOT/make/execution.mk" "$FIXTURE/bootstrap/make/"
+cp "$ROOT/make/consumer.mk" "$ROOT/make/tools.mk" "$ROOT/make/release.mk" "$ROOT/make/rust-format.mk" "$ROOT/make/execution.mk" "$FIXTURE/bootstrap/make/"
 mkdir -p "$FIXTURE/bootstrap/scripts/ci"
 cp "$ROOT/scripts/ci/check-make-execution.sh" "$FIXTURE/bootstrap/scripts/ci/"
 cp "$ROOT/scripts/dev/run-repo-tool.sh" "$FIXTURE/bootstrap/scripts/dev/"

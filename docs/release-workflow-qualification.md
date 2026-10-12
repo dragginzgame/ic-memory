@@ -4042,3 +4042,29 @@ The root manifest, both selected locks and their unchanged identities are checke
 against `/tmp/memory-03512-incoming-serde154.sha256`. Earlier qualification logs
 remain bound to their previous serde_json 1.0.153 selection. No additional source
 change, dependency selection or release effect was performed in this review.
+
+## Shared Tooling 0.6.4 common Make adoption
+
+Pending Memory 0.35.13 is based on released 0.35.12
+`3cad38a8a93b3755eb0056c8a72963e56cb61aec`, verified by remote annotated tag
+object `7edf2f449bb16288228052ed67ce06112f7642b4`. The canonical 98-file snapshot
+selects Shared `6fc8eb9a94f83fb0b9d0a26377d4232508cdbe2d` (0.6.4).
+The common Make entrypoint receives Memory's unchanged complete formatter
+sequences; actual consumer release/hook fixtures include every parsed module.
+
+Focused formatting/release/hook checks and the shared Make fixture on genuine
+Bash 3.2.57 pass. Full `make validate` passes on the incoming syn 3.0.8 lock
+selection, including helper/public tests, strict linting, Wasm budgets, packaging
+and MSRV. Logs: `/tmp/memory-shared064-{format,focused,bash32-consumer,validate}.log`.
+Manifest and both lock hashes remain unchanged through qualification, checked
+against `/tmp/memory-shared064-inputs.sha256`. No tool reinstall, real hook
+activation, release effect or new installed-runtime scenario was executed.
+
+[Delivered 0.35.12 CI](https://github.com/dragginzgame/ic-memory/actions/runs/38153933146)
+passes every Linux lane; all macOS lanes remain queued at inspection.
+[Shared 0.6.4 CI](https://github.com/dragginzgame/shared-tooling/actions/runs/38155574308)
+passes Linux portable regression and lint/security, with both macOS regressions
+queued. These sources do not qualify the pending local interface adoption.
+[#62](https://github.com/dragginzgame/ic-memory/issues/62) retains consumer
+acceptance; [Shared #130](https://github.com/dragginzgame/shared-tooling/issues/130)
+retains the common implementation and coordination.

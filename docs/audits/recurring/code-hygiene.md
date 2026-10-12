@@ -51,7 +51,7 @@ their selected cases with `--test-threads=1`.
 - Formatting: `make fmt-check` checks both workspaces without builds or installs.
 - Product changes: select the affected Rust test on the pinned toolchain using
   `cargo +1.99.0 test --locked --offline <selection> -- --test-threads=1`.
-- Host tooling: select `make verify-shared-tooling`, `test-tools`, `test-pins`,
+- Host tooling: select `make shared-tooling-check`, `test-tools`, `test-pins`,
   `test-tooling`, `test-release-adapters`, `test-release-runner`, `test-hooks`
   or `lint-tooling` as relevant. Scripts use disposable substitutes where effects
   would otherwise create commits, tags or publication; never run the real hook.

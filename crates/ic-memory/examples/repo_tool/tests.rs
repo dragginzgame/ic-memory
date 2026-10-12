@@ -568,7 +568,7 @@ impl Execute for Substitute {
                 }
                 Ok(String::new())
             }
-            "make" if args == ["--no-print-directory", "tools-check", "check-format-tools"] => {
+            "make" if args == ["--no-print-directory", "tools-check", "format-tools-check"] => {
                 if state.fail.as_deref() == Some("tool-check") {
                     return Err("fixture offline tool admission failure".into());
                 }

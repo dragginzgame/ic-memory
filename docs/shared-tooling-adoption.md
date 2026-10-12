@@ -8,7 +8,7 @@ active engineering policy. Historical shared-version descriptions do not freeze
 that policy or establish new native qualification. Code paths are repository-relative.
 
 The existing tooling snapshot at revision
-`4fd979d13c32adb3cb2f51f213ebfc4f98339b3d` is recorded in
+`6fc8eb9a94f83fb0b9d0a26377d4232508cdbe2d` is recorded in
 [.shared-tooling.snapshot](../.shared-tooling.snapshot). It identifies the vendored
 files, hashes and executable modes; it does not freeze the active local policy.
 Keep its provenance accurate and never edit vendored files in place. Do not
@@ -17,8 +17,8 @@ attribute uncommitted shared files to that recorded revision. The live local
 also applies within its activation scope and is included in this recorded snapshot.
 These instructions are the repository's local overlay.
 
-The single 94-file snapshot uses reviewed committed Shared Tooling at that
-revision, whose committed source `VERSION` is 0.6.3. The manifest records that
+The single 98-file snapshot uses reviewed committed Shared Tooling at that
+revision, whose committed source `VERSION` is 0.6.4. The manifest records that
 display version separately from its authoritative commit identity. This includes
 the corrected producer version and the package-impact guidance: contributor-only
 tooling changes use compatible library patch notes. It includes
@@ -131,10 +131,13 @@ scratch root; the IC installer uses the included canonical pin parser.
 The reviewed `make/release.mk` owns standard release entrypoints and conflicting
 selection admission. Its `make/execution.mk` companion resolves the behavioral
 probe beside the selected include, independently of runtime tooling-root values.
-Memory retains direct-delivery admission, forced release-only
-cache preparation, complete common-tool preparation/admission and all Rust metadata/validation/publication adapters. The
-root-only formatting include is not selected: both maintained workspaces keep
-Memory's explicit compiler and formatting coverage.
+Memory selects `make/consumer.mk` as its common entrypoint and retains
+direct-delivery admission, forced release-only cache preparation, complete
+common-tool preparation/admission and all Rust metadata/validation/publication
+adapters. The selected formatting module receives Memory's paired complete
+commands for both workspaces, preserving its explicit compiler and coverage.
+Common snapshot and formatter admission use `shared-tooling-check` and
+`format-tools-check`; CI and current guides select those names.
 The release runner and its PR helper are exported unchanged. This consumer
 selects direct delivery and rejects other delivery selections before dispatch;
 PR release adapters and their real-Git qualification fixture are not adopted.

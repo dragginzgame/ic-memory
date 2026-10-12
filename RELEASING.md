@@ -59,7 +59,7 @@ make fetch-dependencies
 Both maintained workspaces track their `Cargo.lock`. The root lock is a required
 source-bound qualification input. Release preflight prepares the existing
 common tool selection with `make install-tools`,
-then admits it through `make tools-check check-format-tools` before the full
+then admits it through `make tools-check format-tools-check` before the full
 gate. Common setup first checks platform/catalog and Rust/Cargo availability
 without downloads or automatic toolchain installation. Setup follows coherent
 saved-source admission/cache preparation and is not
@@ -146,12 +146,12 @@ preserving prior attempts. Optional explicit selection uses the same checks:
 make release-resume VERSION=X.Y.Z
 ```
 
-The recorded `make/release.mk` supplies standard entrypoint routing and
-conflicting-goal admission. Memory's Makefile retains direct-only delivery and
-binds the four standard release targets to this checkout's tooling root while
-forcing release-only cache preparation. These target-specific overrides retain
-the previous local routing even with conflicting caller settings. The Rust
-adapters continue to own metadata, qualification and publication.
+The recorded `make/consumer.mk` includes `make/release.mk` for standard entrypoint
+routing and conflicting-goal admission. Memory's Makefile retains direct-only
+delivery, binds the shared tooling root to this checkout even with conflicting
+caller settings, and forces release-only cache preparation on the four standard
+release targets. The Rust adapters continue to own metadata, qualification and
+publication.
 The adjacent `make/execution.mk` admits Make before recipes and resolves its
 probe from the reviewed include rather than an ambient tooling root. Memory's
 exported target policies also support GNU Make 3.81.
@@ -310,7 +310,7 @@ settings; the canonical correction is tracked in
   fixtures cover selection forwarding, unique gate logs and locked bootstrap.
 - `make test-release-runner`: unchanged canonical runner with command substitutes;
   ordering, all increments, Git effect scope, locks and interruption reconciliation.
-- `make verify-shared-tooling`, `make test-hooks`, `make fmt-check` and
+- `make shared-tooling-check`, `make test-hooks`, `make fmt-check` and
   `make lint-tooling`: snapshot, setup/formatting and portable tooling checks.
 
 These tests create no commits/tags/pushes and perform no publication or full gate.

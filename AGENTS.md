@@ -32,7 +32,7 @@ and prerequisites are declared in [docs/host-support.md](docs/host-support.md).
 ## Development and qualification commands
 
 - Before editing or compiling, check for active Cargo, rustc and rustdoc builds.
-- Focused checks: `make verify-shared-tooling`, `make check-pins`, `make test-pins`, `make test-tools`, `make test-tooling`,
+- Focused checks: `make shared-tooling-check`, `make check-pins`, `make test-pins`, `make test-tools`, `make test-tooling`,
   `make test-release-adapters`, `make test-release-runner`, `make test-hooks`,
   `make test-failure-evidence`, `make fmt-check`, `make lint-tooling`, or an appropriately
   selected Rust test. `make runtime-server-check` and `make test-runtime` are

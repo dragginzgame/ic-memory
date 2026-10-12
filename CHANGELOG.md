@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.35.13]
+
+- Adopt Shared Tooling 0.6.4's common Make entrypoint, preserving both-workspace
+  formatting and release admission. Use `shared-tooling-check` and
+  `format-tools-check` for the shared checks
+  ([#62](https://github.com/dragginzgame/ic-memory/issues/62),
+  [Shared #130](https://github.com/dragginzgame/shared-tooling/issues/130)).
+- Qualify the incoming locked syn 3.0.8 update; manifest requirements are unchanged.
+
+[Detailed notes](docs/changelog/0.35.md)
+
 ## [0.35.12] - 2026-10-11
 
 - Update locked development dependencies to IC Host 0.14.1 and serde_json 1.0.154;
