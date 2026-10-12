@@ -1,6 +1,6 @@
 # Changelog
 
-## [0.35.13]
+## [0.35.13] - 2026-10-12
 
 - Adopt Shared Tooling 0.6.4's common Make entrypoint, preserving both-workspace
   formatting and release admission. Use `shared-tooling-check` and
