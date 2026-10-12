@@ -91,7 +91,13 @@ ln -s "$SHARED_TOOLING_STORE/unrelated" "$repository_root/.tools/ic-set.unknown"
 rust_bundle="$(source "$ROOT/scripts/dev/tool-store.sh"; tool_store_init rust evidence; printf '%s/set.evidence\n' "$store_slot")"
 (umask 077; mkdir -p "$rust_bundle/build")
 printf 'shared Cargo build failure\n' > "$rust_bundle/build/install.log"
-printf 'published source receipt\n' > "$rust_bundle/selection.json"
+# A build-identity refusal retains both observations without activating a receipt.
+printf 'expected native inventory\n' > "$rust_bundle/native-environment.txt"
+printf 'observed native inventory\n' > "$rust_bundle/native-environment.observed.txt"
+expected_native="$(bash "$ROOT/scripts/ci/verify-file-checksum.sh" --print sha256 "$rust_bundle/native-environment.txt")"
+observed_native="$(bash "$ROOT/scripts/ci/verify-file-checksum.sh" --print sha256 "$rust_bundle/native-environment.observed.txt")"
+printf '{"build":{"native":"%s"}}\n' "$expected_native" > "$rust_bundle/inputs.json"
+printf '{"native":"%s"}\n' "$observed_native" > "$rust_bundle/build-identity.observed.json"
 ln -s "$rust_bundle" "$repository_root/.tools/rust/rust-set.shared"
 ln -s "$rust_bundle" "$repository_root/.tools/rust/rust-set.sharedDuplicate"
 ln -s "$SHARED_TOOLING_STORE/unrelated" "$repository_root/.tools/rust/rust-set.unknown"
@@ -116,6 +122,27 @@ cp "$fixture/archive.sha256" "$fixture/original.sha256"
 bash "$ROOT/scripts/ci/verify-file-checksum.sh" --print sha256 "$compact" > "$fixture/archive.sha256"
 bash "$ROOT/scripts/ci/verify-failure-evidence.sh" "$fixture" "$compact"
 mv "$fixture/original.sha256" "$fixture/archive.sha256"
+# Matching archive bytes cannot hide a lost or changed refusal observation.
+cp "$rust_bundle/native-environment.observed.txt" "$fixture/original-observed-native.txt"
+printf 'wrong observed inventory\n' > "$rust_bundle/native-environment.observed.txt"
+if bash "$ROOT/scripts/ci/verify-failure-evidence.sh" "$fixture" "$archive" > "$fixture/contradicted-observation.log" 2>&1; then
+    echo 'expected observed build-identity refusal' >&2; exit 1
+fi
+mv "$fixture/original-observed-native.txt" "$rust_bundle/native-environment.observed.txt"
+# A linked observation can compare equal through the live fixture while its
+# bytes never enter the archive. Download verification must refuse that shape.
+cp "$rust_bundle/native-environment.observed.txt" "$fixture/linked-observation.txt"
+rm "$rust_bundle/native-environment.observed.txt"
+ln -s "$fixture/linked-observation.txt" "$rust_bundle/native-environment.observed.txt"
+linked_archive="$(bash "$ROOT/scripts/ci/collect-failure-evidence.sh" "$temp_root" "$repository_root")"
+cp "$fixture/archive.sha256" "$fixture/original.sha256"
+bash "$ROOT/scripts/ci/verify-file-checksum.sh" --print sha256 "$linked_archive" > "$fixture/archive.sha256"
+if bash "$ROOT/scripts/ci/verify-failure-evidence.sh" "$fixture" "$linked_archive" > "$fixture/linked-observation.log" 2>&1; then
+    echo 'expected linked observation refusal' >&2; exit 1
+fi
+mv "$fixture/original.sha256" "$fixture/archive.sha256"
+rm "$rust_bundle/native-environment.observed.txt"
+mv "$fixture/linked-observation.txt" "$rust_bundle/native-environment.observed.txt"
 # Rust-only checkouts must invoke the selector without any host/IC references.
 mkdir -p "$fixture/rust-only/.tools" "$fixture/rust-only-temp"
 cp -R "$repository_root/.tools/rust" "$fixture/rust-only/.tools/"
@@ -124,7 +151,10 @@ rust_archive="$(GITHUB_OUTPUT="$fixture/rust-only-output" bash "$ROOT/scripts/ci
 mkdir "$fixture/rust-only-unpacked"
 tar -xzf "$rust_archive" -C "$fixture/rust-only-unpacked"
 rust_path="${rust_bundle#"$SHARED_TOOLING_STORE/"}"
-cmp "$rust_bundle/build/install.log" "$fixture/rust-only-unpacked/$rust_path/build/install.log"
+for path in build/install.log inputs.json native-environment.txt \
+    build-identity.observed.json native-environment.observed.txt; do
+    cmp "$rust_bundle/$path" "$fixture/rust-only-unpacked/$rust_path/$path"
+done
 cmp "$repository_root/.tools/rust/build/cargo-attempt.test/install.log" "$fixture/rust-only-unpacked/.tools/rust/build/cargo-attempt.test/install.log"
 tar -tzf "$rust_archive" > "$fixture/rust-only-members"
 [[ "$(awk '{ sub(/^\.\//, "") } $0 == ".tools/rust/" { count++ } END { print count+0 }' "$fixture/rust-only-members")" == 1 ]] || exit 1

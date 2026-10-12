@@ -4243,3 +4243,93 @@ dependency inputs, retaining its original snapshot identity. It is not relabelle
 as a full 0.8.0 run. No reinstall or additional full suite is needed for this
 documentation/provenance-only consumer delta. #62 retains final delivery and
 matching-source native acceptance; no real Git/release or sibling effect occurred.
+
+## Shared Tooling 0.8.1 and archive observation checks
+
+Memory 0.35.15 `2b6f8f10d4136accd05755d3364f1bb21d505d0e` is delivered,
+matching remote annotated `v0.35.15` object `d952de39becab0bb00d04f111f737a1340beb842`.
+Its Shared 0.8.0/Host 0.14.5 graph passes every Linux lane in
+[exact-source CI](https://github.com/dragginzgame/ic-memory/actions/runs/38231685682);
+all six macOS lanes remain queued at inspection. Earlier source runs were
+cancelled by the configured concurrency policy, preserving their source-bound
+completed observations without establishing all-host acceptance.
+
+The compatible pending 0.35.16 batch canonically selects Shared **0.8.1**,
+`c97f9f9c7b7c706fffdcfc5925cf58759b58093f`, with unchanged 77 roots/98 payloads.
+The new parser refuses empty/trailing fields, and failed Cargo installation
+retains both original/observed identities. Memory's archive verifier now checks
+all four identity files byte-for-byte and once across duplicate references,
+including full/compact and Rust-only collection. A changed observation refuses
+even when archive bytes/digest match. The same verifier is selected by hosted
+upload/download steps; this local proof does not claim a new hosted round trip.
+
+Final full `make validate`, tooling lint and genuine Bash 3.2.57 archive checks
+pass. The selected Shared Rust fixture's compiler/native/policy mismatch cases
+also pass on Bash 3.2. Actual annotated-snapshot verification accepts valid input
+and rejects four malformed cases without rewriting them on both interpreters.
+Logs: `/tmp/memory-shared081-{validate,lint-final,evidence-bash32-delivery,rust-bash32}.log`;
+schema evidence: `/tmp/memory-shared081-schema.wz87lp2w/`;
+stable inputs: `/tmp/memory-shared081-inputs.sha256`. The first file named
+`evidence-bash32.log` ran the default interpreter after an old PATH pointer was
+missing; it is not genuine Bash 3.2 evidence. Final runs use an explicitly
+verified new shim and retain that earlier attempt separately.
+
+A separate disposable reproduction found a Shared-owned admission gap in the
+two new diagnostic paths: fake Cargo-created symlinks redirect mismatch writes
+into outside fixture sentinel files. No real source/user file was modified.
+[Shared #136](https://github.com/dragginzgame/shared-tooling/issues/136) records
+the concrete proof and smallest guard repair; canonical Shared files remain
+unchanged. Evidence: `/tmp/memory-shared081-observation-repro.log` and
+`/tmp/rust-tools-test.jGA7lL/`. Passing normal fixture/adoption checks do not
+qualify that redirected-path boundary. #62 retains delivery/native acceptance
+and this upstream limitation; #44 retains application-owned composition.
+
+The hosted oracle also had a consumer-owned file-type proof gap, now tracked in
+[#67](https://github.com/dragginzgame/ic-memory/issues/67). A read-only export of
+delivered 0.35.15 accepts a required log symlink to a live outside fixture file,
+despite the archive omitting those payload bytes. The unchanged released verifier
+and actual collector reproduce this in `/tmp/memory-03515-linkproof.log` and
+`/tmp/failure-evidence.TPVNJg/`. Required shared payloads now must be regular
+non-symlink files before byte/deduplication checks. The local regression proves
+that a matching digest and readable original observation cannot admit that link.
+Its first expected-failure reproduction remains
+`/tmp/memory-shared081-linked-observation-before.log`, `/tmp/failure-evidence.nomf5i/`.
+Final full `make validate`, lint and genuine Bash 3.2 evidence checks pass after
+this correction: `/tmp/memory-shared081-{validate-final,lint-delivery,evidence-bash32-final}.log`.
+The preceding passes retain their original input identities; stable input hashes
+remain exact. #67 retains delivery, independently of #62 native acceptance and
+Shared #136's producer write-path repair. No upstream guard is bypassed or forked.
+
+## Continued 0.35.16 helper and selection qualification
+
+The root lock now selects Host artifacts/fs **0.14.6**, whose published archive
+checksums and VCS match `11f8c31b599ea81f6106225c4068d78d22fed249`. Library source
+is unchanged from 0.14.5. Locked fetching, both offline metadata graphs and full
+`make validate` pass: `/tmp/memory-host0146-{fetch,metadata,runtime-metadata}.*`,
+`/tmp/memory-03516-continued-validate.log`. All selected dependency inputs remain
+unchanged during qualification (`/tmp/memory-03516-continued-inputs.sha256`).
+
+Three redundant roots derive from canonical owners: the two mandatory integrity
+tools and the dependency checker's jq program. Consumer-invoked version, release
+and Make-admission helpers remain explicit. The initial 74-root refresh preserves
+all 98 payload bytes/modes; canonical/Bash 3.2 repeat preview has only KEEP rows.
+Logs: `/tmp/memory-03516-roots-{preview-final,refresh,bash32-preview}.log`.
+
+Shared **0.8.2** `aaf75a37717357dd62f4b0b15001eaa3ba1629cf` landed during that
+qualification. Its advisory Cargo-tool guidance adds one root/document, yielding
+75 roots/99 payloads. Only governance/task documentation and provenance differ
+from the passing code graph; the inspector remains central Shared tooling.
+Final snapshot/tool/formatter admission and Bash 3.2 preview pass without a new
+full suite or relabelling the previous full pass. Logs:
+`/tmp/memory-shared082-{preview,refresh,checks,bash32-preview}.log`;
+final inputs: `/tmp/memory-03516-final-inputs.sha256`.
+
+The canonical read-only freshness inspection reports all 17 observed Cargo
+selections current, including all three pinned checkout tools. Registry responses
+remain in `/tmp/cargo-tool-versions.Vso2X2/`; report:
+`/tmp/memory-shared082-tool-versions.json`. Receipts establish recorded versions;
+separate offline admission authenticates executable bytes/builds. No pin, compiler
+or installation change follows from the inspection. Shared #136 remains open and
+its missing diagnostic-path admission is unchanged in 0.8.2.
+The Toko Miner candidate/lifecycle seam is recorded in #44 without a sibling
+source edit or a new Jobs dependency; no composed IC acceptance is claimed.

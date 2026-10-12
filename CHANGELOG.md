@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.35.16]
+
+- Adopt Shared Tooling 0.8.2, including stricter snapshot parsing and retained tool-build
+  observations. Require real payload files in hosted failure archives
+  ([#62](https://github.com/dragginzgame/ic-memory/issues/62),
+  [#67](https://github.com/dragginzgame/ic-memory/issues/67),
+  [Shared #133](https://github.com/dragginzgame/shared-tooling/issues/133),
+  [#134](https://github.com/dragginzgame/shared-tooling/issues/134)).
+- Derive internal snapshot helpers from their owners and update release-helper
+  dependencies to Host 0.14.6; library contracts remain unchanged.
+
+[Detailed notes](docs/changelog/0.35.md)
+
 ## [0.35.15] - 2026-10-12
 
 - Adopt Shared Tooling 0.8.0: snapshot refresh derives companions and automatically

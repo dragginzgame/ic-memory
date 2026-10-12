@@ -8,7 +8,7 @@ active engineering policy. Historical shared-version descriptions do not freeze
 that policy or establish new native qualification. Code paths are repository-relative.
 
 The existing tooling snapshot at revision
-`045a6f22a9de497bfb3af90cb2571957384806f2` is recorded in
+`aaf75a37717357dd62f4b0b15001eaa3ba1629cf` is recorded in
 [.shared-tooling.snapshot](../.shared-tooling.snapshot). It identifies the vendored
 files, hashes and executable modes; it does not freeze the active local policy.
 Keep its provenance accurate and never edit vendored files in place. Do not
@@ -17,13 +17,12 @@ attribute uncommitted shared files to that recorded revision. The live local
 also applies within its activation scope and is included in this recorded snapshot.
 These instructions are the repository's local overlay.
 
-The single 98-file snapshot uses reviewed committed Shared Tooling at that
-revision, whose committed source `VERSION` is 0.8.0. The manifest records that
-display version separately from its authoritative commit identity. The 77 explicit
-roots
-select the reviewed governance catalog and Memory's maintained Make, hook, CI,
+The single 99-file snapshot uses reviewed committed Shared Tooling at that
+revision, whose committed source `VERSION` is 0.8.2. The manifest records that
+display version separately from its authoritative commit identity. The 75 explicit
+roots select the reviewed governance catalog and Memory's maintained Make, hook, CI,
 archive and fixture entrypoints. Their generated companion closure preserves
-the existing 98 payload files. No file retirement, exporter/fleet fixture adoption
+the existing 98 payload files and adds Cargo tool freshness guidance. No file retirement, exporter/fleet fixture adoption
 or tool reinstall is needed. Subsequent refreshes reuse the manifest's recorded
 roots. Shared 0.8.0 automatically removes unchanged obsolete owned files outside
 their closure; `--retire-file` is removed. Review canonical preview and local
@@ -32,6 +31,16 @@ as explicit entrypoints. This adoption removes no payloads. Follow the selected
 [snapshot procedure](consuming-snapshots.md#entrypoint-selection-in-070), keeping
 root intent distinct from derived payloads and independently reviewing local
 callers and other bundle ownership. Memory has one shared payload manifest.
+Shared 0.8.1 enforces exact snapshot fields and retains both build-identity
+observations on tool-installation refusal. Memory's full/compact, Rust-only and
+hosted archive checks preserve those four identity files once, without a failed
+generation acquiring an activation receipt. Tool pins/build identity are unchanged.
+The two mandatory integrity helpers and the dependency checker's private jq
+program derive from their canonical owners instead of redundant root records.
+Consumer-invoked release helpers remain explicit roots; all payloads are retained.
+Shared 0.8.2 adds advisory Cargo-tool freshness to the task catalog. Run its
+read-only checker from Shared Tooling; the consumer snapshot selects the linked
+guidance without importing the central checker or adding a network gate/schedule.
 This includes
 the corrected producer version and the package-impact guidance: contributor-only
 tooling changes use compatible library patch notes. It includes

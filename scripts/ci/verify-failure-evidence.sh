@@ -36,17 +36,20 @@ shared_path="${shared_bundle#"$SHARED_TOOLING_STORE/"}"
 cmp "$shared_bundle/bin/tool" "$unpacked/$shared_path/bin/tool"
 rust_bundle="$(source "$ROOT/scripts/dev/tool-store.sh"; tool_store_init rust evidence; printf '%s/set.evidence\n' "$store_slot")"
 rust_path="${rust_bundle#"$SHARED_TOOLING_STORE/"}"
-for path in build/install.log selection.json; do
+tar -tzf "$2" > "$unpacked/archive-members"
+for path in build/install.log inputs.json native-environment.txt \
+    build-identity.observed.json native-environment.observed.txt; do
+    [[ -f "$unpacked/$rust_path/$path" && ! -L "$unpacked/$rust_path/$path" ]] || exit 1
     cmp "$rust_bundle/$path" "$unpacked/$rust_path/$path"
+    [[ "$(awk -v member="$rust_path/$path" '{ sub(/^\.\//, "") } $0 == member { count++ } END { print count+0 }' "$unpacked/archive-members")" == 1 ]] || exit 1
 done
+[[ ! -e "$unpacked/$rust_path/selection.json" && ! -L "$unpacked/$rust_path/selection.json" ]] || exit 1
 for reference in rust-set.shared rust-set.sharedDuplicate; do
     [[ -L "$unpacked/.tools/rust/$reference" && "$(readlink "$unpacked/.tools/rust/$reference")" == "$rust_bundle" ]] || exit 1
 done
 [[ -L "$unpacked/.tools/rust/rust-set.unknown" && \
    "$(readlink "$unpacked/.tools/rust/rust-set.unknown")" == "$SHARED_TOOLING_STORE/unrelated" ]] || exit 1
-tar -tzf "$2" > "$unpacked/archive-members"
 [[ "$(awk '{ sub(/^\.\//, "") } $0 == ".tools/rust/" { count++ } END { print count+0 }' "$unpacked/archive-members")" == 1 ]] || exit 1
-[[ "$(awk -v member="$rust_path/build/install.log" '{ sub(/^\.\//, "") } $0 == member { count++ } END { print count+0 }' "$unpacked/archive-members")" == 1 ]] || exit 1
 for reference in host-set.shared host-set.sharedDuplicate; do
     [[ -L "$unpacked/.tools/$reference" && "$(readlink "$unpacked/.tools/$reference")" == "$shared_bundle" ]] || exit 1
 done
