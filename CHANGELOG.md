@@ -1,6 +1,6 @@
 # Changelog
 
-## [0.35.18]
+## [0.35.18] - 2026-10-12
 
 - Adopt Shared Tooling 0.9.4: use its common snapshot manifest reader and reject
   NUL bytes before parsing. Existing snapshots and integrity checks remain
