@@ -54,7 +54,7 @@ cat > "$consumer/.tools/rust/common/bin/fixture-cargo" <<'CARGO'
 set -eu
 [[ "$CARGO_NET_OFFLINE" == true && "$RUSTUP_AUTO_INSTALL" == 0 ]]
 case "$*" in
-    'sort --version') echo 'cargo-sort 2.1.4'; exit 0 ;;
+    'sort --version') echo "cargo-sort ${FIXTURE_SORT_VERSION:-2.1.4}"; exit 0 ;;
     'fmt --version') exit 0 ;;
 esac
 printf '%s\n' "$*" >> "$MAKE_CONSUMER_EVENTS"
@@ -77,6 +77,21 @@ CHECK
 [[ "$(make -s -C "$consumer" fmt-check)" == 'Checking formatting... ok' ]]
 printf 'sort --workspace --check\nfmt --all -- --check\n' > "$fixture/expected"
 cmp "$fixture/expected" "$MAKE_CONSUMER_EVENTS"
+
+# Formatting follows the Rust catalog, including when the host catalog has no
+# Cargo pins. Wrong Rust selections still refuse before invoking formatters.
+printf 'SHARED_TOOLING_CARGO_SORT_VERSION=2.1.5\n' > "$consumer/ci/rust pins.env"
+printf '# Host-only catalog\n' > "$consumer/ci/host pins.env"
+for host_catalog in tool-versions.env 'host pins.env'; do
+    : > "$MAKE_CONSUMER_EVENTS"
+    FIXTURE_SORT_VERSION=2.1.5 make -s -C "$consumer" fmt-check \
+        "HOST_TOOL_VERSIONS=$consumer/ci/$host_catalog" "RUST_TOOL_VERSIONS=$consumer/ci/rust pins.env"
+    cmp "$fixture/expected" "$MAKE_CONSUMER_EVENTS"
+done
+: > "$MAKE_CONSUMER_EVENTS"
+if make -s -C "$consumer" fmt-check "RUST_TOOL_VERSIONS=$consumer/ci/rust pins.env" \
+    > "$fixture/rust-pin-refusal.log" 2>&1; then exit 1; fi
+[[ ! -s "$MAKE_CONSUMER_EVENTS" ]]
 
 # Product prerequisites and target-specific selections survive the common route.
 for kind in patch minor major resume; do

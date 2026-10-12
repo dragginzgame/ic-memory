@@ -4333,3 +4333,69 @@ or installation change follows from the inspection. Shared #136 remains open and
 its missing diagnostic-path admission is unchanged in 0.8.2.
 The Toko Miner candidate/lifecycle seam is recorded in #44 without a sibling
 source edit or a new Jobs dependency; no composed IC acceptance is claimed.
+
+## Shared 0.8.3 adoption
+
+Delivered Memory **0.35.16**, `8be6f904da992b646ff2b691576bac436a384132`, matches
+remote annotated `v0.35.16` object `74ebd6d8a4bd0f0324c88b5562037fa40e16354b`.
+Its actual root lock selects Host artifacts/fs **0.14.7**; the earlier 0.14.6
+observations above retain their original inputs. The 0.8.3 adoption leaves both
+dependency graphs, tool pins, compiler and package metadata unchanged.
+
+Canonical preview/refresh select Shared **0.8.3**,
+`8cca7e67b03ce6e701b6e7dcec2e9753eb98337e`, preserving 75 roots/99 payloads.
+Logs: `/tmp/memory-shared083-{preview,refresh}.log`.
+Full `make validate` and tooling lint pass on this selected graph:
+`/tmp/memory-shared083-{validate,lint}.log`. Input hashes remain unchanged:
+`/tmp/memory-shared083-inputs.sha256`; unchanged selection comparison:
+`/tmp/memory-shared083-selection-before.sha256`.
+
+Genuine Bash 3.2.57 passes the selected Rust installer, host installer and Make
+consumer fixtures, including both redirected diagnostic leaves and separate
+host/Rust formatter catalogs. The outside sentinels remain unchanged, failed
+links stay retained without being followed, activation refuses and prior tool
+selection survives. Logs: `/tmp/memory-shared083-{rust,host,make}-bash32.log`;
+version: `/tmp/memory-shared083-bash32-version.log`. Canonical repeat preview
+under that interpreter contains only KEEP rows with unchanged manifest identity
+(`/tmp/memory-shared083-preview-bash32.log`). Shared owns the exporter interruption
+and minimal-Make integration fixtures; they are not imported or run here.
+
+[#67](https://github.com/dragginzgame/ic-memory/issues/67)'s archive repair is
+verified in delivered 0.35.16; its verifier/fixture remain unchanged in this
+adoption. [#62](https://github.com/dragginzgame/ic-memory/issues/62) retains pending
+delivery and native all-host acceptance. Shared owns native producer acceptance
+for its reviewed fixes; these local passes do not establish new hosted or macOS
+execution. No sibling source edit, Git/ref/release effect, tool installation,
+workflow control or evidence cleanup was performed.
+
+## Shared 0.8.4 adoption
+
+Canonical preview/refresh select committed Shared **0.8.4**,
+`dca2bdd018afa6be598f03bb3cce1bab79c66973`, preserving 75 roots/99 payloads.
+Beyond 0.8.3, only the workspace LOC reporter, its selected fixture and snapshot
+guidance change. Logs: `/tmp/memory-shared084-{preview,refresh}.log`.
+Later uncommitted sibling parser work is not attributed to this snapshot.
+
+Full `make validate` and tooling lint pass:
+`/tmp/memory-shared084-{validate,lint}.log`. This pass includes the maintainer's
+Host artifacts/fs **0.14.8** root lock selection present before this refresh;
+the earlier 0.8.3 pass remains bound to Host 0.14.7. Both dependency graphs,
+tool pins and compiler remain unchanged throughout this pass, as checked against
+`/tmp/memory-shared084-{selection-before,inputs}.sha256`.
+
+Genuine Bash 3.2.57 passes the LOC fixture's table/JSON agreement, independent
+manifest isolation and preserved status/no-partial-JSON failure checks, plus
+actual snapshot verification. Logs:
+`/tmp/memory-shared084-{cloc-bash32-prepared,snapshot-bash32}.log`;
+version: `/tmp/memory-shared084-bash32-version.log`. The initial direct fixture
+refused because prepared cloc was absent from that caller's PATH; its failure
+remains in `/tmp/memory-shared084-cloc-bash32.log` and
+`/tmp/shared-tooling-cloc-test.TxZG9C/`. Using the existing prepared host PATH
+requires no installation and passes. Real root and independent-workspace JSON
+reports are retained separately in `/tmp/memory-shared084-workspace.json` and
+`/tmp/memory-shared084-runtime-workspace.json`; neither combines the graphs.
+
+This remains compatible 0.35.17 work, unstaged and uncommitted.
+[#62](https://github.com/dragginzgame/ic-memory/issues/62) retains delivery and
+native all-host acceptance. No sibling edit, Git/ref/release effect, installation,
+network dependency preparation, workflow control or evidence cleanup occurred.

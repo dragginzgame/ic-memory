@@ -120,6 +120,8 @@ for host in Linux:x86_64 Linux:arm64 Darwin:x86_64 Darwin:arm64; do
     [[ "$(wc -l < "$fixture/downloads")" == "$before" ]] || exit 1
 done
 original="$(readlink "$consumer/.tools/host")"
+# Successful capability probes stay quiet; failures below retain diagnostics.
+if grep -F 'PCRE2 available' "$fixture/install.log"; then exit 1; fi
 # Harmless stderr does not change the established stdout version comparison.
 TEST_VERSION_WARNING=1 install --check
 for tool in jq yq rg cloc; do

@@ -8,7 +8,7 @@ active engineering policy. Historical shared-version descriptions do not freeze
 that policy or establish new native qualification. Code paths are repository-relative.
 
 The existing tooling snapshot at revision
-`aaf75a37717357dd62f4b0b15001eaa3ba1629cf` is recorded in
+`dca2bdd018afa6be598f03bb3cce1bab79c66973` is recorded in
 [.shared-tooling.snapshot](../.shared-tooling.snapshot). It identifies the vendored
 files, hashes and executable modes; it does not freeze the active local policy.
 Keep its provenance accurate and never edit vendored files in place. Do not
@@ -18,7 +18,7 @@ also applies within its activation scope and is included in this recorded snapsh
 These instructions are the repository's local overlay.
 
 The single 99-file snapshot uses reviewed committed Shared Tooling at that
-revision, whose committed source `VERSION` is 0.8.2. The manifest records that
+revision, whose committed source `VERSION` is 0.8.4. The manifest records that
 display version separately from its authoritative commit identity. The 75 explicit
 roots select the reviewed governance catalog and Memory's maintained Make, hook, CI,
 archive and fixture entrypoints. Their generated companion closure preserves
@@ -41,6 +41,16 @@ Consumer-invoked release helpers remain explicit roots; all payloads are retaine
 Shared 0.8.2 adds advisory Cargo-tool freshness to the task catalog. Run its
 read-only checker from Shared Tooling; the consumer snapshot selects the linked
 guidance without importing the central checker or adding a network gate/schedule.
+Shared 0.8.3 admits both observed diagnostic leaves before and after Cargo,
+reads formatting pins from the selected Rust catalog, and declares common Make
+installer/LOC companions. Memory's roster remains unchanged. Canonical refresh
+replaces individual payloads atomically after rechecking conflicts; the consumer
+ignores its abandoned `.shared-tooling-payload.*` scratch files.
+Shared 0.8.4 adds complete JSON output to the local workspace LOC reporter,
+with independent manifest selection and failure status preserved. Memory keeps
+the default `make cloc` table; `bash scripts/dev/cloc.sh --json` selects the new
+projection directly. Fleet aggregation stays upstream. The snapshot guidance
+now consistently describes derived companions instead of manual file selection.
 This includes
 the corrected producer version and the package-impact guidance: contributor-only
 tooling changes use compatible library patch notes. It includes

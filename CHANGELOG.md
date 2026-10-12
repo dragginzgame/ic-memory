@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.35.17]
+
+- Adopt Shared Tooling 0.8.4: prevent redirected build-diagnostic writes and use
+  the selected Rust catalog for formatting admission
+  ([Shared #136](https://github.com/dragginzgame/shared-tooling/issues/136),
+  [#135](https://github.com/dragginzgame/shared-tooling/issues/135)).
+- Include the corrected Make snapshot dependencies and atomic payload refresh
+  ([Shared #131](https://github.com/dragginzgame/shared-tooling/issues/131)).
+  Library contracts and tool selections remain unchanged.
+- Add JSON output to the workspace LOC reporter while preserving its default
+  table and independent workspace selection.
+
+[Detailed notes](docs/changelog/0.35.md)
+
 ## [0.35.16] - 2026-10-12
 
 - Adopt Shared Tooling 0.8.2, including stricter snapshot parsing and retained tool-build

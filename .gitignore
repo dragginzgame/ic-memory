@@ -4,6 +4,7 @@ target/
 
 # Maintained workspaces commit their selected Cargo.lock files.
 .shared-tooling-refresh.*
+.shared-tooling-payload.*
 # Helper-owned scratch for atomic release metadata and receipt replacement.
 .ic-memory-release.*.tmp
 
