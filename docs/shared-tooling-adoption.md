@@ -8,7 +8,7 @@ active engineering policy. Historical shared-version descriptions do not freeze
 that policy or establish new native qualification. Code paths are repository-relative.
 
 The existing tooling snapshot at revision
-`dca2bdd018afa6be598f03bb3cce1bab79c66973` is recorded in
+`aec7a149f581a42b9531fc747b46024fc0314fcf` is recorded in
 [.shared-tooling.snapshot](../.shared-tooling.snapshot). It identifies the vendored
 files, hashes and executable modes; it does not freeze the active local policy.
 Keep its provenance accurate and never edit vendored files in place. Do not
@@ -18,7 +18,7 @@ also applies within its activation scope and is included in this recorded snapsh
 These instructions are the repository's local overlay.
 
 The single 99-file snapshot uses reviewed committed Shared Tooling at that
-revision, whose committed source `VERSION` is 0.8.4. The manifest records that
+revision, whose committed source `VERSION` is 0.9.0. The manifest records that
 display version separately from its authoritative commit identity. The 75 explicit
 roots select the reviewed governance catalog and Memory's maintained Make, hook, CI,
 archive and fixture entrypoints. Their generated companion closure preserves
@@ -51,6 +51,12 @@ with independent manifest selection and failure status preserved. Memory keeps
 the default `make cloc` table; `bash scripts/dev/cloc.sh --json` selects the new
 projection directly. Fleet aggregation stays upstream. The snapshot guidance
 now consistently describes derived companions instead of manual file selection.
+Shared 0.9.0 makes this verifier the common manifest syntax reader for refresh
+and fleet reports. `--read-manifest FILE` emits complete admitted records without
+payload authentication; ordinary verification retains its independent integrity
+checks. Both modes reject NUL bytes before parsing the same captured manifest.
+The v1 format, consumer commands and payload roster are unchanged. Memory does
+not import the central exporter or fleet reporters.
 This includes
 the corrected producer version and the package-impact guidance: contributor-only
 tooling changes use compatible library patch notes. It includes

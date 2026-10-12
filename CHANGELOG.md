@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.35.18]
+
+- Adopt Shared Tooling 0.9.0: use its common snapshot manifest reader and reject
+  NUL bytes before parsing. Existing snapshots and integrity checks remain
+  supported ([Shared #133](https://github.com/dragginzgame/shared-tooling/issues/133),
+  [#62](https://github.com/dragginzgame/ic-memory/issues/62)).
+  Library contracts and dependency selections remain unchanged.
+
+[Detailed notes](docs/changelog/0.35.md)
+
 ## [0.35.17] - 2026-10-12
 
 - Adopt Shared Tooling 0.8.4: prevent redirected build-diagnostic writes and use

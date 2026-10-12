@@ -78,6 +78,24 @@ Records use exact tab-separated fields: extra, empty or trailing fields are
 malformed. Refresh, verification and the tooling inventory reject them; literal
 spaces within a valid relative filename remain significant and supported.
 
+As of 0.9.0, those commands share the verifier's manifest reader. Refresh the
+reporter and verifier together from the same reviewed revision; the verifier is
+already included in every snapshot. Existing v1 manifests need no conversion.
+For metadata inspection without payload verification, use:
+
+```bash
+bash scripts/ci/verify-shared-tooling-snapshot.sh --read-manifest /path/to/snapshot
+```
+
+This emits admitted tab-separated records in their original order after the
+complete manifest passes syntax, duplicate and entrypoint-membership checks.
+It preserves field bytes, omits ordinary comments and blank lines, rejects NUL
+bytes and emits no records on invalid input. It does not require payloads to be
+present. Success establishes syntax only: ordinary verification still checks
+payload hashes/modes and required integrity tools, refresh proves prior ownership
+against committed source, and fleet reporting checks source attribution and drift.
+Each caller uses its own reviewed reader, never a helper from an inspected repo.
+
 Refresh also writes a `# version<TAB>X.Y.Z` annotation from `VERSION` at that
 exact source commit. The committed file must contain a canonical stable version;
 the exporter never reads its display version from mutable working-tree bytes or

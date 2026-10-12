@@ -1,8 +1,8 @@
 # Shared Tooling snapshot v1
-# version	0.8.4
+# version	0.9.0
 format	1
 source	https://github.com/dragginzgame/shared-tooling
-revision	dca2bdd018afa6be598f03bb3cce1bab79c66973
+revision	aec7a149f581a42b9531fc747b46024fc0314fcf
 # entrypoint	DRAGGINZGAME.md
 # entrypoint	rules/contributions.md
 # entrypoint	rules/changelogs.md
@@ -121,7 +121,7 @@ file	9315c9faffa4f36cfab496342535bf49d728ddd2111e8e127cbc44b3fac89ce7	-	docs/pri
 file	2b3961ce271d95c2b8d93dcd92cfee42481aa9cb3d5d4eae0d867f2b52fa69fb	-	docs/principles/reviewable-changes.md
 file	90eb28392912af63593a3773eff903c5ef77ebab2b9199e3c720be25a3fcbbbf	-	docs/principles/rust-code-hygiene.md
 file	457fd38e0073c91ba470b918d4facd9faac3c5200ebd38c97e9d6b76acdaea55	-	docs/principles/simplicity-and-maintainability.md
-file	d3a55e52bdae8e294ffa3b7e10fd7413945152a05d4a974dc199568ccd40218a	-	docs/consuming-snapshots.md
+file	f10fc5d18faa3bab686edd8b95e1a11ddacba115ae84fe7f85d8ae27b059a131	-	docs/consuming-snapshots.md
 file	15315edad497b9b165671c3f57e9f56e6ba1d206bbc635eb0ff51afaa8456bb3	-	docs/provenance.md
 file	063d456f2e8b07340537c4e2943e591c140fee85bfaecb256b893be2d915dae2	-	docs/verification-helpers.md
 file	bc9014d8e70a309cf2f65658a7c1ea29303375bbe5087150a4087a187efd9b41	-	docs/ic-tools.md
@@ -154,7 +154,7 @@ file	95d14fc4ff4352aab2a6d3d11d3c65273a730d5e8a8e4584af818ea2be8ae423	x	scripts/
 file	50875aa80c211f8f5fded06bf75c7a9fc1fc99aac7590480de9be17d4753bf7f	x	scripts/ci/select-tool-evidence.sh
 file	a9ed416a02f737d420723642935de94ffdd53cf92f75bb06ab4b0bc1c68430dc	-	tasks/cargo-tool-versions.md
 file	4c981184847462ab3c01cac087e28309f8e054253fd95c7bbe56f643877aa708	x	scripts/ci/verify-file-checksum.sh
-file	50989bd42028e9ce3bf58d89f27c297eb75a0fb8e9912196808c52bee0cca433	x	scripts/ci/verify-shared-tooling-snapshot.sh
+file	f0404c1c56d253ff5cb07b9f1c453af67ddc930578667108f73b89b0082dd104	x	scripts/ci/verify-shared-tooling-snapshot.sh
 file	3d56ca1b0c5952b9534ece61b6754ca39e6ec1980d929f09de3dbd967a0c4977	-	scripts/ci/dependency-pins.jq
 file	6f8fcf904d038e1a6ae6e5ce4c812762ba05d937c775aacc1601f131ffc2032c	-	make/tools.mk
 file	ae47d5db88f4c4b0c8bce9ee94b83edc25ce450daa9df0275971f270439c5d34	-	make/release.mk
