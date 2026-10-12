@@ -1,6 +1,6 @@
 # Changelog
 
-## [0.35.17]
+## [0.35.17] - 2026-10-12
 
 - Adopt Shared Tooling 0.8.4: prevent redirected build-diagnostic writes and use
   the selected Rust catalog for formatting admission
