@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.35.14]
+
+- Adopt Shared Tooling 0.6.6's staged-format receipt checks and macro-safe derive
+  formatter, retaining the selected Host 0.14.3 helper dependencies. Refresh
+  common Rust tools with `make install-rust-tools`; library contracts are unchanged
+  ([#62](https://github.com/dragginzgame/ic-memory/issues/62),
+  [Shared #130](https://github.com/dragginzgame/shared-tooling/issues/130),
+  [#113](https://github.com/dragginzgame/shared-tooling/issues/113)).
+- Make release-adapter qualification prove the intended prerequisite failure
+  blocks later work, replacing warning-producing recipe overrides with command
+  substitutes ([#66](https://github.com/dragginzgame/ic-memory/issues/66),
+  [Shared #128](https://github.com/dragginzgame/shared-tooling/issues/128)).
+
+[Detailed notes](docs/changelog/0.35.md)
+
 ## [0.35.13] - 2026-10-12
 
 - Adopt Shared Tooling 0.6.4's common Make entrypoint, preserving both-workspace

@@ -6,6 +6,8 @@ unset MAKEFLAGS MFLAGS MAKEOVERRIDES GNUMAKEFLAGS MAKEFILES
 unset VALIDATION_REPOSITORY_ROOT VALIDATION_RUNNER_SNAPSHOT_PATH
 unset RELEASE_CACHE_PREPARE
 export RELEASE_DELIVERY=direct
+# Keep Make status/warning assertions independent of the caller's locale.
+export LC_ALL=C
 # Resolve relative script entry points without CDPATH output or newline loss.
 ROOT="${BASH_SOURCE[0]}"
 [[ "$ROOT" == /* ]] || ROOT="$PWD/$ROOT"
@@ -87,30 +89,51 @@ for target in release-patch release-minor release-major release-resume; do
     done
 done
 # Parallel qualification must refuse missing tools before any build/test phase.
-cat > "$FIXTURE/tool-ordering.mk" <<'MAKE'
-.PHONY: shared-tooling-check tools-check format-tools-check check-pins
-shared-tooling-check format-tools-check:
-	@:
-tools-check:
-	@exit 23
-check-pins:
-	@echo reached > build-events
-MAKE
+# Substitute effects where the recursive production recipes actually dispatch.
+# Replacing recipes only in the parent would leave the child using missing scripts.
+mkdir -p "$FIXTURE/scripts/dev"
+cat > "$FIXTURE/scripts/ci/verify-shared-tooling-snapshot.sh" <<'STUB'
+#!/usr/bin/env bash
+root="$(pwd -P)"
+[[ "$#" == 4 && "$*" == "--consumer $root --manifest .shared-tooling.snapshot" ]] || exit 1
+STUB
+cat > "$FIXTURE/scripts/ci/check-format-tools.sh" <<'STUB'
+#!/usr/bin/env bash
+[[ "$#" == 2 && "$*" == '2.1.4 cargo' && "$RUSTUP_TOOLCHAIN" == 1.99.0 ]] || exit 1
+STUB
+cat > "$FIXTURE/scripts/dev/install-host-tools.sh" <<'STUB'
+#!/usr/bin/env bash
+root="$(pwd -P)"
+[[ "$#" == 5 && "$*" == "--consumer $root --versions $root/ci/tool-versions.env --check" ]] || exit 1
+printf '%s\n' "$*" > host-admission-events
+echo 'fixture host admission failure' >&2
+exit 23
+STUB
+cat > "$FIXTURE/scripts/ci/check-dependency-pins.sh" <<'STUB'
+#!/usr/bin/env bash
+printf 'reached\n' > build-events
+exit 23
+STUB
 status=0
-(cd "$FIXTURE"; make -j2 --no-print-directory -f Makefile -f tool-ordering.mk validate-toolchain) \
+(cd "$FIXTURE"; make -j2 --no-print-directory validate-toolchain) \
     > "$FIXTURE/tool-ordering.log" 2>&1 || status=$?
 [[ "$status" == 2 && ! -e "$FIXTURE/build-events" ]] || exit 1
+(cd -P "$FIXTURE"; [[ "$(cat host-admission-events)" == "--consumer $PWD --versions $PWD/ci/tool-versions.env --check" ]]) || exit 1
+grep -F 'fixture host admission failure' "$FIXTURE/tool-ordering.log"
+grep -E 'host-tools-check.*Error 23' "$FIXTURE/tool-ordering.log"
 # MSRV output is usable only when its helper succeeds. Substitute the preceding
-# gate in recursive Make too, keeping this actual consumer dispatch effect-free.
+# recursive command while retaining the actual consumer's single validate recipe.
 mkdir "$FIXTURE/msrv-bin"
-cat > "$FIXTURE/msrv-admission.mk" <<'MAKE'
-.PHONY: validate-toolchain
-validate-toolchain:
-	@:
-MAKE
+cat > "$FIXTURE/msrv-gate" <<'STUB'
+#!/usr/bin/env bash
+[[ "$#" == 2 && "$*" == '--no-print-directory validate-toolchain' ]] || exit 1
+printf '%s\n' "$*" > msrv-gate-events
+exit "$MSRV_GATE_STATUS"
+STUB
 cat > "$FIXTURE/msrv-helper" <<'STUB'
 #!/usr/bin/env bash
 [[ "$#" == 1 && "$1" == msrv ]] || exit 1
+printf '%s\n' "$*" >> msrv-helper-events
 printf '1.88.0\n'
 exit "$MSRV_OBSERVATION_STATUS"
 STUB
@@ -120,26 +143,36 @@ cat > "$FIXTURE/msrv-bin/cargo" <<'STUB'
 printf '%s\n' "$*" >> msrv-cargo-events
 exit "$MSRV_CARGO_STATUS"
 STUB
-chmod +x "$FIXTURE/msrv-helper" "$FIXTURE/msrv-bin/cargo"
-for result in read-failure success compiler-failure; do
+chmod +x "$FIXTURE/msrv-gate" "$FIXTURE/msrv-helper" "$FIXTURE/msrv-bin/cargo"
+for result in gate-failure read-failure success compiler-failure; do
+    gate=0
     observation=0
     compilation=0
-    case "$result" in read-failure) observation=23 ;; compiler-failure) compilation=19 ;; esac
-    rm -f "$FIXTURE/msrv-cargo-events"
+    case "$result" in gate-failure) gate=27 ;; read-failure) observation=23 ;; compiler-failure) compilation=19 ;; esac
+    rm -f "$FIXTURE/msrv-gate-events" "$FIXTURE/msrv-helper-events" "$FIXTURE/msrv-cargo-events"
     status=0
     (cd "$FIXTURE"; PATH="$FIXTURE/msrv-bin:$PATH" \
-        MSRV_OBSERVATION_STATUS="$observation" MSRV_CARGO_STATUS="$compilation" \
-        make --no-print-directory -f Makefile -f msrv-admission.mk validate TOOL=./msrv-helper \
-        "MAKE=$(command -v make) --no-print-directory -f Makefile -f msrv-admission.mk") \
+        MSRV_GATE_STATUS="$gate" MSRV_OBSERVATION_STATUS="$observation" MSRV_CARGO_STATUS="$compilation" \
+        make --no-print-directory validate TOOL=./msrv-helper MAKE=./msrv-gate) \
         > "$FIXTURE/msrv-$result.log" 2>&1 || status=$?
-    if [[ "$result" == read-failure ]]; then
+    [[ "$(cat "$FIXTURE/msrv-gate-events")" == '--no-print-directory validate-toolchain' ]] || exit 1
+    if [[ "$result" == gate-failure ]]; then
+        [[ "$status" == 2 && ! -e "$FIXTURE/msrv-helper-events" && ! -e "$FIXTURE/msrv-cargo-events" ]] || exit 1
+    elif [[ "$result" == read-failure ]]; then
         [[ "$status" == 2 && ! -e "$FIXTURE/msrv-cargo-events" ]] || exit 1
     else
         [[ "$(cat "$FIXTURE/msrv-cargo-events")" == '+1.88.0 check --locked --offline --all-targets' ]] || exit 1
         if [[ "$result" == success ]]; then [[ "$status" == 0 ]] || exit 1
         else [[ "$status" == 2 ]] || exit 1; fi
     fi
+    if [[ "$result" != gate-failure ]]; then
+        [[ "$(cat "$FIXTURE/msrv-helper-events")" == msrv ]] || exit 1
+    fi
 done
+# Diagnostics stay intact; unintended duplicate recipes must still be visible.
+if grep -E 'warning: (overriding|ignoring old) recipe' "$FIXTURE/tool-ordering.log" "$FIXTURE"/msrv-*.log; then
+    echo 'consumer admission fixtures replaced a production recipe' >&2; exit 1
+fi
 (cd "$FIXTURE"; make --no-print-directory release-patch)
 [[ "$(cat "$FIXTURE/runner-events")" == 'patch origin main' ]] || exit 1
 # The previous inline assignment forced preparation for every release entrypoint.

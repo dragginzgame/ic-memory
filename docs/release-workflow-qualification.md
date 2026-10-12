@@ -4068,3 +4068,87 @@ queued. These sources do not qualify the pending local interface adoption.
 [#62](https://github.com/dragginzgame/ic-memory/issues/62) retains consumer
 acceptance; [Shared #130](https://github.com/dragginzgame/shared-tooling/issues/130)
 retains the common implementation and coordination.
+
+## Delivered 0.35.13 Linux native acceptance
+
+Released Memory `bd3aee0e5d8c86c70a4c5b92bd5652c053881359` matches remote
+annotated `v0.35.13` object `68d7ff1ea9e9ca5a5ced141d6b2b57b044e46afa`.
+The final release additionally selects Host artifacts/fs 0.14.2, whose packaged
+VCS identifies `fed8724e79862d8273d01823619fe648c981c019`; both archive checksums
+match the released lock. Host's library source is unchanged from 0.14.1.
+Both locked metadata graphs, snapshot integrity and offline tool/formatter
+admission pass without selection changes. No new source patch was needed.
+
+[Exact-source CI](https://github.com/dragginzgame/ic-memory/actions/runs/38216345485)
+passes all Linux lanes, including actual setup, offline physical reuse, hooks
+and hosted failure-evidence verification. Independently downloaded artifact
+`11732234507` matches uploaded/downloaded/API ZIP SHA-256
+`2f0b663d39956f061df1c7db96fd65d5437fc32c147ed803dc1de7714bec2d81`.
+Safe tar-member reads verify original status 1, local/shared Rust bytes once and
+private-path exclusion without following links. Evidence is retained under
+`/tmp/memory-03513-native-artifact/`, `/tmp/memory-03513-native-test.log`,
+`/tmp/memory-03513-tools.log` and `/tmp/memory-03513-delivered-inputs.sha256`.
+MacOS lanes remain unfinished at inspection; #62 retains their acceptance.
+Earlier full local validation stays bound to its original Host 0.14.1 graph.
+
+## Pending 0.35.14 prerequisite-fixture correction
+
+A bounded code-hygiene review of the consumer release fixture at released
+`bd3aee0e5d8c86c70a4c5b92bd5652c053881359` found a LOW-severity proof gap:
+parent-only Make overrides were absent from recursive dispatch, so missing
+fixture scripts satisfied its rejection assertion. The unchanged shared method
+and 0.6.4 snapshot govern this scope; current dirty shared construction guidance
+is applied without importing its executables. [#66](https://github.com/dragginzgame/ic-memory/issues/66)
+owns the correction, related to [Shared #128](https://github.com/dragginzgame/shared-tooling/issues/128).
+The retained reproduction is `/tmp/memory-03514-old-ordering.log` and
+`/tmp/ic-memory-release-adapters.HW9R7c`.
+
+Script-level substitutes now prove the intended host-admission status blocks
+the next gate. The MSRV fixture retains its production recipe and distinguishes
+predecessor, helper-observation and compiler failure. Actual Make, release and
+jobserver checks remain; recipe warnings are checked without stderr filtering.
+Final modern full `make validate`, tooling lint and genuine Bash 3.2.57 with an
+aliased temporary directory containing spaces pass. Logs:
+`/tmp/memory-03514-{validate-retry,lint,bash32-final}.log`. The first alias attempt
+exposed a mock logical/physical-path mismatch; its failure and the interrupted
+broad run remain `/tmp/memory-03514-bash32-alias.log` and
+`/tmp/memory-03514-validate.log`. Final substitutes use physical checkout identity.
+Manifest and both locks remain unchanged, checked against
+`/tmp/memory-03514-inputs.sha256`. No library/API/storage change or live release
+effect was executed. The repair remains uncommitted; #66 retains delivery.
+
+Delivered 0.35.13 Intel runtime now passes original/O3/Os/Oz installed IO and
+upgrade rollback; its raw proof is `/tmp/memory-03513-intel-runtime.log`.
+Apple Silicon MSRV also passes. Four other macOS lanes remain queued at
+inspection, separately tracked by #62; none qualifies this pending fixture patch.
+
+## Shared 0.6.6 and Host 0.14.3 adoption
+
+The same pending compatible 0.35.14 batch now selects the verified 98-file
+Shared snapshot `a15eb9d406d287697df9bc8fa96db8cda6721a71` (0.6.6). The initial
+0.6.5 export used a clean temporary checkout because its sibling contained dirty
+formatter work. Once 0.6.6 committed that work, the canonical refresh selected
+its committed bytes and cargo-sort-derives 0.14.1. The intermediate 0.6.5 broad
+run was interrupted and retained in `/tmp/memory-shared065-validate.log`; it is
+not reported as passing or relabelled. Its completed focused/Bash 3.2 evidence
+remains under `/tmp/memory-shared065-*`.
+
+Explicit `make install-rust-tools` prepared the new common selection; offline
+admission passes and prior slots/evidence remain. Direct and conditional stdin
+smoke examples retain literal `$crate` paths. Memory's two-workspace formatting
+still uses cargo-sort plus rustfmt; no derive macro exclusions were removed and
+no separate staged-macro compilation is claimed. Logs:
+`/tmp/memory-shared066-{rust-setup,derives-version,macro-smoke,focused}.log`.
+
+The incoming Host artifacts/fs 0.14.3 archives match their locked checksums and
+published VCS `543b137458feba0f6dfd3e458b680fb2be3d9e6d`; library source is
+unchanged from 0.14.2. Locked fetching and both metadata graphs pass. Final full
+`make validate`, tooling lint and genuine Bash 3.2.57 Rust-tool receipt fixtures
+pass: `/tmp/memory-shared066-{validate,lint,bash32-rust}.log`. Root manifest,
+both locks, the selected tool catalog and IC matrix remain unchanged through
+qualification, checked against `/tmp/memory-shared066-inputs.sha256`.
+
+No sibling source repair, real hook activation or release effect occurred.
+The optional shared checkpoint runner remains unselected; the existing Rust
+release-input/receipt adapter owns that boundary. #62 retains delivery and
+native acceptance; #66 retains the pending local fixture repair's delivery.

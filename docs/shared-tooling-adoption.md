@@ -8,7 +8,7 @@ active engineering policy. Historical shared-version descriptions do not freeze
 that policy or establish new native qualification. Code paths are repository-relative.
 
 The existing tooling snapshot at revision
-`6fc8eb9a94f83fb0b9d0a26377d4232508cdbe2d` is recorded in
+`a15eb9d406d287697df9bc8fa96db8cda6721a71` is recorded in
 [.shared-tooling.snapshot](../.shared-tooling.snapshot). It identifies the vendored
 files, hashes and executable modes; it does not freeze the active local policy.
 Keep its provenance accurate and never edit vendored files in place. Do not
@@ -18,7 +18,7 @@ also applies within its activation scope and is included in this recorded snapsh
 These instructions are the repository's local overlay.
 
 The single 98-file snapshot uses reviewed committed Shared Tooling at that
-revision, whose committed source `VERSION` is 0.6.4. The manifest records that
+revision, whose committed source `VERSION` is 0.6.6. The manifest records that
 display version separately from its authoritative commit identity. This includes
 the corrected producer version and the package-impact guidance: contributor-only
 tooling changes use compatible library patch notes. It includes
@@ -29,6 +29,17 @@ the shared selector; full tool retention remains the command default, while CI
 explicitly selects compact retention for freshly verified complete active sets.
 Failed, unknown and unselected bundles remain full. Never attribute subsequent
 dirty sibling fixes to this committed export.
+Shared 0.6.5 adds exact-worktree context for staged Rust receipt checks, with
+compiler/catalog selection still owned by the export and read-only admission
+against the original prepared tools. The hook resolves its temporary export
+physically. Shared 0.6.6 selects cargo-sort-derives 0.14.1 for literal macro-path
+preservation. Refresh the common Rust selection explicitly; prior slots and
+failure evidence remain retained. Memory's formatter sequence is unchanged and
+does not run derive sorting; its development compiler already exceeds the tool's
+Rust 1.88 build floor. The library MSRV remains independently qualified.
+The optional shared validation checkpoint runner is not selected; Memory keeps
+its existing Make stages and Rust release-input/receipt admission. The common
+fixture construction guidance is selected without introducing recipe overrides.
 Shared 0.3.6 makes all three hook index-tree observations preserve Git failure
 status. Memory's consumer fixture qualifies matching-output failures separately
 from normal two-workspace formatting. Its selected Cargo-tool installer also
