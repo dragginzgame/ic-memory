@@ -1,6 +1,6 @@
 # Changelog
 
-## [0.35.19]
+## [0.35.19] - 2026-10-12
 
 - Adopt Shared Tooling 0.9.5 and wait for this run's exact uploaded evidence ID
   before CI downloads it. Transient discovery absence gets bounded retries;
