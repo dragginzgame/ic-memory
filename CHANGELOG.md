@@ -1,6 +1,6 @@
 # Changelog
 
-## [0.35.15]
+## [0.35.15] - 2026-10-12
 
 - Adopt Shared Tooling 0.8.0: snapshot refresh derives companions and automatically
   retires unchanged obsolete owned files, preserving the existing tooling payload

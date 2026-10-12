@@ -168,7 +168,7 @@ Add the crate:
 
 ```toml
 [dependencies]
-ic-memory = "0.35.14"
+ic-memory = "0.35.15"
 ```
 
 `ic-memory` re-exports its exact `ic-stable-structures` dependency through
