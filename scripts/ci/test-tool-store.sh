@@ -84,6 +84,7 @@ grep -F "tool store installation locked: $first_slot/install.lock" "$diagnostic"
 consumer="$fixture/sharing-locked"
 store_refuse install
 [[ -d "$first_slot/install.lock" && ! -e "$consumer/.tools/$store_test_kind" &&
+   ! -e "$consumer/.tools/.$store_test_kind-tools.lock" &&
    "$(wc -l < "$fixture/downloads")" == "$before" ]] || exit 1
 rmdir "$first_slot/install.lock"
 
@@ -124,5 +125,73 @@ mkdir "$fixture/unsafe-store"
 chmod 0777 "$fixture/unsafe-store"
 HOST_SHARED_STORE="$fixture/unsafe-store" IC_SHARED_STORE="$fixture/unsafe-store" store_refuse install
 [[ -z "$(ls -A "$fixture/unsafe-store")" ]] || exit 1
+install --check
+
+# Checkout cleanup failure must not strand the shared lock or hide an earlier
+# download failure. Exercise the real entrypoints, including cached activation.
+mkdir "$fixture/lifecycle-bin"
+export STORE_TEST_REAL_RMDIR
+STORE_TEST_REAL_RMDIR="$(command -v rmdir)"
+cat > "$fixture/lifecycle-bin/rmdir" <<'SCRIPT'
+#!/usr/bin/env bash
+if [[ "$1" == "$STORE_TEST_CHECKOUT_LOCK" ]]; then exit 31; fi
+exec "$STORE_TEST_REAL_RMDIR" "$@"
+SCRIPT
+chmod +x "$fixture/lifecycle-bin/rmdir"
+consumer="$fixture/cleanup-failure"; mkdir "$consumer"
+export STORE_TEST_CHECKOUT_LOCK="$consumer/.tools/.$store_test_kind-tools.lock"
+status=0
+PATH="$fixture/lifecycle-bin:$PATH" install || status=$?
+[[ "$status" == 31 && ! -e "$first_slot/install.lock" &&
+   "$(cd "$consumer/.tools/$store_test_kind" && pwd -P)" == "$replacement" &&
+   "$(wc -l < "$fixture/downloads")" == "$before" ]] || exit 1
+"$STORE_TEST_REAL_RMDIR" "$STORE_TEST_CHECKOUT_LOCK"
+
+cat > "$fixture/lifecycle-bin/curl" <<'SCRIPT'
+#!/usr/bin/env bash
+exit 23
+SCRIPT
+chmod +x "$fixture/lifecycle-bin/curl"
+consumer="$fixture/download-failure"; mkdir "$consumer"
+STORE_TEST_CHECKOUT_LOCK="$consumer/.tools/.$store_test_kind-tools.lock"
+status=0
+HOST_SHARED_STORE="$fixture/failed-store" IC_SHARED_STORE="$fixture/failed-store" \
+    PATH="$fixture/lifecycle-bin:$PATH" install || status=$?
+[[ "$status" == 23 && ! -e "$consumer/.tools/$store_test_kind" ]] || exit 1
+failed_bundle="$(cd "$consumer/.tools/$store_test_kind-set."* && pwd -P)"
+[[ -d "$failed_bundle" && ! -e "${failed_bundle%/*}/install.lock" &&
+   "$(cd "$first_consumer/.tools/$store_test_kind" && pwd -P)" == "$first_bundle" ]] || exit 1
+"$STORE_TEST_REAL_RMDIR" "$STORE_TEST_CHECKOUT_LOCK"
+HOST_SHARED_STORE="$fixture/failed-store" IC_SHARED_STORE="$fixture/failed-store" install
+[[ -d "$failed_bundle" && ! -e "${failed_bundle%/*}/install.lock" &&
+   ! -e "$STORE_TEST_CHECKOUT_LOCK" &&
+   "$(cd "$consumer/.tools/$store_test_kind" && pwd -P)" != "$failed_bundle" ]] || exit 1
+
+# Curl owns retries; a final HTTP error must not restart setup, alter the old
+# selection or remove its failed candidate. Exercise both real installer callers.
+cat > "$fixture/lifecycle-bin/curl" <<'SCRIPT'
+#!/usr/bin/env bash
+echo called >> "$STORE_TEST_DOWNLOAD_CALLS"
+exit 22
+SCRIPT
+export STORE_TEST_DOWNLOAD_CALLS="$fixture/http-download-calls"
+consumer="$fixture/http-failure"; mkdir -p "$consumer/.tools"
+ln -s "$first_bundle" "$consumer/.tools/$store_test_kind-set.previous"
+ln -s "$store_test_kind-set.previous" "$consumer/.tools/$store_test_kind"
+status=0
+HOST_SHARED_STORE="$fixture/http-failure-store" IC_SHARED_STORE="$fixture/http-failure-store" \
+    PATH="$fixture/lifecycle-bin:$PATH" install || status=$?
+[[ "$status" == 22 && "$(wc -l < "$STORE_TEST_DOWNLOAD_CALLS")" -eq 1 &&
+   ! -e "$consumer/.tools/.$store_test_kind-tools.lock" &&
+   "$(cd "$consumer/.tools/$store_test_kind" && pwd -P)" == "$first_bundle" ]] || exit 1
+retained_candidates=0
+for reference in "$consumer/.tools/$store_test_kind-set."*; do
+    [[ "$reference" != *-set.previous ]] || continue
+    failed_bundle="$(cd "$reference" && pwd -P)"
+    [[ -d "$failed_bundle" && ! -e "${failed_bundle%/*}/install.lock" ]] || exit 1
+    retained_candidates=$((retained_candidates + 1))
+done
+[[ "$retained_candidates" == 1 ]] || exit 1
+consumer="$first_consumer"
 install --check
 printf 'Shared %s storage reuse, isolated selections, corruption, locks and offline refusal passed\n' "$store_test_kind"

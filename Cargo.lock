@@ -145,18 +145,18 @@ checksum = "ed5909b6e89a2db4456e54cd5f673791d7eca6732202bbf2a9cc504fe2f9b84a"
 
 [[package]]
 name = "ic-host-artifacts"
-version = "0.14.9"
+version = "0.15.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c6bab966f3465964bae24385bcc0c184cf04c23614fe7edc2f57565ad18a9c41"
+checksum = "0527f9f546642e5958b3c8f54c4d1f74c3c31fac54f7a6f08d97d328f5584aca"
 dependencies = [
  "sha2",
 ]
 
 [[package]]
 name = "ic-host-fs"
-version = "0.14.9"
+version = "0.15.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "dda27812d5059c12b4b985946e45e504673b81db7d99d754f290a2008fa0fe8e"
+checksum = "9a2825ae4e862622ec66c4ba4acfd38bb807ce691350168c5e2bf6c7bd8e1710"
 dependencies = [
  "ic-host-artifacts",
  "rustix",
@@ -291,7 +291,7 @@ checksum = "e7a5d71263a5a7d47b41f6b3f06ba276f10cc18b0931f1799f710578e2309348"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 3.0.8",
+ "syn 3.0.9",
 ]
 
 [[package]]
@@ -340,9 +340,9 @@ dependencies = [
 
 [[package]]
 name = "syn"
-version = "3.0.8"
+version = "3.0.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "01016da373cd8f7ef12624f796309f5c31ba8d646dd08856c02cd741d823c622"
+checksum = "d78c8dee4c7bf0e14673097256fed6142ce9d3b85a408189d07482442145823b"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -381,7 +381,7 @@ checksum = "fe5197923287db20a58125f0bc85c062f7f2c892de97b18c356f9efb14b28524"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 3.0.8",
+ "syn 3.0.9",
 ]
 
 [[package]]

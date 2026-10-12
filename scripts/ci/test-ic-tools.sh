@@ -254,7 +254,7 @@ awk -F '\t' 'BEGIN { OFS="\t" } $1 == "quill" && $3 == "linux-x86_64" { $4=sprin
 expect_failure install
 [[ ! -s "$fixture/executions" && "$(readlink "$consumer/.tools/ic")" == "$original" ]] || exit 1
 [[ ! -e "$consumer/.tools/.ic-tools.lock" ]] || exit 1
-rg -F 'Failed tool installation retained:' "$fixture/refusal.log" >/dev/null
+rg -F 'Failed ic tool installation retained:' "$fixture/refusal.log" >/dev/null
 
 # Failure after earlier tools succeeded also preserves the previous activation.
 awk -F '\t' 'BEGIN { OFS="\t" } $1 == "wasm-opt" && $3 == "linux-x86_64" { $4=sprintf("%064d",0) } { print }' "$pins" > "$selected_pins"
@@ -284,7 +284,7 @@ chmod +x "$fixture/bin/find"
 expect_failure install
 [[ "$(readlink "$consumer/.tools/ic")" == "$original" ]] || exit 1
 rg -F 'receipt traversal failed' "$fixture/refusal.log" >/dev/null
-rg -F 'Failed tool installation retained:' "$fixture/refusal.log" >/dev/null
+rg -F 'Failed ic tool installation retained:' "$fixture/refusal.log" >/dev/null
 rm "$fixture/bin/find"
 
 # Version prefix matches are not accepted, even with an authentic digest.
@@ -299,7 +299,7 @@ original="$(readlink "$consumer/.tools/ic")"
 IC_TOOLS_TEST_INTERRUPT=1 expect_failure install
 [[ "$(readlink "$consumer/.tools/ic")" == "$original" ]] || exit 1
 [[ ! -e "$consumer/.tools/.ic-tools.lock" ]] || exit 1
-rg -F 'Failed tool installation retained:' "$fixture/refusal.log" >/dev/null
+rg -F 'Failed ic tool installation retained:' "$fixture/refusal.log" >/dev/null
 
 # Invalid/incomplete matrices and unknown hosts fail without downloading.
 before="$(wc -l < "$fixture/downloads")"

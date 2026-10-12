@@ -4399,3 +4399,201 @@ This remains compatible 0.35.17 work, unstaged and uncommitted.
 [#62](https://github.com/dragginzgame/ic-memory/issues/62) retains delivery and
 native all-host acceptance. No sibling edit, Git/ref/release effect, installation,
 network dependency preparation, workflow control or evidence cleanup occurred.
+
+## Shared 0.9.0 adoption
+
+Delivered Memory **0.35.17**, `392f1e76cad63aff11d3d09e947ce5ed206a8d92`, matches
+remote annotated `v0.35.17` object `6da19e72778042954d5acf5670bb5feb0a9ff682`.
+Its snapshot is Shared 0.8.4; its root lock selects Host artifacts/fs 0.14.8.
+Canonical preview/refresh now select committed Shared **0.9.0**,
+`aec7a149f581a42b9531fc747b46024fc0314fcf`, preserving 75 roots/99 payloads.
+Only the verifier and snapshot guidance change. Logs:
+`/tmp/memory-shared090-{preview,refresh}.log`.
+
+The first full `make validate` and tooling lint pass on the Host 0.14.8 graph:
+`/tmp/memory-shared090-{validate,lint}.log`, identified by
+`/tmp/memory-shared090-{selection-before,inputs}.sha256`.
+During final checks, the maintainer committed the adoption and selected Host
+artifacts/fs 0.14.9 in `3161303cac710ccb036166fbe45853c4ae45673d`.
+Fresh full `make validate` passes on that updated graph:
+`/tmp/memory-shared090-updated-validate.log`. Its inputs remain unchanged during
+qualification (`/tmp/memory-shared090-updated-inputs.sha256`). Earlier results
+retain their actual lock selection; neither pass is relabelled. The selected
+verifier bytes, compiler, tool pins and independent runtime lock are unchanged.
+
+The actual selected reader passes focused Bash 5.2 and genuine Bash 3.2.57
+checks for ordered records without payloads/checksum tools, literal spaced
+filenames, malformed/duplicate/unowned/trailing/NUL rejection without output,
+mixed-mode refusal and independent integrity rejection after payload mutation.
+Evidence: `/tmp/memory-shared090-readers.log`,
+`/tmp/memory-shared090-readers.htqedv/`. No producer integration fixture or fleet
+reporter is imported or run.
+
+The sibling acquired later installer edits during qualification. Repeat preview
+first refused that dirty source (`/tmp/memory-shared090-preview-bash32.log`). A
+clean temporary clone of existing committed history, detached at the selected
+revision, passes genuine Bash 3.2 preview with only KEEP rows and unchanged
+manifest (`/tmp/memory-shared090-preview-bash32-clean.log`). The clone is recorded
+in `/tmp/memory-shared090-source-root`; no fixture commit/tag/push or real index
+mutation was used. Later dirty source is excluded from the adopted provenance.
+
+This remains compatible 0.35.18 work. The maintainer's local commit contains the
+adoption; the final qualification record and clarified pending notes remain
+unstaged and uncommitted. Package metadata remains 0.35.17.
+[#62](https://github.com/dragginzgame/ic-memory/issues/62) retains delivery and
+native all-host acceptance; local passes establish no new hosted or macOS run.
+No sibling edit, tool installation, dependency preparation, release effect,
+workflow control or evidence cleanup occurred.
+
+## Shared 0.9.2 input boundaries
+
+Canonical preview/refresh select committed Shared **0.9.2**,
+`c118062a070a2e238f1eb3989b6fd700f369ce1e`, using a clean temporary clone of
+existing history (`/tmp/memory-shared092-source-root`). Five payloads update;
+75 roots/99 payloads remain selected. Logs:
+`/tmp/memory-shared092-{preview,refresh}.log`.
+
+Full `make validate` and tooling lint pass:
+`/tmp/memory-shared092-{validate,lint}.log`. Both dependency graphs, Host
+artifacts/fs 0.14.9, compiler and tool pins remain unchanged, checked against
+`/tmp/memory-shared092-{selection-before,inputs}.sha256`.
+
+Genuine Bash 3.2.57 passes the selected evidence-checksum fixture, including NUL
+in digest, filename, suffix and later record, refusal before a hashing probe and
+byte-identical retained manifests. Log:
+`/tmp/memory-shared092-checksum-bash32.log`; observed interpreter version:
+`/tmp/memory-shared092-bash32-version.log`.
+The actual selected installers pass 48 supplied/resolved CR/LF refusal cases
+per shell on Bash 5.2 and Bash 3.2, before configuration loading or setup.
+Ordinary aliases pass all three real offline tool checks. Evidence:
+`/tmp/memory-shared092-paths.log`, `/tmp/memory-shared092-paths.PqvqhJ/`.
+The upstream aggregate path fixture is not imported or run here.
+Clean-source Bash 3.2 repeat preview has only KEEP rows and unchanged manifest
+(`/tmp/memory-shared092-preview-bash32.log`).
+
+This extends the existing compatible 0.35.18 draft, without package-version or
+index changes. [#62](https://github.com/dragginzgame/ic-memory/issues/62) retains
+delivery/native acceptance. No sibling edit, fixture commit/tag/push, tool
+installation, dependency preparation, release effect, workflow control or
+evidence cleanup occurred.
+
+## Shared 0.9.1 installation cleanup
+
+Canonical clean-source preview/refresh select published Shared **0.9.1**,
+`e8a9ea6b660f216166eb00d0af6a32462bdbda4a`, through the unchanged
+75-root/99-payload roster. Six payloads change. Later sibling edits caused the
+initial source admission to refuse; actual refresh uses a clean temporary clone
+of existing committed history (`/tmp/memory-shared091-source-root`). Logs:
+`/tmp/memory-shared091-{clean-preview,clean-refresh}.log`. No dirty producer byte
+is attributed to this snapshot.
+
+Full `make validate` and tooling lint pass on the adopted graph:
+`/tmp/memory-shared091-{clean-validate,lint}.log`. Both dependency graphs, Host
+artifacts/fs 0.14.9, tool pins and compiler remain unchanged, checked against
+`/tmp/memory-shared091-{selection-before,clean-inputs}.sha256`. The earlier
+`/tmp/memory-shared091-validate.log` ran the preceding 0.9.0 snapshot after source
+admission refused; it is not evidence for the cleanup correction.
+
+Genuine Bash 3.2.57 separately passes host/IC fixtures, including cleanup-only
+status 31, combined download/cleanup status 23, shared-lock release, cached
+activation, retained failed candidates and corrected retry. Logs:
+`/tmp/memory-shared091-{host,ic}-bash32.log`; version and copied interpreter bytes:
+`/tmp/memory-shared091-bash32-{version.log,binary.sha256}`. The old temporary
+interpreter was unavailable before test execution; an existing read-only
+prepared GNU Bash binary was copied into Memory's temporary fixture. No download
+or installation was needed. Clean-source repeat preview under that interpreter
+has only KEEP rows (`/tmp/memory-shared091-preview-bash32.log`).
+
+This completes local compatible 0.35.18 cleanup adoption, without package-version
+or index changes. [#62](https://github.com/dragginzgame/ic-memory/issues/62) retains
+delivery/native acceptance. No fixture commit/tag/push, real index mutation,
+sibling edit, tool installation, dependency preparation, release effect,
+workflow control or evidence cleanup occurred.
+
+## Shared 0.9.3 download retries
+
+Canonical preview/refresh select committed/public-main Shared **0.9.3**,
+`3619de9dc36065411b8e6521f8695e9395a0e0ea`, using a clean temporary clone of
+existing history (`/tmp/memory-shared093-source-root`). Six payloads update;
+75 roots/99 payloads remain unchanged. The live sibling's separate 0.9.4 work
+is not exported. Logs: `/tmp/memory-shared093-{preview,refresh}.log`.
+
+Full `make validate` and tooling lint pass on the actual adopted graph:
+`/tmp/memory-shared093-{validate,lint}.log`. Final hashes match
+`/tmp/memory-shared093-inputs.sha256`; both lockfiles, Host artifacts/fs 0.14.9,
+tool pins and compiler remain unchanged. The first preparation attempt stopped
+before clone/refresh because its inventory named a nonexistent matrix file;
+the corrected inventory uses the selected `ci/ic-tools.tsv`.
+
+The Shared-owned real-curl loopback fixture passes under Bash 5.2 and genuine
+Bash 3.2.57, covering transient HTTP/rate-limit recovery, bounded exhaustion,
+permanent failure and checksum refusal. It substitutes HTTP loopback transport
+while checking the production HTTPS/TLS arguments; it proves neither public
+download availability nor native macOS. Logs:
+`/tmp/memory-shared093-downloads-{bash5,bash32}.log`.
+Memory's adopted host/IC fixtures also pass under genuine Bash 3.2, including
+final HTTP status 22, retained failed candidates and prior activation:
+`/tmp/memory-shared093-{host,ic}-bash32.log`. Clean-source Bash 3.2 repeat preview
+has only KEEP rows and leaves the snapshot unchanged
+(`/tmp/memory-shared093-preview-bash32.log`). No fixture root is added.
+
+[Producer Linux job](https://github.com/dragginzgame/shared-tooling/actions/runs/38267245058/job/114872383858)
+passes setup/reuse/runtime/portable/formatter checks but fails immediate exact-ID
+full-evidence discovery after a successful upload. Later compact readback passes;
+neither observation establishes the missing full round trip. The recurrence is
+reported under [Shared #63](https://github.com/dragginzgame/shared-tooling/issues/63#issuecomment-6127222538),
+with actual job log `/tmp/memory-shared093-producer-job.log`. The whole-run log
+request was unavailable while macOS jobs were queued; completed-job retrieval
+provided the diagnosis. Native acceptance remains open under Memory #62 and
+[Shared #138](https://github.com/dragginzgame/shared-tooling/issues/138).
+Final inspection shows both producer macOS lanes cancelled and the overall run
+cancelled, preserving Linux's actual discovery failure; no native pass is inferred.
+
+This extends the compatible 0.35.18 draft without package-version/index changes.
+No sibling source edit, fixture commit/tag/push, tool installation, dependency
+preparation, release effect, workflow control or evidence cleanup occurred.
+
+## Shared 0.9.4 Git identities
+
+Canonical clean-source preview/refresh select committed/public-main Shared
+**0.9.4**, `4532b66c1b43bab331978523ee97d29fe11a2f50`. Four payloads update;
+the roster stays at 75 roots/99 payloads. The temporary source clone contains
+existing committed history only (`/tmp/memory-shared094-source-root`); the live
+sibling's separate artifact-discovery work is not exported. Logs:
+`/tmp/memory-shared094-{preview,refresh}.log`.
+
+Full `make validate` and tooling lint pass on the adopted graph:
+`/tmp/memory-shared094-{validate,lint}.log`. Both dependency graphs, Host
+artifacts/fs 0.14.9, tool pins and compiler remain unchanged; final inputs match
+`/tmp/memory-shared094-inputs.sha256`. Memory's direct delivery, Rust metadata
+adapters and package API/durable format/MSRV remain unchanged.
+
+The actual snapshot reader and canonical refresh helper pass focused identity
+checks on Bash 5.2 and genuine Bash 3.2.57: complete 40-/64-character syntax is
+admitted, while 25 malformed lengths in the 39–65 range are refused. Invalid
+reader input emits no records and retains its bytes; substituted malformed
+source observations stop refresh before scratch creation or consumer/index
+changes. Logs: `/tmp/memory-shared094-identities-{bash5,bash32}.log`; retained
+fixtures `/tmp/memory-shared094-identities.{84bGSS,Zf1xca}/`.
+These reader positives establish syntax, not Git object existence or SHA-256
+repository release qualification.
+
+The complete selected release-runner simulation suite passes again under
+genuine Bash 3.2 (`/tmp/memory-shared094-runner-bash32.log`), including malformed
+saved source identity refusal without replacing the plan or dispatching effects.
+It refuses real Git effects. The unselected upstream PR/distribution aggregate
+fixtures create synthetic commits and were not run; no PR or live-release pass
+is claimed. Clean-source Bash 3.2 repeat preview has only KEEP rows and leaves
+the manifest unchanged (`/tmp/memory-shared094-preview-bash32.log`).
+
+[Selected producer CI](https://github.com/dragginzgame/shared-tooling/actions/runs/38269332848)
+passes lint/security and Linux; both macOS lanes remain queued at inspection.
+This does not qualify Memory's uncommitted adoption or replace the earlier
+artifact-discovery failure under Shared #63. [Memory #62](https://github.com/dragginzgame/ic-memory/issues/62)
+retains delivery and matching native/hosted acceptance; [Shared #133](https://github.com/dragginzgame/shared-tooling/issues/133)
+retains producer/fleet acceptance.
+
+This extends the compatible 0.35.18 draft without package-version/index changes.
+No sibling edit, fixture commit/tag/push, real hook activation, installation,
+dependency preparation, release effect, workflow control or evidence cleanup
+occurred during this adoption.

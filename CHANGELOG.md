@@ -2,11 +2,22 @@
 
 ## [0.35.18]
 
-- Adopt Shared Tooling 0.9.0: use its common snapshot manifest reader and reject
+- Adopt Shared Tooling 0.9.4: use its common snapshot manifest reader and reject
   NUL bytes before parsing. Existing snapshots and integrity checks remain
   supported ([Shared #133](https://github.com/dragginzgame/shared-tooling/issues/133),
   [#62](https://github.com/dragginzgame/ic-memory/issues/62)).
-  Library contracts and dependency selections remain unchanged.
+  Library contracts remain unchanged.
+- Release the shared installation lock even when host/IC checkout cleanup fails,
+  preserving the original failure status and retained candidates
+  ([#62](https://github.com/dragginzgame/ic-memory/issues/62)).
+- Reject NUL-containing checksum manifests before hashing their references and
+  invalid installer paths before loading configuration or preparing tools.
+- Retry transient host/IC asset-download failures within bounded limits, retaining
+  terminal failure status and prior selections
+  ([Shared #138](https://github.com/dragginzgame/shared-tooling/issues/138)).
+- Reject incomplete Git object IDs in snapshot and release-recovery metadata,
+  preserving saved intent before effects
+  ([Shared #133](https://github.com/dragginzgame/shared-tooling/issues/133)).
 
 [Detailed notes](docs/changelog/0.35.md)
 

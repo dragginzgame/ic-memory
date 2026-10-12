@@ -8,7 +8,7 @@ active engineering policy. Historical shared-version descriptions do not freeze
 that policy or establish new native qualification. Code paths are repository-relative.
 
 The existing tooling snapshot at revision
-`aec7a149f581a42b9531fc747b46024fc0314fcf` is recorded in
+`4532b66c1b43bab331978523ee97d29fe11a2f50` is recorded in
 [.shared-tooling.snapshot](../.shared-tooling.snapshot). It identifies the vendored
 files, hashes and executable modes; it does not freeze the active local policy.
 Keep its provenance accurate and never edit vendored files in place. Do not
@@ -18,7 +18,7 @@ also applies within its activation scope and is included in this recorded snapsh
 These instructions are the repository's local overlay.
 
 The single 99-file snapshot uses reviewed committed Shared Tooling at that
-revision, whose committed source `VERSION` is 0.9.0. The manifest records that
+revision, whose committed source `VERSION` is 0.9.4. The manifest records that
 display version separately from its authoritative commit identity. The 75 explicit
 roots select the reviewed governance catalog and Memory's maintained Make, hook, CI,
 archive and fixture entrypoints. Their generated companion closure preserves
@@ -57,6 +57,25 @@ payload authentication; ordinary verification retains its independent integrity
 checks. Both modes reject NUL bytes before parsing the same captured manifest.
 The v1 format, consumer commands and payload roster are unchanged. Memory does
 not import the central exporter or fleet reporters.
+Shared 0.9.1 consolidates host/IC lock acquisition, verified-cache reuse and exit
+cleanup in the shared store. Both lock releases are attempted on exit; the
+original installation status wins over cleanup failure, while cleanup alone
+still fails the command. Retained candidates and prior selections survive, and
+prepared bundles need no reinstall. Memory retains the same roots and payloads.
+Shared 0.9.2 captures checksum manifests once and rejects NUL before hashing
+their references. Host/IC/Rust installer admission rejects supplied and resolved
+CR/LF paths before configuration loading or setup, while ordinary logical aliases
+remain supported. The reviewed exports retain existing pins and prepared tools.
+Shared 0.9.3 centralises host/IC asset downloads with bounded curl transient
+retries. Permanent download and checksum failures remain terminal; failed
+candidates and prior selections remain retained. The upstream real-curl loopback
+fixture stays Shared-owned; Memory's adopted installer fixtures exercise final
+HTTP failure propagation and retention without adding another fixture root.
+Shared 0.9.4 admits only complete 40- or 64-character lowercase Git identities
+in snapshot parsing, refresh observations and release recovery. The selected
+simulation fixture proves malformed saved source identities fail before effects
+without replacing the plan. Memory retains direct delivery; the PR helper is
+exported unchanged, while its real-Git producer fixture remains unselected.
 This includes
 the corrected producer version and the package-impact guidance: contributor-only
 tooling changes use compatible library patch notes. It includes

@@ -44,6 +44,29 @@ expect_failure text.manifest
 [[ "$(cat 'selected file')" == changed ]] || exit 1
 printf abc > 'selected file'
 cp text.manifest before.manifest
+# NUL must not disappear from a digest/path, or terminate parsing early on
+# older Bash. Reject the whole selected manifest before any backend execution.
+mkdir path-no-probe
+ln -s "$(command -v bash)" path-no-probe/bash
+cat > path-no-probe/sha256sum <<'SCRIPT'
+#!/usr/bin/env bash
+printf probed > probe-marker
+exit 97
+SCRIPT
+chmod +x path-no-probe/sha256sum
+for position in digest filename suffix trailing-record; do
+    case "$position" in
+        digest) printf '%s\0%s  selected file\n' "${digest:0:12}" "${digest:12}" ;;
+        filename) printf '%s  selected\0 file\n' "$digest" ;;
+        suffix) printf '%s  selected file\0\n' "$digest" ;;
+        trailing-record) cat text.manifest; printf '\0invalid\n' ;;
+    esac > nul.manifest
+    cp nul.manifest retained-nul.manifest
+    expect_failure nul.manifest
+    PATH="$TEMPORARY/path-no-probe" expect_failure nul.manifest
+    [[ ! -e probe-marker ]] || { echo 'NUL manifest reached hashing backend' >&2; exit 1; }
+    cmp nul.manifest retained-nul.manifest
+done
 printf '%s  absent\n' "$digest" > missing.manifest
 expect_failure missing.manifest
 expect_failure absent.manifest
