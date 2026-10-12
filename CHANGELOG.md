@@ -1,6 +1,6 @@
 # Changelog
 
-## [0.35.16]
+## [0.35.16] - 2026-10-12
 
 - Adopt Shared Tooling 0.8.2, including stricter snapshot parsing and retained tool-build
   observations. Require real payload files in hosted failure archives
