@@ -1,6 +1,6 @@
 # Changelog
 
-## [0.35.14]
+## [0.35.14] - 2026-10-12
 
 - Adopt Shared Tooling 0.6.6's staged-format receipt checks and macro-safe derive
   formatter, retaining the selected Host 0.14.3 helper dependencies. Refresh
