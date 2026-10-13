@@ -338,7 +338,7 @@ fn sealed_declaration_fingerprint(requests: &[MemoryRequest]) -> SealedDeclarati
     let mut writer = FingerprintWriter(crate::hash::FNV_OFFSET);
     // Concrete derived serializers and this hash writer have no recoverable failures.
     ciborium::into_writer(&material, &mut writer)
-        .expect("sealed declaration fingerprint encodes into hash");
+        .unwrap_or_else(|_| panic!("sealed declaration fingerprint encodes into hash"));
 
     SealedDeclarationFingerprint {
         algorithm_version: SEALED_DECLARATION_FINGERPRINT_VERSION,

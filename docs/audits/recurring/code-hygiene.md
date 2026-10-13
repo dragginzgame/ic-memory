@@ -14,17 +14,19 @@ the crate-specific obligations below. An audit does not authorize fixes.
   Review current contracts; historical reports do not establish present behavior.
 - Public API roots: `crates/ic-memory/src/lib.rs`, `crates/ic-memory/src/capability.rs`, `crates/ic-memory/src/declaration.rs`,
   `crates/ic-memory/src/policy.rs`, `crates/ic-memory/src/slot/`, `crates/ic-memory/src/runtime/`, and `crates/ic-memory/examples/composed_host.rs`.
-  Inventory constructors separately from inert/diagnostic DTOs and manual owners.
+  Inventory constructors separately from inert/diagnostic DTOs and runtime owners.
 - Trust transitions: declarations/decoded DTOs → validation → staged ledger →
   physical persistence → committed capability → runtime publication. Trace
   `crates/ic-memory/src/cbor.rs`, `crates/ic-memory/src/validation.rs`, `crates/ic-memory/src/ledger/`, `crates/ic-memory/src/physical.rs`,
-  `crates/ic-memory/src/stable_cell.rs`, `crates/ic-memory/src/bootstrap.rs`, `crates/ic-memory/src/registry.rs` and `crates/ic-memory/src/runtime/`.
+  `crates/ic-memory/src/stable_cell.rs`, `crates/ic-memory/src/bootstrap.rs`, `crates/ic-memory/src/requests.rs` and `crates/ic-memory/src/runtime/`.
   Recovery must reject malformed current-format bytes and corrupt/ambiguous slots
   before issuing authority. Keep constructor/deserialization invariants aligned;
   decoded DTOs and diagnostics never grant memory access.
 - Admission and warm adoption remain distinct. Verify explicit grants, logical
   placement, per-thread native bootstrap ordering, nonconstructing observations
-  and the sole owned manager. Manual persistence confirmation remains caller-owned.
+  and the sole owned manager. The host supplies complete explicit component
+  requests; runtime-owned persistence precedes capability publication. No global
+  registry or public manual persistence-confirmation route exists.
 - Classify panic sites against stable-memory input reachability and the substrate's
   `Storable` contract. Preserve typed distinctions where operator action differs:
   corruption, invalid input, unsupported format, policy rejection and readiness.
@@ -38,15 +40,15 @@ the crate-specific obligations below. An audit does not authorize fixes.
 ## Focused evidence
 
 Inspect `crates/ic-memory/src`, `crates/ic-memory/tests`, `crates/ic-memory/examples`, `crates/ic-memory/fixtures/current`, `testing/runtime-qualification`,
-Make/CI and maintained guides for the selected scope. Trace the macros in
-`crates/ic-memory/src/lib.rs` through the registry, examples and compile-fail consumers. Runtime,
+Make/CI and maintained guides for the selected scope. Trace request factories
+through checked snapshots, explicit host composition, examples and compile-fail consumers. Runtime,
 host release adapters and the independent PocketIC harness have different contracts;
 name omitted families rather than implying they passed.
 
 Use `rg` inventories for public/serde/panic/unsafe sites and their callers.
 Prefer existing negative behavior and compile-fail capability tests over new
-private-layout assertions. Declaration-registry tests mutate shared state: run
-their selected cases with `--test-threads=1`.
+private-layout assertions. Preserve the repository's `--test-threads=1` selection
+for focused runtime checks and full qualification.
 
 - Formatting: `make fmt-check` checks both workspaces without builds or installs.
 - Product changes: select the affected Rust test on the pinned toolchain using
@@ -61,7 +63,8 @@ their selected cases with `--test-threads=1`.
   includes Wasm budgets, development packaging and MSRV qualification.
   Documentation-only work needs link, consistency and diff checks. Release,
   publication and installed PocketIC qualification retain separate authority.
-  Audits do not automatically install tools or fetch.
+  Audits do not install tools or upgrade dependencies. Preparing missing locked
+  sources follows the shared Cargo network policy; offline gates remain offline.
 - Performance evidence follows the owning qualification procedure, for example
   [runtime IO](../../runtime-io-qualification.md). Bind matched bytes/instructions/
   timings to compiler, lock, artifact and workload; counts are inspection aids.

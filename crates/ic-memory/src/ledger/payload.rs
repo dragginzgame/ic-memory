@@ -74,7 +74,9 @@ impl LedgerPayloadEnvelope {
                 });
             }
             // Concrete derived serializers have no other recoverable failures.
-            Err(err) => panic!("allocation ledger serialization failed: {err}"),
+            Err(ciborium::ser::Error::Io(_) | ciborium::ser::Error::Value(_)) => {
+                panic!("allocation ledger serialization failed");
+            }
         }
         let mut bytes = writer.0;
         let payload_len = bytes.len() - LEDGER_PAYLOAD_HEADER_LEN;

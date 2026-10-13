@@ -135,8 +135,7 @@ not be accepted by allocation-opening APIs.
 `CommittedAllocations` is the in-memory open capability. It must not be
 deserializable, default-constructible, or publicly constructible. A
 `MemoryRuntime<M>` may store it only after that runtime's stable-cell write
-succeeds. Generic persistence owners may confirm it only after durably writing
-the pending `PendingBootstrapCommit` state.
+succeeds. Callers cannot manually confirm persistence or publish a capability.
 
 Integrations may open storage only from `CommittedAllocations` produced after
 current-format recovery, committed-ledger integrity, declaration validation,
@@ -159,9 +158,9 @@ attempt must not retain a cached record that could bypass decoding on retry.
 Capability publication follows successful persistence.
 
 One runtime must never use another runtime's lifecycle or committed capability.
-The only process-global authority is the immutable canonical snapshot of linked
-key requests and metadata. Bootstrap is once per concrete runtime, not
-once per process.
+The host explicitly supplies an immutable checked snapshot of component key
+requests and metadata. There is no process-global declaration registry.
+Bootstrap is once per concrete runtime, not once per process.
 
 The default convenience layer is one thread-local runtime. On native targets,
 each thread therefore has independent default memory and runtime state. On

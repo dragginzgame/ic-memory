@@ -1,5 +1,4 @@
 use super::{AllocationLedger, LedgerIntegrityError};
-use std::collections::BTreeSet;
 
 impl AllocationLedger {
     pub(crate) const fn validate_bounds(&self) -> Result<(), LedgerIntegrityError> {
@@ -16,10 +15,16 @@ impl AllocationLedger {
     /// Checked field types already enforce key, slot and schema invariants.
     pub fn validate_integrity(&self) -> Result<(), LedgerIntegrityError> {
         self.validate_bounds()?;
-        let mut stable_keys = BTreeSet::new();
+        let duplicate_keys = crate::key::duplicate_key_positions(
+            self.records()
+                .iter()
+                .enumerate()
+                .map(|(index, record)| (record.stable_key(), index))
+                .collect(),
+        );
         let mut slots = [false; crate::constants::MAX_ALLOCATIONS];
-        for record in self.records() {
-            if !stable_keys.insert(record.stable_key()) {
+        for (index, record) in self.records().iter().enumerate() {
+            if duplicate_keys[index] {
                 return Err(LedgerIntegrityError::DuplicateStableKey {
                     stable_key: record.stable_key.clone(),
                 });

@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.36.2]
+
+- Use byte-based matching for already-ASCII stable keys, preserving
+  key grammar and validation error ordering.
+  ([#68](https://github.com/dragginzgame/ic-memory/issues/68)).
+- Correct integration and audit guidance for explicit declarations and
+  runtime-owned persistence ([#70](https://github.com/dragginzgame/ic-memory/issues/70)).
+- Reduce Wasm overhead in bounded uniqueness checks and CBOR IO, preserving
+  validation and storage contracts ([#69](https://github.com/dragginzgame/ic-memory/issues/69)).
+- Qualify the selected Host artifacts/fs 0.17.0 native helpers.
+
+[Detailed notes](docs/changelog/0.36.md)
+
 ## [0.36.1] - 2026-10-13
 
 - Avoid copying owner strings after request admission when building resolved

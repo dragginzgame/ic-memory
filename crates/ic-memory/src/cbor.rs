@@ -1,5 +1,4 @@
 use serde::{Deserialize, Deserializer, de::DeserializeOwned};
-use std::io::Cursor;
 
 /// Deserialize an explicitly present optional field.
 ///
@@ -19,9 +18,9 @@ pub fn from_slice_exact<T: DeserializeOwned>(
     bytes: &[u8],
 ) -> Result<T, ciborium::de::Error<std::io::Error>> {
     preflight(bytes)?;
-    let mut reader = Cursor::new(bytes);
+    let mut reader = bytes;
     let value = ciborium::from_reader(&mut reader)?;
-    let consumed = usize::try_from(reader.position()).unwrap_or(usize::MAX);
+    let consumed = bytes.len() - reader.len();
     if consumed != bytes.len() {
         return Err(ciborium::de::Error::semantic(
             consumed,

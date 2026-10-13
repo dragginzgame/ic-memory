@@ -4,7 +4,7 @@
 
 # Advanced ic-memory
 
-This document covers the lower-level pieces behind the macro runtime. Most
+This document covers explicit composition and the owned memory runtime. Most
 applications should start with the README.
 
 ## Contents
@@ -12,10 +12,10 @@ applications should start with the README.
 - [How it fits](#how-it-fits)
 - [Runtime ownership](#runtime-ownership)
 - [Policy authority](#policy-authority)
-- [Declaration-only hooks](#declaration-only-hooks)
+- [Explicit component declarations](#explicit-component-declarations)
 - [Default runtime diagnostics](#default-runtime-diagnostics)
 - [Explicit `MemoryRuntime<M>`](#explicit-memoryruntimem)
-- [Manual bootstrap](#manual-bootstrap)
+- [Recovery and persistence](#recovery-and-persistence)
 - [Stable key rules](#stable-key-rules)
 - [Host allocation pool](#host-allocation-pool)
 - [Current MemoryManager rules](#current-memorymanager-rules)
@@ -83,11 +83,10 @@ The decoded ledger record belongs to a single bootstrap attempt. Every retry
 decodes persisted memory again before recovery and admission; no record remains
 cached after success or failure. Diagnostics read persisted memory directly.
 
-Linked crates compose declarations into one immutable
-`SealedDeclarationSnapshot`. That process-global snapshot is declaration
-authority, not a process-global bootstrap result. Every concrete runtime
-receives the same declaration meaning but performs its own recovery, policy
-evaluation, persistence, and capability publication.
+The host composes component requests into one immutable
+`SealedDeclarationSnapshot` and supplies it explicitly to each runtime. No global
+registry collects declarations. Each runtime performs its own recovery, policy
+evaluation, persistence and capability publication on its backing memory.
 
 Exactly one owner should bootstrap a given ledger store. Canic can own a
 `MemoryRuntime`, IcyDB can own one, or the application can use the default TLS
@@ -95,10 +94,10 @@ runtime. Framework integrations should store and pass the explicit runtime
 object alongside the backing memory they own.
 
 The intended public API is exported from `ic_memory::...` at the crate root.
-Implementation modules such as the runtime, ledger, registry, and validation
+Implementation modules such as the runtime, ledger, requests, and validation
 modules are private. Frameworks should call root exports such as
 `bootstrap_default_memory_manager_with_policy(...)`,
-`default_memory_manager_doctor_report(&pool)`, and
+`default_memory_manager_doctor_report(&snapshot, &pool)`, and
 `open_default_memory_manager_memory(...)`.
 
 If multiple layers need separate allocation domains, they should use distinct
@@ -160,29 +159,31 @@ metadata without rerunning admission or choosing geometry. See the
 [composed-host example](crates/ic-memory/examples/composed_host.rs) and
 [admission contract](docs/recovered-admission.md).
 
-## Declaration-Only Hooks
+## Explicit Component Declarations
 
-Use `eager_init!` to register metadata before sealing without opening storage:
+Components provide complete `Vec<MemoryRequest>` factories using the same stable
+keys as their stores. The host combines the selected lists before bootstrap:
 
 ```rust,no_run
-ic_memory::eager_init!({
-    ic_memory::register_memory_request(ic_memory::MemoryRequest::new(
-        "icydb.test_db", "icydb.test_db.orders.data.v1",
-        ic_memory::SchemaMetadata::default(),
-    ).expect("valid request")).expect("registration remains open");
-});
+# fn main() -> Result<(), Box<dyn std::error::Error>> {
+let requests = vec![ic_memory::MemoryRequest::new(
+    "icydb.test_db", "icydb.test_db.orders.data.v1",
+    ic_memory::SchemaMetadata::default(),
+)?];
+let snapshot = ic_memory::SealedDeclarationSnapshot::new(requests)?;
+# Ok(())
+# }
 ```
 
-Configured bootstrap checks geometry before sealing and releases the runtime
-borrow while hooks run. Hooks may observe readiness and physical totals before
-bootstrap. `ic_memory_key!` returns a typed open result and requires committed
-authority. Macros register keys and explicitly named owners, never numeric IDs.
+Pass that snapshot and the checked pool to the chosen runtime. Store opening
+never registers a declaration, invokes a constructor hook or selects a numeric
+ID. All selected component requirements must be present before opening storage.
 
-`sealed_declaration_snapshot().requests()` exposes canonical source requests.
-A host passes that snapshot and its pool to its runtime. Resolution feeds the existing checked declaration snapshot to commitment;
-current placement/schema projections borrow the resulting capability. There is
-no second resolved-row map or alternative component input.
-Governance is validated internally before application capability publication.
+`snapshot.requests()` exposes canonical source requests. Resolution feeds the
+checked declaration snapshot to commitment; current placement/schema projections
+borrow the resulting capability. There is no second resolved-row map or
+alternative component input. Governance is validated internally before
+application capability publication.
 
 ## Default Runtime Diagnostics
 
@@ -192,9 +193,9 @@ the tested pool. Read-only validation checks custody, namespace ownership,
 placement and custom allocation policy. It never executes preparation, predicts
 its completed historical selections or certifies consumer admission.
 
-`default_memory_manager_doctor_report(&pool)` observes an existing default
-runtime; the custom variant takes `(&pool, &policy)`. An absent runtime returns
-`NotBootstrapped` before sealing or initializing storage. Only bootstrap creates
+`default_memory_manager_doctor_report(&snapshot, &pool)` observes an existing
+default runtime; the custom variant takes `(&snapshot, &pool, &policy)`. An absent
+runtime returns `NotBootstrapped` without initializing storage. Only bootstrap creates
 the default runtime and selects its geometry. For prebootstrap inspection,
 construct an owned runtime with explicit backing and configuration.
 
@@ -211,7 +212,7 @@ exported as valid ledgers. Physical allocation reports do not decode ownership;
 use ic_memory::{MemoryAllocationPool, MemoryAuthority, MemoryRequest,
     MemoryRuntime, SchemaMetadata, SealedDeclarationSnapshot, GenericAllocationPolicy,
     ic_stable_structures::VectorMemory};
-let source = SealedDeclarationSnapshot::new(&[
+let source = SealedDeclarationSnapshot::new(vec![
     MemoryRequest::new("app", "app.users.v1", SchemaMetadata::default())?,
 ])?;
 let pool = MemoryAllocationPool::new(vec![MemoryAuthority::new("app", "app.")?], vec![])?;
@@ -226,112 +227,55 @@ Construction accepts empty memory or the supported manager layout. Foreign or
 unsupported nonempty backing is rejected without writes. Fresh construction
 reserves the metadata page before writing a header; growth refusal returns a
 typed error and leaves backing retryable. Geometry mismatches reject before
-sealing. The default runtime caches construction failures per native thread.
+admission or persistence. The default runtime caches construction failures per
+native thread.
 
 The runtime owns its manager and committed capability. Opens consult only that
 runtime's capability; they cannot accept another runtime's authority. Capability
 publication follows successful persistence. One bootstrap owner is required for
 each concrete backing memory, including each native default-runtime thread.
 
-## Manual Bootstrap
+## Recovery and Persistence
 
-The macro runtime is built on the lower-level ledger API. Frameworks that need
-to own stable-memory IO or endpoint lifecycle can still drive that API directly.
-
-The safe order is fixed:
+Frameworks own backing memory and application lifecycle; `MemoryRuntime` owns
+ledger recovery, validation and persistence on that memory. Its internal commit
+order is fixed:
 
 ```text
 recover persisted allocation ledger
-declare this binary's expected stable stores
+admit host policy and resolve the explicit requests
 validate declarations against ledger ownership and policy
-commit the new generation
-only then open stable-memory handles
+stage and persist the new generation
+publish committed authority, then open stable-memory handles
 ```
 
-This lower-level path accepts resolved key-to-ID declarations. Logical requests and
-recovered-metadata admission belong to `MemoryRuntime::bootstrap`, which adds
-preparation and resolution before the same validation/persistence boundary.
-Use the runtime when composing those features; a diagnostic export cannot
-resolve requests or authorize historical opens.
+There is no public manual commit writer or persistence-confirmation API. Use an
+owned runtime for explicit backing and configuration, or the default runtime
+helpers with the complete request snapshot and checked pool.
 
-Maintained recovery paths enforce byte, collection and nesting limits
-before the relevant allocations and decoding. See the
+Maintained recovery paths enforce byte, collection and nesting limits before the
+relevant allocations and decoding. See the
 [current recovery limits](docs/key-only-recovery.md#recovery-and-admission-limits).
+Every cold bootstrap attempt decodes its stable-cell record once and uses that
+record for recovery and staging. Empty memory is initialized before admission;
+corrupt cell envelopes or record bytes produce typed failures. Capacity admission
+counts encoded bytes without allocating another serialization buffer.
 
-For a manually persisted stable-cell ledger, call
-`decode_stable_cell_ledger_record_from_memory(&ledger_memory)` once and retain
-the returned record for recovery and bootstrap. Empty memory returns an
-uninitialized record without writing; corrupt envelopes or record bytes return
-typed errors. The decoded record still needs protected ledger recovery. This
-avoids a separate preflight followed by another panic-based decode through
-`Cell::init`. Persistence remains the manual owner's responsibility.
-
-Opaque generation payloads use bounded CBOR byte strings, introduced in 0.14.3;
-the current decoder rejects the superseded integer-array representation.
-
-Low-level `DualCommitStore` commits enforce the same opaque-payload byte ceiling
-before changing either slot and return `CommitRecoveryError::PayloadTooLarge`
-on refusal. Logical ledger decoding and integrity validation remain the
-responsibility of `LedgerCommitStore`. Current durable retirement records also
-reject unknown fields instead of discarding them.
-
-Successful logical commits return recovery evidence from the checked ledger and
-the completed physical commit. Reading existing persisted bytes still performs
-the full checksum, format and integrity recovery path. Runtime capacity admission
-counts encoded record bytes without allocating a temporary serialization buffer;
-the stable cell then serializes the record for persistence.
-
-Decoded ledger and declaration DTOs are not trusted just because serde accepted
-them. Recovery first validates every present physical commit slot and selects
-the authoritative generation, verifies the logical payload's current format
-marker and version, decodes the current-format `ic-memory` CBOR ledger payload,
-checks the physical/logical generation binding, and validates committed ledger
-integrity. Only the resulting `RecoveredLedger` proof can be passed to
-declaration validation to produce pre-commit `ValidatedAllocations`.
-
-Manual sketch:
-
-```rust,ignore
-let declarations = DeclarationSnapshot::new(vec![
-    AllocationDeclaration::memory_manager("app.orders.v1", 100, "orders")?,
-])?;
-
-let commit = AllocationBootstrap::new(record.store_mut()).initialize_validate_and_commit(
-    &genesis_ledger,
-    declarations,
-    &policy,
-)?;
-
-persist_record(&record)?;
-let committed = commit.confirm_persisted();
-let key = StableKey::parse("app.orders.v1")?;
-let slot = committed.slot_for(&key).ok_or("allocation was not committed")?;
-let orders = open_storage(slot)?;
-```
-
-The helper names for `record`, `persist_record`, `genesis_ledger`, `policy`,
-and `open_storage` are placeholders. Frameworks and libraries
-wire those to their own stable-memory persistence and collection construction.
-The ordering is the contract. Calling `confirm_persisted()` before
-`persist_record` succeeds violates the protocol.
-
-Supplying `genesis_ledger` is privileged. Normal empty-store bootstraps should
-use an empty current-format ledger, like the default runtime does. A non-empty
-genesis ledger is an import or migration decision owned by the layer that owns
-the ledger store.
+The internal commit store checks present physical slots, checksums, current
+payload format, physical/logical generation binding and ledger integrity before
+returning `RecoveredLedger`. Decoded DTOs alone never grant open authority.
+Opaque generation payloads are bounded CBOR byte strings; oversized commits and
+unknown current-format fields are rejected rather than silently accepted.
 
 `AllocationLedger::new(counter, records)` checks count, unique ownership and
-empty-genesis rules. It returns a passive DTO; protected recovery is still needed
-before declaration validation. There is one integrity validator for the current
-format, and no retained generation or schema trail. Inspect
+empty-genesis rules. It returns a passive DTO, not a persistence owner. Inspect
 `AllocationLedger::records()` and `AllocationRecord::schema()` for current state.
-See the [current ledger hard cut](docs/current-ledger.md) before upgrading retained
-installations.
+See the [current ledger contract](docs/current-ledger.md) for retained-data rules.
 
-`ValidatedAllocations` is intentionally opaque and non-serializable pre-commit
-state. It can be staged but cannot open storage. `CommittedAllocations` is the
-separate non-serializable open capability produced only after persistence is
-confirmed. Neither is a durable record or diagnostic export format.
+Internal pre-commit validation state cannot open storage. `CommittedAllocations`
+is the non-serializable open capability published by the runtime only after its
+stable-cell write succeeds. Diagnostic exports and durable records are not open
+capabilities.
 
 ## Stable Key Rules
 

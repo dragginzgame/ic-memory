@@ -5,7 +5,6 @@ use crate::{
     text::{DiagnosticTextError, validate_diagnostic_text},
 };
 use serde::{Deserialize, Deserializer, Serialize, de::Error as _};
-use std::collections::BTreeSet;
 
 ///
 /// AllocationDeclaration
@@ -239,10 +238,16 @@ fn validate_declaration_set(
     if declarations.len() > crate::constants::MAX_ALLOCATIONS {
         return Err(DeclarationSnapshotError::TooManyDeclarations);
     }
-    let mut keys = BTreeSet::new();
+    let duplicate_keys = crate::key::duplicate_key_positions(
+        declarations
+            .iter()
+            .enumerate()
+            .map(|(index, declaration)| (&declaration.stable_key, index))
+            .collect(),
+    );
     let mut slots = [false; crate::constants::MAX_ALLOCATIONS];
 
-    for declaration in declarations {
+    for (index, declaration) in declarations.iter().enumerate() {
         let occupied = &mut slots[usize::from(declaration.slot.id())];
         if *occupied {
             return Err(DeclarationSnapshotError::DuplicateSlot(
@@ -250,7 +255,7 @@ fn validate_declaration_set(
             ));
         }
         *occupied = true;
-        if !keys.insert(&declaration.stable_key) {
+        if duplicate_keys[index] {
             return Err(DeclarationSnapshotError::DuplicateStableKey(
                 declaration.stable_key.clone(),
             ));

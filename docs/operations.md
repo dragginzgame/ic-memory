@@ -124,9 +124,9 @@ then call its recovery or doctor methods.
 
 ## Doctor reports
 
-Use `default_memory_manager_doctor_report(&pool)` for operator-facing validation
+Use `default_memory_manager_doctor_report(&declarations, &pool)` for operator-facing validation
 with the built-in policy. If the runtime uses a custom policy, call
-`default_memory_manager_doctor_report_with_policy(&pool, &policy)`, or call
+`default_memory_manager_doctor_report_with_policy(&declarations, &pool, &policy)`, or call
 `runtime.doctor_report(&declarations, &pool, &policy)` on an explicit runtime.
 
 A doctor report includes:

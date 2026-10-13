@@ -100,17 +100,24 @@ pub fn validate(stable_key: &str) -> Result<(), StableKeyError> {
     if stable_key.bytes().any(|byte| byte.is_ascii_uppercase()) {
         return invalid(stable_key, "must be lowercase");
     }
-    if stable_key.contains(char::is_whitespace) {
+    if stable_key
+        .bytes()
+        .any(|byte| matches!(byte, b'\t'..=b'\r' | b' '))
+    {
         return invalid(stable_key, "must not contain whitespace");
     }
-    if stable_key.contains('/') || stable_key.contains('-') {
+    if stable_key.bytes().any(|byte| matches!(byte, b'/' | b'-')) {
         return invalid(stable_key, "must not contain slashes or hyphens");
     }
     if stable_key.starts_with('.') || stable_key.ends_with('.') {
         return invalid(stable_key, "must not start or end with a dot");
     }
 
-    let Some(version_index) = stable_key.rfind(".v") else {
+    let Some(version_index) = stable_key
+        .as_bytes()
+        .windows(2)
+        .rposition(|pair| pair == b".v")
+    else {
         return invalid(stable_key, "must end with .vN");
     };
     let version = &stable_key[version_index + 2..];
@@ -129,15 +136,15 @@ pub fn validate(stable_key: &str) -> Result<(), StableKeyError> {
         );
     }
 
-    for segment in prefix.split('.') {
+    for segment in prefix.as_bytes().split(|byte| *byte == b'.') {
         validate_segment(stable_key, segment)?;
     }
 
     Ok(())
 }
 
-fn validate_segment(stable_key: &str, segment: &str) -> Result<(), StableKeyError> {
-    let mut bytes = segment.bytes();
+fn validate_segment(stable_key: &str, segment: &[u8]) -> Result<(), StableKeyError> {
+    let mut bytes = segment.iter().copied();
     let Some(first) = bytes.next() else {
         return invalid(stable_key, "must not contain empty segments");
     };
@@ -158,6 +165,21 @@ fn invalid<T>(stable_key: &str, reason: &'static str) -> Result<T, StableKeyErro
         stable_key: stable_key.to_string(),
         reason,
     })
+}
+
+/// Mark later occurrences while preserving each boundary's original traversal.
+/// Callers bound the collection and supply its enumerated input positions.
+pub fn duplicate_key_positions(
+    keys: Vec<(&StableKey, usize)>,
+) -> [bool; crate::constants::MAX_ALLOCATIONS] {
+    let keys = std::collections::BinaryHeap::from(keys).into_sorted_vec();
+    let mut duplicates = [false; crate::constants::MAX_ALLOCATIONS];
+    for pair in keys.windows(2) {
+        if pair[0].0 == pair[1].0 {
+            duplicates[pair[1].1] = true;
+        }
+    }
+    duplicates
 }
 
 #[cfg(test)]
@@ -183,6 +205,43 @@ mod tests {
     }
 
     #[test]
+    fn uniqueness_errors_follow_input_order_and_boundary_precedence() {
+        use crate::{AllocationDeclaration, DeclarationSnapshot, DeclarationSnapshotError};
+        let duplicate = StableKey::parse("app.b.v1").unwrap();
+        for slots in [[10, 11, 12, 13], [10, 11, 10, 13]] {
+            let declarations: Vec<_> = ["app.a.v1", "app.b.v1", "app.b.v1", "app.a.v1"]
+                .into_iter()
+                .zip(slots)
+                .map(|(key, slot)| {
+                    AllocationDeclaration::memory_manager_unlabeled(key, slot).unwrap()
+                })
+                .collect();
+            let expected = if slots[2] == slots[0] {
+                DeclarationSnapshotError::DuplicateSlot(crate::MemoryManagerSlot::new(10).unwrap())
+            } else {
+                DeclarationSnapshotError::DuplicateStableKey(duplicate.clone())
+            };
+            assert_eq!(
+                DeclarationSnapshot::new(declarations.clone()).unwrap_err(),
+                expected
+            );
+            let ledger = crate::AllocationLedger {
+                current_generation: 1,
+                records: declarations
+                    .iter()
+                    .map(crate::AllocationRecord::active)
+                    .collect(),
+            };
+            assert_eq!(
+                ledger.validate_integrity(),
+                Err(crate::LedgerIntegrityError::DuplicateStableKey {
+                    stable_key: duplicate.clone(),
+                })
+            );
+        }
+    }
+
+    #[test]
     fn accepts_canonical_keys() {
         assert_eq!(
             StableKey::parse("app.users.primary.v1")
@@ -191,6 +250,8 @@ mod tests {
             "app.users.primary.v1"
         );
         assert!(StableKey::parse("framework.core.auth_state.v12").is_ok());
+        assert!(StableKey::parse("app.vault.v1").is_ok());
+        assert!(StableKey::parse("app.v1.v2").is_ok());
     }
 
     #[test]
@@ -209,6 +270,8 @@ mod tests {
         for invalid in [
             "App.users.v1",
             "app.users.v0",
+            "app.vault",
+            "app.users.v1.tail",
             "app..users.v1",
             &"x".repeat(129),
         ] {
@@ -216,6 +279,26 @@ mod tests {
             assert!(serde_json::from_str::<StableKey>(&json).is_err());
             let bytes = crate::test_cbor::to_vec(&invalid).unwrap();
             assert!(crate::test_cbor::from_slice::<StableKey>(&bytes).is_err());
+        }
+    }
+
+    #[test]
+    fn whitespace_rejection_preserves_input_and_precedence() {
+        for whitespace in [' ', '\t', '\n', '\u{b}', '\u{c}', '\r'] {
+            let key = format!("app.us{whitespace}ers.v1");
+            assert_eq!(
+                StableKey::parse(&key),
+                Err(StableKeyError {
+                    stable_key: key,
+                    reason: "must not contain whitespace",
+                })
+            );
+        }
+        for (key, reason) in [
+            ("app.us\u{a0}ers.v1", "must be ASCII"),
+            ("App.us\u{b}ers.v1", "must be lowercase"),
+        ] {
+            assert_eq!(StableKey::parse(key).unwrap_err().reason, reason);
         }
     }
 
