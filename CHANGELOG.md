@@ -1,6 +1,6 @@
 # Changelog
 
-## [0.36.2]
+## [0.36.2] - 2026-10-13
 
 - Use byte-based matching for already-ASCII stable keys, preserving
   key grammar and validation error ordering.
