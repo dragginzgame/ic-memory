@@ -167,7 +167,7 @@ dependencies = [
 
 [[package]]
 name = "ic-memory"
-version = "0.36.2"
+version = "0.36.3"
 dependencies = [
  "ciborium",
  "ic-host-artifacts",

@@ -1,6 +1,6 @@
 # Changelog
 
-## [0.36.3]
+## [0.36.3] - 2026-10-13
 
 - Adopt Shared Tooling 0.10.2's common catalog ownership and reusable Cargo
   cache keys, preserving tool versions
