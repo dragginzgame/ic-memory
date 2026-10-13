@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.36.1]
+
+- Avoid copying owner strings after request admission when building resolved
+  declarations. Preserve request snapshots, placement and recovery behavior.
+- Adopt Host artifacts/fs 0.16.0 for native release helpers.
+- Adopt Shared Tooling 0.9.13: preserve tool setup failures and require an
+  explicit CI selection when the current branch cannot be observed.
+  ([Shared #145](https://github.com/dragginzgame/shared-tooling/issues/145),
+  [#146](https://github.com/dragginzgame/shared-tooling/issues/146),
+  [#148](https://github.com/dragginzgame/shared-tooling/issues/148)).
+
+[Detailed notes](docs/changelog/0.36.md)
+
 ## [0.36.0] - 2026-10-13
 
 - **Breaking:** replace constructor/global memory registration with explicit

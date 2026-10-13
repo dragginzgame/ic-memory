@@ -8,7 +8,7 @@ active engineering policy. Historical shared-version descriptions do not freeze
 that policy or establish new native qualification. Code paths are repository-relative.
 
 The existing tooling snapshot at revision
-`7e55adecf6f0b196c050f104b37f8c69b6bf434e` is recorded in
+`35cad65677ff989b5fb24a88d947fda37d2366e8` is recorded in
 [.shared-tooling.snapshot](../.shared-tooling.snapshot). It identifies the vendored
 files, hashes and executable modes; it does not freeze the active local policy.
 Keep its provenance accurate and never edit vendored files in place. Do not
@@ -18,12 +18,12 @@ also applies within its activation scope and is included in this recorded snapsh
 These instructions are the repository's local overlay.
 
 The single 102-file snapshot uses reviewed committed Shared Tooling at that
-revision, whose committed source `VERSION` is 0.9.10. The manifest records that
+revision, whose committed source `VERSION` is 0.9.13. The manifest records that
 display version separately from its authoritative commit identity. The 77 explicit
 roots select the reviewed governance catalog and Memory's maintained Make, hook, CI,
 archive and fixture entrypoints. Their generated companion closure preserves
-all 101 prior payload files, including the directly invoked CI artifact-discovery
-helper, and adds the baseline-linked change-reporting rule as an explicit policy root.
+all 102 prior payload files, including the directly invoked CI artifact-discovery
+helper and the baseline-linked change-reporting rule. Root selection is unchanged.
 The Rust fixture's derived cache-key companion remains selected. No file
 retirement or exporter/fleet fixture adoption is needed.
 The 0.9.7 Cargo build-policy change requires explicit prepared-tool refresh;
@@ -103,6 +103,14 @@ commit/tag/push effects. This addresses
 workaround or gate skip. Previous failed qualification remains recorded in
 [the release-workflow evidence](release-workflow-qualification.md#shared-098-source-adoption-and-qualification-limits).
 The new baseline-linked change-reporting rule is the added explicit policy root.
+Shared 0.9.11 preserves filesystem lock failures and Cargo source-acquisition
+statuses. Its changed Cargo build-helper digest requires explicit
+`make install-rust-tools` followed by `make rust-tools-check`, retaining prior
+generations. Shared 0.9.12 includes separately preparing missing locked sources
+within authorized development/validation; explicit offline settings remain
+authoritative. Shared 0.9.13 refuses unobservable implicit CI branch selection;
+use an explicit branch, commit or run instead. Subsequent dirty Shared CI-log
+recovery changes remain live guidance, not bytes attributed to this snapshot.
 This includes
 the corrected producer version and the package-impact guidance: contributor-only
 tooling changes use compatible library patch notes. It includes

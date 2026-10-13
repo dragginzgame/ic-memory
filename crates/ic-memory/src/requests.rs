@@ -108,19 +108,19 @@ pub enum MemoryDeclarationError {
     /// Declaration validation failed.
     #[error(transparent)]
     Declaration(#[from] crate::DeclarationSnapshotError),
-    /// External registration attempted to use an invalid authority identifier.
+    /// A request supplied an invalid authority identifier.
     #[error("authority {reason}")]
     InvalidAuthority {
         /// Validation failure.
         reason: &'static str,
     },
-    /// External registration attempted to impersonate the internal authority.
+    /// A request attempted to impersonate the internal authority.
     #[error("authority '{authority}' is reserved for ic-memory runtime internals")]
     ReservedAuthority {
         /// Reserved authority identifier.
         authority: String,
     },
-    /// External registration attempted to claim the internal stable-key namespace.
+    /// A request attempted to claim the internal stable-key namespace.
     #[error("stable key '{stable_key}' is reserved for ic-memory runtime internals")]
     ReservedStableKey {
         /// Reserved stable key.
@@ -258,16 +258,24 @@ impl SealedDeclarationSnapshot {
             let slot = crate::MemoryManagerSlot::new(id).expect("usable id");
             occupied[usize::from(id)] = true;
             // Request construction checked authority/key/schema, and recovery
-            // checked historical schemas. Copy borrowed source requests only;
-            // owned selections move their fields into the final declarations.
-            // The final snapshot still validates all declarations together.
-            let request = request.into_owned();
-            declarations.push(AllocationDeclaration {
-                stable_key: request.stable_key,
-                slot,
-                label: None,
-                schema: request.schema,
-            });
+            // checked historical schemas. The final declaration needs only
+            // key/schema: do not copy the already-checked authority string.
+            // Admission selections transfer those owned fields without copying.
+            let declaration = match request {
+                Cow::Borrowed(request) => AllocationDeclaration {
+                    stable_key: request.stable_key.clone(),
+                    slot,
+                    label: None,
+                    schema: request.schema.clone(),
+                },
+                Cow::Owned(request) => AllocationDeclaration {
+                    stable_key: request.stable_key,
+                    slot,
+                    label: None,
+                    schema: request.schema,
+                },
+            };
+            declarations.push(declaration);
         }
         declarations.sort_unstable_by(|a, b| a.stable_key().cmp(b.stable_key()));
         Ok(DeclarationSnapshot::new(declarations).map_err(MemoryDeclarationError::from)?)

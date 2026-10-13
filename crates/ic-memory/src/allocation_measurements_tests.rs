@@ -255,3 +255,33 @@ fn pool() -> crate::MemoryAllocationPool {
     )
     .unwrap()
 }
+
+#[test]
+#[ignore = "explicit matched declaration resolution allocation measurement, run in release mode with one test thread"]
+fn declaration_resolution_allocations() {
+    println!("phase,generations,iterations,allocations,reallocations,peak_bytes,elapsed_us");
+    let ledger = AllocationLedger::empty_genesis();
+    for count in [1, 32, 245] {
+        let owner = "a".repeat(256);
+        let requests = (0..count)
+            .map(|id| {
+                crate::MemoryRequest::new(
+                    owner.clone(),
+                    &format!("app.store{id:03}.v1"),
+                    crate::SchemaMetadata::default(),
+                )
+                .unwrap()
+            })
+            .collect();
+        let declarations = SealedDeclarationSnapshot::new(requests).unwrap();
+        let pool = crate::MemoryAllocationPool::new(
+            vec![crate::MemoryAuthority::new(owner, "app.").unwrap()],
+            vec![],
+        )
+        .unwrap();
+        measure(&format!("resolve_{count}"), 0, 10, || {
+            let resolved = black_box(declarations.resolve(&ledger, vec![], &pool).unwrap());
+            assert_eq!(resolved.declarations().len(), count + 1);
+        });
+    }
+}
