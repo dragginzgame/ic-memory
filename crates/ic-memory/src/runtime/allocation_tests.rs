@@ -2,7 +2,7 @@ use super::{
     AllocationBinding, MemoryManagerLayoutError, MemoryRuntime, RuntimeConstructionError,
     RuntimeDiagnosticError, RuntimeOpenError, layout, policy::GenericAllocationPolicy,
 };
-use crate::{IC_MEMORY_LEDGER_STABLE_KEY, MEMORY_MANAGER_LEDGER_ID, registry::TEST_REGISTRY_LOCK};
+use crate::{IC_MEMORY_LEDGER_STABLE_KEY, MEMORY_MANAGER_LEDGER_ID};
 use ic_stable_structures::{
     Memory, VectorMemory,
     memory_manager::{MemoryId, MemoryManager},
@@ -141,7 +141,7 @@ fn full_external_id_domain_preserves_bounded_read_only_attribution() {
             .unwrap()
         })
         .collect();
-    let snapshot = crate::SealedDeclarationSnapshot::new(&declarations).unwrap();
+    let snapshot = crate::SealedDeclarationSnapshot::new(declarations).unwrap();
     let memory = Metered::default();
     let mut runtime =
         MemoryRuntime::new_with_config(memory.clone(), super::MemoryManagerConfig::new(1).unwrap())
@@ -189,7 +189,6 @@ fn full_external_id_domain_preserves_bounded_read_only_attribution() {
 
 #[test]
 fn bounded_conservation_bindings_and_no_effects() {
-    let _guard = TEST_REGISTRY_LOCK.lock().unwrap();
     let declarations = super::tests::declarations();
     let memory = Metered::default();
     let mut runtime = MemoryRuntime::new(memory.clone()).unwrap();
@@ -243,7 +242,6 @@ fn bounded_conservation_bindings_and_no_effects() {
 
 #[test]
 fn diagnostics_never_read_even_a_corrupt_unbounded_ledger() {
-    let _guard = TEST_REGISTRY_LOCK.lock().unwrap();
     let declarations = super::tests::declarations();
     let memory = Metered::default();
     let mut runtime = MemoryRuntime::new(memory.clone()).unwrap();
@@ -375,7 +373,6 @@ fn default_attribution_does_not_initialize_tls() {
 
 #[test]
 fn explicit_configuration_validates_before_effects_and_replays() {
-    let _guard = TEST_REGISTRY_LOCK.lock().unwrap();
     let declarations = super::tests::declarations();
     let memory = Metered::default();
     assert_eq!(
@@ -453,11 +450,11 @@ fn explicit_configuration_validates_before_effects_and_replays() {
 
 #[test]
 fn default_configuration_is_bound_before_repeated_bootstrap() {
-    let _guard = TEST_REGISTRY_LOCK.lock().unwrap();
     super::tests::declarations();
     std::thread::spawn(|| {
         let config = super::MemoryManagerConfig::new(16).unwrap();
         let committed = super::bootstrap_default_memory_manager_with_config(
+            &super::tests::declarations(),
             config,
             &super::tests::pool(),
             &GenericAllocationPolicy,
@@ -467,6 +464,7 @@ fn default_configuration_is_bound_before_repeated_bootstrap() {
         assert_eq!(before.bucket_size_pages, 16);
         assert!(
             super::bootstrap_default_memory_manager_with_config(
+                &super::tests::declarations(),
                 super::MemoryManagerConfig::default(),
                 &super::tests::pool(),
                 &GenericAllocationPolicy
@@ -474,6 +472,7 @@ fn default_configuration_is_bound_before_repeated_bootstrap() {
             .is_err()
         );
         let replay = super::bootstrap_default_memory_manager_with_config(
+            &super::tests::declarations(),
             config,
             &super::tests::pool(),
             &GenericAllocationPolicy,
@@ -485,9 +484,12 @@ fn default_configuration_is_bound_before_repeated_bootstrap() {
             before
         );
         assert_eq!(
-            super::bootstrap_default_memory_manager(&super::tests::pool())
-                .unwrap()
-                .generation(),
+            super::bootstrap_default_memory_manager(
+                &super::tests::declarations(),
+                &super::tests::pool()
+            )
+            .unwrap()
+            .generation(),
             committed.generation()
         );
     })

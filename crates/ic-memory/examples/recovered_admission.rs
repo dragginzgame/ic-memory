@@ -71,7 +71,7 @@ fn declarations(keys: &[&str]) -> SealedDeclarationSnapshot {
         .iter()
         .map(|key| MemoryRequest::new("db", key, SchemaMetadata::default()).unwrap())
         .collect();
-    SealedDeclarationSnapshot::new(&requests).unwrap()
+    SealedDeclarationSnapshot::new(requests).unwrap()
 }
 
 fn main() {

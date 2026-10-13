@@ -1,6 +1,6 @@
 use crate::{
     LedgerCommitError, PolicyIdentity, PolicyIdentityError, StableCellLedgerError,
-    registry::StaticMemoryDeclarationError,
+    requests::MemoryDeclarationError,
 };
 
 ///
@@ -129,9 +129,9 @@ pub enum RuntimeBootstrapError<P> {
         /// Policy identity supplied by the repeated call.
         requested: PolicyIdentity,
     },
-    /// Linked-program declaration snapshot sealing failed.
+    /// Allocation declaration construction or resolution failed.
     #[error(transparent)]
-    Registry(#[from] StaticMemoryDeclarationError),
+    Declarations(#[from] MemoryDeclarationError),
     /// Protected ledger recovery or commit failed.
     #[error(transparent)]
     LedgerCommit(#[from] crate::LedgerCommitError),
@@ -202,9 +202,9 @@ pub enum RuntimeDiagnosticError {
     /// No default runtime exists, or this operation requires completed bootstrap.
     #[error("ic-memory runtime has not completed bootstrap validation")]
     NotBootstrapped,
-    /// Linked-program declaration snapshot sealing failed.
+    /// Allocation declaration construction or resolution failed.
     #[error(transparent)]
-    Registry(#[from] StaticMemoryDeclarationError),
+    Declarations(#[from] MemoryDeclarationError),
     /// Runtime lifecycle or default TLS access failed.
     #[error(transparent)]
     State(#[from] RuntimeStateError),
@@ -236,5 +236,5 @@ pub enum MemoryResolutionError {
     #[error(transparent)]
     Pool(#[from] crate::MemoryAllocationPoolError),
     #[error(transparent)]
-    Registry(#[from] StaticMemoryDeclarationError),
+    Declarations(#[from] MemoryDeclarationError),
 }

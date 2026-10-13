@@ -41,12 +41,9 @@ fn pool() -> MemoryAllocationPool {
     MemoryAllocationPool::new(vec![MemoryAuthority::new("db", "db.").unwrap()], vec![]).unwrap()
 }
 fn requirements(authority: &str, key: &str, schema: Option<u32>) -> SealedDeclarationSnapshot {
-    SealedDeclarationSnapshot::new(&[MemoryRequest::new(
-        authority,
-        key,
-        SchemaMetadata::new(schema).unwrap(),
-    )
-    .unwrap()])
+    SealedDeclarationSnapshot::new(vec![
+        MemoryRequest::new(authority, key, SchemaMetadata::new(schema).unwrap()).unwrap(),
+    ])
     .unwrap()
 }
 fn source() -> SealedDeclarationSnapshot {
@@ -109,8 +106,11 @@ fn adoption_checks_logical_requirements_without_replaying_host() {
     let mut requests = source().requests().to_vec();
     requests
         .push(MemoryRequest::new("other", "other.missing.v1", SchemaMetadata::default()).unwrap());
-    host.verify_authority(&SealedDeclarationSnapshot::new(&requests).unwrap(), "db")
-        .unwrap();
+    host.verify_authority(
+        &SealedDeclarationSnapshot::new(requests.clone()).unwrap(),
+        "db",
+    )
+    .unwrap();
     assert_eq!(policy.0.get(), 1);
     assert_eq!(host.committed_allocations().unwrap(), &capability);
     assert_eq!(host.memory_allocations().unwrap(), report);

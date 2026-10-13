@@ -6,7 +6,17 @@ use ic_memory::{
 const AUTHORITY: &str = "default_custom_policy";
 const POLICY_IDENTITY: &str = "default-custom-policy";
 
-ic_memory::ic_memory_declaration!(authority = AUTHORITY, key = "default_custom_policy.rows.v1");
+fn snapshot() -> ic_memory::SealedDeclarationSnapshot {
+    ic_memory::SealedDeclarationSnapshot::new(vec![
+        ic_memory::MemoryRequest::new(
+            AUTHORITY,
+            "default_custom_policy.rows.v1",
+            ic_memory::SchemaMetadata::default(),
+        )
+        .unwrap(),
+    ])
+    .unwrap()
+}
 
 struct CustomPolicy;
 
@@ -48,15 +58,20 @@ fn custom_default_policy_bootstrap_is_identity_bound_and_idempotent() {
         Err(ic_memory::RuntimeOpenError::NotBootstrapped)
     );
     let config = ic_memory::MemoryManagerConfig::new(16).unwrap();
-    let first =
-        ic_memory::bootstrap_default_memory_manager_with_config(config, &pool(), &CustomPolicy)
-            .expect("first custom-policy bootstrap");
+    let first = ic_memory::bootstrap_default_memory_manager_with_config(
+        &snapshot(),
+        config,
+        &pool(),
+        &CustomPolicy,
+    )
+    .expect("first custom-policy bootstrap");
     assert!(ic_memory::is_default_memory_manager_bootstrapped().unwrap());
     assert_eq!(ic_memory::committed_allocations().unwrap(), first);
     let before = ic_memory::default_memory_manager_memory_allocations().unwrap();
     assert_eq!(before.bucket_size_pages, 16);
     assert!(matches!(
         ic_memory::bootstrap_default_memory_manager_with_config(
+            &snapshot(),
             config,
             &pool(),
             &ic_memory::GenericAllocationPolicy
@@ -68,13 +83,20 @@ fn custom_default_policy_bootstrap_is_identity_bound_and_idempotent() {
         before
     );
     assert_eq!(ic_memory::committed_allocations().unwrap(), first);
-    let repeated = ic_memory::bootstrap_default_memory_manager_with_policy(&pool(), &CustomPolicy)
-        .expect("same custom-policy identity");
+    let repeated = ic_memory::bootstrap_default_memory_manager_with_policy(
+        &snapshot(),
+        &pool(),
+        &CustomPolicy,
+    )
+    .expect("same custom-policy identity");
 
     assert_eq!(repeated.generation(), first.generation());
-    let doctor =
-        ic_memory::default_memory_manager_doctor_report_with_policy(&pool(), &CustomPolicy)
-            .expect("custom-policy doctor report");
+    let doctor = ic_memory::default_memory_manager_doctor_report_with_policy(
+        &snapshot(),
+        &pool(),
+        &CustomPolicy,
+    )
+    .expect("custom-policy doctor report");
     assert!(matches!(
         doctor.bootstrap_binding,
         ic_memory::DiagnosticCheck::Passed

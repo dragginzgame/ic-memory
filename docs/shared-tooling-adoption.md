@@ -8,7 +8,7 @@ active engineering policy. Historical shared-version descriptions do not freeze
 that policy or establish new native qualification. Code paths are repository-relative.
 
 The existing tooling snapshot at revision
-`b1630b89482cc6071fc928a86962d79c9c11fdb7` is recorded in
+`7e55adecf6f0b196c050f104b37f8c69b6bf434e` is recorded in
 [.shared-tooling.snapshot](../.shared-tooling.snapshot). It identifies the vendored
 files, hashes and executable modes; it does not freeze the active local policy.
 Keep its provenance accurate and never edit vendored files in place. Do not
@@ -17,14 +17,17 @@ attribute uncommitted shared files to that recorded revision. The live local
 also applies within its activation scope and is included in this recorded snapshot.
 These instructions are the repository's local overlay.
 
-The single 100-file snapshot uses reviewed committed Shared Tooling at that
-revision, whose committed source `VERSION` is 0.9.5. The manifest records that
-display version separately from its authoritative commit identity. The 76 explicit
+The single 102-file snapshot uses reviewed committed Shared Tooling at that
+revision, whose committed source `VERSION` is 0.9.10. The manifest records that
+display version separately from its authoritative commit identity. The 77 explicit
 roots select the reviewed governance catalog and Memory's maintained Make, hook, CI,
 archive and fixture entrypoints. Their generated companion closure preserves
-all 99 existing payload files and adds the directly invoked CI artifact-discovery
-helper. No file retirement, exporter/fleet fixture adoption
-or tool reinstall is needed. Subsequent refreshes reuse the manifest's recorded
+all 101 prior payload files, including the directly invoked CI artifact-discovery
+helper, and adds the baseline-linked change-reporting rule as an explicit policy root.
+The Rust fixture's derived cache-key companion remains selected. No file
+retirement or exporter/fleet fixture adoption is needed.
+The 0.9.7 Cargo build-policy change requires explicit prepared-tool refresh;
+pins remain unchanged. Subsequent refreshes reuse the manifest's recorded
 roots. Shared 0.8.0 automatically removes unchanged obsolete owned files outside
 their closure; `--retire-file` is removed. Review canonical preview and local
 callers/other-bundle ownership before refreshing, and keep directly used helpers
@@ -83,6 +86,23 @@ explicit token, and bounds the read-only gate to two minutes before the existing
 download/digest/payload checks. The producer retry fixture assumes Shared's
 two-download workflow, so it stays upstream; Memory's failure-evidence fixture
 owns its one-download bindings without duplicating the retry policy.
+Shared 0.9.6/0.9.7 admit complete JSON PR identities and separately retain raw
+repository observations before shell extraction. Memory keeps direct delivery;
+the PR producer fixture remains unselected. Shared 0.9.7 also validates user
+Cargo offline-policy types before source/setup dispatch. `make install-rust-tools`
+explicitly selects prepared builds under the new helper digest; previous builds
+and cache evidence remain retained. Source adoption, prepared-tool activation
+and native qualification remain separately recorded under Memory #62.
+Shared 0.9.8 derives its read-only Cargo CI cache-key companion from the selected
+Rust-tool fixture. Producer native cache transport and portable-suite timing
+remain Shared-owned. Shared 0.9.10 qualifies the fixture from its neutral
+consumer directory and borrows existing immutable Git history, refusing
+commit/tag/push effects. This addresses
+[Shared #143](https://github.com/dragginzgame/shared-tooling/issues/143) and
+[#144](https://github.com/dragginzgame/shared-tooling/issues/144) without a local
+workaround or gate skip. Previous failed qualification remains recorded in
+[the release-workflow evidence](release-workflow-qualification.md#shared-098-source-adoption-and-qualification-limits).
+The new baseline-linked change-reporting rule is the added explicit policy root.
 This includes
 the corrected producer version and the package-impact guidance: contributor-only
 tooling changes use compatible library patch notes. It includes

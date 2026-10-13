@@ -11,8 +11,11 @@ map. See the [0.34 pool qualification](allocation-pool-qualification.md).
 ## Placement and host adoption
 
 `MemoryRequest::new(authority, key, schema)` checks key grammar, owner metadata
-and schema metadata. Register it before sealing, use `ic_memory_declaration!`,
-or pass requests to `SealedDeclarationSnapshot::new(&requests)`.
+and schema metadata. Components supply complete request lists; the host combines
+them with `SealedDeclarationSnapshot::new(requests)`, which takes ownership,
+checks the count, rejects duplicate keys and canonicalizes the snapshot.
+Default bootstrap helpers accept that explicit snapshot along with the pool
+and policy. There are no constructor hooks or global declaration registration.
 
 The host supplies `MemoryAllocationPool::new(namespace_grants, exclusions)`.
 Each `MemoryAuthority::new(owner, prefix)` admits a disjoint key namespace.

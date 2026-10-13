@@ -58,23 +58,17 @@
 //! one immutable [`SealedDeclarationSnapshot`], which is supplied to each
 //! runtime independently.
 //!
-//! [`AllocationBootstrap`] is the golden path for whichever layer owns a given
-//! ledger store. Canic may own bootstrap for a framework canister and compose
-//! IcyDB/application declarations through its registry; IcyDB may own bootstrap
-//! directly for generated database stores; or a standalone application canister
-//! may own bootstrap itself. Exactly one owner should bootstrap one ledger
-//! store. Multiple layers in the same canister must either compose declarations
-//! into that owner or use distinct ledger stores and allocation domains.
+//! The host supplies the complete checked request snapshot, allocation pool and
+//! admission policy directly to the runtime. Component factories and generators
+//! contribute request lists; opening a store never registers a declaration.
+//! Exactly one runtime owns bootstrap and persistence for each backing memory.
 //!
 //! `ic-stable-structures` `MemoryManager` IDs are the first-class supported
 //! physical slot substrate. That ID domain is `u8`: IDs `0..=254` are usable,
 //! and ID `255` is always the `ic-stable-structures` unallocated sentinel.
-//! The crate still keeps narrow internal abstractions for storage adapters and
-//! diagnostics, but the native IC path is
-//! `MemoryManager` ID 0 -> `ic-stable-structures::Cell<StableCellLedgerRecord,
-//! _>` -> [`LedgerCommitStore`] -> [`CommittedGenerationBytes`] ->
-//! [`LedgerPayloadEnvelope`] -> [`RecoveredLedger`] -> [`ValidatedAllocations`]
-//! -> [`CommittedAllocations`].
+//! Protected dual-slot commits and stable-cell encoding remain internal to the
+//! runtime. Public diagnostics describe their state without granting a manual
+//! commit or persistence-confirmation route.
 //!
 //! [`ic_stable_structures`] re-exports the exact substrate version used by this
 //! crate. Use its collections and traits with [`RuntimeMemory`] handles;
@@ -92,7 +86,7 @@ mod key;
 mod ledger;
 mod physical;
 mod policy;
-mod registry;
+mod requests;
 mod runtime;
 mod schema;
 mod slot;
@@ -149,11 +143,9 @@ mod test_cbor {
 pub use ic_stable_structures;
 
 pub use allocation_pool::{MemoryAllocationPool, MemoryAllocationPoolError, MemoryAuthority};
-pub use bootstrap::{
-    AllocationBootstrap, BootstrapError, BootstrapReservationError, BootstrapRetirementError,
-    PendingBootstrapCommit,
-};
-pub use capability::{CommittedAllocations, ValidatedAllocations};
+pub(crate) use bootstrap::AllocationBootstrap;
+pub use bootstrap::BootstrapError;
+pub use capability::CommittedAllocations;
 pub use constants::{
     MAX_LEDGER_BYTES, MAX_LEDGER_NESTING, MAX_LEDGER_RECORD_BYTES, WASM_PAGE_SIZE_BYTES,
 };
@@ -164,20 +156,21 @@ pub use diagnostics::{
     MemoryRuntimeDoctorReport,
 };
 pub use key::{StableKey, StableKeyError};
+pub(crate) use ledger::LedgerCommitStore;
+#[cfg(test)]
+pub(crate) use ledger::LedgerPayloadEnvelope;
 pub use ledger::{
     AllocationLedger, AllocationRecord, AllocationReservationError, AllocationRetirement,
     AllocationRetirementError, AllocationStageError, AllocationState,
-    LEDGER_PAYLOAD_FORMAT_VERSION, LedgerCommitError, LedgerCommitStore, LedgerIntegrityError,
-    LedgerPayloadEnvelope, LedgerPayloadEnvelopeError, RecoveredLedger,
+    LEDGER_PAYLOAD_FORMAT_VERSION, LedgerCommitError, LedgerIntegrityError,
+    LedgerPayloadEnvelopeError, RecoveredLedger,
 };
-pub use physical::{
-    CommitRecoveryError, CommitSlotDiagnostic, CommitStoreDiagnostic, CommittedGenerationBytes,
-    DualCommitStore,
-};
+pub use physical::{CommitRecoveryError, CommitSlotDiagnostic, CommitStoreDiagnostic};
+#[cfg(test)]
+pub(crate) use physical::{CommittedGenerationBytes, DualCommitStore};
 pub use policy::{AllocationPolicy, PolicyIdentity, PolicyIdentityError, RuntimeBootstrapPolicy};
-pub use registry::{
-    MemoryRequest, SealedDeclarationFingerprint, SealedDeclarationSnapshot,
-    StaticMemoryDeclarationError, register_memory_request, sealed_declaration_snapshot,
+pub use requests::{
+    MemoryDeclarationError, MemoryRequest, SealedDeclarationFingerprint, SealedDeclarationSnapshot,
 };
 pub use runtime::{
     AllocationBinding, BootstrapAdmission, BootstrapAdmissionError, GenericAllocationPolicy,
@@ -208,64 +201,9 @@ pub use stable_cell::{
     StableCellPayloadError, decode_stable_cell_ledger_record,
     decode_stable_cell_ledger_record_from_memory, decode_stable_cell_payload,
 };
-pub use validation::{AllocationValidationError, validate_allocations};
+pub use validation::AllocationValidationError;
+#[cfg(test)]
+pub(crate) use validation::validate_allocations;
 
-#[doc(hidden)]
-pub use registry::{defer_eager_init, defer_static_memory_registration};
-
-#[doc(hidden)]
-pub mod __reexports {
-    pub use ctor;
-}
-
-/// Register a `MemoryManager` allocation declaration during static initialization.
-///
-/// The authority names the owner admitted by the host namespace grant.
-/// A string literal or shared compile-time string constant
-/// may be used. Internal `ic-memory` authority is unavailable to callers.
-///
-/// This macro only registers declaration metadata. It does not open stable
-/// memory. The bootstrap owner still has to collect/seal declarations, validate
-/// them against the ledger, commit the generation, and then open memory handles.
-#[macro_export]
-macro_rules! ic_memory_declaration {
-    (authority = $authority:expr, key = $stable_key:literal $(,)?) => {
-        const _: () = {
-            fn __ic_memory_register_request() -> Result<(), $crate::StaticMemoryDeclarationError> {
-                $crate::register_memory_request($crate::MemoryRequest::new(
-                    $authority, $stable_key, $crate::SchemaMetadata::default(),
-                )?)
-            }
-            #[ $crate::__reexports::ctor::ctor(unsafe, anonymous, crate_path = $crate::__reexports::ctor) ]
-            fn __ic_memory_defer_request() {
-                $crate::defer_static_memory_registration(__ic_memory_register_request);
-            }
-        };
-    };
-}
-
-/// Declare a key-only request and open it after the host has committed bootstrap.
-#[macro_export]
-macro_rules! ic_memory_key {
-    (authority = $authority:expr, key = $stable_key:literal $(,)?) => {{
-        $crate::ic_memory_declaration!(authority = $authority, key = $stable_key);
-        $crate::open_default_memory_manager_memory($stable_key)
-    }};
-}
-
-/// Register one pre-bootstrap hook.
-#[macro_export]
-macro_rules! eager_init {
-    ($body:block) => {
-        const _: () = {
-            fn __ic_memory_registered_eager_init_body() {
-                $body
-            }
-
-            #[ $crate::__reexports::ctor::ctor(unsafe, anonymous, crate_path = $crate::__reexports::ctor) ]
-            fn __ic_memory_register_eager_init() {
-                $crate::defer_eager_init(__ic_memory_registered_eager_init_body);
-            }
-        };
-    };
-}
+#[cfg(test)]
+mod allocation_measurements_tests;

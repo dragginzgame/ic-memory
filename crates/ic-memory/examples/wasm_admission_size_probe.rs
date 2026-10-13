@@ -5,8 +5,6 @@ use ic_memory::{
 
 const AUTHORITY: &str = "wasm_core_size_probe";
 
-ic_memory::ic_memory_declaration!(authority = AUTHORITY, key = "wasm_core_size_probe.rows.v1");
-
 struct HostPolicy;
 impl AllocationPolicy for HostPolicy {
     type Error = &'static str;
@@ -49,7 +47,10 @@ impl RuntimeBootstrapPolicy for HostPolicy {
 
 #[unsafe(no_mangle)]
 pub extern "C" fn ic_memory_wasm_core_size_probe_bootstrap() -> u64 {
-    ic_memory::bootstrap_default_memory_manager_with_policy(&pool(), &HostPolicy)
+    let Ok(declarations) = probe_declarations() else {
+        return 0;
+    };
+    ic_memory::bootstrap_default_memory_manager_with_policy(&declarations, &pool(), &HostPolicy)
         .map_or(0, |allocations| allocations.generation())
 }
 
@@ -73,4 +74,14 @@ fn pool() -> ic_memory::MemoryAllocationPool {
         vec![],
     )
     .unwrap()
+}
+
+fn probe_declarations()
+-> Result<ic_memory::SealedDeclarationSnapshot, ic_memory::MemoryDeclarationError> {
+    let request = ic_memory::MemoryRequest::new(
+        AUTHORITY,
+        "wasm_core_size_probe.rows.v1",
+        ic_memory::SchemaMetadata::default(),
+    )?;
+    ic_memory::SealedDeclarationSnapshot::new(vec![request])
 }

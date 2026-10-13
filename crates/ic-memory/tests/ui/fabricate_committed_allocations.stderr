@@ -1,10 +1,11 @@
-error[E0624]: method `confirm_persisted` is private
- --> tests/ui/fabricate_committed_allocations.rs:4:32
+error[E0599]: no associated function or constant named `new` found for struct `CommittedAllocations` in the current scope
+ --> tests/ui/fabricate_committed_allocations.rs:4:44
   |
-4 |     let _committed = validated.confirm_persisted(0);
-  |                                ^^^^^^^^^^^^^^^^^ private method
+4 |     let _committed = CommittedAllocations::new(0, Vec::new());
+  |                                            ^^^ associated function or constant not found in `CommittedAllocations`
   |
- ::: src/capability.rs
+help: there is a method `ne` with a similar name, but with different arguments
+ --> $RUST/core/src/cmp.rs
   |
-  |     pub(crate) const fn confirm_persisted(self, generation: u64) -> CommittedAllocations {
-  |     ------------------------------------------------------------------------------------ private method defined here
+  |     fn ne(&self, other: &Rhs) -> bool {
+  |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

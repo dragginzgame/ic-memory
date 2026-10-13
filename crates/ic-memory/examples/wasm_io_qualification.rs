@@ -18,14 +18,23 @@ mod canister {
     const ROWS: &str = "io_qualification.rows.v1";
     const NEIGHBOR: &str = "io_qualification.neighbor.v1";
 
-    ic_memory::ic_memory_declaration!(
-        authority = "io_qualification",
-        key = "io_qualification.neighbor.v1"
-    );
-    ic_memory::ic_memory_declaration!(
-        authority = "io_qualification",
-        key = "io_qualification.rows.v1"
-    );
+    fn declarations() -> ic_memory::SealedDeclarationSnapshot {
+        ic_memory::SealedDeclarationSnapshot::new(vec![
+            ic_memory::MemoryRequest::new(
+                "io_qualification",
+                "io_qualification.neighbor.v1",
+                ic_memory::SchemaMetadata::default(),
+            )
+            .unwrap(),
+            ic_memory::MemoryRequest::new(
+                "io_qualification",
+                "io_qualification.rows.v1",
+                ic_memory::SchemaMetadata::default(),
+            )
+            .unwrap(),
+        ])
+        .unwrap()
+    }
 
     #[link(wasm_import_module = "ic0")]
     unsafe extern "C" {
@@ -57,6 +66,7 @@ mod canister {
     fn bootstrap(mode: u8) {
         let pages = if mode == 2 { 16 } else { 8 };
         bootstrap_default_memory_manager_with_config(
+            &declarations(),
             MemoryManagerConfig::new(pages).unwrap(),
             &pool(),
             &GenericAllocationPolicy,

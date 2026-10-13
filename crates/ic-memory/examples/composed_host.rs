@@ -12,9 +12,18 @@ const HOST: &str = "host.control.v1";
 const CONTROL: &str = "db.main.control.v1";
 const ROWS: &str = "db.main.rows.v1";
 
-ic_memory::ic_memory_declaration!(authority = "host", key = "host.control.v1");
-ic_memory::ic_memory_declaration!(authority = "db", key = "db.main.control.v1");
-ic_memory::ic_memory_declaration!(authority = "db", key = "db.main.rows.v1");
+fn database_requests() -> Vec<MemoryRequest> {
+    [CONTROL, ROWS]
+        .into_iter()
+        .map(|key| MemoryRequest::new("db", key, SchemaMetadata::default()).unwrap())
+        .collect()
+}
+
+fn snapshot() -> SealedDeclarationSnapshot {
+    let mut requests = database_requests();
+    requests.push(MemoryRequest::new("host", HOST, SchemaMetadata::default()).unwrap());
+    SealedDeclarationSnapshot::new(requests).unwrap()
+}
 
 #[derive(Debug, Eq, PartialEq, thiserror::Error)]
 enum ConsumerRejection {
@@ -79,15 +88,13 @@ fn prepare_database(
 }
 
 fn database_requirements() -> SealedDeclarationSnapshot {
-    let requests = [CONTROL, ROWS]
-        .map(|key| MemoryRequest::new("db", key, SchemaMetadata::default()).unwrap());
-    // Consumer requirements do not replace the host's grants or policy.
-    SealedDeclarationSnapshot::new(&requests).unwrap()
+    // Reuse the database's own complete request list for both composition and adoption.
+    SealedDeclarationSnapshot::new(database_requests()).unwrap()
 }
 
 fn cold_reopens() {
     let backing = VectorMemory::default();
-    let declarations = ic_memory::sealed_declaration_snapshot().unwrap();
+    let declarations = snapshot();
     let requirements = database_requirements();
     let config = MemoryManagerConfig::new(16).unwrap();
     let policy = HostPolicy::default();
@@ -106,7 +113,7 @@ fn cold_reopens() {
         let before = backing.borrow().clone();
         // A disallowed control replacement fails before commitment. A subsequent
         // cold attempt still sees the prior IDs and data under the same geometry.
-        let changed = SealedDeclarationSnapshot::new(&[
+        let changed = SealedDeclarationSnapshot::new(vec![
             MemoryRequest::new("db", "db.replacement.control.v1", SchemaMetadata::default())
                 .unwrap(),
             MemoryRequest::new("db", ROWS, SchemaMetadata::default()).unwrap(),
@@ -174,8 +181,8 @@ fn cold_reopens() {
 
 #[cfg(not(target_arch = "wasm32"))]
 fn native_threads() {
-    // The declaration registry is program-wide; the native default runtime and
-    // its backing are thread-local. Every worker bootstraps the host before
+    // Immutable component requests can be shared; the native default runtime
+    // and its backing are thread-local. Every worker bootstraps the host before
     // library adoption or any thread-local stable-store initializer is touched.
     let workers: Vec<_> = (0..2)
         .map(|_| {
@@ -189,6 +196,7 @@ fn native_threads() {
                     ))
                 );
                 ic_memory::bootstrap_default_memory_manager_with_config(
+                    &snapshot(),
                     MemoryManagerConfig::new(16).unwrap(),
                     &pool(),
                     &policy,

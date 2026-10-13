@@ -32,25 +32,20 @@ pub struct StableCellLedgerRecord {
 impl StableCellLedgerRecord {
     /// Construct a record from a commit store.
     #[must_use]
-    pub const fn new(store: LedgerCommitStore) -> Self {
+    #[cfg(test)]
+    pub(crate) const fn new(store: LedgerCommitStore) -> Self {
         Self { store }
     }
 
     /// Borrow the embedded commit store.
     #[must_use]
-    pub const fn store(&self) -> &LedgerCommitStore {
+    pub(crate) const fn store(&self) -> &LedgerCommitStore {
         &self.store
     }
 
     /// Mutably borrow the embedded commit store.
-    pub const fn store_mut(&mut self) -> &mut LedgerCommitStore {
+    pub(crate) const fn store_mut(&mut self) -> &mut LedgerCommitStore {
         &mut self.store
-    }
-
-    /// Consume this record and return the embedded commit store.
-    #[must_use]
-    pub fn into_store(self) -> LedgerCommitStore {
-        self.store
     }
 
     /// Measure the current encoded record without allocating a payload buffer.
@@ -177,8 +172,8 @@ pub fn decode_stable_cell_payload<M: Memory>(
 /// header. Use [`decode_stable_cell_payload`] first when inspecting raw stable
 /// memory.
 ///
-/// The returned record is decoded DTO state, not authority. Recover through the
-/// embedded [`LedgerCommitStore`] before trusting any ledger payload.
+/// The returned record is decoded DTO state, not authority. The runtime
+/// validates protected commit recovery before trusting any ledger payload.
 pub fn decode_stable_cell_ledger_record(
     bytes: &[u8],
 ) -> Result<StableCellLedgerRecord, ciborium::de::Error<std::io::Error>> {

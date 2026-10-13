@@ -12,8 +12,7 @@ use ic_stable_structures::{
 
 pub(super) fn snapshot(keys: &[&str], owner: &str) -> SealedDeclarationSnapshot {
     SealedDeclarationSnapshot::new(
-        &keys
-            .iter()
+        keys.iter()
             .map(|key| MemoryRequest::new(owner, key, SchemaMetadata::default()).unwrap())
             .collect::<Vec<_>>(),
     )
@@ -38,8 +37,7 @@ fn composed_pool(exclusions: Vec<MemoryManagerIdRange>) -> MemoryAllocationPool 
 
 fn composed(keys: &[(&str, &str)]) -> SealedDeclarationSnapshot {
     SealedDeclarationSnapshot::new(
-        &keys
-            .iter()
+        keys.iter()
             .map(|(owner, key)| MemoryRequest::new(*owner, key, SchemaMetadata::default()).unwrap())
             .collect::<Vec<_>>(),
     )

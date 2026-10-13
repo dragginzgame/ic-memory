@@ -1,7 +1,5 @@
-use ic_memory::ValidatedAllocations;
+use ic_memory::CommittedAllocations;
 
-fn fabricate(validated: ValidatedAllocations) {
-    let _committed = validated.confirm_persisted(0);
+fn main() {
+    let _committed = CommittedAllocations::new(0, Vec::new());
 }
-
-fn main() {}

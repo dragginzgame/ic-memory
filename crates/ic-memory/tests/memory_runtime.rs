@@ -2,12 +2,21 @@ use ic_memory::{
     AllocationPolicy, MemoryManagerSlot, MemoryRuntime, PolicyIdentity, PolicyIdentityError,
     RuntimeBootstrapPolicy, StableKey,
     ic_stable_structures::{Cell, Memory, VectorMemory},
-    sealed_declaration_snapshot,
 };
 
 const AUTHORITY: &str = "explicit_runtime";
 
-ic_memory::ic_memory_declaration!(authority = AUTHORITY, key = "explicit_runtime.rows.v1");
+fn snapshot() -> ic_memory::SealedDeclarationSnapshot {
+    ic_memory::SealedDeclarationSnapshot::new(vec![
+        ic_memory::MemoryRequest::new(
+            AUTHORITY,
+            "explicit_runtime.rows.v1",
+            ic_memory::SchemaMetadata::default(),
+        )
+        .unwrap(),
+    ])
+    .unwrap()
+}
 
 struct AllowAll;
 
@@ -43,7 +52,7 @@ impl RuntimeBootstrapPolicy for AllowAll {
 
 #[test]
 fn public_explicit_runtime_bootstraps_opens_and_diagnoses_its_memory() {
-    let declarations = sealed_declaration_snapshot().expect("linked declarations");
+    let declarations = snapshot();
     let mut runtime = MemoryRuntime::new(VectorMemory::default()).expect("empty backing memory");
 
     let generation = runtime
@@ -89,9 +98,7 @@ fn owned_report_and_cloned_handles_support_borrowed_nonclone_backing() {
         ic_memory::MemoryManagerConfig::new(8).unwrap(),
     )
     .unwrap();
-    runtime
-        .bootstrap(&sealed_declaration_snapshot().unwrap(), &pool(), &AllowAll)
-        .unwrap();
+    runtime.bootstrap(&snapshot(), &pool(), &AllowAll).unwrap();
     let rows = runtime.open_memory("explicit_runtime.rows.v1").unwrap();
     rows.grow(1).unwrap();
     rows.write(0, &[7]);
@@ -101,7 +108,7 @@ fn owned_report_and_cloned_handles_support_borrowed_nonclone_backing() {
     assert_eq!(runtime.diagnostic_export().unwrap().current_generation, 1);
     assert!(
         runtime
-            .doctor_report(&sealed_declaration_snapshot().unwrap(), &pool(), &AllowAll)
+            .doctor_report(&snapshot(), &pool(), &AllowAll)
             .bootstrapped
     );
     assert_eq!(*memory.borrow(), before);

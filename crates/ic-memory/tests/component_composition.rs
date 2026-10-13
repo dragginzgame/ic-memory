@@ -1,18 +1,26 @@
 use ic_memory::RuntimeMemory;
 use ic_stable_structures::DefaultMemoryImpl;
-use std::{
-    cell::RefCell,
-    sync::atomic::{AtomicBool, Ordering},
-};
+use std::cell::RefCell;
 
-static EAGER_INIT_RAN: AtomicBool = AtomicBool::new(false);
 const MACRO_AUTHORITY: &str = "runtime_macros";
 
-ic_memory::ic_memory_declaration!(authority = MACRO_AUTHORITY, key = "macro.logical.rows.v1");
-
-ic_memory::eager_init!({
-    EAGER_INIT_RAN.store(true, Ordering::SeqCst);
-});
+fn snapshot() -> ic_memory::SealedDeclarationSnapshot {
+    ic_memory::SealedDeclarationSnapshot::new(vec![
+        ic_memory::MemoryRequest::new(
+            MACRO_AUTHORITY,
+            "macro.logical.rows.v1",
+            ic_memory::SchemaMetadata::default(),
+        )
+        .unwrap(),
+        ic_memory::MemoryRequest::new(
+            MACRO_AUTHORITY,
+            "macro.integration.users.v1",
+            ic_memory::SchemaMetadata::default(),
+        )
+        .unwrap(),
+    ])
+    .unwrap()
+}
 
 thread_local! {
     static MACRO_MEMORY: RefCell<Option<RuntimeMemory<DefaultMemoryImpl>>> = {
@@ -20,17 +28,17 @@ thread_local! {
             ic_memory::is_default_memory_manager_bootstrapped()
                 .expect("default runtime lifecycle")
         );
-        RefCell::new(Some(ic_memory::ic_memory_key!(authority = MACRO_AUTHORITY, key = "macro.integration.users.v1")
+        RefCell::new(Some(ic_memory::open_default_memory_manager_memory("macro.integration.users.v1")
         .expect("committed macro memory")))
     };
 }
 
 fn bootstrap_and_require_thread_local_ledger() {
-    let validated = ic_memory::bootstrap_default_memory_manager(&pool()).expect("bootstrap");
+    let validated =
+        ic_memory::bootstrap_default_memory_manager(&snapshot(), &pool()).expect("bootstrap");
     ic_memory::default_memory_manager_diagnostic_export()
         .expect("bootstrapped runtime should expose its local ledger");
 
-    assert!(EAGER_INIT_RAN.load(Ordering::SeqCst));
     assert!(
         validated
             .declarations()

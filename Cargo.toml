@@ -20,8 +20,6 @@ categories = ["wasm", "data-structures"]
 
 [workspace.dependencies]
 ciborium = "0.2.2"
-# Constructors register hooks; the registry owns their execution phases.
-ctor = { version = "1.0", default-features = false, features = ["std", "proc_macro"] }
 ic-host-artifacts = { version = "0.15", default-features = false }
 ic-host-fs = { version = "0.15", default-features = false }
 # Qualified manager/Cell layout boundary; see AGENTS.md#dependency-exceptions.

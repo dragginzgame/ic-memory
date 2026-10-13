@@ -43,7 +43,7 @@ pub enum BootstrapAdmissionError {
     #[error(transparent)]
     Pool(#[from] crate::MemoryAllocationPoolError),
     #[error(transparent)]
-    Registry(#[from] crate::StaticMemoryDeclarationError),
+    Declarations(#[from] crate::MemoryDeclarationError),
 }
 
 ///

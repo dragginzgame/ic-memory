@@ -6,7 +6,7 @@ use crate::{
     MemoryRuntimeDoctorReport, PolicyIdentity, RecoveredLedger, RuntimeBootstrapPolicy,
     StableCellLedgerRecord,
     physical::CommitStoreDiagnostic,
-    registry::{SealedDeclarationFingerprint, SealedDeclarationSnapshot},
+    requests::{SealedDeclarationFingerprint, SealedDeclarationSnapshot},
     slot::MEMORY_MANAGER_LEDGER_ID,
     stable_cell::decode_stable_cell_ledger_record_from_memory,
 };

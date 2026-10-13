@@ -14,7 +14,17 @@ const AUTHORITY: &str = "default_config";
 const KEY: &str = "default_config.rows.v1";
 const MEMORY_ID: u8 = 10;
 
-ic_memory::ic_memory_declaration!(authority = AUTHORITY, key = "default_config.rows.v1");
+fn snapshot() -> ic_memory::SealedDeclarationSnapshot {
+    ic_memory::SealedDeclarationSnapshot::new(vec![
+        ic_memory::MemoryRequest::new(
+            AUTHORITY,
+            "default_config.rows.v1",
+            ic_memory::SchemaMetadata::default(),
+        )
+        .unwrap(),
+    ])
+    .unwrap()
+}
 
 fn assert_unbootstrapped_observations() {
     assert!(!is_default_memory_manager_bootstrapped().unwrap());
@@ -46,9 +56,13 @@ fn diagnostic_observations() -> [Result<(), RuntimeDiagnosticError>; 4] {
     [
         default_memory_manager_diagnostic_export().map(|_| ()),
         default_memory_manager_commit_recovery_diagnostic().map(|_| ()),
-        default_memory_manager_doctor_report(&pool()).map(|_| ()),
-        default_memory_manager_doctor_report_with_policy(&pool(), &GenericAllocationPolicy)
-            .map(|_| ()),
+        default_memory_manager_doctor_report(&snapshot(), &pool()).map(|_| ()),
+        default_memory_manager_doctor_report_with_policy(
+            &snapshot(),
+            &pool(),
+            &GenericAllocationPolicy,
+        )
+        .map(|_| ()),
     ]
 }
 
@@ -58,7 +72,7 @@ fn observations_allow_configured_generic_bootstrap_and_repeated_adoption() {
         // Each setting needs a fresh backing memory and TLS runtime.
         std::thread::spawn(move || {
             assert_unbootstrapped_observations();
-            let declarations = ic_memory::sealed_declaration_snapshot().unwrap();
+            let declarations = snapshot();
             assert_eq!(
                 verify_default_memory_manager_authority(&declarations, AUTHORITY),
                 Err(ic_memory::RuntimeAdoptionError::Open(
@@ -71,7 +85,7 @@ fn observations_allow_configured_generic_bootstrap_and_repeated_adoption() {
             ));
             let config = MemoryManagerConfig::new(pages).unwrap();
             let committed =
-                bootstrap_default_memory_manager_with_config(config, &pool(), &GenericAllocationPolicy).unwrap();
+                bootstrap_default_memory_manager_with_config(&snapshot(), config, &pool(), &GenericAllocationPolicy).unwrap();
             assert!(is_default_memory_manager_bootstrapped().unwrap());
             assert_eq!(committed_allocations().unwrap(), committed);
             assert_eq!(default_memory_manager_memory_id(KEY), Ok(MEMORY_ID));
@@ -90,14 +104,14 @@ fn observations_allow_configured_generic_bootstrap_and_repeated_adoption() {
             assert_eq!(summary.physical_extent, before.physical_extent);
             assert_eq!(summary.current_generation, Some(committed.generation()));
             assert_eq!(
-                bootstrap_default_memory_manager_with_config(config, &pool(), &GenericAllocationPolicy).unwrap(),
+                bootstrap_default_memory_manager_with_config(&snapshot(), config, &pool(), &GenericAllocationPolicy).unwrap(),
                 committed
             );
             // Both public choices use the same built-in policy identity.
-            assert_eq!(bootstrap_default_memory_manager(&pool()).unwrap(), committed);
+            assert_eq!(bootstrap_default_memory_manager(&snapshot(), &pool()).unwrap(), committed);
             let different = MemoryManagerConfig::new(pages + 1).unwrap();
             assert!(matches!(
-                bootstrap_default_memory_manager_with_config(different, &pool(), &GenericAllocationPolicy),
+                bootstrap_default_memory_manager_with_config(&snapshot(), different, &pool(), &GenericAllocationPolicy),
                 Err(RuntimeBootstrapError::State(RuntimeStateError::Construction(
                     RuntimeConstructionError::BucketSizeMismatch { persisted, requested }
                 ))) if persisted == pages && requested == pages + 1

@@ -8,27 +8,21 @@ use super::{
 use crate::{
     AllocationPolicy, DiagnosticCheck, DiagnosticCode, DiagnosticMemorySize, LedgerCommitError,
     LedgerPayloadEnvelopeError, MemoryManagerSlot, PolicyIdentity, PolicyIdentityError,
-    RuntimeBootstrapPolicy, StableKey,
-    registry::{
-        SealedDeclarationSnapshot, TEST_REGISTRY_LOCK, register_memory_request,
-        reset_static_memory_declarations_for_tests, sealed_declaration_snapshot,
-    },
+    RuntimeBootstrapPolicy, SealedDeclarationSnapshot, StableKey,
 };
 use ic_stable_structures::{Cell, Memory, VectorMemory};
 use std::convert::Infallible;
 
 pub(super) fn declarations() -> SealedDeclarationSnapshot {
-    reset_static_memory_declarations_for_tests();
-    register_memory_request(
+    SealedDeclarationSnapshot::new(vec![
         crate::MemoryRequest::new(
             "runtime_tests",
             "runtime_tests.rows.v1",
             crate::SchemaMetadata::default(),
         )
         .unwrap(),
-    )
-    .unwrap();
-    sealed_declaration_snapshot().expect("sealed declarations")
+    ])
+    .expect("checked declarations")
 }
 
 fn empty_runtime() -> MemoryRuntime<VectorMemory> {
@@ -222,7 +216,6 @@ fn construction_rejects_unsupported_manager_version_without_writing() {
 
 #[test]
 fn separate_runtimes_have_independent_bootstrap_authority_and_memory() {
-    let _guard = TEST_REGISTRY_LOCK.lock().expect("test lock");
     let declarations = declarations();
     let mut runtime_a = empty_runtime();
     let mut runtime_b = empty_runtime();
@@ -275,7 +268,6 @@ fn separate_runtimes_have_independent_bootstrap_authority_and_memory() {
 
 #[test]
 fn concurrent_independent_runtimes_do_not_share_bootstrap_state() {
-    let _guard = TEST_REGISTRY_LOCK.lock().expect("test lock");
     let declarations = declarations();
     let first_declarations = declarations.clone();
     let second_declarations = declarations;
@@ -317,7 +309,6 @@ fn concurrent_independent_runtimes_do_not_share_bootstrap_state() {
 
 #[test]
 fn repeated_bootstrap_is_idempotent_and_existing_memory_recovers() {
-    let _guard = TEST_REGISTRY_LOCK.lock().expect("test lock");
     let declarations = declarations();
     let backing = VectorMemory::default();
     let generation = {
@@ -363,10 +354,9 @@ fn repeated_bootstrap_is_idempotent_and_existing_memory_recovers() {
 
 #[test]
 fn repeated_bootstrap_accepts_independently_sealed_equivalent_declarations() {
-    let _guard = TEST_REGISTRY_LOCK.lock().expect("test lock");
     let declarations = declarations();
-    let equivalent =
-        SealedDeclarationSnapshot::new(declarations.requests()).expect("equivalent declarations");
+    let equivalent = SealedDeclarationSnapshot::new(declarations.requests().to_vec())
+        .expect("equivalent declarations");
     assert_eq!(equivalent, declarations);
     assert!(!declarations.shares_storage_with(&equivalent));
 
@@ -401,7 +391,6 @@ fn repeated_bootstrap_accepts_independently_sealed_equivalent_declarations() {
 
 #[test]
 fn repeated_bootstrap_is_bound_to_declarations_and_policy_identity() {
-    let _guard = TEST_REGISTRY_LOCK.lock().expect("test lock");
     let declarations = declarations();
     let mut runtime = empty_runtime();
 
@@ -435,16 +424,15 @@ fn repeated_bootstrap_is_bound_to_declarations_and_policy_identity() {
         super::RuntimeBootstrapError::PolicyIdentityMismatch { .. }
     ));
 
-    reset_static_memory_declarations_for_tests();
-    crate::MemoryRequest::new(
-        "alternate_runtime_tests",
-        "alternate_runtime_tests.rows.v1",
-        crate::SchemaMetadata::default(),
-    )
-    .and_then(register_memory_request)
-    .expect("alternate declaration");
-    let alternate_declarations =
-        sealed_declaration_snapshot().expect("alternate sealed declarations");
+    let alternate_declarations = SealedDeclarationSnapshot::new(vec![
+        crate::MemoryRequest::new(
+            "alternate_runtime_tests",
+            "alternate_runtime_tests.rows.v1",
+            crate::SchemaMetadata::default(),
+        )
+        .unwrap(),
+    ])
+    .unwrap();
     let declaration_error = runtime
         .bootstrap(
             &alternate_declarations,
@@ -467,7 +455,6 @@ fn repeated_bootstrap_is_bound_to_declarations_and_policy_identity() {
 
 #[test]
 fn policy_identity_validation_and_configuration_digest_are_runtime_bound() {
-    let _guard = TEST_REGISTRY_LOCK.lock().expect("test lock");
     let declarations = declarations();
     let mut empty_identity_runtime = empty_runtime();
     let empty_identity_error = empty_identity_runtime
@@ -550,7 +537,6 @@ impl RuntimeBootstrapPolicy for RejectPolicy {
 
 #[test]
 fn open_errors_and_failed_bootstrap_do_not_publish_authority() {
-    let _guard = TEST_REGISTRY_LOCK.lock().expect("test lock");
     let declarations = declarations();
     let mut runtime = empty_runtime();
 
@@ -597,7 +583,6 @@ fn open_errors_and_failed_bootstrap_do_not_publish_authority() {
 
 #[test]
 fn doctor_and_diagnostics_report_the_same_runtime_lifecycle() {
-    let _guard = TEST_REGISTRY_LOCK.lock().expect("test lock");
     let declarations = declarations();
     let mut runtime = empty_runtime();
 
@@ -673,7 +658,7 @@ fn doctor_and_diagnostics_report_the_same_runtime_lifecycle() {
 
 #[test]
 fn diagnostics_reject_invalid_persisted_slots_before_measuring_sizes() {
-    let declarations = SealedDeclarationSnapshot::new(&[]).unwrap();
+    let declarations = SealedDeclarationSnapshot::new(vec![]).unwrap();
     let backing = VectorMemory::default();
     let mut runtime = MemoryRuntime::new(backing.clone()).unwrap();
     runtime
@@ -744,7 +729,7 @@ fn default_runtime_reentry_is_a_typed_state_error() {
 
 #[test]
 fn doctor_preserves_distinct_record_decode_causes_without_writes() {
-    let declarations = SealedDeclarationSnapshot::new(&[]).unwrap();
+    let declarations = SealedDeclarationSnapshot::new(vec![]).unwrap();
     let mut messages = Vec::new();
     for bytes in [vec![0xff], vec![0xa0]] {
         let cause = crate::decode_stable_cell_ledger_record(&bytes)
@@ -777,7 +762,7 @@ fn doctor_preserves_distinct_record_decode_causes_without_writes() {
 
 #[test]
 fn doctor_uses_genesis_only_for_empty_commit_storage() {
-    let declarations = SealedDeclarationSnapshot::new(&[]).unwrap();
+    let declarations = SealedDeclarationSnapshot::new(vec![]).unwrap();
     let backing = VectorMemory::default();
     let runtime = MemoryRuntime::new(backing.clone()).unwrap();
     for initialized in [false, true] {
@@ -859,7 +844,6 @@ pub(super) fn pool() -> crate::MemoryAllocationPool {
 
 #[test]
 fn pool_admission_precedes_application_validation_and_preserves_retry() {
-    let _guard = TEST_REGISTRY_LOCK.lock().expect("test lock");
     let source = declarations();
     let backing = VectorMemory::default();
     let mut original = MemoryRuntime::new(backing.clone()).unwrap();
@@ -868,12 +852,14 @@ fn pool_admission_precedes_application_validation_and_preserves_retry() {
         .unwrap();
     drop(original);
     let before = backing.borrow().clone();
-    let foreign = SealedDeclarationSnapshot::new(&[crate::MemoryRequest::new(
-        "foreign",
-        "runtime_tests.rows.v1",
-        crate::SchemaMetadata::default(),
-    )
-    .unwrap()])
+    let foreign = SealedDeclarationSnapshot::new(vec![
+        crate::MemoryRequest::new(
+            "foreign",
+            "runtime_tests.rows.v1",
+            crate::SchemaMetadata::default(),
+        )
+        .unwrap(),
+    ])
     .unwrap();
     let excluded = crate::MemoryAllocationPool::new(
         pool().authorities().to_vec(),

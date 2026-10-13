@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.36.0]
+
+- **Breaking:** replace constructor/global memory registration with explicit
+  component requests supplied to runtime bootstrap. Update component generators
+  and host composition; stable keys, stored ledger bytes and recovery remain
+  unchanged. Ledger persistence and capability publication are runtime-owned.
+- Adopt Shared Tooling 0.9.10: validate Cargo offline-policy types and retain
+  complete PR release identities before admission
+  ([Shared #140](https://github.com/dragginzgame/shared-tooling/issues/140),
+  [#139](https://github.com/dragginzgame/shared-tooling/issues/139),
+  [#62](https://github.com/dragginzgame/ic-memory/issues/62)).
+  Refresh prepared Cargo tools with `make install-rust-tools`; previous builds
+  remain retained.
+- Qualify the maintainer-selected Host artifacts/fs 0.15.1 release helpers.
+
+[Detailed notes](docs/changelog/0.36.md)
+
 ## [0.35.19] - 2026-10-12
 
 - Adopt Shared Tooling 0.9.5 and wait for this run's exact uploaded evidence ID

@@ -17,7 +17,7 @@ fn main() {
         vec![],
     )
     .unwrap();
-    let declarations = SealedDeclarationSnapshot::new(&[
+    let declarations = SealedDeclarationSnapshot::new(vec![
         request("app", "app.control.v1"),
         request("db", "db.journal.v1"),
         request("db", "db.rows.v1"),
@@ -37,7 +37,7 @@ fn main() {
     host.bootstrap(&declarations, &pool, &GenericAllocationPolicy)
         .unwrap();
     // Library adoption verifies only its requirements and does not bootstrap again.
-    let requirements = SealedDeclarationSnapshot::new(&[
+    let requirements = SealedDeclarationSnapshot::new(vec![
         request("db", "db.journal.v1"),
         request("db", "db.rows.v1"),
     ])

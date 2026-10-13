@@ -192,18 +192,22 @@ Components name their owner and permanent keys without choosing IDs:
 
 ```rust,no_run
 const MEMORY_AUTHORITY: &str = "example_app";
-ic_memory::ic_memory_declaration!(
-    authority = MEMORY_AUTHORITY,
-    key = "example_app.users.v1",
-);
+const USERS_KEY: &str = "example_app.users.v1";
+
+fn component_requests() -> Result<Vec<ic_memory::MemoryRequest>, ic_memory::MemoryDeclarationError> {
+    Ok(vec![ic_memory::MemoryRequest::new(
+        MEMORY_AUTHORITY, USERS_KEY, ic_memory::SchemaMetadata::default(),
+    )?])
+}
 
 fn initialize_stable_storage() -> Result<(), Box<dyn std::error::Error>> {
     let pool = ic_memory::MemoryAllocationPool::new(
         vec![ic_memory::MemoryAuthority::new(MEMORY_AUTHORITY, "example_app.")?],
         vec![],
     )?;
-    ic_memory::bootstrap_default_memory_manager(&pool)?;
-    let users = ic_memory::open_default_memory_manager_memory("example_app.users.v1")?;
+    let declarations = ic_memory::SealedDeclarationSnapshot::new(component_requests()?)?;
+    ic_memory::bootstrap_default_memory_manager(&declarations, &pool)?;
+    let users = ic_memory::open_default_memory_manager_memory(USERS_KEY)?;
     drop(users);
     Ok(())
 }
@@ -211,7 +215,8 @@ fn initialize_stable_storage() -> Result<(), Box<dyn std::error::Error>> {
 
 Call this host bootstrap from initialization and post-upgrade before deferred
 stable collections open. Hosts needing admission or custom bucket geometry use
-the policy or configuration bootstrap helpers with the same explicit pool.
+the policy or configuration bootstrap helpers with the same explicit snapshot
+and pool. Request factories only construct metadata; they never open stores.
 
 Known keys retain their committed IDs. New requests are sorted by key and take
 the lowest unclaimed ID in the common pool. Current, omitted, reserved and
@@ -223,8 +228,9 @@ See [`examples/key_only.rs`](examples/key_only.rs) and
 
 ## Applications composed from several libraries
 
-Every linked crate contributes requests to one immutable registry. The host
-admits disjoint namespaces for their named owners and supplies explicit physical
+Each selected component supplies its complete request list. The host combines
+those lists into one `SealedDeclarationSnapshot`, admits disjoint namespaces
+for their named owners and supplies explicit physical
 exclusions for unmanaged `MemoryManager` clients. All components draw from the
 same remaining pool. The application bootstraps the combined layout once.
 
@@ -234,7 +240,10 @@ policy:
 
 ```rust
 fn adopt_host() -> Result<(), Box<dyn std::error::Error>> {
-    let requirements = ic_memory::sealed_declaration_snapshot()?;
+    let requests = vec![ic_memory::MemoryRequest::new(
+        "library_name", "library_name.rows.v1", ic_memory::SchemaMetadata::default(),
+    )?];
+    let requirements = ic_memory::SealedDeclarationSnapshot::new(requests)?;
     ic_memory::verify_default_memory_manager_authority(
         &requirements,
         "library_name",
@@ -318,7 +327,7 @@ common pool has space, and the complete layout passes admission and validation.
 - [Troubleshooting](https://github.com/dragginzgame/ic-memory/blob/main/docs/troubleshooting.md)
   maps common symptoms to safe recovery steps.
 - [Advanced ic-memory](https://github.com/dragginzgame/ic-memory/blob/main/ADVANCED.md)
-  covers explicit runtimes, custom policies, recovery, and manual bootstrap.
+  covers explicit composition, custom policies, recovery, and runtime-owned persistence.
 - [Safety invariants](https://github.com/dragginzgame/ic-memory/blob/main/SAFETY.md)
   records the guarantees future changes must preserve.
 - [Documentation index](https://github.com/dragginzgame/ic-memory/blob/main/docs/README.md)

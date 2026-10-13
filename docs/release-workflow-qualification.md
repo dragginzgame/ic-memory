@@ -4652,3 +4652,73 @@ native acceptance and pending-batch delivery/hosted proof.
 producer discovery repair and all-host qualification. No sibling source edit,
 fixture commit/tag/push, real index/ref/version/release effect, tool installation,
 dependency preparation, workflow control or evidence cleanup occurred.
+
+## Shared 0.9.8 source adoption and qualification limits
+
+Memory 0.35.19 is delivered at `42b98cafdaf16699ebc56ab7eb7545d61c3446a7`.
+Its committed snapshot selects Shared 0.9.5 and Host artifacts/fs 0.15.0.
+The maintainer's existing dirty lock selects Host 0.15.1, preserved without
+selection changes. Pending compatible 0.35.20 keeps package metadata at 0.35.19.
+
+Canonical clean-source refresh first selected Shared 0.9.7
+`4d10a06d50e44d302f00d5b7b706cac5f9b0127c` (five payload updates), then advanced
+to newly published 0.9.8 `b50925a342ff1880c76eb784a7406c7fdfaf59da`.
+The final 76 roots/101 payloads retain all previous files and add the Rust
+fixture's declared read-only cache-key companion. Producer caching/timing remain
+Shared-owned; Memory's workflow is unchanged. Clean source pointers/logs:
+`/tmp/memory-shared09{7,8}-source-root`,
+`/tmp/memory-shared09{7,8}-{preview,refresh}.log`.
+
+The changed 0.9.7 build-helper policy required explicit prepared Cargo-tool
+selection. Offline `make install-rust-tools` and `make rust-tools-check` pass
+without changing pins; setup reused prepared generations, with no build output
+or online fetch. Logs: `/tmp/memory-shared097-rust-{setup-final,check}.log`.
+The initial setup stopped at the active-build guard before dispatch. Earlier
+builds are retained; final executable hashes are recorded in
+`/tmp/memory-shared097-prepared-tools.sha256`.
+
+**The full consumer gate has not passed.** Actual `make validate` on 0.9.7
+exits 2 in the new Rust-tool fixture, which calls its fake compiler from Memory's
+root and rejects the ordinary `rust-toolchain.toml` as an unprepared staged
+compiler. Failed log: `/tmp/memory-shared097-validate.log`; original fixture:
+`/tmp/rust-tools-test.gPGQdR/`. [Shared #143](https://github.com/dragginzgame/shared-tooling/issues/143#issuecomment-6129811561)
+owns that context defect. The fixture also creates a synthetic Git commit,
+contrary to Memory's explicit local fixture authority. A standalone Bash 3.2
+run already reached that effect before inspection identified it. Its reported
+pass (`/tmp/memory-shared097-rust-bash32.log`) is retained but is not admissible
+consumer qualification. Memory's real index/refs are unchanged.
+[Shared #144](https://github.com/dragginzgame/shared-tooling/issues/144) requests
+commit-free qualification. The final 0.9.8 fixture retains both prerequisites
+and was not replayed; no neutral-cwd adapter, vendored patch or gate skip is used.
+
+Independent checks within local fixture authority pass: pin/metadata checks, owned Rust tooling and
+release adapters, the release-runner simulation, hooks, formatting, evidence
+round trips, strict Clippy, Rust tests/docs, Wasm checks/budgets, development
+packaging and MSRV 1.88. Logs: `/tmp/memory-shared097-unaffected-tools.log` and
+`/tmp/memory-shared097-{clippy,tests,doc,wasm-check,wasm-size,package,msrv}.log`.
+The unchanged product/lock inputs retain those results after snapshot advance;
+actual final-source adapter checks pass separately
+(`/tmp/memory-shared098-adapters.log`). They do not establish a full-gate pass.
+
+Actual offline-policy/helper and installer setup/check admission pass without
+store/selection/build effects under Bash 5.2 and genuine 3.2.57:
+`/tmp/memory-shared097-policy-{bash5,bash32}-final.log`. The initial probe
+incorrectly expected preflight to consult setup network policy; its refusal log
+is retained and not counted. Complete PR JSON identities and four retained raw
+repository observations pass through actual sourced functions with read-only
+Git/GitHub substitutes (`/tmp/memory-shared097-pr-admission-{bash5,bash32}.log`).
+No PR/native release execution is claimed.
+
+Final-source integrity, prepared-tool admission and lint pass
+(`/tmp/memory-shared098-focused.log`). The read-only cache helper passes stable
+identity and runner-image invalidation under both shells without creating a store
+(`/tmp/memory-shared098-cache.log`). Bash 3.2 canonical repeat previews have only
+KEEP rows (`/tmp/memory-shared09{7,8}-preview-bash32.log`). Final input hashes:
+`/tmp/memory-shared098-inputs.sha256`; prior attempts remain separately retained.
+
+[#62](https://github.com/dragginzgame/ic-memory/issues/62) retains full consumer
+qualification, delivery and native/hosted acceptance. Source adoption and tool
+activation are recorded separately from the blocked full gate. No sibling source
+edit, real source staging/commit/ref/version/release effect, dependency fetch,
+workflow control or consumer evidence cleanup occurred. The prohibited disposable
+fixture commit above is explicitly excluded from that statement.

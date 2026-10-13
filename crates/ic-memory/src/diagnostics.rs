@@ -3,7 +3,7 @@ use crate::{
     ledger::{AllocationLedger, AllocationRecord},
     physical::CommitStoreDiagnostic,
     policy::PolicyIdentity,
-    registry::SealedDeclarationFingerprint,
+    requests::SealedDeclarationFingerprint,
     slot::MemoryManagerSlot,
 };
 use serde::{Deserialize, Serialize};

@@ -1,7 +1,7 @@
 use ic_memory::{
     AllocationDeclaration, DeclarationSnapshot, DeclarationSnapshotError, MemoryAllocationPool,
-    MemoryAllocationPoolError, MemoryAuthority, MemoryRequest, PolicyIdentity, PolicyIdentityError,
-    SchemaMetadata, StaticMemoryDeclarationError,
+    MemoryAllocationPoolError, MemoryAuthority, MemoryDeclarationError, MemoryRequest,
+    PolicyIdentity, PolicyIdentityError, SchemaMetadata,
 };
 
 #[test]
@@ -119,7 +119,7 @@ fn diagnostic_metadata_preserves_field_errors_and_rejection_order() {
         assert_eq!(
             MemoryRequest::new(value.as_str(), "app.rows.v1", SchemaMetadata::default())
                 .unwrap_err(),
-            StaticMemoryDeclarationError::InvalidAuthority { reason }
+            MemoryDeclarationError::InvalidAuthority { reason }
         );
         assert_eq!(
             MemoryAuthority::new(value.as_str(), "app.").unwrap_err(),

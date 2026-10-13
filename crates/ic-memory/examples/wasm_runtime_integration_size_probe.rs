@@ -1,17 +1,16 @@
 const AUTHORITY: &str = "wasm_runtime_integration_size_probe";
 const KEY: &str = "wasm_runtime_integration_size_probe.rows.v1";
 
-ic_memory::ic_memory_declaration!(
-    authority = AUTHORITY,
-    key = "wasm_runtime_integration_size_probe.rows.v1"
-);
-
 #[unsafe(no_mangle)]
 pub extern "C" fn ic_memory_wasm_runtime_integration_size_probe_bootstrap() -> u64 {
+    let Ok(declarations) = probe_declarations() else {
+        return 0;
+    };
     let Ok(config) = ic_memory::MemoryManagerConfig::new(16) else {
         return 0;
     };
     ic_memory::bootstrap_default_memory_manager_with_config(
+        &declarations,
         config,
         &pool(),
         &ic_memory::GenericAllocationPolicy,
@@ -31,7 +30,7 @@ pub extern "C" fn ic_memory_wasm_runtime_integration_size_probe_grow(pages: u64)
 
 #[unsafe(no_mangle)]
 pub extern "C" fn ic_memory_wasm_runtime_integration_size_probe_adopt() -> u32 {
-    let Ok(requirements) = ic_memory::sealed_declaration_snapshot() else {
+    let Ok(requirements) = probe_declarations() else {
         return u32::MAX;
     };
     if ic_memory::verify_default_memory_manager_authority(&requirements, AUTHORITY).is_err() {
@@ -64,4 +63,14 @@ fn pool() -> ic_memory::MemoryAllocationPool {
         vec![],
     )
     .unwrap()
+}
+
+fn probe_declarations()
+-> Result<ic_memory::SealedDeclarationSnapshot, ic_memory::MemoryDeclarationError> {
+    let request = ic_memory::MemoryRequest::new(
+        AUTHORITY,
+        "wasm_runtime_integration_size_probe.rows.v1",
+        ic_memory::SchemaMetadata::default(),
+    )?;
+    ic_memory::SealedDeclarationSnapshot::new(vec![request])
 }

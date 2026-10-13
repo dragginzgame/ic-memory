@@ -168,6 +168,7 @@ impl CommittedGenerationBytes {
     /// [`CommittedGenerationBytes::validates`] before treating the record as
     /// authoritative.
     #[must_use]
+    #[cfg(test)]
     pub const fn commit_marker(&self) -> u64 {
         self.commit_marker
     }
@@ -177,6 +178,7 @@ impl CommittedGenerationBytes {
     /// The checksum is non-cryptographic and detects accidental corruption
     /// only.
     #[must_use]
+    #[cfg(test)]
     pub const fn checksum(&self) -> u64 {
         self.checksum
     }
@@ -230,6 +232,7 @@ pub struct DualCommitStore {
 impl DualCommitStore {
     /// Return true when no commit slot has ever been written.
     #[must_use]
+    #[cfg(test)]
     pub const fn is_uninitialized(&self) -> bool {
         self.slot0.is_none() && self.slot1.is_none()
     }
@@ -293,6 +296,7 @@ impl DualCommitStore {
     /// The returned record is the new authoritative in-memory slot. The owner
     /// remains responsible for persisting the enclosing store. Payloads exceeding
     /// the current serialized byte ceiling are rejected without changing slots.
+    #[cfg(test)]
     pub fn commit_payload(
         &mut self,
         payload: Vec<u8>,
@@ -398,7 +402,7 @@ pub struct CommitStoreDiagnostic {
 impl CommitStoreDiagnostic {
     /// Build a read-only recovery diagnostic from a dual commit store.
     #[must_use]
-    pub fn from_store(store: &DualCommitStore) -> Self {
+    pub(crate) fn from_store(store: &DualCommitStore) -> Self {
         let recovery = store.authoritative_slot();
         Self::from_recovery(store, &recovery)
     }

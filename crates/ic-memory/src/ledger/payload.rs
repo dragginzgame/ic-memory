@@ -18,12 +18,14 @@ use crate::constants::LEDGER_PAYLOAD_HEADER_LEN;
 /// [`crate::RecoveredLedger`].
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct LedgerPayloadEnvelope {
+    #[cfg(test)]
     payload: Vec<u8>,
 }
 
 impl LedgerPayloadEnvelope {
     /// Wrap a current logical ledger payload.
     #[must_use]
+    #[cfg(test)]
     pub const fn current(payload: Vec<u8>) -> Self {
         Self { payload }
     }
@@ -35,12 +37,14 @@ impl LedgerPayloadEnvelope {
     /// Panics if the payload exceeds the current ledger byte ceiling. Use
     /// `try_encode` for typed errors.
     #[must_use]
+    #[cfg(test)]
     pub fn encode(&self) -> Vec<u8> {
         self.try_encode()
             .expect("payload exceeds the ledger byte ceiling")
     }
 
     /// Try to encode the logical payload envelope.
+    #[cfg(test)]
     pub fn try_encode(&self) -> Result<Vec<u8>, LedgerPayloadEnvelopeError> {
         if self.payload.len() > crate::constants::MAX_LEDGER_BYTES {
             return Err(LedgerPayloadEnvelopeError::PayloadTooLarge {
@@ -79,6 +83,7 @@ impl LedgerPayloadEnvelope {
     }
 
     /// Manually decode the logical payload envelope.
+    #[cfg(test)]
     pub fn decode(bytes: &[u8]) -> Result<Self, LedgerPayloadEnvelopeError> {
         Ok(Self {
             payload: Self::decode_payload(bytes)?.to_vec(),
@@ -152,6 +157,7 @@ impl LedgerPayloadEnvelope {
 
     /// Borrow the logical ledger payload bytes.
     #[must_use]
+    #[cfg(test)]
     pub fn payload(&self) -> &[u8] {
         &self.payload
     }

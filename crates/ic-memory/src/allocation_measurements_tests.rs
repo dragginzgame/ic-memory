@@ -1,5 +1,5 @@
 //! Explicit native allocation measurements; not IC instruction benchmarks.
-use ic_memory::{
+use crate::{
     AllocationLedger, DualCommitStore, GenericAllocationPolicy, LedgerCommitError,
     LedgerCommitStore, LedgerPayloadEnvelope, MemoryManagerConfig, MemoryRuntime,
     SealedDeclarationSnapshot, StableCellLedgerRecord,
@@ -196,7 +196,7 @@ fn ledger_text_recovery_allocations() {
 #[ignore = "explicit matched diagnostics allocation measurement, run in release mode with one test thread"]
 fn allocation_diagnostics_allocations() {
     println!("phase,generations,iterations,allocations,reallocations,peak_bytes,elapsed_us");
-    let declarations = SealedDeclarationSnapshot::new(&[]).unwrap();
+    let declarations = SealedDeclarationSnapshot::new(vec![]).unwrap();
     for populated in [false, true] {
         let backing = VectorMemory::default();
         if populated {
@@ -243,6 +243,15 @@ fn allocation_diagnostics_allocations() {
     }
 }
 
-fn pool() -> ic_memory::MemoryAllocationPool {
-    ic_memory::MemoryAllocationPool::new(vec![], vec![]).unwrap()
+fn pool() -> crate::MemoryAllocationPool {
+    // The populated measurement deliberately owns two fixed unmanaged IDs.
+    // Admit that physical custody explicitly before runtime bootstrap.
+    crate::MemoryAllocationPool::new(
+        vec![],
+        vec![
+            crate::MemoryManagerIdRange::new(100, 100).unwrap(),
+            crate::MemoryManagerIdRange::new(254, 254).unwrap(),
+        ],
+    )
+    .unwrap()
 }

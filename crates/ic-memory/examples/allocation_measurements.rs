@@ -59,18 +59,17 @@ fn record(
 // Keep timed phases and their reset boundaries together for measurement review.
 #[allow(clippy::too_many_lines)]
 fn main() {
-    for id in 100..140 {
-        ic_memory::register_memory_request(
+    let requests = (100..140)
+        .map(|id| {
             ic_memory::MemoryRequest::new(
                 "fixture",
                 &format!("fixture.store{id}.v1"),
                 ic_memory::SchemaMetadata::default(),
             )
-            .unwrap(),
-        )
-        .unwrap();
-    }
-    let declarations = ic_memory::sealed_declaration_snapshot().unwrap();
+            .unwrap()
+        })
+        .collect();
+    let declarations = ic_memory::SealedDeclarationSnapshot::new(requests).unwrap();
     println!(
         "bucket_pages,phase,physical_bytes,virtual_bytes,buckets,ledger_bucket_bytes,grows,grown_pages,reads,read_bytes,writes,write_bytes,elapsed_us"
     );

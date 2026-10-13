@@ -57,7 +57,7 @@ use self::policy::{RuntimeMemoryManagerPolicy, runtime_bootstrap_error_from_boot
 use crate::{
     AllocationBootstrap, AllocationLedger, CommittedAllocations, PolicyIdentity,
     RuntimeBootstrapPolicy, STABLE_CELL_VALUE_OFFSET, StableCellLedgerError,
-    StableCellLedgerRecord, registry::SealedDeclarationSnapshot, slot::MEMORY_MANAGER_LEDGER_ID,
+    StableCellLedgerRecord, requests::SealedDeclarationSnapshot, slot::MEMORY_MANAGER_LEDGER_ID,
     stable_cell::decode_stable_cell_ledger_record_from_memory,
 };
 use ic_stable_structures::{

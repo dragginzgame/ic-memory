@@ -121,10 +121,9 @@ impl AllocationDeclaration {
 /// Immutable runtime declaration snapshot ready for policy and ownership validation.
 ///
 /// Construction and decoding enforce the declaration count and unique keys and
-/// slots. A snapshot is still
-/// not permission to open storage. Integrations should call
-/// [`crate::validate_allocations`], commit the staged generation, and only then
-/// expose committed allocation authority.
+/// slots. A snapshot is not permission to open storage.
+/// [`crate::MemoryRuntime::bootstrap`] owns validation and persistence before
+/// publishing committed allocation authority.
 ///
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]

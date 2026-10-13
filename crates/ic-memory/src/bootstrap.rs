@@ -1,11 +1,16 @@
+#[cfg(test)]
+use crate::{
+    AllocationDeclaration, AllocationReservationError, AllocationRetirement,
+    AllocationRetirementError,
+    ledger::{
+        checked_reservation_count, stage_reservation_generation, stage_retirement_generation,
+    },
+};
 use crate::{
     capability::{CommittedAllocations, ValidatedAllocations},
-    declaration::AllocationDeclaration,
     declaration::DeclarationSnapshot,
     ledger::{
-        AllocationLedger, AllocationReservationError, AllocationRetirement,
-        AllocationRetirementError, AllocationStageError, LedgerCommitError, LedgerCommitStore,
-        checked_reservation_count, stage_reservation_generation, stage_retirement_generation,
+        AllocationLedger, AllocationStageError, LedgerCommitError, LedgerCommitStore,
         stage_validated_generation,
     },
     policy::AllocationPolicy,
@@ -16,29 +21,10 @@ use std::borrow::Cow;
 ///
 /// AllocationBootstrap
 ///
-/// Golden-path allocation ledger bootstrap pipeline.
+/// Internal validation and protected commit step used by `MemoryRuntime`.
+/// The runtime persists the owning stable-cell record before confirming the
+/// pending commit. Test-only helpers construct bounded protocol fixtures.
 ///
-/// This type owns allocation-governance sequencing only: recover the persisted
-/// ledger, apply the owner layer's policy, validate current declarations
-/// against retained ownership, stage and commit the next generation, and return
-/// a pending [`PendingBootstrapCommit`] after the in-memory commit store advances.
-/// The persistence owner must durably write that state and explicitly confirm
-/// persistence before it can obtain [`CommittedAllocations`].
-///
-/// `AllocationBootstrap` is for whichever layer owns a given `ic-memory`
-/// ledger store. That owner may be a framework such as Canic, a library such as
-/// IcyDB using `ic-memory` directly, or a standalone application canister. The
-/// ownership model is not a fixed `ic-memory -> Canic -> IcyDB -> application`
-/// chain.
-///
-/// Exactly one owner should bootstrap a given ledger store. If multiple layers
-/// use `ic-memory` in the same canister, they must either compose their
-/// declarations into one bootstrap owner or use distinct ledger stores and
-/// allocation domains.
-///
-/// The owner still decides when bootstrap runs, how the ledger store is backed
-/// by stable memory, and when endpoint dispatch or stable-memory handle opening
-/// is allowed.
 #[derive(Debug)]
 pub struct AllocationBootstrap<'store> {
     store: &'store mut LedgerCommitStore,
@@ -51,6 +37,7 @@ impl<'store> AllocationBootstrap<'store> {
     }
 
     /// Recover, validate, stage, and advance one pending allocation generation.
+    #[cfg(test)]
     pub fn validate_and_commit<P>(
         &mut self,
         snapshot: DeclarationSnapshot,
@@ -74,6 +61,7 @@ impl<'store> AllocationBootstrap<'store> {
     /// The generic crate guarantees only that `genesis` is used when the
     /// protected physical store is empty, never when recovery sees corrupt or
     /// partially written state.
+    #[cfg(test)]
     pub fn initialize_validate_and_commit<P>(
         &mut self,
         genesis: &AllocationLedger,
@@ -94,6 +82,7 @@ impl<'store> AllocationBootstrap<'store> {
     ///
     /// Declarations carry checked metadata. After recovery, batches exceeding
     /// 255 items reject before policy callbacks or historical claim checks.
+    #[cfg(test)]
     pub fn reserve_and_commit<P>(
         &mut self,
         reservations: &[AllocationDeclaration],
@@ -116,6 +105,7 @@ impl<'store> AllocationBootstrap<'store> {
     /// import for this ledger store.
     /// Recovery or initialization precedes batch validation. Batches exceeding
     /// 255 items reject before policy callbacks or historical claim checks.
+    #[cfg(test)]
     pub fn initialize_reserve_and_commit<P>(
         &mut self,
         genesis: &AllocationLedger,
@@ -133,6 +123,7 @@ impl<'store> AllocationBootstrap<'store> {
     }
 
     /// Recover, retire, and commit one explicit retirement generation.
+    #[cfg(test)]
     pub fn retire_and_commit(
         &mut self,
         retirement: &AllocationRetirement,
@@ -149,6 +140,7 @@ impl<'store> AllocationBootstrap<'store> {
         Ok(staged)
     }
 
+    #[cfg(test)]
     fn reserve_against<P>(
         &mut self,
         prior: AllocationLedger,
@@ -228,14 +220,9 @@ impl PendingBootstrapCommit {
     /// mutated [`crate::LedgerCommitStore`], not serialize this ledger DTO as a
     /// replacement protocol.
     #[must_use]
+    #[cfg(test)]
     pub const fn ledger(&self) -> &AllocationLedger {
         &self.ledger
-    }
-
-    /// Borrow the pre-commit validation result for diagnostics.
-    #[must_use]
-    pub const fn validated(&self) -> &ValidatedAllocations {
-        &self.validated
     }
 
     /// Confirm that the owning integration durably persisted this commit.
@@ -274,6 +261,7 @@ pub enum BootstrapError<P> {
 /// Failure to policy-check, stage, or commit an allocation reservation.
 #[non_exhaustive]
 #[derive(Clone, Debug, Eq, thiserror::Error, PartialEq)]
+#[cfg(test)]
 pub enum BootstrapReservationError<P> {
     /// Ledger recovery or protected commit failed.
     #[error(transparent)]
@@ -292,6 +280,7 @@ pub enum BootstrapReservationError<P> {
 /// Failure to stage or commit an explicit allocation retirement.
 #[non_exhaustive]
 #[derive(Clone, Debug, Eq, thiserror::Error, PartialEq)]
+#[cfg(test)]
 pub enum BootstrapRetirementError {
     /// Ledger recovery or protected commit failed.
     #[error(transparent)]
@@ -305,7 +294,6 @@ pub enum BootstrapRetirementError {
 mod tests {
     use super::*;
     use crate::{
-        declaration::AllocationDeclaration,
         ledger::{AllocationLedger, AllocationState},
         schema::SchemaMetadata,
         slot::MemoryManagerSlot,

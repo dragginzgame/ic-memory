@@ -85,10 +85,8 @@ pub fn declaration_for_key<'a>(
 /// was persisted.
 ///
 /// This type is not serializable, default-constructible, or publicly
-/// constructible. Generic persistence owners obtain it only by explicitly
-/// confirming a successful [`crate::PendingBootstrapCommit`]. A
-/// [`crate::MemoryRuntime`] stores it only after that runtime's stable-cell write
-/// succeeds.
+/// constructible. [`crate::MemoryRuntime`] publishes it only after its
+/// stable-cell write succeeds; callers cannot manually confirm persistence.
 ///
 /// Its immutable declarations have validated keys, slots and diagnostic
 /// metadata, with unique keys and slots. Consumers may rely on those invariants

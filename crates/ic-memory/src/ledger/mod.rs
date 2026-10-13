@@ -24,10 +24,11 @@ pub use payload::{
 pub use record::{
     AllocationLedger, AllocationRecord, AllocationRetirement, AllocationState, RecoveredLedger,
 };
+#[cfg(test)]
 pub use stage::checked_reservation_count;
-pub use stage::{
-    stage_reservation_generation, stage_retirement_generation, stage_validated_generation,
-};
+pub use stage::stage_validated_generation;
+#[cfg(test)]
+pub use stage::{stage_reservation_generation, stage_retirement_generation};
 
 fn decode_ledger(bytes: &[u8]) -> Result<AllocationLedger, String> {
     crate::cbor::from_slice_exact(bytes).map_err(|err| err.to_string())

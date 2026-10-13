@@ -1,19 +1,20 @@
 const AUTHORITY: &str = "wasm_diagnostics_size_probe";
 
-ic_memory::ic_memory_declaration!(
-    authority = AUTHORITY,
-    key = "wasm_diagnostics_size_probe.rows.v1"
-);
-
 #[unsafe(no_mangle)]
 pub extern "C" fn ic_memory_wasm_diagnostics_size_probe_bootstrap() -> u64 {
-    ic_memory::bootstrap_default_memory_manager(&pool())
+    let Ok(declarations) = probe_declarations() else {
+        return 0;
+    };
+    ic_memory::bootstrap_default_memory_manager(&declarations, &pool())
         .map_or(0, |allocations| allocations.generation())
 }
 
 #[unsafe(no_mangle)]
 pub extern "C" fn ic_memory_wasm_diagnostics_size_probe_report() -> u32 {
-    let Ok(report) = ic_memory::default_memory_manager_doctor_report(&pool()) else {
+    let Ok(declarations) = probe_declarations() else {
+        return u32::MAX;
+    };
+    let Ok(report) = ic_memory::default_memory_manager_doctor_report(&declarations, &pool()) else {
         return u32::MAX;
     };
     let mut bytes = Vec::new();
@@ -59,4 +60,14 @@ fn pool() -> ic_memory::MemoryAllocationPool {
         vec![],
     )
     .unwrap()
+}
+
+fn probe_declarations()
+-> Result<ic_memory::SealedDeclarationSnapshot, ic_memory::MemoryDeclarationError> {
+    let request = ic_memory::MemoryRequest::new(
+        AUTHORITY,
+        "wasm_diagnostics_size_probe.rows.v1",
+        ic_memory::SchemaMetadata::default(),
+    )?;
+    ic_memory::SealedDeclarationSnapshot::new(vec![request])
 }
