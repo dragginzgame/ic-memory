@@ -1,6 +1,6 @@
 # Changelog
 
-## [0.36.0]
+## [0.36.0] - 2026-10-13
 
 - **Breaking:** replace constructor/global memory registration with explicit
   component requests supplied to runtime bootstrap. Update component generators
