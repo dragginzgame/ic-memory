@@ -1,6 +1,6 @@
 # Changelog
 
-## [0.36.1]
+## [0.36.1] - 2026-10-13
 
 - Avoid copying owner strings after request admission when building resolved
   declarations. Preserve request snapshots, placement and recovery behavior.
