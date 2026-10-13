@@ -1,6 +1,6 @@
 # Changelog
 
-## [0.36.4]
+## [0.36.4] - 2026-10-13
 
 - Reduce bootstrap Wasm by sharing bounded sorting and validating namespace
   prefixes without temporary owned keys
