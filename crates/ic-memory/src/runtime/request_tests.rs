@@ -51,8 +51,10 @@ fn retained(backing: &VectorMemory, declarations: &[AllocationDeclaration]) {
     store
         .commit(&AllocationLedger::new(0, vec![]).unwrap())
         .unwrap();
+    let recovered = store.recover().unwrap();
     let pending = AllocationBootstrap::new(&mut store)
-        .validate_and_commit(
+        .validate_against(
+            recovered,
             crate::DeclarationSnapshot::new(declarations.to_vec()).unwrap(),
             &GenericAllocationPolicy,
         )
@@ -181,12 +183,17 @@ fn retained_fixed_claims_and_tombstones_are_never_remapped_or_reused() {
     let mut record =
         super::super::decode_stable_cell_ledger_record_from_memory(&manager.get(MemoryId::new(0)))
             .unwrap();
-    AllocationBootstrap::new(record.store_mut())
-        .retire_and_commit(
+    let retired = record
+        .store()
+        .recover()
+        .unwrap()
+        .ledger()
+        .stage_retirement_generation(
             &AllocationRetirement::new("app.retired.v1", MemoryManagerSlot::new(10).unwrap())
                 .unwrap(),
         )
         .unwrap();
+    record.store_mut().commit_generation(&retired).unwrap();
     drop(Cell::new(manager.get(MemoryId::new(0)), record));
     drop(manager);
     let mut host = MemoryRuntime::new(backing.clone()).unwrap();

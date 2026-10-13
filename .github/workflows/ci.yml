@@ -91,13 +91,11 @@ jobs:
           printf '#!/bin/sh\necho unexpected-download >&2\nexit 91\n' > "$sharing/bin/curl"
           chmod +x "$sharing/bin/curl"
           for kind in host ic; do
-            pins=(--versions "$PWD/ci/tool-versions.env")
-            if [[ "$kind" == ic ]]; then pins=(--pins "$PWD/ci/ic-tools.tsv"); fi
             for mode in install check; do
               options=()
               if [[ "$mode" == check ]]; then options=(--check); fi
               PATH="$sharing/bin:$PATH" bash "scripts/dev/install-$kind-tools.sh" \
-                --consumer "$sharing/consumer" "${pins[@]}" ${options[@]+"${options[@]}"} \
+                --consumer "$sharing/consumer" ${options[@]+"${options[@]}"} \
                 > "$sharing/$kind-$mode.log" 2>&1
             done
             test "$(cd ".tools/$kind" && pwd -P)" = "$(cd "$sharing/consumer/.tools/$kind" && pwd -P)"
@@ -108,7 +106,7 @@ jobs:
             if [[ "$mode" == check ]]; then options=(--check); fi
             CARGO_NET_OFFLINE=true RUSTUP_AUTO_INSTALL=0 \
               bash scripts/dev/install-rust-tools.sh --consumer "$sharing/consumer" \
-              --versions "$PWD/ci/tool-versions.env" ${options[@]+"${options[@]}"} \
+              ${options[@]+"${options[@]}"} \
               > "$sharing/rust-$mode.log" 2>&1
           done
           # Equal physical executables prove reuse of the prepared generation.

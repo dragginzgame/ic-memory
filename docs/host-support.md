@@ -48,11 +48,11 @@ when recording release qualification; retain failed runs and their limitations.
   regenerate them to make a check pass.
 - The common jq/yq/ripgrep/cloc set under `.tools/host/bin` for host checks and
   reports; jq/yq support `make check-pins`
-  and `make test-pins`. The reviewed pins live in `ci/tool-versions.env`.
+  and `make test-pins`. The reviewed snapshot owns `ci/tool-versions.env`.
   Interrupted manifest/lockfile recovery also uses yq to locate Cargo's selected
   target directory. Checks are offline and never install prerequisites.
 - Actionlint and ShellCheck for `make lint-tooling`. CI installs exact
-  shared versions and hashes from `ci/tool-versions.env` using the
+  snapshot versions and hashes from `ci/tool-versions.env` using the
   reviewed shared installers. Local installation is a separate network step.
 - Crates.io credentials are needed only for maintainer publication. Tests use
   deterministic command substitutes and never need credentials or network.
@@ -178,7 +178,9 @@ The common aggregate includes cargo-sort, cargo-sort-derives and
 candid-extractor alongside the host and five IC tools. Narrow
 `make install-rust-tools` and offline `make rust-tools-check` remain useful for
 explicit setup retries; they do not establish readiness of the complete set.
-Reviewed pins stay in `ci/tool-versions.env`. Shared Tooling 0.6.1 stores Cargo
+The snapshot's `ci/tool-versions.env` owns the common pins. Host, IC and Cargo
+setup use independent snapshot defaults; Memory has no exception catalog.
+Shared Tooling 0.6.1 stores Cargo
 builds and receipts in its per-user store, selected through checkout-local
 references. Generations bind the exact prepared compiler, native environment,
 published crate source and packaged lockfile. Tool builds use a standard
@@ -319,7 +321,7 @@ The archiver and tool selector share the single recorded
 [tooling snapshot](../.shared-tooling.snapshot); `make shared-tooling-check`
 checks all recorded exports. The collector's optional third argument is `full` (default)
 or `compact`. CI selects `compact`: complete active host/IC sets that pass fresh
-offline checks retain caller pins, check logs and IC receipts; failed, unknown
+offline checks retain snapshot pins, check logs and IC receipts; failed, unknown
 and unselected bundles remain complete. Concurrent tool-set mutation must stop
 before evidence collection. Product logs and recovery evidence remain selected.
 If shared tool selection fails, the collector archives available product logs,

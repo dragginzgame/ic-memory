@@ -1,5 +1,10 @@
 use ic_memory::CommittedAllocations;
 
-fn main() {
-    let _committed = CommittedAllocations::new(0, Vec::new());
+fn fabricate(committed: CommittedAllocations, generation: u64) -> CommittedAllocations {
+    CommittedAllocations {
+        generation,
+        ..committed
+    }
 }
+
+fn main() {}

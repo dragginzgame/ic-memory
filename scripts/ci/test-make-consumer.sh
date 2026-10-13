@@ -19,7 +19,7 @@ trap finish EXIT
 consumer="$fixture/consumer with spaces"
 snapshot="$consumer/vendor/shared"
 mkdir -p "$snapshot/make" "$snapshot/scripts/ci" "$snapshot/scripts/dev" \
-    "$consumer/ci" "$consumer/scripts/ci" "$consumer/.githooks" \
+    "$consumer/ci" "$snapshot/ci" "$consumer/scripts/ci" "$consumer/.githooks" \
     "$consumer/.tools/rust/common/bin"
 for file in consumer tools release rust-format execution; do
     cp "$root/make/$file.mk" "$snapshot/make/"
@@ -34,7 +34,8 @@ for file in check-make-execution verify-shared-tooling-snapshot verify-file-chec
     cp "$root/scripts/ci/$file.sh" "$consumer/scripts/ci/"
 done
 printf '[workspace]\n' > "$consumer/Cargo.toml"
-printf 'SHARED_TOOLING_CARGO_SORT_VERSION=2.1.4\n' > "$consumer/ci/tool-versions.env"
+printf 'SHARED_TOOLING_CARGO_SORT_VERSION=2.1.4\n' > "$snapshot/ci/tool-versions.env"
+printf 'exit 99 # obsolete consumer catalog must not execute\n' > "$consumer/ci/tool-versions.env"
 export MAKE_CONSUMER_EVENTS="$fixture/events" RUNNER_TEMP="$fixture"
 cat > "$consumer/Makefile" <<'MAKE'
 override SHARED_TOOLING_ROOT := $(CURDIR)/vendor/shared

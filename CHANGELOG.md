@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.36.3]
+
+- Adopt Shared Tooling 0.10.2's common catalog ownership and reusable Cargo
+  cache keys, preserving tool versions
+  ([#71](https://github.com/dragginzgame/ic-memory/issues/71),
+  [Shared #153](https://github.com/dragginzgame/shared-tooling/issues/153),
+  [#154](https://github.com/dragginzgame/shared-tooling/issues/154)).
+- Adopt the selected Host artifacts/fs 0.17.2 native helpers.
+- Test committed-capability privacy directly, avoiding compiler suggestion drift
+  in CI ([#72](https://github.com/dragginzgame/ic-memory/issues/72)).
+- Remove duplicate bootstrap fixture flows and use Shared Tooling's lock rewrite
+  and Host's native command capture
+  ([#73](https://github.com/dragginzgame/ic-memory/issues/73)).
+
+[Detailed notes](docs/changelog/0.36.md)
+
 ## [0.36.2] - 2026-10-13
 
 - Use byte-based matching for already-ASCII stable keys, preserving

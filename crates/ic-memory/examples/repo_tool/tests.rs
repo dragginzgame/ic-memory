@@ -9,6 +9,93 @@ const PACKAGE: &str = "[package]\nname = \"ic-memory\"\nversion.workspace = true
 const LOCK: &str = "version = 4\n[[package]]\nname = \"ic-memory\"\nversion = \"0.12.3\"\n[[package]]\nname = \"other\"\nversion = \"0.12.3\"\n";
 
 #[test]
+fn captured_failure_preserves_status_and_both_output_streams() {
+    let fixture = Fixture::new();
+    let error = Processes
+        .run(
+            &fixture.repo.root,
+            "sh",
+            &["-c", "printf stdout; printf stderr >&2; exit 37"],
+            true,
+        )
+        .unwrap_err();
+    let ToolError::Execution(failure) = error.downcast_ref::<ToolError>().unwrap() else {
+        panic!("expected an execution failure");
+    };
+    assert_eq!(failure.evidence.status.unwrap().code(), Some(37));
+    assert_eq!(failure.evidence.stdout, b"stdout");
+    assert_eq!(failure.evidence.stderr, b"stderr");
+}
+
+#[test]
+fn helper_output_cannot_change_locked_dependency_selection() {
+    let fixture = Fixture::new();
+    let changed = LOCK.replace("0.12.3", "0.13.0");
+    fs::write(
+        fixture.repo.root.join(LOCK_REWRITER),
+        format!("print <<'LOCK';\n{changed}LOCK\n"),
+    )
+    .unwrap();
+    let error = fixture
+        .repo
+        .replace_lock_version(LOCK, "0.12.3", "0.13.0")
+        .unwrap_err();
+    assert!(error.to_string().contains("changed dependency selection"));
+    fixture.assert_original();
+}
+
+#[test]
+fn changed_transform_input_is_retained_and_refused_on_retry() {
+    let fixture = Fixture::new();
+    let repo = Repository {
+        root: fixture.repo.root.clone(),
+        exec: Processes,
+    };
+    assert!(
+        repo.transform_text(
+            "sh",
+            &["-c", "printf other > \"$1\"; printf ready", "fixture"],
+            "input",
+            &[],
+        )
+        .is_err()
+    );
+    let input = repo
+        .target()
+        .unwrap()
+        .join("release-validation/inputs")
+        .join(format!("{}.input", Sha256Digest::compute(b"input")));
+    assert_eq!(fs::read(&input).unwrap(), b"other");
+    assert!(repo.transform_text("cat", &[], "input", &[]).is_err());
+    assert_eq!(fs::read(&input).unwrap(), b"other");
+    fixture.assert_original();
+}
+
+#[test]
+fn large_changelog_finalization_preserves_complete_history() {
+    let fixture = Fixture::new();
+    let text = format!(
+        "## [0.13.0]\n\n{}\n## [0.12.3] - 2026-10-04\n\nHistory.\n",
+        "A detailed note.\n".repeat(8192)
+    );
+    let updated = fixture
+        .repo
+        .release_changelog(
+            &fixture.repo.root.join(CHANGELOG_FINALIZER),
+            &text,
+            "0.12.3",
+            "0.13.0",
+            "2026-10-05",
+        )
+        .unwrap();
+    assert_eq!(
+        updated,
+        text.replacen("## [0.13.0]", "## [0.13.0] - 2026-10-05", 1)
+    );
+    fixture.assert_original();
+}
+
+#[test]
 fn release_version_requires_the_named_package_to_inherit_the_workspace_identity() {
     let fixture = Fixture::new();
     assert_eq!(fixture.repo.version(None).unwrap(), "0.12.3");
@@ -48,6 +135,20 @@ impl Fixture {
             }
         };
         let source = BTreeMap::from([
+            (".gitignore".to_owned(), "target/\n".to_owned()),
+            (
+                "crates/ic-memory/src/lib.rs".to_owned(),
+                "// fixture library\n".to_owned(),
+            ),
+            (
+                LOCK_REWRITER.to_owned(),
+                fs::read_to_string(
+                    Path::new(env!("CARGO_MANIFEST_DIR"))
+                        .join("../..")
+                        .join(LOCK_REWRITER),
+                )
+                .unwrap(),
+            ),
             (
                 CHANGELOG_FINALIZER.to_owned(),
                 fs::read_to_string(
@@ -480,6 +581,7 @@ impl Execute for Substitute {
             {
                 Err("fixture Make execution refusal".into())
             }
+            "perl" | "awk" => Processes.run(root, program, args, true),
             "bash" => Processes.run(
                 &Path::new(env!("CARGO_MANIFEST_DIR")).join("../.."),
                 program,
@@ -1092,7 +1194,7 @@ fn missing_ambiguous_or_unsupported_dependency_examples_do_not_block_release() {
 fn release_versions_and_pending_notes_preserve_dependency_versions_and_history() {
     let fixture = Fixture::new();
     let finalize = |text: &str, version: &str| {
-        release_changelog(
+        fixture.repo.release_changelog(
             &fixture.repo.root.join(CHANGELOG_FINALIZER),
             text,
             "0.12.3",
@@ -1216,8 +1318,12 @@ fn failed_shared_note_finalization_never_installs_partial_output() {
     let fixture = Fixture::new();
     let finalizer = fixture.repo.root.join(CHANGELOG_FINALIZER);
     fs::write(&finalizer, "BEGIN { print \"partial output\"; exit 23 }").unwrap();
-    let error = fixture.prepare().unwrap_err().to_string();
-    assert!(error.contains("changelog finalization failed") && error.contains("23"));
+    let error = fixture.prepare().unwrap_err();
+    let Some(ToolError::Execution(failure)) = error.downcast_ref::<ToolError>() else {
+        panic!("expected the original typed finalizer failure: {error}");
+    };
+    assert_eq!(failure.evidence.status.unwrap().code(), Some(23));
+    assert_eq!(failure.evidence.stdout, b"partial output\n");
     fixture.assert_original();
     fs::remove_file(finalizer).unwrap();
     assert!(fixture.prepare().is_err());
@@ -2573,7 +2679,10 @@ fn real_index_rejects_hidden_staging_and_checks_exact_prepared_bytes() {
     repo.git(&["read-tree", &selection.source]).unwrap();
     let original = repo.text("README.md", Some("HEAD")).unwrap();
     let expected = format!("{original}\nPrepared release fixture.\n");
-    let locked = replace_lock_version(LOCK, "0.12.3", "0.13.0").unwrap();
+    let locked = fixture
+        .repo
+        .replace_lock_version(LOCK, "0.12.3", "0.13.0")
+        .unwrap();
     let surfaces = BTreeMap::from([
         ("README.md".to_owned(), expected.clone()),
         ("Cargo.lock".to_owned(), locked.clone()),

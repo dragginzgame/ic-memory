@@ -75,7 +75,7 @@ if [[ "$select_tools" == true ]]; then
     [[ -n "$diagnostics" ]] || diagnostics="$(mktemp -d "$temp_root/tool-evidence.XXXXXX")"
     selector=(bash "$ROOT/scripts/ci/select-tool-evidence.sh" "$mode" "$repository_root" "$diagnostics")
     if [[ "$mode" == compact ]]; then
-        selector+=("$repository_root/ci/tool-versions.env" "$repository_root/ci/ic-tools.tsv")
+        selector+=("$ROOT/ci/tool-versions.env" "$ROOT/ci/ic-tools.tsv")
     fi
     selector_status=0
     "${selector[@]}" > "$diagnostics/selection" 2> "$diagnostics/selection.log" || selector_status=$?

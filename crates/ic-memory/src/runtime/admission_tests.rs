@@ -282,12 +282,17 @@ fn current_policy_revoked_grants_and_retirement_still_reject() {
     ));
     assert_eq!(*backing.borrow(), before);
     let mut record = runtime.ledger_record_from_memory().unwrap();
-    AllocationBootstrap::new(record.store_mut())
-        .retire_and_commit(
+    let retired = record
+        .store()
+        .recover()
+        .unwrap()
+        .ledger()
+        .stage_retirement_generation(
             &crate::AllocationRetirement::new(JOURNAL, MemoryManagerSlot::new(11).unwrap())
                 .unwrap(),
         )
         .unwrap();
+    record.store_mut().commit_generation(&retired).unwrap();
     let _cell = Cell::new(runtime.memory(MEMORY_MANAGER_LEDGER_ID), record);
     drop(runtime);
     let before = backing.borrow().clone();
@@ -478,19 +483,21 @@ fn completion_bound_and_reservation_activation_preserve_evidence() {
     ));
     assert_eq!(*backing.borrow(), before);
     let mut record = runtime.ledger_record_from_memory().unwrap();
-    AllocationBootstrap::new(record.store_mut())
-        .reserve_and_commit(
-            &[
-                crate::AllocationDeclaration::memory_manager_unlabeled_with_schema(
-                    "app.reserved.journal.v1",
-                    12,
-                    crate::SchemaMetadata::new(Some(5)).unwrap(),
-                )
-                .unwrap(),
-            ],
-            &GenericAllocationPolicy,
-        )
+    let reserved = record
+        .store()
+        .recover()
+        .unwrap()
+        .ledger()
+        .stage_reservation_generation(&[
+            crate::AllocationDeclaration::memory_manager_unlabeled_with_schema(
+                "app.reserved.journal.v1",
+                12,
+                crate::SchemaMetadata::new(Some(5)).unwrap(),
+            )
+            .unwrap(),
+        ])
         .unwrap();
+    record.store_mut().commit_generation(&reserved).unwrap();
     let _cell = Cell::new(runtime.memory(MEMORY_MANAGER_LEDGER_ID), record);
     drop(runtime);
     let mut runtime = MemoryRuntime::new(backing).unwrap();

@@ -24,11 +24,7 @@ pub use payload::{
 pub use record::{
     AllocationLedger, AllocationRecord, AllocationRetirement, AllocationState, RecoveredLedger,
 };
-#[cfg(test)]
-pub use stage::checked_reservation_count;
 pub use stage::stage_validated_generation;
-#[cfg(test)]
-pub use stage::{stage_reservation_generation, stage_retirement_generation};
 
 fn decode_ledger(bytes: &[u8]) -> Result<AllocationLedger, String> {
     crate::cbor::from_slice_exact(bytes).map_err(|err| err.to_string())
@@ -185,8 +181,9 @@ mod tests {
             let snapshot =
                 DeclarationSnapshot::new(vec![declaration("app.users.v1", 100, Some(version))])
                     .unwrap();
+            let recovered = store.recover().unwrap();
             let pending = crate::AllocationBootstrap::new(&mut store)
-                .validate_and_commit(snapshot, &crate::GenericAllocationPolicy)
+                .validate_against(recovered, snapshot, &crate::GenericAllocationPolicy)
                 .unwrap();
             let committed = pending.confirm_persisted();
             assert_eq!(committed.generation(), 65_530 + u64::from(version));
@@ -238,7 +235,9 @@ mod tests {
             .commit(&AllocationLedger::new(u64::MAX, Vec::new()).unwrap())
             .unwrap();
         let before = store.clone();
-        let result = crate::AllocationBootstrap::new(&mut store).validate_and_commit(
+        let recovered = store.recover().unwrap();
+        let result = crate::AllocationBootstrap::new(&mut store).validate_against(
+            recovered,
             DeclarationSnapshot::new(Vec::new()).unwrap(),
             &crate::GenericAllocationPolicy,
         );

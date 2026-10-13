@@ -136,20 +136,32 @@ checksum = "ed5909b6e89a2db4456e54cd5f673791d7eca6732202bbf2a9cc504fe2f9b84a"
 
 [[package]]
 name = "ic-host-artifacts"
-version = "0.17.0"
+version = "0.17.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5ba641076e33efad26627d29fc9a35130ce907bd27710ce5bfd9fb83cc002ef6"
+checksum = "6db729cae84d06662b746c4e12829f5b71b52dddde3df32615f1562f56a1afea"
 dependencies = [
  "sha2",
 ]
 
 [[package]]
 name = "ic-host-fs"
-version = "0.17.0"
+version = "0.17.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d0f85cb849103610be5ee7cc9a51a431e64d9d12ba8bea10da40a2a498e4b79e"
+checksum = "09f45e3d03b6c48e4d0a55eae6ebe44fb4b86d4c43cabaa6b36f43463eba4eb3"
 dependencies = [
  "ic-host-artifacts",
+ "rustix",
+]
+
+[[package]]
+name = "ic-host-process"
+version = "0.17.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5fdf477ba88ac9c536d9b21973ef2381432a8d2513802cc99c71e1cf56a787bc"
+dependencies = [
+ "ic-host-artifacts",
+ "ic-host-fs",
+ "libc",
  "rustix",
 ]
 
@@ -160,6 +172,7 @@ dependencies = [
  "ciborium",
  "ic-host-artifacts",
  "ic-host-fs",
+ "ic-host-process",
  "ic-stable-structures",
  "serde",
  "serde_json",

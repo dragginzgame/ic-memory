@@ -7,6 +7,9 @@
 use ic_host_artifacts::artifact::{Sha256Digest, copy_reader};
 use ic_host_fs::durable::{PublicationMode, WriteOptions};
 use ic_host_fs::read::hash_file;
+use ic_host_process::tool::{
+    CompletedExecution, OutputLimit, OutputLimits, ToolError, capture_command,
+};
 use serde::{Deserialize, Serialize};
 use std::{
     collections::BTreeMap,
@@ -57,6 +60,7 @@ impl Error for PreparationError {
 const PACKAGE_MANIFEST: &str = "crates/ic-memory/Cargo.toml";
 const PACKAGE_README: &str = "crates/ic-memory/README.md";
 const CHANGELOG_FINALIZER: &str = "scripts/ci/finalize-release-changelog.awk";
+const LOCK_REWRITER: &str = "scripts/ci/rewrite-local-lock-versions.pl";
 const REPLACE_FILE_OPTIONS: WriteOptions = WriteOptions {
     mode: PublicationMode::Replace,
     permissions: 0o666,
@@ -192,15 +196,28 @@ impl Execute for Processes {
         let mut command = Command::new(program);
         command.current_dir(root).args(args);
         if capture {
-            let output = command.output()?;
-            require(
-                output.status.success(),
-                &format!(
-                    "{program} {args:?} failed ({}): {}",
-                    output.status,
-                    String::from_utf8_lossy(&output.stderr)
-                ),
-            )?;
+            // Preserve complete output and the existing absence of a deadline.
+            // Host owns fair pipe draining, failure evidence and child cleanup.
+            let output = capture_command(
+                &mut command,
+                OutputLimits {
+                    stdout: OutputLimit::Terminate(usize::MAX),
+                    stderr: OutputLimit::Terminate(usize::MAX),
+                    timeout: None,
+                },
+            )
+            .and_then(CompletedExecution::require_success)
+            .and_then(CompletedExecution::require_complete)
+            .inspect_err(|error| {
+                // Host error formatting excludes output bytes; retain the
+                // command's stderr in CLI/gate logs before returning its cause.
+                if let ToolError::Execution(failure) = error {
+                    if let Some(status) = failure.evidence.status {
+                        eprintln!("{program} failed ({status})");
+                    }
+                    eprint!("{}", String::from_utf8_lossy(&failure.evidence.stderr));
+                }
+            })?;
             Ok(String::from_utf8(output.stdout)?)
         } else {
             let status = command
@@ -413,58 +430,6 @@ fn release_readme(text: &str, version: &str) -> Option<String> {
     Some(updated)
 }
 
-fn release_changelog(
-    finalizer: &Path,
-    text: &str,
-    previous: &str,
-    version: &str,
-    date: &str,
-) -> Result<String> {
-    version_parts(previous)?;
-    version_parts(version)?;
-    require(valid_date(date), "invalid UTC release date")?;
-    // Memory's published history includes bare version headings. Retain its
-    // target-identity refusal; the common helper owns candidate classification.
-    require(
-        !text.lines().any(|line| {
-            let mut words = line.split_whitespace();
-            words.next() == Some("##") && words.next() == Some(version)
-        }),
-        "selected version already exists",
-    )?;
-    let mut child = Command::new("awk")
-        .args([
-            "-v",
-            &format!("version={version}"),
-            "-v",
-            &format!("previous={previous}"),
-            "-v",
-            &format!("date={date}"),
-            "-f",
-        ])
-        .arg(finalizer)
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()?;
-    let input = child
-        .stdin
-        .take()
-        .ok_or("changelog finalizer has no input pipe")?
-        .write_all(text.as_bytes());
-    let output = child.wait_with_output()?;
-    require(
-        output.status.success(),
-        &format!(
-            "changelog finalization failed ({}): {}",
-            output.status,
-            String::from_utf8_lossy(&output.stderr)
-        ),
-    )?;
-    input?;
-    Ok(String::from_utf8(output.stdout)?)
-}
-
 fn check_lock_update(before: &[u8], after: &str, previous: &str, version: &str) -> Result<()> {
     let mut expected: toml::Value = toml::from_str(std::str::from_utf8(before)?)?;
     let packages = expected
@@ -487,23 +452,6 @@ fn check_lock_update(before: &[u8], after: &str, previous: &str, version: &str) 
         expected == toml::from_str::<toml::Value>(after)?,
         "workspace version refresh changed dependency selection",
     )
-}
-
-// Cargo's canonical lockfile places name and version together. Preserve every
-// other byte and independently verify that only the root package identity moved.
-fn replace_lock_version(text: &str, previous: &str, version: &str) -> Result<String> {
-    let identity = format!("name = \"ic-memory\"\nversion = \"{previous}\"");
-    require(
-        text.matches(&identity).count() == 1,
-        "expected one canonical locked root package",
-    )?;
-    let updated = text.replacen(
-        &identity,
-        &format!("name = \"ic-memory\"\nversion = \"{version}\""),
-        1,
-    );
-    check_lock_update(text.as_bytes(), &updated, previous, version)?;
-    Ok(updated)
 }
 
 fn target_directory(metadata: &str) -> Result<PathBuf> {
@@ -537,6 +485,103 @@ fn check_wasm_artifacts(target: &Path) -> Result<()> {
 }
 
 impl<E: Execute> Repository<E> {
+    // Keep exact helper inputs for retries and diagnosis. Both transforms use
+    // Host capture instead of writing to one pipe before draining the others.
+    fn transform_text(
+        &self,
+        program: &str,
+        prefix: &[&str],
+        text: &str,
+        suffix: &[&str],
+    ) -> Result<String> {
+        let digest = Sha256Digest::compute(text.as_bytes());
+        let input = self
+            .target()?
+            .join("release-validation/inputs")
+            .join(format!("{digest}.input"));
+        match fs::symlink_metadata(&input) {
+            Ok(metadata) => require(metadata.is_file(), "transform input is not a regular file")?,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                ic_host_fs::durable::write_with(
+                    &input,
+                    WriteOptions {
+                        mode: PublicationMode::CreateNew,
+                        ..REPLACE_FILE_OPTIONS
+                    },
+                    |file| file.write_all(text.as_bytes()),
+                )?;
+            }
+            Err(error) => return Err(error.into()),
+        }
+        let limit = u64::try_from(text.len())?;
+        require(
+            hash_file(&input, limit)?.sha256 == digest,
+            "transform input changed",
+        )?;
+        let arguments = prefix
+            .iter()
+            .copied()
+            .chain(std::iter::once(
+                input.to_str().ok_or("non-UTF-8 transform input")?,
+            ))
+            .chain(suffix.iter().copied())
+            .collect::<Vec<_>>();
+        let output = self.output(program, &arguments)?;
+        require(
+            hash_file(&input, limit)?.sha256 == digest,
+            "transform input changed",
+        )?;
+        Ok(output)
+    }
+
+    fn replace_lock_version(&self, text: &str, previous: &str, version: &str) -> Result<String> {
+        let updated = self.transform_text(
+            "perl",
+            &[LOCK_REWRITER],
+            text,
+            &[previous, version, "ic-memory"],
+        )?;
+        check_lock_update(text.as_bytes(), &updated, previous, version)?;
+        Ok(updated)
+    }
+
+    fn release_changelog(
+        &self,
+        finalizer: &Path,
+        text: &str,
+        previous: &str,
+        version: &str,
+        date: &str,
+    ) -> Result<String> {
+        version_parts(previous)?;
+        version_parts(version)?;
+        require(valid_date(date), "invalid UTC release date")?;
+        // Published history includes bare version headings. Keep that refusal;
+        // the shared helper owns candidate classification and finalization.
+        require(
+            !text.lines().any(|line| {
+                let mut words = line.split_whitespace();
+                words.next() == Some("##") && words.next() == Some(version)
+            }),
+            "selected version already exists",
+        )?;
+        self.transform_text(
+            "awk",
+            &[
+                "-v",
+                &format!("version={version}"),
+                "-v",
+                &format!("previous={previous}"),
+                "-v",
+                &format!("date={date}"),
+                "-f",
+                finalizer.to_str().ok_or("non-UTF-8 changelog finalizer")?,
+            ],
+            text,
+            &[],
+        )
+    }
+
     fn run(&self, program: &str, args: &[&str]) -> Result<()> {
         self.exec.run(&self.root, program, args, false)?;
         Ok(())
@@ -806,7 +851,11 @@ impl<E: Execute> Repository<E> {
         Ok(BTreeMap::from([
             (
                 "Cargo.lock".to_owned(),
-                replace_lock_version(&self.text("Cargo.lock", Some(source))?, previous, version)?,
+                self.replace_lock_version(
+                    &self.text("Cargo.lock", Some(source))?,
+                    previous,
+                    version,
+                )?,
             ),
             (
                 "Cargo.toml".to_owned(),
@@ -819,7 +868,7 @@ impl<E: Execute> Repository<E> {
             (PACKAGE_README.to_owned(), readme),
             (
                 "CHANGELOG.md".to_owned(),
-                release_changelog(
+                self.release_changelog(
                     &finalizer,
                     &self.text("CHANGELOG.md", Some(source))?,
                     previous,
@@ -829,7 +878,7 @@ impl<E: Execute> Repository<E> {
             ),
             (
                 detail.clone(),
-                release_changelog(
+                self.release_changelog(
                     &finalizer,
                     &self.text(&detail, Some(source))?,
                     previous,

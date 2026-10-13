@@ -103,6 +103,10 @@ selections, user Cargo credentials and host/IC bundles are not cached. Host/IC
 setup therefore continues to exercise fresh pinned downloads on every runner.
 The cache key uses the installer's exact compiler/native/build-policy identity,
 runner image identity, Cargo tool pins and installer/checksum sources. There are
+no misses solely from comments, record order or unrelated tool pins in the
+literal common catalog. Catalogs with executable configuration, duplicate
+assignments or unsupported syntax retain their full bytes as key input; cache
+inspection never executes them or guesses their selections. There are
 no broad restore prefixes or cross-host restores. Changed inputs or an absent
 cache use ordinary cold setup.
 
@@ -156,11 +160,11 @@ required to run setup. Make targets and CI select this same local tool set.
 | Snapshot refresh | Git, a clean Shared Tooling checkout, and a SHA-256 implementation |
 | Dependency pin checker | Git, jq, Mike Farah yq v4.47.2+; Cargo when Cargo manifests exist |
 | Workspace-version reader | Prepared Cargo, jq and Mike Farah yq v4.47.2+; explicit Cargo.toml input; no dependency resolution |
-| Release runner | GNU Make, Git, `date`, explicit consumer metadata/check targets, and Bash 3.2 |
+| Release runner | GNU Make, Git, Perl, `date`, explicit consumer metadata/check targets, and Bash 3.2 |
 | PR release delivery | The release runner prerequisites, authenticated GitHub CLI with `gh api --paginate`, jq, and Git supporting `switch`, `worktree` and `fetch --no-write-fetch-head`; see the [PR contract](releases.md#pr-delivery) |
 | Changelog finalizer | System awk with regular-expression `RS` (the declared Linux/macOS hosts); preserves historical EOF bytes without GNU `RT` |
 | Rust pre-commit hook and installer | Git, GNU Make, consumer-owned `fmt` prerequisites (Cargo/rustfmt and an exact `cargo-sort` version), Bash 3.2 and standard Unix file utilities |
-| Consumer formatting adoption checker | The hook prerequisites above, Perl-free shell utilities, and reviewed consumer Make inputs; no implicit downloads |
+| Consumer formatting adoption checker | The hook prerequisites above, Perl, and reviewed consumer Make inputs; no implicit downloads |
 | Formatter prerequisite checker | Prepared Cargo/rustfmt and the consumer's exact cargo-sort version; optional Cargo executable and `RUSTUP_TOOLCHAIN`; no installation |
 | Local lockfile transformer | Perl core only; the caller separately validates the prepared graph with Cargo |
 | Explicit tag maintenance | Git and Perl core modules; atomic push support for remote deletion; see [tag maintenance](tag-maintenance.md) |

@@ -119,8 +119,8 @@ impl CommittedAllocations {
         self.validated.slot_for(key)
     }
 
-    // Runtime publication exposes application allocations only. Manual commit
-    // owners retain the complete capability returned by persistence confirmation.
+    // Runtime publication exposes application allocations only; governance
+    // declarations remain internal to ledger persistence.
     pub(crate) fn into_application_allocations(mut self) -> Self {
         Arc::make_mut(&mut self.validated.inner)
             .declarations

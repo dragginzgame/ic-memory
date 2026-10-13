@@ -315,27 +315,34 @@ done
 # A selector may fail after emitting admitted pairs. Retain those complete
 # selections, its exact status/stderr and product logs; ignore a trailing root
 # without a path. Substitute only selection, keeping the real collector/archive.
-partial_root="$fixture/partial-selector"
-mkdir -p "$partial_root/scripts/ci" "$partial_root/temp" "$partial_root/repository/.tools/host-set.selected" \
-    "$partial_root/unpacked"
-cp "$ROOT/scripts/ci/collect-failure-evidence.sh" "$ROOT/scripts/ci/archive-evidence.sh" "$partial_root/scripts/ci/"
-cat > "$partial_root/scripts/ci/select-tool-evidence.sh" <<'SELECTOR'
+for selection_mode in full compact; do
+    partial_root="$fixture/partial-selector-$selection_mode"
+    mkdir -p "$partial_root/scripts/ci" "$partial_root/temp" "$partial_root/repository/.tools/host-set.selected" \
+        "$partial_root/unpacked"
+    cp "$ROOT/scripts/ci/collect-failure-evidence.sh" "$ROOT/scripts/ci/archive-evidence.sh" "$partial_root/scripts/ci/"
+    cat > "$partial_root/scripts/ci/select-tool-evidence.sh" <<'SELECTOR'
 #!/usr/bin/env bash
+if [[ "$1" == compact ]]; then
+    snapshot_root="${0%/scripts/ci/select-tool-evidence.sh}"
+    [[ "$4" == "$snapshot_root/ci/tool-versions.env" &&
+        "$5" == "$snapshot_root/ci/ic-tools.tsv" ]] || exit 18
+fi
 printf '%s\0%s\0%s\0' "$2" '.tools/host-set.selected' "$2"
 printf 'controlled partial selector failure\n' >&2
 exit 17
 SELECTOR
-cp "$temp_root/validation.log" "$partial_root/temp/validation.log"
-printf 'admitted tool diagnostics\n' > "$partial_root/repository/.tools/host-set.selected/install.log"
-partial_archive="$(GITHUB_OUTPUT="$partial_root/outputs" bash "$partial_root/scripts/ci/collect-failure-evidence.sh" \
-    "$partial_root/temp" "$partial_root/repository" 2> "$partial_root/error")"
-[[ -f "$partial_archive" && "$(cat "$partial_root/outputs")" == collection-complete=false ]] || exit 1
-tar -xzf "$partial_archive" -C "$partial_root/unpacked"
-cmp "$temp_root/validation.log" "$partial_root/unpacked/validation.log"
-cmp "$partial_root/repository/.tools/host-set.selected/install.log" "$partial_root/unpacked/.tools/host-set.selected/install.log"
-statuses=("$partial_root/unpacked"/tool-evidence.*/selection-status)
-[[ ${#statuses[@]} == 1 && "$(cat "${statuses[0]}")" == 17 && \
-    "$(cat "${statuses[0]%/*}/selection.log")" == 'controlled partial selector failure' ]] || exit 1
+    cp "$temp_root/validation.log" "$partial_root/temp/validation.log"
+    printf 'admitted tool diagnostics\n' > "$partial_root/repository/.tools/host-set.selected/install.log"
+    partial_archive="$(GITHUB_OUTPUT="$partial_root/outputs" bash "$partial_root/scripts/ci/collect-failure-evidence.sh" \
+        "$partial_root/temp" "$partial_root/repository" "$selection_mode" 2> "$partial_root/error")"
+    [[ -f "$partial_archive" && "$(cat "$partial_root/outputs")" == collection-complete=false ]] || exit 1
+    tar -xzf "$partial_archive" -C "$partial_root/unpacked"
+    cmp "$temp_root/validation.log" "$partial_root/unpacked/validation.log"
+    cmp "$partial_root/repository/.tools/host-set.selected/install.log" "$partial_root/unpacked/.tools/host-set.selected/install.log"
+    statuses=("$partial_root/unpacked"/tool-evidence.*/selection-status)
+    [[ ${#statuses[@]} == 1 && "$(cat "${statuses[0]}")" == 17 && \
+        "$(cat "${statuses[0]%/*}/selection.log")" == 'controlled partial selector failure' ]] || exit 1
+done
 
 # Caller selection must not trim a newline from a root before shared admission.
 mkdir "$fixture/selection" "$fixture/selection"$'\n' "$fixture/selection-repo" "$fixture/selection-unpacked"
