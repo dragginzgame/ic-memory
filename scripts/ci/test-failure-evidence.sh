@@ -31,28 +31,20 @@ trap finish EXIT
 fixture="$(cd -P "$fixture" && printf '%s/.' "$PWD")"
 fixture="${fixture%/.}"
 
-# Memory owns the hosted upload/discovery/download bindings; Shared owns retries.
+# Memory owns the hosted upload/download bindings; Shared owns retries.
 yq -o=json '.jobs.test' "$ROOT/.github/workflows/ci.yml" > "$fixture/workflow.json"
 jq -e '
-    [.steps[] | select(.id == "evidence-discovery")] as $gates
-    | [.steps[] | select((.uses // "") | startswith("actions/download-artifact@"))] as $downloads
+    [.steps[] | select(.id == "evidence-download")] as $downloads
     | .permissions.actions == "read"
-    and ($gates | length) == 1 and ($gates[0] |
+    and ($downloads | length) == 1 and ($downloads[0] |
         .if == "${{ !cancelled() && steps.evidence-upload.outputs.artifact-id != '\'''\'' }}"
-        and .run == "bash scripts/ci/wait-for-artifact.sh \"$EVIDENCE_REPOSITORY\" \"$EVIDENCE_RUN\" \"$EVIDENCE_ARTIFACT\""
-        and .["timeout-minutes"] == 2 and (."continue-on-error" // false) == false
+        and .run == "bash scripts/ci/download-evidence.sh \"$EVIDENCE_REPOSITORY\" \"$EVIDENCE_RUN\" \"$EVIDENCE_ARTIFACT\" \"$EVIDENCE_DIGEST\" \"$RUNNER_TEMP/ic-memory-evidence-downloaded\""
+        and .["timeout-minutes"] == 3 and (."continue-on-error" // false) == false
         and .env.GH_TOKEN == "${{ github.token }}"
         and .env.EVIDENCE_REPOSITORY == "${{ github.repository }}"
         and .env.EVIDENCE_RUN == "${{ github.run_id }}"
-        and .env.EVIDENCE_ARTIFACT == "${{ steps.evidence-upload.outputs.artifact-id }}")
-    and ($downloads | length) == 1 and ($downloads[0] |
-        .if == "${{ !cancelled() && steps.evidence-discovery.outcome == '\''success'\'' }}"
-        and (."continue-on-error" // false) == false
-        and .with["artifact-ids"] == "${{ steps.evidence-upload.outputs.artifact-id }}"
-        and .with.repository == "${{ github.repository }}"
-        and .with["run-id"] == "${{ github.run_id }}"
-        and .with["github-token"] == "${{ github.token }}"
-        and .with["digest-mismatch"] == "error")
+        and .env.EVIDENCE_ARTIFACT == "${{ steps.evidence-upload.outputs.artifact-id }}"
+        and .env.EVIDENCE_DIGEST == "${{ steps.evidence-upload.outputs.artifact-digest }}")
 ' "$fixture/workflow.json" > /dev/null
 
 mkdir -p "$fixture/temp/ic-memory-fixtures" "$fixture/repository"

@@ -61,6 +61,8 @@ const PACKAGE_MANIFEST: &str = "crates/ic-memory/Cargo.toml";
 const PACKAGE_README: &str = "crates/ic-memory/README.md";
 const CHANGELOG_FINALIZER: &str = "scripts/ci/finalize-release-changelog.awk";
 const LOCK_REWRITER: &str = "scripts/ci/rewrite-local-lock-versions.pl";
+const WORKSPACE_VERSION_RENDERER: &str = "scripts/ci/render-cargo-workspace-version.pl";
+const TAG_CHECKER: &str = "scripts/ci/check-release-tag.sh";
 const REPLACE_FILE_OPTIONS: WriteOptions = WriteOptions {
     mode: PublicationMode::Replace,
     permissions: 0o666,
@@ -352,50 +354,6 @@ fn toml_string(text: &str, section: &str, field: &str) -> Result<String> {
         .ok_or_else(|| format!("missing {section}.{field}").into())
 }
 
-fn replace_workspace_version(text: &str, previous: &str, version: &str) -> Result<String> {
-    require(
-        toml_string(text, "workspace.package", "version")? == previous,
-        "unexpected package version",
-    )?;
-    let mut in_workspace_package = false;
-    let mut count = 0;
-    let mut result = String::new();
-    for line in text.split_inclusive('\n') {
-        if line.trim_start().starts_with('[') {
-            in_workspace_package = line.trim() == "[workspace.package]";
-        }
-        if in_workspace_package
-            && line
-                .split_once('=')
-                .is_some_and(|(key, _)| key.trim() == "version")
-        {
-            let start = line
-                .find('"')
-                .ok_or("workspace.package.version must use a quoted string")?
-                + 1;
-            let end = start
-                + line[start..]
-                    .find('"')
-                    .ok_or("missing version closing quote")?;
-            require(
-                &line[start..end] == previous,
-                "unexpected package version syntax",
-            )?;
-            result.push_str(&line[..start]);
-            result.push_str(version);
-            result.push_str(&line[end..]);
-            count += 1;
-        } else {
-            result.push_str(line);
-        }
-    }
-    require(
-        count == 1,
-        "expected one workspace.package.version assignment",
-    )?;
-    Ok(result)
-}
-
 // README examples are advisory documentation, not the release identity.
 // Use TOML spans to preserve comments, spacing and other dependency options.
 fn release_readme(text: &str, version: &str) -> Option<String> {
@@ -532,6 +490,38 @@ impl<E: Execute> Repository<E> {
             "transform input changed",
         )?;
         Ok(output)
+    }
+
+    fn replace_workspace_version(
+        &self,
+        text: &str,
+        previous: &str,
+        version: &str,
+    ) -> Result<String> {
+        version_parts(previous)?;
+        version_parts(version)?;
+        let mut expected: toml::Value = toml::from_str(text)?;
+        require(
+            expected
+                .get("workspace")
+                .and_then(|value| value.get("package"))
+                .and_then(|value| value.get("version"))
+                .and_then(toml::Value::as_str)
+                == Some(previous),
+            "unexpected package version",
+        )?;
+        expected["workspace"]["package"]["version"] = toml::Value::String(version.to_owned());
+        let updated = self.transform_text(
+            "perl",
+            &[WORKSPACE_VERSION_RENDERER],
+            text,
+            &[previous, version],
+        )?;
+        require(
+            expected == toml::from_str::<toml::Value>(&updated)?,
+            "workspace version rendering changed other metadata",
+        )?;
+        Ok(updated)
     }
 
     fn replace_lock_version(&self, text: &str, previous: &str, version: &str) -> Result<String> {
@@ -859,7 +849,7 @@ impl<E: Execute> Repository<E> {
             ),
             (
                 "Cargo.toml".to_owned(),
-                replace_workspace_version(
+                self.replace_workspace_version(
                     &self.text("Cargo.toml", Some(source))?,
                     previous,
                     version,
@@ -1543,13 +1533,10 @@ impl<E: Execute> Repository<E> {
     }
     fn check_tag(&self, version: &str, head: &str) -> Result<String> {
         let tag = self.local_tag(version)?.ok_or("release tag is missing")?;
+        self.output("bash", &[TAG_CHECKER, head, version])?;
         require(
-            self.git(&["cat-file", "-t", &format!("refs/tags/v{version}")])? == "tag",
-            "release tag must be annotated",
-        )?;
-        require(
-            self.git(&["rev-parse", &format!("refs/tags/v{version}^{{commit}}")])? == head,
-            "release tag does not identify the selected commit",
+            self.local_tag(version)?.as_deref() == Some(tag.as_str()),
+            "release tag changed during admission",
         )?;
         Ok(tag)
     }

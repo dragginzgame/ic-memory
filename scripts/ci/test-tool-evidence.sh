@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Shared companions: scripts/ci/select-tool-evidence.sh scripts/ci/archive-evidence.sh .github/actions/retain-failure-evidence/action.yml
+# Shared companions: scripts/ci/select-tool-evidence.sh scripts/ci/archive-evidence.sh .github/actions/retain-failure-evidence/action.yml scripts/ci/fixture-lifecycle.sh
 set -euo pipefail
 [[ $# == 3 ]] || { echo 'usage: test-tool-evidence.sh CONSUMER host|ic CALLER-PINS' >&2; exit 2; }
 ROOT="${BASH_SOURCE[0]}"
@@ -8,16 +8,12 @@ ROOT="$(cd -P "${ROOT%/*}/../.." && printf '%s/.' "$PWD")"
 ROOT="${ROOT%/.}"
 consumer="$1"; kind="$2"; pins="$3"
 fixture="$(mktemp -d "${TMPDIR:-/tmp}/tool-evidence-test.XXXXXX")"
-# Bash 3.2 can enter EXIT with status zero after nounset; require completion too.
+fixture="$(CDPATH="" cd -P -- "$fixture" && printf '%s/.' "$PWD")"
+fixture="${fixture%/.}"
+# shellcheck source=scripts/ci/fixture-lifecycle.sh
+source "$ROOT/scripts/ci/fixture-lifecycle.sh"
 fixture_complete=false
-finish() {
-    local status=$?
-    [[ "$fixture_complete" == true || "$status" != 0 ]] || status=1
-    if [[ "$status" == 0 ]]; then rm -rf "$fixture"
-    else printf "Tool evidence fixture retained: %s\n" "$fixture" >&2; fi
-    exit "$status"
-}
-trap finish EXIT
+trap 'fixture_finish "$?" "$fixture" "Tool evidence fixture retained"' EXIT
 active="$(readlink "$consumer/.tools/$kind")"
 physical="$(cd "$consumer/.tools/$active" && pwd -P)"
 stored_parent="${physical%/*}"

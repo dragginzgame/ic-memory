@@ -660,6 +660,9 @@ plan is retained evidence and does not block the next release. A later failure
 from a separately chained command does not undo that successful branch/tag push.
 Package publication requires a consumer-owned publication command and an eligible
 package; do not append `make publish` automatically to the standard release flow.
+For a crates.io package using the workspace's stable version, consumers may reuse
+the [read-only publication admission helper](verification-helpers.md#read-only-cargo-publication-admission)
+while keeping upload authority, package policy and recovery local.
 
 ## Shared changelog finalization
 
@@ -734,3 +737,47 @@ of live package publication or a native host release.
 Supplement effect/interruption stubs with real Git index/tree checks at staging
 boundaries. Shared Tooling's metadata fixture reuses existing history without
 creating commits and exercises the actual adapter's failed-log retention.
+
+## Pure workspace-version rendering
+
+`scripts/ci/render-cargo-workspace-version.pl SOURCE PREVIOUS CANDIDATE` emits
+the complete candidate manifest without changing the source. It recognizes one
+literal bare `workspace.package` table and one double-quoted stable version,
+including indentation, table comments and CRLF. Surrounding bytes and unrelated
+versions remain unchanged. Missing, duplicate, unsupported or mismatched literal
+selectors fail before candidate output; version components compare as strings.
+
+This helper is not a TOML parser or a release transaction. The caller admits the
+source with its existing TOML owner and independently checks the candidate's
+meaning before installation. Keep file custody, source identity, metadata roster,
+dependency selection, rollback and interruption recovery in the consumer. A
+saved-source renderer must not be replaced by the mutating adapter below solely
+to share version mechanics
+([#159](https://github.com/dragginzgame/shared-tooling/issues/159)).
+
+Select this helper as a snapshot entrypoint when invoking it directly. Commit
+and qualify its owner before adopting it; a dirty producer draft is not an
+immutable consumer export.
+
+## Coordinated Cargo metadata adapter
+
+`scripts/ci/cargo-release-metadata.sh prepare|check PRIMARY_PACKAGE` owns
+the reusable Cargo-only metadata flow. Adopt it as a snapshot root; its version
+reader, lock rewriter and changelog finalizer are required companions. It requires
+root `Cargo.toml`, `Cargo.lock`, `CHANGELOG.md`, workspace-inherited package versions
+and no source-less packages outside the workspace. It admits actual workspace
+and lock identities before mutation; independently versioned packages need their
+consumer-owned adapter. Existing adapters are not replaced by adoption alone.
+
+The caller supplies `RELEASE_PREVIOUS`, `RELEASE_VERSION`, `RELEASE_DATE`, prepared
+Cargo-edit/Cargo-sort, jq and Mike Farah yq. Preparation uses the locked offline
+graph, restores all three original files on failure and retains failure custody.
+The `check` operation uses `RELEASE_COMMIT` when selected, exporting that exact
+committed source instead of reading newer working metadata. No version selection,
+fetch, tool installation, Git staging/ref mutation or publication is implicit.
+Consumer preflight and late source/index admission remain outside this helper.
+
+IC Metrics adopts the corrected helper from committed Shared Tooling 0.11.1
+through normal snapshot distribution, retaining its local policy in a thin adapter.
+Other Cargo consumers must retain their own file set, recovery and metadata policy
+when qualifying this adapter; it is not a fleet-wide automatic replacement.

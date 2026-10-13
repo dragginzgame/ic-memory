@@ -189,7 +189,7 @@ impl SealedDeclarationSnapshot {
         if requests.len() > 254 {
             return Err(MemoryDeclarationError::TooManyDeclarations);
         }
-        requests.sort_unstable_by(|a, b| a.stable_key.cmp(&b.stable_key));
+        crate::sort::sort_unstable_by(&mut requests, |a, b| a.stable_key.cmp(&b.stable_key));
         for pair in requests.windows(2) {
             if pair[0].stable_key == pair[1].stable_key {
                 return Err(MemoryDeclarationError::DuplicateRequest {
@@ -277,7 +277,7 @@ impl SealedDeclarationSnapshot {
             };
             declarations.push(declaration);
         }
-        declarations.sort_unstable_by(|a, b| a.stable_key().cmp(b.stable_key()));
+        crate::sort::sort_unstable_by(&mut declarations, |a, b| a.stable_key().cmp(b.stable_key()));
         Ok(DeclarationSnapshot::new(declarations).map_err(MemoryDeclarationError::from)?)
     }
 

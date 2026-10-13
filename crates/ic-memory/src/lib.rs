@@ -90,6 +90,7 @@ mod requests;
 mod runtime;
 mod schema;
 mod slot;
+mod sort;
 mod stable_cell;
 mod text;
 mod validation;

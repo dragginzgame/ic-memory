@@ -1,5 +1,29 @@
 # Changelog
 
+## [0.36.4]
+
+- Reduce bootstrap Wasm by sharing bounded sorting and validating namespace
+  prefixes without temporary owned keys
+  ([#78](https://github.com/dragginzgame/ic-memory/issues/78)).
+- Adopt Shared Tooling 0.11.4: use the common CI installer command and verify
+  exact uploaded evidence with retries at the download boundary. Tool pins and
+  library contracts remain unchanged
+  ([#74](https://github.com/dragginzgame/ic-memory/issues/74),
+  [Shared #161](https://github.com/dragginzgame/shared-tooling/issues/161),
+  [#158](https://github.com/dragginzgame/shared-tooling/issues/158)).
+- Use shared release-tag admission and fixture retention, preserving exact tag
+  identity, original failure status and retained evidence
+  ([#75](https://github.com/dragginzgame/ic-memory/issues/75),
+  [#77](https://github.com/dragginzgame/ic-memory/issues/77),
+  [Shared #166](https://github.com/dragginzgame/shared-tooling/issues/166)).
+- Qualify the maintainer-selected native Host 0.17.6 helpers.
+- Use Shared's pure workspace-version renderer while independently validating
+  the candidate manifest
+  ([#76](https://github.com/dragginzgame/ic-memory/issues/76),
+  [Shared #159](https://github.com/dragginzgame/shared-tooling/issues/159)).
+
+[Detailed notes](docs/changelog/0.36.md)
+
 ## [0.36.3] - 2026-10-13
 
 - Adopt Shared Tooling 0.10.2's common catalog ownership and reusable Cargo

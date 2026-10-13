@@ -1,6 +1,8 @@
 use serde::{Deserialize, Deserializer, Serialize, de::Error as _};
 use std::{fmt, str::FromStr};
 
+const MAX_KEY_BYTES: usize = 128;
+
 ///
 /// StableKey
 ///
@@ -91,7 +93,7 @@ pub fn validate(stable_key: &str) -> Result<(), StableKeyError> {
     if stable_key.is_empty() {
         return invalid(stable_key, "must not be empty");
     }
-    if stable_key.len() > 128 {
+    if stable_key.len() > MAX_KEY_BYTES {
         return invalid(stable_key, "must be at most 128 bytes");
     }
     if !stable_key.is_ascii() {
@@ -137,25 +139,37 @@ pub fn validate(stable_key: &str) -> Result<(), StableKeyError> {
     }
 
     for segment in prefix.as_bytes().split(|byte| *byte == b'.') {
-        validate_segment(stable_key, segment)?;
+        if let Err(reason) = validate_segment(segment) {
+            return invalid(stable_key, reason);
+        }
     }
 
     Ok(())
 }
 
-fn validate_segment(stable_key: &str, segment: &[u8]) -> Result<(), StableKeyError> {
+// A namespace plus its synthetic `v1` suffix must fit the same key grammar.
+// Borrow the prefix rather than allocating a temporary key just to discard it.
+pub fn is_key_prefix(value: &str) -> bool {
+    let Some(prefix) = value.strip_suffix('.') else {
+        return false;
+    };
+    value.len() <= MAX_KEY_BYTES - "v1".len()
+        && prefix
+            .as_bytes()
+            .split(|byte| *byte == b'.')
+            .all(|segment| validate_segment(segment).is_ok())
+}
+
+fn validate_segment(segment: &[u8]) -> Result<(), &'static str> {
     let mut bytes = segment.iter().copied();
     let Some(first) = bytes.next() else {
-        return invalid(stable_key, "must not contain empty segments");
+        return Err("must not contain empty segments");
     };
     if !first.is_ascii_lowercase() {
-        return invalid(stable_key, "segments must start with a lowercase letter");
+        return Err("segments must start with a lowercase letter");
     }
     if !bytes.all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'_') {
-        return invalid(
-            stable_key,
-            "segments may contain only lowercase letters, digits, and underscores",
-        );
+        return Err("segments may contain only lowercase letters, digits, and underscores");
     }
     Ok(())
 }
@@ -170,9 +184,9 @@ fn invalid<T>(stable_key: &str, reason: &'static str) -> Result<T, StableKeyErro
 /// Mark later occurrences while preserving each boundary's original traversal.
 /// Callers bound the collection and supply its enumerated input positions.
 pub fn duplicate_key_positions(
-    keys: Vec<(&StableKey, usize)>,
+    mut keys: Vec<(&StableKey, usize)>,
 ) -> [bool; crate::constants::MAX_ALLOCATIONS] {
-    let keys = std::collections::BinaryHeap::from(keys).into_sorted_vec();
+    crate::sort::sort_unstable_by(&mut keys, Ord::cmp);
     let mut duplicates = [false; crate::constants::MAX_ALLOCATIONS];
     for pair in keys.windows(2) {
         if pair[0].0 == pair[1].0 {

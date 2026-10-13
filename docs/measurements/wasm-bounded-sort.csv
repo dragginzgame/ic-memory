@@ -1,0 +1,12 @@
+probe,baseline_raw_bytes,candidate_raw_bytes,raw_delta_bytes,baseline_oz_bytes,candidate_oz_bytes,oz_delta_bytes
+wasm_core_size_probe,185306,180929,-4377,167061,162998,-4063
+wasm_key_only_size_probe,185306,180929,-4377,167060,162997,-4063
+wasm_admission_size_probe,190286,185721,-4565,171625,167536,-4089
+wasm_diagnostics_size_probe,218721,214295,-4426,196482,192377,-4105
+wasm_runtime_integration_size_probe,193877,189461,-4416,174543,170460,-4083
+library_only_managed1,192337,182350,-9987,173125,164016,-9109
+library_only_managed2,192465,183517,-8948,173209,164982,-8227
+library_only_managed_map2,211373,202787,-8586,189768,181919,-7849
+library_only_managed_map_newtype2,220825,212238,-8587,197774,189946,-7828
+library_only_managed_raw_map2,211542,202956,-8586,189906,182060,-7846
+library_only_managed_raw_cell2,194662,185892,-8770,175104,167064,-8040

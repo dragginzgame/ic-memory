@@ -8,7 +8,7 @@ active engineering policy. Historical shared-version descriptions do not freeze
 that policy or establish new native qualification. Code paths are repository-relative.
 
 The existing tooling snapshot at revision
-`626fc2bd3125195520fb870b92abfec11b01454d` is recorded in
+`031d214ed044705b989d43e2379f30e6a3d44749` is recorded in
 [.shared-tooling.snapshot](../.shared-tooling.snapshot). It identifies the vendored
 files, hashes and executable modes; it does not freeze the active local policy.
 Keep its provenance accurate and never edit vendored files in place. Do not
@@ -17,18 +17,35 @@ attribute uncommitted shared files to that recorded revision. The live local
 also applies within its activation scope and is included in this recorded snapshot.
 These instructions are the repository's local overlay.
 
-The single 103-file snapshot uses reviewed committed Shared Tooling at that
-revision, whose committed source `VERSION` is 0.10.2. The manifest records that
-display version separately from its authoritative commit identity. The 76 explicit
+The single 105-file snapshot uses reviewed committed Shared Tooling at that
+revision, whose committed source `VERSION` is 0.11.4. The manifest records that
+display version separately from its authoritative commit identity. The 78 explicit
 roots select the reviewed governance catalog and Memory's maintained Make, hook, CI,
 archive and fixture entrypoints. Their generated companion closure preserves
-all 102 prior payload files and adds the directly invoked canonical local-package
-lock rewriter. It includes the CI artifact-discovery
-helper and the baseline-linked change-reporting rule. The common host/Cargo and
+the directly invoked canonical local-package lock rewriter and the baseline-linked
+change-reporting rule. The common host/Cargo and
 IC catalogs are required installer companions, replacing their two redundant
 explicit roots. All versions and platform digests match the prior selection;
-Memory needs no exception catalog. No payload retirement or exporter/fleet
-fixture adoption is needed. The Rust fixture's cache-key companion remains selected.
+Memory needs no exception catalog. The 0.11 refresh replaces the two CI installer
+wrapper roots with `install-ci-tool.sh`, and the artifact-discovery root with
+`download-evidence.sh`. Automatic retirement removes the three unchanged owned
+files. The new downloader and 0.11.1's derived annotated-tag checker and fixture
+lifecycle helper keep the closure at 103 payloads.
+Both helpers are now explicit entrypoints because Memory's native tag adapter
+and two local basic fixtures invoke them directly. Shared 0.11.2 corrects cleanup
+refusal, diagnostic failure and physical-directory anchoring; Memory preserves
+hook-specific diagnostics and its caller-retained round-trip mode. The new Cargo
+publication-admission helper remains unselected; Memory keeps its receipt-bound
+publication owner.
+The directly invoked pure workspace-version renderer and the Cargo cache-key
+helper's derived catalog-record reader extend the closure to 105 payloads.
+Memory independently admits the rendered manifest's parsed meaning before
+installation, retaining exact saved-source recovery and its local transaction.
+The optional fleet/CI catalog-binding checker remains unselected.
+Its exact upload ID/digest, repository/run and explicit token remain bound by
+Memory's one-upload workflow fixture. Shared's two-upload downloader fixture
+remains unselected and qualifies at its producer; no exporter/fleet fixture is
+adopted. The Rust fixture's cache-key companion remains selected.
 Make, standalone setup, formatting and failure evidence use the executing
 snapshot's catalogs. The consumer collector selects those catalogs even when
 collecting a different repository root. CI's native reuse checks exercise the
@@ -36,16 +53,19 @@ standalone defaults rather than overriding them. Compiler/MSRV, application
 dependencies and Testkit/PocketIC selections remain consumer-owned.
 The 0.10.1 Cargo cache-key fix ignores comments, record order and unrelated pins
 only for proven literal catalogs, retaining build/compiler/native identities
-and conservative byte-based keys for other syntax. This refresh changes four
+and conservative byte-based keys for other syntax. The 0.10.1 refresh changed four
 payloads and no tool selection. Shared's 0.10.2 sibling-dashboard fix is outside
 Memory's selected closure. The isolated export uses only committed source;
-subsequent dirty producer LOC changes remain unadopted.
+subsequent dirty producer changes remain unadopted. The scoped renderer work
+under Shared #159 is included only through the published 0.11.4 commit; no dirty
+source is attributed to this export.
 The 0.9.7 Cargo build-policy change requires explicit prepared-tool refresh;
 pins remain unchanged. Subsequent refreshes reuse the manifest's recorded
 roots. Shared 0.8.0 automatically removes unchanged obsolete owned files outside
 their closure; `--retire-file` is removed. Review canonical preview and local
 callers/other-bundle ownership before refreshing, and keep directly used helpers
-as explicit entrypoints. This adoption removes no payloads. Follow the selected
+as explicit entrypoints. Earlier refreshes retained all payloads; the current
+0.11 retirements are recorded above. Follow the selected
 [snapshot procedure](consuming-snapshots.md#entrypoint-selection-in-070), keeping
 root intent distinct from derived payloads and independently reviewing local
 callers and other bundle ownership. Memory has one shared payload manifest.

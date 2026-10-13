@@ -15,15 +15,12 @@ ROOT="$(cd -P "${ROOT%/*}/../.." && printf '%s/.' "$PWD")"
 ROOT="${ROOT%/.}"
 bash "$ROOT/scripts/ci/check-release-commands.sh" "$ROOT" rust-toolchain.toml ci/tool-versions.env make/consumer.mk make/tools.mk make/release.mk make/rust-format.mk make/execution.mk scripts/ci/check-make-execution.sh
 FIXTURE="$(mktemp -d "${TMPDIR:-/tmp}/ic-memory-release-adapters.XXXXXX")"
+FIXTURE="$(CDPATH="" cd -P -- "$FIXTURE" && printf '%s/.' "$PWD")"
+FIXTURE="${FIXTURE%/.}"
+# shellcheck source=scripts/ci/fixture-lifecycle.sh
+source "$ROOT/scripts/ci/fixture-lifecycle.sh"
 fixture_complete=false
-finish() {
-    local status=$?
-    [[ "$fixture_complete" == true || "$status" != 0 ]] || status=1
-    if [[ "$status" == 0 ]]; then rm -rf "$FIXTURE"
-    else printf 'Consumer release-adapter fixture retained: %s\n' "$FIXTURE" >&2; fi
-    exit "$status"
-}
-trap finish EXIT
+trap 'fixture_finish "$?" "$FIXTURE" "Consumer release-adapter fixture retained"' EXIT
 mkdir -p "$FIXTURE/ci" "$FIXTURE/make"
 cp "$ROOT/Makefile" "$ROOT/rust-toolchain.toml" "$FIXTURE/"
 cp "$ROOT/ci/tool-versions.env" "$FIXTURE/ci/"

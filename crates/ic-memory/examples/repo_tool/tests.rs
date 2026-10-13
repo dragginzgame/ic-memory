@@ -28,6 +28,24 @@ fn captured_failure_preserves_status_and_both_output_streams() {
 }
 
 #[test]
+fn tag_changes_during_shared_admission_stop_publication() {
+    for failure in [
+        "tag-admission-refused",
+        "tag-admission-object",
+        "tag-admission-missing",
+    ] {
+        let fixture = Fixture::new();
+        fixture.release();
+        fixture.fail(failure);
+        assert!(fixture.repo.publish(true).is_err(), "{failure}");
+        assert!(!fixture.repo.exec.state.borrow().calls.iter().any(|call| {
+            call.first().is_some_and(|arg| arg == "cargo")
+                && call.get(2).is_some_and(|arg| arg == "publish")
+        }));
+    }
+}
+
+#[test]
 fn helper_output_cannot_change_locked_dependency_selection() {
     let fixture = Fixture::new();
     let changed = LOCK.replace("0.12.3", "0.13.0");
@@ -41,6 +59,24 @@ fn helper_output_cannot_change_locked_dependency_selection() {
         .replace_lock_version(LOCK, "0.12.3", "0.13.0")
         .unwrap_err();
     assert!(error.to_string().contains("changed dependency selection"));
+    fixture.assert_original();
+}
+
+#[test]
+fn rendered_manifest_cannot_change_unselected_metadata() {
+    let fixture = Fixture::new();
+    let changed = MANIFEST.replace("0.12.3", "0.13.0");
+    fs::write(
+        fixture.repo.root.join(WORKSPACE_VERSION_RENDERER),
+        format!("print <<'MANIFEST';\n{changed}MANIFEST\n"),
+    )
+    .unwrap();
+    assert!(
+        fixture
+            .repo
+            .replace_workspace_version(MANIFEST, "0.12.3", "0.13.0")
+            .is_err()
+    );
     fixture.assert_original();
 }
 
@@ -139,6 +175,15 @@ impl Fixture {
             (
                 "crates/ic-memory/src/lib.rs".to_owned(),
                 "// fixture library\n".to_owned(),
+            ),
+            (
+                WORKSPACE_VERSION_RENDERER.to_owned(),
+                fs::read_to_string(
+                    Path::new(env!("CARGO_MANIFEST_DIR"))
+                        .join("../..")
+                        .join(WORKSPACE_VERSION_RENDERER),
+                )
+                .unwrap(),
             ),
             (
                 LOCK_REWRITER.to_owned(),
@@ -575,6 +620,26 @@ impl Execute for Substitute {
                 .join("\n"))
         };
         match program {
+            "bash" if args.first() == Some(&TAG_CHECKER) => {
+                require(
+                    args == [TAG_CHECKER, "release", "0.13.0"],
+                    "unexpected fixture tag selection",
+                )?;
+                match state.fail.as_deref() {
+                    Some("tag-commit" | "tag-admission-refused") => {
+                        Err("fixture shared tag checker refused".into())
+                    }
+                    Some("tag-admission-object") => {
+                        state.fail = Some("tag-object".to_owned());
+                        Ok(String::new())
+                    }
+                    Some("tag-admission-missing") => {
+                        state.tag = false;
+                        Ok(String::new())
+                    }
+                    _ => Ok(String::new()),
+                }
+            }
             "bash"
                 if args == ["scripts/ci/check-make-execution.sh"]
                     && state.fail.as_deref() == Some("make-execution") =>
@@ -723,7 +788,7 @@ impl Execute for Substitute {
                         && state
                             .calls
                             .iter()
-                            .any(|call| call.get(1).is_some_and(|arg| arg == "cat-file"))
+                            .any(|call| call.get(1).is_some_and(|arg| arg == TAG_CHECKER))
                     {
                         state.tag = false;
                     }
@@ -867,15 +932,6 @@ impl Execute for Substitute {
                     "Fixture source"
                 }
                 .to_owned()),
-                ["cat-file", "-t", ..] => Ok("tag".to_owned()),
-                ["rev-parse", reference] if reference.ends_with("^{commit}") => {
-                    Ok(if state.fail.as_deref() == Some("tag-commit") {
-                        "fix"
-                    } else {
-                        "release"
-                    }
-                    .to_owned())
-                }
                 _ => Err(format!("unexpected fixture git command: {args:?}").into()),
             },
             _ => Err(format!("unexpected fixture process: {program} {args:?}").into()),
@@ -1205,7 +1261,10 @@ fn release_versions_and_pending_notes_preserve_dependency_versions_and_history()
     for invalid in ["0.01.3", "0.12", "0.12.3-dev", "0.12.+3"] {
         assert!(version_parts(invalid).is_err());
     }
-    let updated = replace_workspace_version(MANIFEST, "0.12.3", "0.13.0").unwrap();
+    let updated = fixture
+        .repo
+        .replace_workspace_version(MANIFEST, "0.12.3", "0.13.0")
+        .unwrap();
     assert!(updated.contains("other = \"0.12.3\""));
     let current = "# Changelog\n\n## [0.13.0]\n\nChanges.\n\n## 0.12.3\n\nHistory.\n";
     assert_eq!(

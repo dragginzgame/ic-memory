@@ -28,11 +28,11 @@ jobs:
         run: |
           source ci/tool-versions.env
           tool_dir="$RUNNER_TEMP/ic-memory-tools"
-          actionlint_bin="$(bash scripts/ci/install-actionlint.sh \
+          actionlint_bin="$(bash scripts/ci/install-ci-tool.sh actionlint \
             --version "$SHARED_TOOLING_ACTIONLINT_VERSION" \
             --sha256 "$SHARED_TOOLING_ACTIONLINT_SHA256_LINUX_AMD64" \
             --install-dir "$tool_dir")"
-          shellcheck_bin="$(bash scripts/ci/install-shellcheck.sh \
+          shellcheck_bin="$(bash scripts/ci/install-ci-tool.sh shellcheck \
             --version "$SHARED_TOOLING_SHELLCHECK_VERSION" \
             --sha256 "$SHARED_TOOLING_SHELLCHECK_SHA256_LINUX_X86_64" \
             --install-dir "$tool_dir")"
@@ -140,28 +140,18 @@ jobs:
           path: ${{ steps.evidence.outputs.path }}
           retention-days: 14
           if-no-files-found: error
-      - name: Wait for native failure-evidence discovery
+      - name: Download verified native failure-evidence archive
         if: ${{ !cancelled() && steps.evidence-upload.outputs.artifact-id != '' }}
-        id: evidence-discovery
-        timeout-minutes: 2
+        id: evidence-download
+        timeout-minutes: 3
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
           EVIDENCE_REPOSITORY: ${{ github.repository }}
           EVIDENCE_RUN: ${{ github.run_id }}
           EVIDENCE_ARTIFACT: ${{ steps.evidence-upload.outputs.artifact-id }}
-        run: bash scripts/ci/wait-for-artifact.sh "$EVIDENCE_REPOSITORY" "$EVIDENCE_RUN" "$EVIDENCE_ARTIFACT"
-      - name: Download native failure-evidence archive
-        if: ${{ !cancelled() && steps.evidence-discovery.outcome == 'success' }}
-        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # reviewed Shared Tooling pin, v8
-        with:
-          artifact-ids: ${{ steps.evidence-upload.outputs.artifact-id }}
-          github-token: ${{ github.token }}
-          repository: ${{ github.repository }}
-          run-id: ${{ github.run_id }}
-          digest-mismatch: error
-          path: ${{ runner.temp }}/ic-memory-evidence-downloaded
-          merge-multiple: true
+          EVIDENCE_DIGEST: ${{ steps.evidence-upload.outputs.artifact-digest }}
+        run: bash scripts/ci/download-evidence.sh "$EVIDENCE_REPOSITORY" "$EVIDENCE_RUN" "$EVIDENCE_ARTIFACT" "$EVIDENCE_DIGEST" "$RUNNER_TEMP/ic-memory-evidence-downloaded"
       - name: Verify downloaded native failure evidence
         shell: bash
         run: |

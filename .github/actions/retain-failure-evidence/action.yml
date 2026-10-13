@@ -25,6 +25,9 @@ outputs:
   artifact-id:
     description: Uploaded artifact identity, used for the hosted round-trip check.
     value: ${{ steps.upload.outputs.artifact-id }}
+  artifact-digest:
+    description: SHA-256 of the uploaded ZIP, used to authenticate exact-ID readback.
+    value: ${{ steps.upload.outputs.artifact-digest }}
 runs:
   using: composite
   steps:

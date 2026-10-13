@@ -31,7 +31,7 @@ impl MemoryAuthority {
             return Err(MemoryAllocationPoolError::ReservedAuthority);
         }
         let key_prefix = key_prefix.into();
-        if !key_prefix.ends_with('.') || StableKey::parse(format!("{key_prefix}v1")).is_err() {
+        if !crate::key::is_key_prefix(&key_prefix) {
             return Err(MemoryAllocationPoolError::InvalidKeyPrefix { key_prefix });
         }
         if key_prefix.starts_with(crate::IC_MEMORY_STABLE_KEY_PREFIX) {
@@ -100,7 +100,7 @@ impl MemoryAllocationPool {
         if authorities.len() > 254 || exclusions.len() > 255 {
             return Err(MemoryAllocationPoolError::TooManyEntries);
         }
-        authorities.sort_unstable_by(|a, b| a.key_prefix.cmp(&b.key_prefix));
+        crate::sort::sort_unstable_by(&mut authorities, |a, b| a.key_prefix.cmp(&b.key_prefix));
         for pair in authorities.windows(2) {
             if pair[1].key_prefix.starts_with(&pair[0].key_prefix) {
                 return Err(MemoryAllocationPoolError::OverlappingNamespaces {
@@ -256,6 +256,31 @@ pub enum MemoryAllocationPoolError {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn namespace_admission_checks_segments_and_complete_key_length() {
+        for prefix in ["a.", "app.a_0.", "app.v0.", "app.v1."] {
+            let grant = super::MemoryAuthority::new("app", prefix).unwrap();
+            assert_eq!(grant.key_prefix(), prefix);
+        }
+        for prefix in ["", ".", "app", "app..", "app.0.", "App.", "app/a."] {
+            assert!(matches!(
+                super::MemoryAuthority::new("app", prefix),
+                Err(super::MemoryAllocationPoolError::InvalidKeyPrefix { key_prefix })
+                    if key_prefix == prefix
+            ));
+        }
+        for byte in 0..=u8::MAX {
+            let prefix = format!("app.a{}.", char::from(byte));
+            let allowed = byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'_';
+            assert_eq!(super::MemoryAuthority::new("app", prefix).is_ok(), allowed);
+        }
+        assert!(super::MemoryAuthority::new("app", format!("{}.", "a".repeat(125))).is_ok());
+        assert!(matches!(
+            super::MemoryAuthority::new("app", format!("{}.", "a".repeat(126))),
+            Err(super::MemoryAllocationPoolError::InvalidKeyPrefix { .. })
+        ));
+    }
+
     use super::*;
 
     #[test]

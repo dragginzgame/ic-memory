@@ -54,6 +54,9 @@ when recording release qualification; retain failed runs and their limitations.
 - Actionlint and ShellCheck for `make lint-tooling`. CI installs exact
   snapshot versions and hashes from `ci/tool-versions.env` using the
   reviewed shared installers. Local installation is a separate network step.
+- Hosted evidence readback uses `gh` and `unzip` from the declared runner images.
+  The command requires an explicit token with `actions:read`; local portable
+  checks substitute GitHub responses and need no credentials or network.
 - Crates.io credentials are needed only for maintainer publication. Tests use
   deterministic command substitutes and never need credentials or network.
 
@@ -222,8 +225,8 @@ aliases, target/dev/build declarations, rejected child overrides and independent
 workspace discovery. Its workspace-version reader is a fixture dependency;
 the Rust release adapter still owns this crate's `workspace.package.version`.
 
-The actionlint and ShellCheck setup commands delegate to the shared
-`install-ci-tool.sh` implementation. Existing arguments and pins are unchanged.
+The actionlint and ShellCheck setup commands use the shared
+`install-ci-tool.sh TOOL` entrypoint directly. Existing arguments and pins are unchanged.
 Rejected checksums or versions preserve the selected executable and retain the
 failed candidate. Snapshot integrity and focused Linux checks are separate from
 native macOS qualification; see the
@@ -306,10 +309,13 @@ command's status through Bash pipefail; failure collectors run only after a fail
 job step.
 The native matrix also runs a controlled host-tool fixture failure with substitute
 downloads/binaries, archives it through this same collector, uploads/downloads the
-exact returned artifact ID and verifies the archive digest against an oracle kept
+exact returned artifact ID and digest through the reviewed downloader, then
+verifies the archive digest against an oracle kept
 outside the upload. Payload checks preserve original status/logs, unusual names,
 modes and unfollowed links. There is no artifact-name fallback or retry of the
-producing failure. Configured coverage and local tests do not prove a live upload.
+producing failure. Reported HTTP 404 responses at artifact metadata/ZIP readback
+receive bounded retries, with each attempt retained; other failures stop readback.
+Configured coverage and local tests do not prove a live upload.
 
 `make test-failure-evidence` runs the common archive and consumer selection fixtures
 offline. They are also part of `test-tools`. For CI transport qualification,
