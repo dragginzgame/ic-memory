@@ -95,13 +95,13 @@ fn observations_allow_configured_generic_bootstrap_and_repeated_adoption() {
             assert_eq!(memory.grow(1), Ok(0));
             memory.write(0, &[7, 8, 9]);
             let before = default_memory_manager_memory_allocations().unwrap();
-            assert_eq!(before.bucket_size_pages, pages);
+            assert_eq!(before.summary.bucket_size_pages, pages);
             for result in diagnostic_observations() {
                 result.unwrap();
             }
             assert_eq!(default_memory_manager_memory_allocations().unwrap(), before);
             let summary = default_memory_manager_memory_allocation_summary().unwrap();
-            assert_eq!(summary.physical_extent, before.physical_extent);
+            assert_eq!(summary.physical_extent, before.summary.physical_extent);
             assert_eq!(summary.current_generation, Some(committed.generation()));
             assert_eq!(
                 bootstrap_default_memory_manager_with_config(&snapshot(), config, &pool(), &GenericAllocationPolicy).unwrap(),

@@ -10,46 +10,12 @@ fixture="$(CDPATH="" cd -P -- "$fixture" && printf '%s/.' "$PWD")"
 fixture="${fixture%/.}"
 # shellcheck source=scripts/ci/fixture-lifecycle.sh
 source "$ROOT/scripts/ci/fixture-lifecycle.sh"
+# shellcheck source=scripts/ci/fixture-retention-probes.sh
+source "$ROOT/scripts/ci/fixture-retention-probes.sh"
 fixture_complete=false
 trap 'fixture_finish "$?" "$fixture" "Consumer retention probes retained"' EXIT
-export RETENTION_SOURCE_ROOT="$ROOT" RETENTION_EXIT_PATH="$fixture/exit-path"
 for name in release-adapters failure-evidence git-hooks release-runner; do
-    for failure in nounset nounset-function command nonzero premature completed failed-completion; do
-        # shellcheck disable=SC2016 # Literal source for the disposable child.
-        case "$failure" in
-            nounset) injection='unset RETENTION_UNBOUND; printf "%s\n" "$RETENTION_UNBOUND"'; expected=1 ;;
-            nounset-function) injection='unset RETENTION_UNBOUND; probe_unbound() { echo "$RETENTION_UNBOUND"; }; probe_unbound'; expected=1 ;;
-            command) injection='false'; expected=1 ;;
-            nonzero) injection='exit 23'; expected=23 ;;
-            premature) injection='exit 0'; expected=1 ;;
-            completed) injection='fixture_complete=true; exit 0'; expected=0 ;;
-            failed-completion) injection='fixture_complete=true; exit 23'; expected=23 ;;
-        esac
-        RETENTION_INJECTION="$injection" awk '
-            { print }
-            /^(ROOT|root)=".*%\/\.\}"$/ {
-                print "ROOT=\"$RETENTION_SOURCE_ROOT\""
-                print "root=\"$RETENTION_SOURCE_ROOT\""
-            }
-            /^trap .* EXIT$/ && !injected {
-                print "printf \"%s\\n\" \"${fixture:-${FIXTURE:-${FIXTURE_ROOT:-}}}\" > \"$RETENTION_EXIT_PATH\""
-                print "printf \"retained evidence\\n\" > \"${fixture:-${FIXTURE:-${FIXTURE_ROOT:-}}}/exit-evidence\""
-                print ENVIRON["RETENTION_INJECTION"]
-                print "exit 99"
-                injected=1
-            }
-            END { if (!injected) exit 1 }
-        ' "$ROOT/scripts/ci/test-$name.sh" > "$fixture/probe.sh"
-        status=0
-        TMPDIR="$fixture" "$BASH" "$fixture/probe.sh" > "$fixture/$name-$failure.log" 2>&1 || status=$?
-        [[ "$status" == "$expected" ]] || exit 1
-        retained="$(cat "$RETENTION_EXIT_PATH")"
-        [[ -n "$retained" ]] || exit 1
-        if [[ "$expected" == 0 ]]; then [[ ! -e "$retained" ]] || exit 1
-        else
-            [[ -d "$retained" && "$(cat "$retained/exit-evidence")" == 'retained evidence' ]] || exit 1
-        fi
-    done
+    fixture_probe_exits "$ROOT/scripts/ci/test-$name.sh" "$fixture" "$ROOT" "$name" || exit 1
 done
 # Run the actual checker against an owner returning the wrong failure status.
 # It must stop after the first observation, before testing any other case.
@@ -57,6 +23,7 @@ assertion_root="$fixture/assertion-source"
 mkdir -p "$assertion_root/scripts/ci"
 cp "$ROOT/scripts/ci/test-consumer-fixture-retention.sh" "$assertion_root/scripts/ci/"
 cp "$ROOT/scripts/ci/fixture-lifecycle.sh" "$assertion_root/scripts/ci/"
+cp "$ROOT/scripts/ci/fixture-retention-probes.sh" "$assertion_root/scripts/ci/"
 for name in release-adapters failure-evidence git-hooks release-runner; do
     cat > "$assertion_root/scripts/ci/test-$name.sh" <<'PROBE'
 #!/usr/bin/env bash

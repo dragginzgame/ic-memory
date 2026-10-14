@@ -87,9 +87,9 @@ dependencies = [
 
 [[package]]
 name = "equivalent"
-version = "1.0.2"
+version = "1.0.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "877a4ace8713b0bcf2a4e7eec82529c029f1d0619886d18145fea96c3ffe5c0f"
+checksum = "00d174d5400e5e8fd687ad1049e2f578285fa914201b1af7e8b112a4546bd826"
 
 [[package]]
 name = "errno"
@@ -136,18 +136,18 @@ checksum = "ed5909b6e89a2db4456e54cd5f673791d7eca6732202bbf2a9cc504fe2f9b84a"
 
 [[package]]
 name = "ic-host-artifacts"
-version = "0.17.6"
+version = "0.17.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f13a4c0040a76c9615d9676e5be21dbd162078c4b53f55791fb644eb26a46cee"
+checksum = "41aeea971357391075e98a9522eec97c30fa9c0eb6cd62f5c3622f14ef6c9f90"
 dependencies = [
  "sha2",
 ]
 
 [[package]]
 name = "ic-host-fs"
-version = "0.17.6"
+version = "0.17.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c8e41e014ad525cde28ff124095fbfe1d9f91423a15ee2c19425024ddf123f14"
+checksum = "c98b03923603d9251024e58dae0b531fbf840e6e78cd69b569e2a5fdc41d8b87"
 dependencies = [
  "ic-host-artifacts",
  "rustix",
@@ -155,9 +155,9 @@ dependencies = [
 
 [[package]]
 name = "ic-host-process"
-version = "0.17.6"
+version = "0.17.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "958cfc0840f924a52f74b892ba7ea7fb08dcb95ca55acbd254cc519022305b05"
+checksum = "7b55855de4badc60f1d2391bb8571147d285fe7cf9a10f91d091b217d0683b64"
 dependencies = [
  "ic-host-artifacts",
  "ic-host-fs",
@@ -485,18 +485,18 @@ checksum = "23b97319f7b8343df12cc98938e5c3eb436064524c8d2b4e30a1d3a36eecdf81"
 
 [[package]]
 name = "zerocopy"
-version = "0.8.62"
+version = "0.8.63"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "86502bf56ac7c77571a32e2647bb2a15894565e981fb2a48d7bde2d91c965a9d"
+checksum = "e5fe1f8f1b06191a00962174c61aa5005e0bb391a6d80d07e24d115c01a92ed8"
 dependencies = [
  "zerocopy-derive",
 ]
 
 [[package]]
 name = "zerocopy-derive"
-version = "0.8.62"
+version = "0.8.63"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5457206954b06561e2608c7e19cf58b1926586d999c246eebe4502f7e2039d1a"
+checksum = "863ad3ac83293fb4d740aedbfdc9240dd8d1a50c1099acd76ce80ce7c7230c7f"
 dependencies = [
  "proc-macro2",
  "quote",

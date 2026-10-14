@@ -227,6 +227,9 @@ impl SealedDeclarationSnapshot {
         for record in ledger.records() {
             occupied[usize::from(record.slot().id())] = true;
         }
+        // Retained slots are already occupied. The iterator consumes each new
+        // ID once, so no request rescans or updates that recovered occupancy.
+        let mut available_ids = 0..crate::MEMORY_MANAGER_INVALID_ID;
         // Only the original requests can allocate new slots and they are already
         // canonical. Admission selections are known-only: all their slots are
         // occupied above regardless of selection order. Final declarations are
@@ -248,7 +251,7 @@ impl SealedDeclarationSnapshot {
                 pool.validate_id(record.slot().id())?;
                 record.slot().id()
             } else {
-                (0..crate::MEMORY_MANAGER_INVALID_ID)
+                available_ids
                     .find(|id| pool.contains(*id) && !occupied[usize::from(*id)])
                     .ok_or_else(|| crate::MemoryResolutionError::Exhausted {
                         stable_key: request.stable_key.clone(),
@@ -256,7 +259,6 @@ impl SealedDeclarationSnapshot {
                     })?
             };
             let slot = crate::MemoryManagerSlot::new(id).expect("usable id");
-            occupied[usize::from(id)] = true;
             // Request construction checked authority/key/schema, and recovery
             // checked historical schemas. The final declaration needs only
             // key/schema: do not copy the already-checked authority string.

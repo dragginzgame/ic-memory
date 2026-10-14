@@ -159,7 +159,7 @@ validate-toolchain:
 
 wasm-size:
 	+cargo +$(VALIDATION_TOOLCHAIN) build --locked --offline --profile wasm-size --target wasm32-unknown-unknown \
-		--example wasm-core-size-probe --example wasm-diagnostics-size-probe --example wasm-key-only-size-probe --example wasm-admission-size-probe \
+		--example wasm-core-size-probe --example wasm-diagnostics-size-probe --example wasm-admission-size-probe \
 		--example wasm-runtime-integration-size-probe
 	+@$(TOOL) wasm-size
 

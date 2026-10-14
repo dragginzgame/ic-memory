@@ -1,5 +1,34 @@
 # Changelog
 
+## [0.37.0]
+
+- **Breaking:** detailed allocation reports contain `summary` and `memories`;
+  read numeric totals through `report.summary`
+  ([#84 — Compose allocation reports from their summary](https://github.com/dragginzgame/ic-memory/issues/84)).
+- Encode bounded ledger publication bytes once while preserving the Cell format
+  and capacity-refusal checks
+  ([#85 — Prepare bounded ledger bytes once](https://github.com/dragginzgame/ic-memory/issues/85)).
+
+- Admit retained package copy descriptors through Host 0.17.9, refusing
+  replacement FIFOs without waiting for a writer
+  ([#83 — Prevent retained-package FIFO hangs](https://github.com/dragginzgame/ic-memory/issues/83)).
+- Adopt Shared Tooling 0.12.4 and delegate fixture-retention probes to their
+  canonical helper, preserving actual archive and refusal checks
+  ([#81 — Adopt canonical fixture-retention probes](https://github.com/dragginzgame/ic-memory/issues/81),
+  [Shared #174 — Share fixture-retention qualification](https://github.com/dragginzgame/shared-tooling/issues/174)).
+- Delegate advisory README dependency rendering to Shared, preserving reminders
+  without turning documentation examples into release admission
+  ([#87 — Adopt the canonical advisory README renderer](https://github.com/dragginzgame/ic-memory/issues/87),
+  [Shared #178 — Own advisory README dependency rendering](https://github.com/dragginzgame/shared-tooling/issues/178)).
+- Retire the duplicate key-only Wasm probe; retain the core baseline and distinct
+  runtime qualification probes
+  ([#80 — Retire the duplicate key-only Wasm probe](https://github.com/dragginzgame/ic-memory/issues/80)).
+- Resolve new allocation IDs with one forward scan, preserving lowest-free
+  placement and retained reservations
+  ([#79 — Avoid repeated free-slot scans](https://github.com/dragginzgame/ic-memory/issues/79)).
+
+[Detailed notes](docs/changelog/0.37.md)
+
 ## [0.36.4] - 2026-10-13
 
 - Reduce bootstrap Wasm by sharing bounded sorting and validating namespace

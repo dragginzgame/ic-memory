@@ -68,7 +68,7 @@ fn custom_default_policy_bootstrap_is_identity_bound_and_idempotent() {
     assert!(ic_memory::is_default_memory_manager_bootstrapped().unwrap());
     assert_eq!(ic_memory::committed_allocations().unwrap(), first);
     let before = ic_memory::default_memory_manager_memory_allocations().unwrap();
-    assert_eq!(before.bucket_size_pages, 16);
+    assert_eq!(before.summary.bucket_size_pages, 16);
     assert!(matches!(
         ic_memory::bootstrap_default_memory_manager_with_config(
             &snapshot(),

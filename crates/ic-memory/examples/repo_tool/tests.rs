@@ -4,6 +4,69 @@
 use super::*;
 use std::cell::RefCell;
 
+#[cfg(unix)]
+#[test]
+fn package_retention_refuses_a_replaced_fifo_without_a_writer() {
+    if env::var_os("IC_MEMORY_PACKAGE_FIFO_CHILD").is_some() {
+        let fixture = Fixture::new();
+        let package = fixture.repo.package_path("0.13.0").unwrap();
+        fs::create_dir_all(package.parent().unwrap()).unwrap();
+        fs::write(&package, b"package bytes").unwrap();
+        fixture.repo.exec.state.borrow_mut().archive_change = Some(package);
+        fixture.fail("archive-fifo");
+        let error = fixture.repo.record_package("0.13.0").unwrap_err();
+        let ic_host_fs::durable::NamedWriteError::Producer {
+            source,
+            cleanup_error: None,
+        } = error
+            .downcast_ref::<ic_host_fs::durable::NamedWriteError<std::io::Error>>()
+            .unwrap()
+        else {
+            panic!("expected clean producer refusal");
+        };
+        assert!(matches!(
+            source
+                .get_ref()
+                .unwrap()
+                .downcast_ref::<ic_host_artifacts::artifact::ArtifactError>(),
+            Some(ic_host_artifacts::artifact::ArtifactError::NotRegularFile)
+        ));
+        let digest = Sha256Digest::compute(b"package bytes").to_string();
+        assert!(!fixture.repo.retained_package(&digest).unwrap().exists());
+        fs::write(
+            env::var_os("IC_MEMORY_PACKAGE_FIFO_RESULT").unwrap(),
+            b"refused",
+        )
+        .unwrap();
+        return;
+    }
+
+    // A regression to blocking File::open must fail without hanging the suite.
+    let parent = Fixture::new();
+    let result = parent.repo.root.join("fifo-result");
+    let mut command = Command::new(env::current_exe().unwrap());
+    command
+        .args([
+            "--exact",
+            "repo_tool::tests::package_retention_refuses_a_replaced_fifo_without_a_writer",
+            "--test-threads=1",
+        ])
+        .env("IC_MEMORY_PACKAGE_FIFO_CHILD", "1")
+        .env("IC_MEMORY_PACKAGE_FIFO_RESULT", &result);
+    capture_command(
+        &mut command,
+        OutputLimits {
+            stdout: OutputLimit::Terminate(16 * 1024),
+            stderr: OutputLimit::Terminate(16 * 1024),
+            timeout: Some(std::time::Duration::from_secs(15)),
+        },
+    )
+    .and_then(CompletedExecution::require_success)
+    .and_then(CompletedExecution::require_complete)
+    .unwrap();
+    assert_eq!(fs::read(result).unwrap(), b"refused");
+}
+
 const MANIFEST: &str = "[workspace]\nmembers = [\"crates/ic-memory\"]\n[workspace.package]\nversion = \"0.12.3\"\nrust-version = \"1.88.0\"\n[workspace.dependencies]\nother = \"0.12.3\"\n";
 const PACKAGE: &str = "[package]\nname = \"ic-memory\"\nversion.workspace = true\n";
 const LOCK: &str = "version = 4\n[[package]]\nname = \"ic-memory\"\nversion = \"0.12.3\"\n[[package]]\nname = \"other\"\nversion = \"0.12.3\"\n";
@@ -170,38 +233,11 @@ impl Fixture {
                 Err(error) => panic!("could not create fixture {}: {error}", candidate.display()),
             }
         };
-        let source = BTreeMap::from([
+        let mut source = BTreeMap::from([
             (".gitignore".to_owned(), "target/\n".to_owned()),
             (
                 "crates/ic-memory/src/lib.rs".to_owned(),
                 "// fixture library\n".to_owned(),
-            ),
-            (
-                WORKSPACE_VERSION_RENDERER.to_owned(),
-                fs::read_to_string(
-                    Path::new(env!("CARGO_MANIFEST_DIR"))
-                        .join("../..")
-                        .join(WORKSPACE_VERSION_RENDERER),
-                )
-                .unwrap(),
-            ),
-            (
-                LOCK_REWRITER.to_owned(),
-                fs::read_to_string(
-                    Path::new(env!("CARGO_MANIFEST_DIR"))
-                        .join("../..")
-                        .join(LOCK_REWRITER),
-                )
-                .unwrap(),
-            ),
-            (
-                CHANGELOG_FINALIZER.to_owned(),
-                fs::read_to_string(
-                    Path::new(env!("CARGO_MANIFEST_DIR"))
-                        .join("../..")
-                        .join(CHANGELOG_FINALIZER),
-                )
-                .unwrap(),
             ),
             ("Cargo.lock".to_owned(), LOCK.to_owned()),
             ("Cargo.toml".to_owned(), MANIFEST.to_owned()),
@@ -221,6 +257,22 @@ impl Fixture {
                 "# Detail\n\n## [0.13.0]\n\nFixture changes.\n".to_owned(),
             ),
         ]);
+        for helper in [
+            README_VERSION_RENDERER,
+            WORKSPACE_VERSION_RENDERER,
+            LOCK_REWRITER,
+            CHANGELOG_FINALIZER,
+        ] {
+            source.insert(
+                helper.to_owned(),
+                fs::read_to_string(
+                    Path::new(env!("CARGO_MANIFEST_DIR"))
+                        .join("../..")
+                        .join(helper),
+                )
+                .unwrap(),
+            );
+        }
         for (path, text) in &source {
             fs::create_dir_all(root.join(path).parent().unwrap()).unwrap();
             fs::write(root.join(path), text).unwrap();
@@ -546,6 +598,12 @@ impl Execute for Substitute {
                 if phase.as_deref() == Some("archive-read") {
                     fs::remove_file(&source)?;
                     fs::create_dir(source)?;
+                } else if phase.as_deref() == Some("archive-fifo") {
+                    fs::remove_file(&source)?;
+                    require(
+                        Command::new("mkfifo").arg(source).status()?.success(),
+                        "FIFO fixture creation failed",
+                    )?;
                 } else {
                     fs::write(source, b"changed after digest admission")?;
                 }
@@ -2128,7 +2186,7 @@ fn archive_publication_errors_preserve_validation_and_reconcile_visible_bytes() 
 }
 
 #[test]
-fn archive_copy_io_failure_preserves_native_error_and_unpublished_state() {
+fn archive_copy_refuses_a_directory_and_preserves_unpublished_state() {
     let fixture = Fixture::new();
     let package = fixture.repo.package_path("0.13.0").unwrap();
     fs::create_dir_all(package.parent().unwrap()).unwrap();
@@ -2138,7 +2196,7 @@ fn archive_copy_io_failure_preserves_native_error_and_unpublished_state() {
     fs::create_dir_all(retained.parent().unwrap()).unwrap();
     let foreign = retained.with_extension("crate.tmp");
     fs::write(&foreign, b"unrelated evidence").unwrap();
-    fixture.repo.exec.state.borrow_mut().archive_change = Some(package.clone());
+    fixture.repo.exec.state.borrow_mut().archive_change = Some(package);
     fixture.fail("archive-read");
 
     let error = fixture.repo.record_package("0.13.0").unwrap_err();
@@ -2151,9 +2209,13 @@ fn archive_copy_io_failure_preserves_native_error_and_unpublished_state() {
     else {
         panic!("archive read failure must retain its producer error before publication");
     };
-    let expected = fs::read(&package).unwrap_err();
-    assert_eq!(actual.kind(), expected.kind());
-    assert_eq!(actual.raw_os_error(), expected.raw_os_error());
+    assert!(matches!(
+        actual
+            .get_ref()
+            .unwrap()
+            .downcast_ref::<ic_host_artifacts::artifact::ArtifactError>(),
+        Some(ic_host_artifacts::artifact::ArtifactError::NotRegularFile)
+    ));
     assert!(!retained.exists());
     assert_eq!(fs::read(&foreign).unwrap(), b"unrelated evidence");
     assert_eq!(fs::read_dir(retained.parent().unwrap()).unwrap().count(), 1);

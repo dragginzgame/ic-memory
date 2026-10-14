@@ -3,23 +3,38 @@
 Read this when changing the shared snapshot, tool setup, release adapters,
 formatting or evidence retention. It preserves the adoption history and local
 selection boundaries previously embedded in AGENTS.md. The manifest owns exact
-export identity; the live-policy exception in [AGENTS.md](../AGENTS.md) owns
-active engineering policy. Historical shared-version descriptions do not freeze
-that policy or establish new native qualification. Code paths are repository-relative.
+export and policy identity; [AGENTS.md](../AGENTS.md) owns the local overlay.
+Historical shared-version descriptions do not override that selected policy
+or establish new native qualification. Code paths are repository-relative.
 
 The existing tooling snapshot at revision
-`031d214ed044705b989d43e2379f30e6a3d44749` is recorded in
+`8b2dbd70a24330fdc6c102a01772f4d3e5b628d7` is recorded in
 [.shared-tooling.snapshot](../.shared-tooling.snapshot). It identifies the vendored
-files, hashes and executable modes; it does not freeze the active local policy.
+files, hashes and executable modes, including the adopted policy.
 Keep its provenance accurate and never edit vendored files in place. Do not
-attribute uncommitted shared files to that recorded revision. The live local
-[user-triggered maintenance rule](../../shared-tooling/rules/agent-maintenance.md)
-also applies within its activation scope and is included in this recorded snapshot.
+attribute uncommitted shared files to that recorded revision. The adopted
+[user-triggered maintenance rule](../rules/agent-maintenance.md) applies within
+its activation scope. The former live-policy exception is retired; future policy
+changes require reviewed snapshot adoption.
 These instructions are the repository's local overlay.
 
-The single 105-file snapshot uses reviewed committed Shared Tooling at that
-revision, whose committed source `VERSION` is 0.11.4. The manifest records that
-display version separately from its authoritative commit identity. The 78 explicit
+The 0.12.2 refresh directly selects `fixture-retention-probes.sh`. Memory's
+retention checker supplies its own fixture roster and retains checker-refusal
+and archive round-trip coverage. Shared owns the seven-case injection/status/
+evidence loop; callers keep physical anchoring and product-specific assertions.
+The canonical evidence action delegates tool selection/archive orchestration to
+the derived collector. The finalizer requires numbered candidates at the top;
+Memory keeps its saved-source renderer and receipt/rollback boundaries. Tool
+pins, compiler/MSRV, native Host selection and the independent runtime graph are
+unchanged. The 0.12.4 selection adds the advisory README dependency renderer
+as a directly used root. It preserves unsupported or ambiguous examples and
+reminders; Memory retains independent release identity and receipt admission.
+Producer full-suite failures remain separate from focused renderer and consumer
+qualification, tracked by [Shared #179 — Correct dashboard width fixtures](https://github.com/dragginzgame/shared-tooling/issues/179).
+
+The single 109-file snapshot uses reviewed committed Shared Tooling at that
+revision, whose committed source `VERSION` is 0.12.4. The manifest records that
+display version separately from its authoritative commit identity. The 80 explicit
 roots select the reviewed governance catalog and Memory's maintained Make, hook, CI,
 archive and fixture entrypoints. Their generated companion closure preserves
 the directly invoked canonical local-package lock rewriter and the baseline-linked
@@ -286,10 +301,8 @@ version parsing stays in the Rust release adapter. The linked tag-maintenance
 guide is documentation only; no tag-maintenance executable is adopted. Release-note
 finalization uses the unchanged shared helper; Memory retains saved-source and
 payload admission plus its bare historical target-identity check. CI and release
-checks use these immutable exports without a sibling checkout. The live
-local policy exception above continues to govern subsequent uncommitted rule
-development. The read-only `scripts/dev/gh-ci.sh` helper supports exact-commit
-inspection across workflows; use authenticated GitHub CLI and the shared
+checks use these immutable exports without a sibling checkout. The read-only
+`scripts/dev/gh-ci.sh` helper supports exact-commit inspection across workflows; use authenticated GitHub CLI and the shared
 maintenance rule's evidence checks. Relevant issue work in GitHub repositories
 owned by `dragginzgame` follows that rule's standing authority; issue actions in
 other GitHub repositories require explicit destination/action authorization.

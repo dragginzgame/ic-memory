@@ -340,7 +340,7 @@ mod tests {
                 committed_allocations(),
                 Err(RuntimeOpenError::NotBootstrapped)
             );
-            assert_eq!(before.bucket_size_pages, 16);
+            assert_eq!(before.summary.bucket_size_pages, 16);
             assert!(matches!(
                 default_memory_manager_diagnostic_export(),
                 Err(RuntimeDiagnosticError::NotBootstrapped)
@@ -488,6 +488,7 @@ mod tests {
         assert_eq!(
             default_memory_manager_memory_allocations()
                 .unwrap()
+                .summary
                 .bucket_size_pages,
             1
         );
