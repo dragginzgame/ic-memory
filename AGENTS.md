@@ -183,19 +183,13 @@ pub struct SchemaMetadata {
 Keep this shape for new or edited item-level docs unless local context clearly
 requires a different style.
 
-## Validation cadence during shared-policy adoption
+## Validation policy
 
-Shared Tooling owns the [validation policy](DRAGGINZGAME.md#validation-and-evidence);
-local guidance supplies commands and product qualification requirements only.
-Maintainer-approved exception (2026-10-14): until this snapshot adopts Shared
-Tooling's focused-handoff policy, replace its full-suite-before-handoff requirement
-with focused checks of changed behavior and directly affected callers, including
-relevant failure/recovery paths. Reuse unchanged passing evidence. Documentation
-changes need link, consistency and diff checks only. Run local full suites only
-for an explicitly authorized release or an explicit request for those checks;
-implementation, continuation, PR preparation and readiness requests do not qualify.
-Report tested scope; an unrun full suite alone is not a handoff blocker. Configured
-CI, required branch checks, release gates and separate effect authority remain
-unchanged. This exception avoids redundant local testing; it does not claim a
-snapshot refresh. On reviewed adoption, remove this exception and retain only the
-link to the canonical policy and repository-specific commands.
+Apply Shared Tooling's [canonical validation cadence](https://github.com/dragginzgame/shared-tooling/blob/4256171b5b7ec4c4cc4078548c1c1617ee150699/DRAGGINZGAME.md#validation-and-evidence),
+adopted by exact revision `4256171b5b7ec4c4cc4078548c1c1617ee150699` (0.12.5).
+This revision-bound policy reference supersedes only the validation cadence in
+our older snapshot; executable tooling and all other shared rules retain their
+recorded snapshot revision. Local guidance supplies commands and product
+qualification requirements. Configured CI and release gates remain unchanged.
+On snapshot adoption of this policy, replace this separate reference with the
+local baseline link; do not keep a duplicate cadence or temporary exception.

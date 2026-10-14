@@ -59,7 +59,7 @@ for focused runtime checks and full qualification.
   would otherwise create commits, tags or publication; never run the real hook.
 - Check active builds before compilation or edits. Select focused checks for repairs
   under the
-  [validation cadence](../../../AGENTS.md#validation-cadence-during-shared-policy-adoption).
+  [validation cadence](../../../AGENTS.md#validation-policy).
   The full `make validate` release suite includes Wasm budgets, development
   packaging and MSRV qualification.
   Documentation-only work needs link, consistency and diff checks. Release,
