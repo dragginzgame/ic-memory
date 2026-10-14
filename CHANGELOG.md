@@ -1,6 +1,6 @@
 # Changelog
 
-## [0.37.0]
+## [0.37.0] - 2026-10-14
 
 - **Breaking:** detailed allocation reports contain `summary` and `memories`;
   read numeric totals through `report.summary`
