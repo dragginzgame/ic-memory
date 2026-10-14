@@ -134,6 +134,12 @@ test-hooks: format-tools-check
 test:
 	+cargo +$(VALIDATION_TOOLCHAIN) test --locked --offline -- --test-threads=1
 
+.PHONY: test-memory-observer
+test-memory-observer:
+	+cargo +$(VALIDATION_TOOLCHAIN) clippy --locked --offline --lib --tests --features test-support -- -D warnings
+	+cargo +$(VALIDATION_TOOLCHAIN) test --locked --offline --lib --features test-support test_support::
+	+cargo +$(VALIDATION_TOOLCHAIN) check --locked --offline --example allocation_measurements --features test-support
+
 version:
 	+@$(TOOL) version
 
@@ -148,7 +154,7 @@ validate:
 
 validate-toolchain:
 	$(MAKE) --no-print-directory shared-tooling-check tools-check format-tools-check
-	$(MAKE) --no-print-directory check-pins test-pins test-tools test-tooling test-release-adapters test-release-runner test-hooks fmt-check
+	$(MAKE) --no-print-directory check-pins test-pins test-tools test-tooling test-release-adapters test-release-runner test-hooks fmt-check test-memory-observer
 	+cargo +$(VALIDATION_TOOLCHAIN) clippy --locked --offline --all-targets -- -D warnings
 	+cargo +$(VALIDATION_TOOLCHAIN) test --locked --offline -- --test-threads=1
 	+RUSTDOCFLAGS='-D warnings' cargo +$(VALIDATION_TOOLCHAIN) doc --locked --offline --no-deps

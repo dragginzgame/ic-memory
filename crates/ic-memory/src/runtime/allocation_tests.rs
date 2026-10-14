@@ -2,14 +2,12 @@ use super::{
     AllocationBinding, MemoryManagerLayoutError, MemoryRuntime, RuntimeConstructionError,
     RuntimeDiagnosticError, RuntimeOpenError, layout, policy::GenericAllocationPolicy,
 };
+use crate::test_support::Metered;
 use crate::{IC_MEMORY_LEDGER_STABLE_KEY, MEMORY_MANAGER_LEDGER_ID};
 use ic_stable_structures::{
     Memory, VectorMemory,
     memory_manager::{MemoryId, MemoryManager},
 };
-#[path = "../../examples/support/metered.rs"]
-mod metered;
-use metered::Metered;
 
 fn conservation(report: &super::MemoryAllocations) {
     assert_eq!(report.memories.len(), 255);

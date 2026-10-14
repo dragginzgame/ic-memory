@@ -280,7 +280,7 @@ jobs:
         shell: bash
         env:
           RUSTUP_TOOLCHAIN: ${{ steps.pin.outputs.channel }}
-        run: cargo check --locked --offline --all-targets 2>&1 | tee "$RUNNER_TEMP/msrv.log"
+        run: cargo check --locked --offline --all-targets --features test-support 2>&1 | tee "$RUNNER_TEMP/msrv.log"
       - name: Retain failed MSRV diagnostics
         if: failure()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # reviewed Shared Tooling pin, v7

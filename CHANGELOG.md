@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.38.1]
+
+- Add opt-in `test-support` heap-memory call observations with shared clone/reset
+  state and explicit counter overflow; reuse the owner in allocation fixtures.
+  [Detailed notes](docs/changelog/0.38.md).
+
 ## [0.38.0] - 2026-10-14
 
 ### Fixed

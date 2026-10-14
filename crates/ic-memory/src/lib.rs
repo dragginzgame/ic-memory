@@ -93,6 +93,9 @@ mod slot;
 mod sort;
 mod stable_cell;
 mod text;
+
+#[cfg(any(test, feature = "test-support"))]
+pub mod test_support;
 mod validation;
 
 #[cfg(test)]

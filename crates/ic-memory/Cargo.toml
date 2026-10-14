@@ -19,6 +19,9 @@ ic-host-artifacts.workspace = true
 ic-host-fs.workspace = true
 ic-host-process.workspace = true
 
+[features]
+test-support = []
+
 [dependencies]
 ciborium.workspace = true
 ic-stable-structures.workspace = true
@@ -29,6 +32,10 @@ thiserror.workspace = true
 serde_json.workspace = true
 toml.workspace = true
 trybuild.workspace = true
+
+[[example]]
+name = "allocation_measurements"
+required-features = ["test-support"]
 
 [[example]]
 name = "composed_host"

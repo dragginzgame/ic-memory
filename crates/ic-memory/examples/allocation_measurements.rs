@@ -1,12 +1,10 @@
 //! Disposable native fixtures, not Toko live attribution or IC instruction costs.
-#[path = "support/metered.rs"]
-mod metered;
+use ic_memory::test_support::{Counts, Metered};
 use ic_memory::{
     AllocationPolicy, MemoryAllocations, MemoryManagerConfig, MemoryManagerSlot, MemoryRuntime,
     PolicyIdentity, PolicyIdentityError, RuntimeBootstrapPolicy, RuntimeMemory, StableKey,
 };
 use ic_stable_structures::{Cell, Memory, StableVec};
-use metered::Metered;
 use std::{convert::Infallible, hint::black_box, time::Instant};
 
 struct Allow;
@@ -24,13 +22,8 @@ impl RuntimeBootstrapPolicy for Allow {
         PolicyIdentity::new("allocation-measurements", 1)
     }
 }
-fn record(
-    bucket: u16,
-    phase: &str,
-    counts: metered::Counts,
-    elapsed: u128,
-    report: &MemoryAllocations,
-) {
+fn record(bucket: u16, phase: &str, counts: Counts, elapsed: u128, report: &MemoryAllocations) {
+    assert!(!counts.overflowed);
     assert_eq!(
         report.summary.physical_extent.bytes,
         report.summary.manager_metadata_bytes

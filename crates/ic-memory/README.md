@@ -338,3 +338,14 @@ common pool has space, and the complete layout passes admission and validation.
 `ic-memory` is pre-1.0 infrastructure extracted from Canic. Current releases use
 the current API and durable format only; earlier pre-1.0 wire formats are not a
 compatibility target.
+
+## Heap-memory test observations
+
+Opt into `ic-memory`'s `test-support` feature for
+`ic_memory::test_support::{Counts, Metered}`. `Metered` wraps the exact exported
+`VectorMemory` substrate. Clones share bytes and observations; `reset()` clears
+only counters. `counts().overflowed` reports lost numeric quality; direct use of
+`bytes` bypasses observation. Call counts are test effects, not IC charges.
+Keep this feature in development dependencies. The allocation example requires
+`--features test-support`; `make test-memory-observer` qualifies its compilation
+and the observer's shared state/overflow tests without running a timing driver.
