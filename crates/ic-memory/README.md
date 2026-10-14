@@ -322,6 +322,13 @@ common pool has space, and the complete layout passes admission and validation.
 
 ## Operations and advanced integration
 
+For fixture-only byte cells, opt in to `test-support` and construct
+`testing::FixtureCell` with explicit backing memory, owner, namespace, key and
+`MemoryManagerConfig`. The helper retains its runtime and uses the ordinary Cell
+format. It does not install lifecycle handlers or bootstrap the global default
+manager. Keep codecs, byte/work limits and restored-state validation in the host;
+fresh empty bytes must never substitute for a required retained journal.
+
 - [Operations and diagnostics](https://github.com/dragginzgame/ic-memory/blob/main/docs/operations.md)
   explains memory attribution, bucket configuration, and runtime reports.
 - [Troubleshooting](https://github.com/dragginzgame/ic-memory/blob/main/docs/troubleshooting.md)

@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.38.1]
+
+- Add opt-in fixture byte-cell construction with explicit backing, namespace,
+  stable key and bucket configuration. Hosts retain codecs, budgets and lifecycle
+  ownership ([#104](https://github.com/dragginzgame/ic-memory/issues/104)). [Detailed notes](docs/changelog/0.38.md).
+
 ## [0.38.0] - 2026-10-14
 
 ### Fixed
