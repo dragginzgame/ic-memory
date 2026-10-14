@@ -13,17 +13,19 @@ root="${root%/.}"
 # Keep inherited hook/index variables from redirecting fixture Git operations.
 while IFS= read -r variable; do unset "$variable"; done < <(git rev-parse --local-env-vars)
 fixture="$(mktemp -d "${TMPDIR:-/tmp}/ic-memory-hooks.XXXXXX")"
+fixture="$(CDPATH="" cd -P -- "$fixture" && printf '%s/.' "$PWD")"
+fixture="${fixture%/.}"
+# shellcheck source=scripts/ci/fixture-lifecycle.sh
+source "$root/scripts/ci/fixture-lifecycle.sh"
 fixture_complete=false
 cleanup_fixture() {
     local fixture_status="$1" fixture_command="$2"
-    [[ "$fixture_complete" == true || "$fixture_status" != 0 ]] || fixture_status=1
-    if [[ "$fixture_status" == 0 ]]; then
-        rm -rf -- "$fixture"
-    else
-        printf 'Hook fixture failed in %s: %s\nRetained fixture: %s\n' "$PWD" "$fixture_command" "$fixture" >&2
-        if [[ -f output ]]; then cat output >&2; fi
+    if [[ "$fixture_status" != 0 || "$fixture_complete" != true ]]; then
+        printf 'Hook fixture failed in %s: %s\n' "$PWD" "$fixture_command" >&2 || :
+        if [[ -f output ]]; then cat output >&2 || :; fi
     fi
-    exit "$fixture_status"
+    fixture_finish "$fixture_status" "$fixture" "Hook fixture retained"
+
 }
 trap 'cleanup_fixture "$?" "$BASH_COMMAND"' EXIT
 source_commit="$(git -C "$root" rev-parse HEAD)"

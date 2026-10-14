@@ -18,9 +18,9 @@ pub use error::{
     AllocationReservationError, AllocationRetirementError, AllocationStageError, LedgerCommitError,
     LedgerIntegrityError,
 };
-pub use payload::{
-    LEDGER_PAYLOAD_FORMAT_VERSION, LedgerPayloadEnvelope, LedgerPayloadEnvelopeError,
-};
+#[cfg(test)]
+pub use payload::LedgerPayloadEnvelope;
+pub use payload::{LEDGER_PAYLOAD_FORMAT_VERSION, LedgerPayloadEnvelopeError};
 pub use record::{
     AllocationLedger, AllocationRecord, AllocationRetirement, AllocationState, RecoveredLedger,
 };
@@ -81,7 +81,7 @@ impl LedgerCommitStore {
     fn recover_committed(
         committed: &CommittedGenerationBytes,
     ) -> Result<RecoveredLedger, LedgerCommitError> {
-        let payload = LedgerPayloadEnvelope::decode_payload(committed.payload())
+        let payload = payload::decode_payload(committed.payload())
             .map_err(LedgerCommitError::PayloadEnvelope)?;
         let ledger = decode_ledger(payload).map_err(LedgerCommitError::Codec)?;
         if committed.generation() != ledger.current_generation {
@@ -143,8 +143,7 @@ impl LedgerCommitStore {
         ledger
             .validate_integrity()
             .map_err(LedgerCommitError::Integrity)?;
-        let payload =
-            LedgerPayloadEnvelope::encode_ledger(ledger).map_err(LedgerCommitError::Integrity)?;
+        let payload = payload::encode_ledger(ledger).map_err(LedgerCommitError::Integrity)?;
         self.physical
             .commit_payload_at_generation(ledger.current_generation, payload)
             .map(|_| ())
@@ -157,8 +156,7 @@ impl LedgerCommitStore {
         &mut self,
         ledger: &AllocationLedger,
     ) -> Result<(), LedgerCommitError> {
-        let payload =
-            LedgerPayloadEnvelope::encode_ledger(ledger).map_err(LedgerCommitError::Integrity)?;
+        let payload = payload::encode_ledger(ledger).map_err(LedgerCommitError::Integrity)?;
         self.physical
             .write_corrupt_inactive_slot(ledger.current_generation, payload);
         Ok(())
@@ -324,7 +322,7 @@ mod tests {
     }
 
     fn enveloped_payload(ledger: &AllocationLedger) -> Vec<u8> {
-        LedgerPayloadEnvelope::encode_ledger(ledger).expect("fixture envelope")
+        payload::encode_ledger(ledger).expect("fixture envelope")
     }
 
     fn ledger_from_payload_fixture(contents: &str) -> AllocationLedger {

@@ -230,13 +230,7 @@ fn diagnostic_bootstrap_binding(
     }
     DiagnosticCheck::failed(
         DiagnosticCode::RuntimeBinding,
-        format!(
-            "tested policy/declaration/pool binding differs from established runtime binding: \
-             tested_policy={tested_policy_identity:?}, \
-             tested_declarations={tested_declaration_fingerprint:?}, \
-             tested_pool={pool:?}, \
-             established={established:?}"
-        ),
+        "tested policy/declaration/pool binding differs from established runtime binding",
     )
 }
 

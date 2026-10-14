@@ -38,17 +38,6 @@ impl<P: AllocationPolicy> AllocationPolicy for RuntimeMemoryManagerPolicy<'_, P>
         }
         self.custom_policy.validate_slot(key, slot)
     }
-
-    fn validate_reserved_slot(
-        &self,
-        key: &StableKey,
-        slot: &MemoryManagerSlot,
-    ) -> Result<(), Self::Error> {
-        if key.as_str() == IC_MEMORY_LEDGER_STABLE_KEY {
-            return Ok(());
-        }
-        self.custom_policy.validate_reserved_slot(key, slot)
-    }
 }
 
 ///
@@ -73,14 +62,6 @@ impl AllocationPolicy for GenericAllocationPolicy {
     }
 
     fn validate_slot(
-        &self,
-        _key: &StableKey,
-        _slot: &MemoryManagerSlot,
-    ) -> Result<(), Self::Error> {
-        Ok(())
-    }
-
-    fn validate_reserved_slot(
         &self,
         _key: &StableKey,
         _slot: &MemoryManagerSlot,

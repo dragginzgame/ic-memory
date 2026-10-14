@@ -50,11 +50,7 @@ pub fn validate_declaration_claim<'ledger>(
         return Ok(ClaimOutcome::Existing { record_index });
     }
 
-    if let Some(record) = find_by_slot(ledger, &declaration.slot) {
-        return Err(ClaimConflict::SlotReused { record });
-    }
-
-    Ok(ClaimOutcome::New)
+    validate_new_claim(ledger, &declaration.slot)
 }
 
 pub fn validate_reservation_claim<'ledger>(
@@ -80,13 +76,7 @@ pub fn validate_reservation_claim<'ledger>(
         };
     }
 
-    if let Some(record) = find_by_slot(ledger, &reservation.slot) {
-        return Err(ReservationClaimConflict::Claim(ClaimConflict::SlotReused {
-            record,
-        }));
-    }
-
-    Ok(ClaimOutcome::New)
+    validate_new_claim(ledger, &reservation.slot).map_err(ReservationClaimConflict::Claim)
 }
 
 fn find_by_key_index(ledger: &AllocationLedger, stable_key: &StableKey) -> Option<usize> {
@@ -96,9 +86,42 @@ fn find_by_key_index(ledger: &AllocationLedger, stable_key: &StableKey) -> Optio
         .position(|record| &record.stable_key == stable_key)
 }
 
-fn find_by_slot<'ledger>(
+fn validate_new_claim<'ledger>(
     ledger: &'ledger AllocationLedger,
     slot: &MemoryManagerSlot,
-) -> Option<&'ledger AllocationRecord> {
-    ledger.records().iter().find(|record| &record.slot == slot)
+) -> Result<ClaimOutcome, ClaimConflict<'ledger>> {
+    if let Some(record) = ledger.records().iter().find(|record| &record.slot == slot) {
+        return Err(ClaimConflict::SlotReused { record });
+    }
+    Ok(ClaimOutcome::New)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn retired_moved_key_keeps_each_operations_error_precedence() {
+        let original = AllocationDeclaration::memory_manager_unlabeled("app.rows.v1", 100).unwrap();
+        let mut record = AllocationRecord::active(&original);
+        record.state = AllocationState::Retired;
+        let ledger = AllocationLedger::new(1, vec![record]).unwrap();
+        let moved = AllocationDeclaration::memory_manager_unlabeled("app.rows.v1", 101).unwrap();
+        assert!(matches!(
+            validate_declaration_claim(&ledger, &moved),
+            Err(ClaimConflict::Tombstoned { .. })
+        ));
+        assert!(matches!(
+            validate_reservation_claim(&ledger, &moved),
+            Err(ReservationClaimConflict::Claim(
+                ClaimConflict::StableKeyMoved { .. }
+            ))
+        ));
+        assert!(matches!(
+            validate_reservation_claim(&ledger, &original),
+            Err(ReservationClaimConflict::Claim(
+                ClaimConflict::Tombstoned { .. }
+            ))
+        ));
+    }
 }

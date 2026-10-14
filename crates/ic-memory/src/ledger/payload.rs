@@ -7,25 +7,23 @@ use crate::constants::LEDGER_PAYLOAD_HEADER_LEN;
 ///
 /// LedgerPayloadEnvelope
 ///
-/// Logical ledger payload envelope embedded inside one physically committed
-/// generation. This layer is decoded after physical dual-slot recovery selects
-/// a committed generation and before any allocation-ledger DTO is decoded.
+/// Owned byte fixture for logical envelopes inside committed generations.
 ///
-/// This is an advanced protocol byte wrapper, not an authority token. Decoding
-/// an envelope only classifies the logical payload; authority is established
-/// later when [`crate::LedgerCommitStore`] routes the payload, checks
-/// the current ledger format, validates committed ledger integrity, and returns
-/// [`crate::RecoveredLedger`].
+/// Production recovery borrows the payload through the private decoder. Tests
+/// use this wrapper to construct valid and deliberately malformed wire inputs;
+/// it does not establish committed ledger authority.
+///
+
+#[cfg(test)]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct LedgerPayloadEnvelope {
-    #[cfg(test)]
     payload: Vec<u8>,
 }
 
+#[cfg(test)]
 impl LedgerPayloadEnvelope {
     /// Wrap a current logical ledger payload.
     #[must_use]
-    #[cfg(test)]
     pub const fn current(payload: Vec<u8>) -> Self {
         Self { payload }
     }
@@ -37,14 +35,12 @@ impl LedgerPayloadEnvelope {
     /// Panics if the payload exceeds the current ledger byte ceiling. Use
     /// `try_encode` for typed errors.
     #[must_use]
-    #[cfg(test)]
     pub fn encode(&self) -> Vec<u8> {
         self.try_encode()
             .expect("payload exceeds the ledger byte ceiling")
     }
 
     /// Try to encode the logical payload envelope.
-    #[cfg(test)]
     pub fn try_encode(&self) -> Result<Vec<u8>, LedgerPayloadEnvelopeError> {
         if self.payload.len() > crate::constants::MAX_LEDGER_BYTES {
             return Err(LedgerPayloadEnvelopeError::PayloadTooLarge {
@@ -59,110 +55,108 @@ impl LedgerPayloadEnvelope {
         Ok(bytes)
     }
 
-    // Serialize directly into the final envelope buffer. The commit boundary
-    // retains its ledger-byte integrity error before any physical mutation.
-    pub(super) fn encode_ledger(
-        ledger: &super::AllocationLedger,
-    ) -> Result<Vec<u8>, super::LedgerIntegrityError> {
-        let mut writer = LedgerWriter(vec![0; LEDGER_PAYLOAD_HEADER_LEN]);
-        match ciborium::into_writer(ledger, &mut writer) {
-            Ok(()) => (),
-            Err(ciborium::ser::Error::Io(err)) if err.kind() == std::io::ErrorKind::WriteZero => {
-                return Err(super::LedgerIntegrityError::LimitExceeded {
-                    resource: "ledger bytes",
-                    limit: crate::constants::MAX_LEDGER_BYTES,
-                });
-            }
-            // Concrete derived serializers have no other recoverable failures.
-            Err(ciborium::ser::Error::Io(_) | ciborium::ser::Error::Value(_)) => {
-                panic!("allocation ledger serialization failed");
-            }
-        }
-        let mut bytes = writer.0;
-        let payload_len = bytes.len() - LEDGER_PAYLOAD_HEADER_LEN;
-        bytes[..LEDGER_PAYLOAD_HEADER_LEN].copy_from_slice(&encoded_header(payload_len));
-        Ok(bytes)
-    }
-
     /// Manually decode the logical payload envelope.
-    #[cfg(test)]
     pub fn decode(bytes: &[u8]) -> Result<Self, LedgerPayloadEnvelopeError> {
         Ok(Self {
-            payload: Self::decode_payload(bytes)?.to_vec(),
+            payload: decode_payload(bytes)?.to_vec(),
         })
-    }
-
-    // Recovery already owns the committed bytes. Validate the same envelope
-    // without copying its bounded payload before logical ledger decoding.
-    pub(super) fn decode_payload(bytes: &[u8]) -> Result<&[u8], LedgerPayloadEnvelopeError> {
-        let Some(magic) = bytes.get(0..8).and_then(|bytes| bytes.try_into().ok()) else {
-            return Err(LedgerPayloadEnvelopeError::Truncated {
-                actual: bytes.len(),
-                minimum: LEDGER_PAYLOAD_HEADER_LEN,
-            });
-        };
-        if &magic != LEDGER_PAYLOAD_MAGIC {
-            return Err(LedgerPayloadEnvelopeError::BadMagic { found: magic });
-        }
-
-        let Some(format_marker) = bytes.get(8..12).and_then(|bytes| bytes.try_into().ok()) else {
-            return Err(LedgerPayloadEnvelopeError::Truncated {
-                actual: bytes.len(),
-                minimum: LEDGER_PAYLOAD_HEADER_LEN,
-            });
-        };
-        if &format_marker != LEDGER_PAYLOAD_FORMAT_MARKER {
-            return Err(LedgerPayloadEnvelopeError::UnsupportedFormat {
-                marker: format_marker,
-                version: None,
-            });
-        }
-
-        let Some(format_version) = bytes.get(12..16).and_then(|bytes| bytes.try_into().ok()) else {
-            return Err(LedgerPayloadEnvelopeError::Truncated {
-                actual: bytes.len(),
-                minimum: LEDGER_PAYLOAD_HEADER_LEN,
-            });
-        };
-        let format_version = u32::from_le_bytes(format_version);
-        if format_version != LEDGER_PAYLOAD_FORMAT_VERSION {
-            return Err(LedgerPayloadEnvelopeError::UnsupportedFormat {
-                marker: format_marker,
-                version: Some(format_version),
-            });
-        }
-
-        let Some(payload_len) = bytes.get(16..24).and_then(|bytes| bytes.try_into().ok()) else {
-            return Err(LedgerPayloadEnvelopeError::Truncated {
-                actual: bytes.len(),
-                minimum: LEDGER_PAYLOAD_HEADER_LEN,
-            });
-        };
-        let payload_len = u64::from_le_bytes(payload_len);
-        let payload_len = usize::try_from(payload_len)
-            .map_err(|_| LedgerPayloadEnvelopeError::PayloadTooLarge { len: payload_len })?;
-        if payload_len > crate::constants::MAX_LEDGER_BYTES {
-            return Err(LedgerPayloadEnvelopeError::PayloadTooLarge {
-                len: payload_len as u64,
-            });
-        }
-        let expected_len = LEDGER_PAYLOAD_HEADER_LEN + payload_len;
-        if bytes.len() != expected_len {
-            return Err(LedgerPayloadEnvelopeError::LengthMismatch {
-                declared: payload_len,
-                actual: bytes.len().saturating_sub(LEDGER_PAYLOAD_HEADER_LEN),
-            });
-        }
-
-        Ok(&bytes[LEDGER_PAYLOAD_HEADER_LEN..])
     }
 
     /// Borrow the logical ledger payload bytes.
     #[must_use]
-    #[cfg(test)]
     pub fn payload(&self) -> &[u8] {
         &self.payload
     }
+}
+
+// Serialize directly into the final envelope buffer. The commit boundary
+// retains its ledger-byte integrity error before any physical mutation.
+pub(super) fn encode_ledger(
+    ledger: &super::AllocationLedger,
+) -> Result<Vec<u8>, super::LedgerIntegrityError> {
+    let mut writer = LedgerWriter(vec![0; LEDGER_PAYLOAD_HEADER_LEN]);
+    match ciborium::into_writer(ledger, &mut writer) {
+        Ok(()) => (),
+        Err(ciborium::ser::Error::Io(err)) if err.kind() == std::io::ErrorKind::WriteZero => {
+            return Err(super::LedgerIntegrityError::LimitExceeded {
+                resource: "ledger bytes",
+                limit: crate::constants::MAX_LEDGER_BYTES,
+            });
+        }
+        // Concrete derived serializers have no other recoverable failures.
+        Err(ciborium::ser::Error::Io(_) | ciborium::ser::Error::Value(_)) => {
+            panic!("allocation ledger serialization failed");
+        }
+    }
+    let mut bytes = writer.0;
+    let payload_len = bytes.len() - LEDGER_PAYLOAD_HEADER_LEN;
+    bytes[..LEDGER_PAYLOAD_HEADER_LEN].copy_from_slice(&encoded_header(payload_len));
+    Ok(bytes)
+}
+
+// Recovery already owns the committed bytes. Validate the same envelope
+// without copying its bounded payload before logical ledger decoding.
+pub(super) fn decode_payload(bytes: &[u8]) -> Result<&[u8], LedgerPayloadEnvelopeError> {
+    let Some(magic) = bytes.get(0..8).and_then(|bytes| bytes.try_into().ok()) else {
+        return Err(LedgerPayloadEnvelopeError::Truncated {
+            actual: bytes.len(),
+            minimum: LEDGER_PAYLOAD_HEADER_LEN,
+        });
+    };
+    if &magic != LEDGER_PAYLOAD_MAGIC {
+        return Err(LedgerPayloadEnvelopeError::BadMagic { found: magic });
+    }
+
+    let Some(format_marker) = bytes.get(8..12).and_then(|bytes| bytes.try_into().ok()) else {
+        return Err(LedgerPayloadEnvelopeError::Truncated {
+            actual: bytes.len(),
+            minimum: LEDGER_PAYLOAD_HEADER_LEN,
+        });
+    };
+    if &format_marker != LEDGER_PAYLOAD_FORMAT_MARKER {
+        return Err(LedgerPayloadEnvelopeError::UnsupportedFormat {
+            marker: format_marker,
+            version: None,
+        });
+    }
+
+    let Some(format_version) = bytes.get(12..16).and_then(|bytes| bytes.try_into().ok()) else {
+        return Err(LedgerPayloadEnvelopeError::Truncated {
+            actual: bytes.len(),
+            minimum: LEDGER_PAYLOAD_HEADER_LEN,
+        });
+    };
+    let format_version = u32::from_le_bytes(format_version);
+    if format_version != LEDGER_PAYLOAD_FORMAT_VERSION {
+        return Err(LedgerPayloadEnvelopeError::UnsupportedFormat {
+            marker: format_marker,
+            version: Some(format_version),
+        });
+    }
+
+    let Some(payload_len) = bytes.get(16..24).and_then(|bytes| bytes.try_into().ok()) else {
+        return Err(LedgerPayloadEnvelopeError::Truncated {
+            actual: bytes.len(),
+            minimum: LEDGER_PAYLOAD_HEADER_LEN,
+        });
+    };
+    let payload_len = u64::from_le_bytes(payload_len);
+    let payload_len = usize::try_from(payload_len)
+        .map_err(|_| LedgerPayloadEnvelopeError::PayloadTooLarge { len: payload_len })?;
+    if payload_len > crate::constants::MAX_LEDGER_BYTES {
+        return Err(LedgerPayloadEnvelopeError::PayloadTooLarge {
+            len: payload_len as u64,
+        });
+    }
+    let expected_len = LEDGER_PAYLOAD_HEADER_LEN + payload_len;
+    if bytes.len() != expected_len {
+        return Err(LedgerPayloadEnvelopeError::LengthMismatch {
+            declared: payload_len,
+            actual: bytes.len().saturating_sub(LEDGER_PAYLOAD_HEADER_LEN),
+        });
+    }
+
+    Ok(&bytes[LEDGER_PAYLOAD_HEADER_LEN..])
 }
 
 // Keep a single serialization pass, but stop before an oversized write or a
@@ -311,10 +305,7 @@ mod tests {
             let expected = LedgerPayloadEnvelope::current(payload)
                 .try_encode()
                 .unwrap();
-            assert_eq!(
-                LedgerPayloadEnvelope::encode_ledger(&ledger).unwrap(),
-                expected
-            );
+            assert_eq!(encode_ledger(&ledger).unwrap(), expected);
         }
     }
 
@@ -371,7 +362,7 @@ mod tests {
             let bytes = LedgerPayloadEnvelope::current(vec![42; len])
                 .try_encode()
                 .expect("bounded envelope");
-            let payload = LedgerPayloadEnvelope::decode_payload(&bytes).expect("valid envelope");
+            let payload = decode_payload(&bytes).expect("valid envelope");
 
             assert_eq!(payload.len(), len);
             assert_eq!(

@@ -1,5 +1,39 @@
 # Changelog
 
+## [0.38.0]
+
+### Fixed
+
+- Run formatting and hook qualification once per native CI host, retaining both
+  workspace checks and CDPATH isolation
+  ([#88 — Avoid repeated formatting and hook fixtures](https://github.com/dragginzgame/ic-memory/issues/88)).
+
+- Share declaration and reservation slot-conflict checks while preserving their
+  distinct lifecycle errors
+  ([#91 — Share claim checks and preserve error precedence](https://github.com/dragginzgame/ic-memory/issues/91)).
+
+- Release staged ledger records before persistence, retaining the committed
+  generation and post-write allocation authority
+  ([#94 — Release staged ledger records](https://github.com/dragginzgame/ic-memory/issues/94)).
+- Delegate hook-fixture completion and cleanup to Shared while preserving
+  command diagnostics and failed evidence
+  ([#95 — Share hook fixture lifecycle](https://github.com/dragginzgame/ic-memory/issues/95)).
+
+### Breaking
+
+- Remove the unused `AllocationPolicy::validate_reserved_slot` callback; delete
+  that method from custom policies when upgrading. Stored formats are unchanged
+  ([#98 — Hard-cut the unused reservation policy callback](https://github.com/dragginzgame/ic-memory/issues/98)).
+
+### Changed
+
+- Keep ledger codecs private and the owned envelope fixture test-only
+  ([#97 — Use private ledger codec functions](https://github.com/dragginzgame/ic-memory/issues/97)).
+- Keep doctor binding details in structured fields and shorten the mismatch message
+  ([#99 — Remove redundant Debug payload from doctor binding mismatch](https://github.com/dragginzgame/ic-memory/issues/99)).
+
+[Detailed notes](docs/changelog/0.38.md)
+
 ## [0.37.0] - 2026-10-14
 
 - **Breaking:** detailed allocation reports contain `summary` and `memories`;

@@ -18,13 +18,6 @@ impl AllocationPolicy for Allow {
     fn validate_slot(&self, _: &StableKey, _: &MemoryManagerSlot) -> Result<(), Infallible> {
         Ok(())
     }
-    fn validate_reserved_slot(
-        &self,
-        _: &StableKey,
-        _: &MemoryManagerSlot,
-    ) -> Result<(), Infallible> {
-        Ok(())
-    }
 }
 impl RuntimeBootstrapPolicy for Allow {
     fn runtime_bootstrap_identity(&self) -> Result<PolicyIdentity, PolicyIdentityError> {

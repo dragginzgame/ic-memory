@@ -19,13 +19,6 @@ impl AllocationPolicy for HostPolicy {
     fn validate_slot(&self, _: &StableKey, _: &MemoryManagerSlot) -> Result<(), Self::Error> {
         Ok(())
     }
-    fn validate_reserved_slot(
-        &self,
-        _: &StableKey,
-        _: &MemoryManagerSlot,
-    ) -> Result<(), Self::Error> {
-        Ok(())
-    }
 }
 impl RuntimeBootstrapPolicy for HostPolicy {
     fn runtime_bootstrap_identity(&self) -> Result<PolicyIdentity, PolicyIdentityError> {

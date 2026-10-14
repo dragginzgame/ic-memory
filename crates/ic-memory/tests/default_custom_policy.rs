@@ -34,14 +34,6 @@ impl AllocationPolicy for CustomPolicy {
     ) -> Result<(), Self::Error> {
         Ok(())
     }
-
-    fn validate_reserved_slot(
-        &self,
-        _key: &StableKey,
-        _slot: &MemoryManagerSlot,
-    ) -> Result<(), Self::Error> {
-        Ok(())
-    }
 }
 
 impl RuntimeBootstrapPolicy for CustomPolicy {

@@ -17,6 +17,7 @@ trap 'fixture_finish "$?" "$fixture" "Consumer retention probes retained"' EXIT
 for name in release-adapters failure-evidence git-hooks release-runner; do
     fixture_probe_exits "$ROOT/scripts/ci/test-$name.sh" "$fixture" "$ROOT" "$name" || exit 1
 done
+fixture_probe_exit "$ROOT/scripts/ci/test-git-hooks.sh" "$fixture" "$ROOT" git-hooks cleanup-failure || exit 1
 # Run the actual checker against an owner returning the wrong failure status.
 # It must stop after the first observation, before testing any other case.
 assertion_root="$fixture/assertion-source"

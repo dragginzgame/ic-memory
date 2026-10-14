@@ -65,14 +65,6 @@ impl AllocationPolicy for CountingPolicy {
         self.0.set(self.0.get() + 1);
         Ok(())
     }
-
-    fn validate_reserved_slot(
-        &self,
-        _key: &StableKey,
-        _slot: &MemoryManagerSlot,
-    ) -> Result<(), Self::Error> {
-        Ok(())
-    }
 }
 
 impl RuntimeBootstrapPolicy for CountingPolicy {
@@ -113,14 +105,6 @@ impl AllocationPolicy for IdentityPolicy {
     }
 
     fn validate_slot(
-        &self,
-        _key: &StableKey,
-        _slot: &MemoryManagerSlot,
-    ) -> Result<(), Self::Error> {
-        Ok(())
-    }
-
-    fn validate_reserved_slot(
         &self,
         _key: &StableKey,
         _slot: &MemoryManagerSlot,
@@ -519,14 +503,6 @@ impl AllocationPolicy for RejectPolicy {
     ) -> Result<(), Self::Error> {
         Ok(())
     }
-
-    fn validate_reserved_slot(
-        &self,
-        _key: &StableKey,
-        _slot: &MemoryManagerSlot,
-    ) -> Result<(), Self::Error> {
-        Ok(())
-    }
 }
 
 impl RuntimeBootstrapPolicy for RejectPolicy {
@@ -654,6 +630,19 @@ fn doctor_and_diagnostics_report_the_same_runtime_lifecycle() {
         }
     ));
     assert!(matches!(mismatched.validation, DiagnosticCheck::Passed));
+    assert_eq!(
+        mismatched.tested_policy_identity.as_ref().unwrap(),
+        &PolicyIdentity::new("runtime-tests.identity-policy", 2).unwrap()
+    );
+    assert_eq!(
+        mismatched.tested_declaration_fingerprint,
+        declarations.fingerprint()
+    );
+    assert_eq!(mismatched.allocation_pool, pool());
+    assert_eq!(
+        mismatched.established_bootstrap_binding,
+        doctor.established_bootstrap_binding
+    );
 }
 
 #[test]
