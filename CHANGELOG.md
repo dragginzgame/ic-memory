@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.36.5]
+
+### Fixed
+
+- Run formatting and hook qualification once per native CI host, retaining both
+  workspace checks and CDPATH isolation
+  ([#88 — Avoid repeated formatting and hook fixtures](https://github.com/dragginzgame/ic-memory/issues/88)).
+
 ## [0.36.4] - 2026-10-13
 
 - Reduce bootstrap Wasm by sharing bounded sorting and validating namespace

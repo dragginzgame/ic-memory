@@ -114,10 +114,6 @@ jobs:
             perl -MCwd=abs_path -e 'my ($a,$b)=map {abs_path($_)} @ARGV; exit(defined($a) && defined($b) && $a eq $b ? 0 : 1)' \
               ".tools/rust/common/bin/$tool" "$sharing/consumer/.tools/rust/common/bin/$tool"
           done
-      - name: Check both workspaces without changing files
-        run: make fmt-check
-      - name: Exercise hook isolation on the native host
-        run: CDPATH="$PWD" make test-hooks
       - name: Prepare tracked dependency inputs
         shell: bash
         run: |
