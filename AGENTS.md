@@ -37,11 +37,8 @@ and prerequisites are declared in [docs/host-support.md](docs/host-support.md).
   `make test-failure-evidence`, `make fmt-check`, `make lint-tooling`, or an appropriately
   selected Rust test. `make runtime-server-check` and `make test-runtime` are
   focused installed qualification with explicitly prepared tools and both caches.
-- Full delivery suite: run `make validate` before reporting a completed code
-  change as ready, under the current shared baseline's standing validation
-  authority. Reuse passing evidence for unchanged inputs; documentation-only
-  work needs link/consistency/diff checks. Inspection alone does not activate the
-  full suite. Development packaging qualifies working-tree edits; release
+- Full release suite: `make validate`, under the validation cadence below.
+  Development packaging qualifies working-tree edits; release
   admission and the separate `make package` target still require clean source.
   Release, publication and installed runtime qualification retain their separate
   authority. Never commit merely to satisfy a check.
@@ -185,3 +182,20 @@ pub struct SchemaMetadata {
 
 Keep this shape for new or edited item-level docs unless local context clearly
 requires a different style.
+
+## Validation cadence during shared-policy adoption
+
+Shared Tooling owns the [validation policy](DRAGGINZGAME.md#validation-and-evidence);
+local guidance supplies commands and product qualification requirements only.
+Maintainer-approved exception (2026-10-14): until this snapshot adopts Shared
+Tooling's focused-handoff policy, replace its full-suite-before-handoff requirement
+with focused checks of changed behavior and directly affected callers, including
+relevant failure/recovery paths. Reuse unchanged passing evidence. Documentation
+changes need link, consistency and diff checks only. Run local full suites only
+for an explicitly authorized release or an explicit request for those checks;
+implementation, continuation, PR preparation and readiness requests do not qualify.
+Report tested scope; an unrun full suite alone is not a handoff blocker. Configured
+CI, required branch checks, release gates and separate effect authority remain
+unchanged. This exception avoids redundant local testing; it does not claim a
+snapshot refresh. On reviewed adoption, remove this exception and retain only the
+link to the canonical policy and repository-specific commands.

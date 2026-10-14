@@ -57,10 +57,11 @@ for focused runtime checks and full qualification.
   `test-tooling`, `test-release-adapters`, `test-release-runner`, `test-hooks`
   or `lint-tooling` as relevant. Scripts use disposable substitutes where effects
   would otherwise create commits, tags or publication; never run the real hook.
-- Check active builds before compilation or edits. Inspection alone does not
-  activate full validation. An authorized code repair must pass `make validate`
-  before delivery under the current baseline's standing authority; that suite
-  includes Wasm budgets, development packaging and MSRV qualification.
+- Check active builds before compilation or edits. Select focused checks for repairs
+  under the
+  [validation cadence](../../../AGENTS.md#validation-cadence-during-shared-policy-adoption).
+  The full `make validate` release suite includes Wasm budgets, development
+  packaging and MSRV qualification.
   Documentation-only work needs link, consistency and diff checks. Release,
   publication and installed PocketIC qualification retain separate authority.
   Audits do not install tools or upgrade dependencies. Preparing missing locked
