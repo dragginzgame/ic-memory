@@ -87,9 +87,9 @@ dependencies = [
 
 [[package]]
 name = "equivalent"
-version = "1.0.2"
+version = "1.0.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "877a4ace8713b0bcf2a4e7eec82529c029f1d0619886d18145fea96c3ffe5c0f"
+checksum = "00d174d5400e5e8fd687ad1049e2f578285fa914201b1af7e8b112a4546bd826"
 
 [[package]]
 name = "errno"
@@ -136,18 +136,18 @@ checksum = "ed5909b6e89a2db4456e54cd5f673791d7eca6732202bbf2a9cc504fe2f9b84a"
 
 [[package]]
 name = "ic-host-artifacts"
-version = "0.17.6"
+version = "0.17.13"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f13a4c0040a76c9615d9676e5be21dbd162078c4b53f55791fb644eb26a46cee"
+checksum = "9acf9183cfe37a9400ce6893d77292af8b22bcdb7a5451d7a36c81cac33b3be4"
 dependencies = [
  "sha2",
 ]
 
 [[package]]
 name = "ic-host-fs"
-version = "0.17.6"
+version = "0.17.13"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c8e41e014ad525cde28ff124095fbfe1d9f91423a15ee2c19425024ddf123f14"
+checksum = "1c549e4539b625ae82ed2de592acef0b8fc98a35e6edba47cc5ee98614c0936b"
 dependencies = [
  "ic-host-artifacts",
  "rustix",
@@ -155,9 +155,9 @@ dependencies = [
 
 [[package]]
 name = "ic-host-process"
-version = "0.17.6"
+version = "0.17.13"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "958cfc0840f924a52f74b892ba7ea7fb08dcb95ca55acbd254cc519022305b05"
+checksum = "9f7d287d27872f8d97a64da3d2d26cc18bdeaafba3c3009a6d538ee8026e0b07"
 dependencies = [
  "ic-host-artifacts",
  "ic-host-fs",
@@ -167,7 +167,7 @@ dependencies = [
 
 [[package]]
 name = "ic-memory"
-version = "0.36.4"
+version = "0.37.0"
 dependencies = [
  "ciborium",
  "ic-host-artifacts",
@@ -485,18 +485,18 @@ checksum = "23b97319f7b8343df12cc98938e5c3eb436064524c8d2b4e30a1d3a36eecdf81"
 
 [[package]]
 name = "zerocopy"
-version = "0.8.62"
+version = "0.8.63"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "86502bf56ac7c77571a32e2647bb2a15894565e981fb2a48d7bde2d91c965a9d"
+checksum = "e5fe1f8f1b06191a00962174c61aa5005e0bb391a6d80d07e24d115c01a92ed8"
 dependencies = [
  "zerocopy-derive",
 ]
 
 [[package]]
 name = "zerocopy-derive"
-version = "0.8.62"
+version = "0.8.63"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5457206954b06561e2608c7e19cf58b1926586d999c246eebe4502f7e2039d1a"
+checksum = "863ad3ac83293fb4d740aedbfdc9240dd8d1a50c1099acd76ce80ce7c7230c7f"
 dependencies = [
  "proc-macro2",
  "quote",

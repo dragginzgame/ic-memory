@@ -1,6 +1,53 @@
 use super::*;
 
 #[test]
+fn resolution_fills_free_slots_around_interleaved_retained_requests() {
+    let pool = crate::MemoryAllocationPool::new(
+        vec![crate::MemoryAuthority::new("app", "app.").unwrap()],
+        vec![crate::MemoryManagerIdRange::new(12, 13).unwrap()],
+    )
+    .unwrap();
+    // Retained keys occur both before and after new keys in canonical order.
+    // An omitted key still occupies its slot.
+    let ledger = crate::AllocationLedger::new(
+        1,
+        [("app.a.v1", 20), ("app.c.v1", 11), ("app.omitted.v1", 15)]
+            .into_iter()
+            .map(|(key, id)| {
+                crate::AllocationRecord::active(
+                    &AllocationDeclaration::memory_manager_unlabeled(key, id).unwrap(),
+                )
+            })
+            .collect(),
+    )
+    .unwrap();
+    let requests = SealedDeclarationSnapshot::new(
+        ["app.e.v1", "app.c.v1", "app.b.v1", "app.a.v1", "app.d.v1"]
+            .into_iter()
+            .map(|key| MemoryRequest::new("app", key, SchemaMetadata::default()).unwrap())
+            .collect(),
+    )
+    .unwrap();
+    let resolved = requests.resolve(&ledger, vec![], &pool).unwrap();
+    let external: Vec<_> = resolved
+        .declarations()
+        .iter()
+        .filter(|declaration| declaration.stable_key().as_str().starts_with("app."))
+        .map(|declaration| (declaration.stable_key().as_str(), declaration.slot().id()))
+        .collect();
+    assert_eq!(
+        external,
+        [
+            ("app.a.v1", 20),
+            ("app.b.v1", 10),
+            ("app.c.v1", 11),
+            ("app.d.v1", 14),
+            ("app.e.v1", 16)
+        ]
+    );
+}
+
+#[test]
 fn external_requests_reject_internal_authority_identity() {
     assert!(matches!(
         MemoryRequest::new(

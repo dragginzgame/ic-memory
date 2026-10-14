@@ -22,7 +22,8 @@ without opening application stores. The report distinguishes:
 Use `runtime.memory_allocations()` or
 `default_memory_manager_memory_allocations()` for the detailed, per-ID
 `MemoryAllocations` report. It returns all 255 usable IDs in order, including
-zero-size IDs and the ledger at ID 0.
+zero-size IDs and the ledger at ID 0. Numeric totals are in `report.summary`;
+per-ID rows are in `report.memories`. Serialized reports use the same two fields.
 
 Use `runtime.memory_allocation_summary()` or
 `default_memory_manager_memory_allocation_summary()` for recurring numeric

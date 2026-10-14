@@ -237,7 +237,7 @@ fn allocation_diagnostics_allocations() {
             measure(&report_phase, generation, 100, || {
                 let report = black_box(runtime.memory_allocations().unwrap());
                 assert_eq!(report.memories.len(), 255);
-                assert_eq!(report.current_generation, current_generation);
+                assert_eq!(report.summary.current_generation, current_generation);
             });
         }
     }

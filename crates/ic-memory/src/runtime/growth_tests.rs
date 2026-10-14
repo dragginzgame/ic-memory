@@ -128,7 +128,14 @@ fn backing_reentry_cannot_assign_buckets_during_an_outer_reservation() {
         Some(Err(RuntimeGrowError::ReentrantAccess))
     );
     assert_eq!(runtime.memory(121).size(), 0);
-    assert_eq!(runtime.memory_allocations().unwrap().allocated_buckets, 1);
+    assert_eq!(
+        runtime
+            .memory_allocations()
+            .unwrap()
+            .summary
+            .allocated_buckets,
+        1
+    );
     // Release the callback's retained handle before dropping its backing owner.
     backing.nested.borrow_mut().take();
 }
@@ -164,7 +171,14 @@ fn refused_application_growth_preserves_bytes_extents_and_retry() {
         assert_eq!(Memory::grow(&rows, 1), -1);
         assert_eq!(rows.size(), 0);
         assert_eq!(*backing.bytes.borrow(), before);
-        assert_eq!(runtime.memory_allocations().unwrap().allocated_buckets, 0);
+        assert_eq!(
+            runtime
+                .memory_allocations()
+                .unwrap()
+                .summary
+                .allocated_buckets,
+            0
+        );
         assert_eq!(backing.reads.get() - reads_before, 2);
         if bucket == u16::MAX {
             continue;
@@ -219,7 +233,14 @@ fn interleaved_clones_reopen_and_detached_handles_share_growth_accounting() {
     assert_eq!(clone.grow(8), Ok(9));
     // Capacity admission reads no persisted metadata, even at bucket boundaries.
     assert_eq!(backing.reads.get(), reads);
-    assert_eq!(runtime.memory_allocations().unwrap().allocated_buckets, 4);
+    assert_eq!(
+        runtime
+            .memory_allocations()
+            .unwrap()
+            .summary
+            .allocated_buckets,
+        4
+    );
     assert_eq!(
         clone.grow(u64::MAX),
         Err(RuntimeGrowError::ArithmeticOverflow)
@@ -230,7 +251,14 @@ fn interleaved_clones_reopen_and_detached_handles_share_growth_accounting() {
     drop(runtime);
     let runtime = MemoryRuntime::new(backing.clone()).unwrap();
     assert_eq!(runtime.memory(122).grow(1), Ok(0));
-    assert_eq!(runtime.memory_allocations().unwrap().allocated_buckets, 5);
+    assert_eq!(
+        runtime
+            .memory_allocations()
+            .unwrap()
+            .summary
+            .allocated_buckets,
+        5
+    );
     let detached = runtime.memory(120);
     drop(runtime);
     let writes = backing.writes.get();
@@ -245,6 +273,7 @@ fn interleaved_clones_reopen_and_detached_handles_share_growth_accounting() {
             .unwrap()
             .memory_allocations()
             .unwrap()
+            .summary
             .allocated_buckets,
         6
     );

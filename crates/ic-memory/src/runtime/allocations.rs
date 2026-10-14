@@ -68,32 +68,8 @@ pub struct MemoryAllocation {
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 pub struct MemoryAllocations {
-    /// In-memory committed generation; unavailable before bootstrap.
-    pub current_generation: Option<u64>,
-    pub manager_layout_version: u8,
-    /// Actual persisted bucket size, never a requested/default assumption.
-    pub bucket_size_pages: u16,
-    pub bucket_size_bytes: u64,
-    pub bucket_capacity: u32,
-    pub allocated_buckets: u16,
-    pub remaining_buckets: u32,
-    /// Finite table capacity, excluding the metadata page and backing limits.
-    pub maximum_bucket_bytes: u64,
-    pub physical_extent: DiagnosticMemorySize,
-    pub virtual_extent: DiagnosticMemorySize,
-    /// The complete first page, including header, table, and padding.
-    pub manager_metadata_bytes: u64,
-    pub manager_header_bytes: u64,
-    pub manager_bucket_table_bytes: u64,
-    pub manager_padding_bytes: u64,
-    pub allocated_bucket_bytes: u64,
-    pub bucket_slack_bytes: u64,
-    pub known_binding_bytes: u64,
-    pub unknown_binding_bytes: u64,
-    /// Backing bytes after the assigned bucket region; ownership is unknown.
-    pub unmanaged_bytes: u64,
-    /// Exact fixed metadata read budget; no ledger history or payload is read.
-    pub metadata_bytes_read: u64,
+    /// Numeric accounting shared with the summary-only report.
+    pub summary: MemoryAllocationSummary,
     pub memories: Vec<MemoryAllocation>,
 }
 
@@ -209,29 +185,7 @@ impl<M: Memory> MemoryRuntime<M> {
             stable_key: IC_MEMORY_LEDGER_STABLE_KEY.to_string(),
             owner: IC_MEMORY_AUTHORITY_OWNER.to_string(),
         };
-        Ok(MemoryAllocations {
-            current_generation: summary.current_generation,
-            manager_layout_version: summary.manager_layout_version,
-            bucket_size_pages: summary.bucket_size_pages,
-            bucket_size_bytes: summary.bucket_size_bytes,
-            bucket_capacity: summary.bucket_capacity,
-            allocated_buckets: summary.allocated_buckets,
-            remaining_buckets: summary.remaining_buckets,
-            maximum_bucket_bytes: summary.maximum_bucket_bytes,
-            physical_extent: summary.physical_extent,
-            virtual_extent: summary.virtual_extent,
-            manager_metadata_bytes: summary.manager_metadata_bytes,
-            manager_header_bytes: summary.manager_header_bytes,
-            manager_bucket_table_bytes: summary.manager_bucket_table_bytes,
-            manager_padding_bytes: summary.manager_padding_bytes,
-            allocated_bucket_bytes: summary.allocated_bucket_bytes,
-            bucket_slack_bytes: summary.bucket_slack_bytes,
-            known_binding_bytes: summary.known_binding_bytes,
-            unknown_binding_bytes: summary.unknown_binding_bytes,
-            unmanaged_bytes: summary.unmanaged_bytes,
-            metadata_bytes_read: summary.metadata_bytes_read,
-            memories,
-        })
+        Ok(MemoryAllocations { summary, memories })
     }
 
     /// Measure numeric totals and binding partitions without constructing per-ID
