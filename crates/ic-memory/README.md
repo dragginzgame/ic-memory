@@ -328,6 +328,11 @@ For fixture-only byte cells, opt in to `test-support` and construct
 format. It does not install lifecycle handlers or bootstrap the global default
 manager. Keep codecs, byte/work limits and restored-state validation in the host;
 fresh empty bytes must never substitute for a required retained journal.
+Use `create_bounded` or `open_bounded` with the caller's byte ceiling when inputs
+require bounded allocation. The retained opener checks the envelope and length
+before Cell allocates its payload, and both enforce the ceiling on writes.
+They distinguish fresh allocation from required history and refuse replacement;
+unbounded `new` is suitable only for trusted fixture images.
 
 - [Operations and diagnostics](https://github.com/dragginzgame/ic-memory/blob/main/docs/operations.md)
   explains memory attribution, bucket configuration, and runtime reports.

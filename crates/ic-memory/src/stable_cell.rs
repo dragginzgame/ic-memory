@@ -121,6 +121,17 @@ pub enum StableCellLedgerError {
 pub fn decode_stable_cell_payload<M: Memory>(
     memory: &M,
 ) -> Result<Vec<u8>, StableCellPayloadError> {
+    let value_len = stable_cell_payload_length(memory, crate::constants::MAX_LEDGER_RECORD_BYTES)?;
+    let mut bytes = vec![0; value_len];
+    memory.read(STABLE_CELL_VALUE_OFFSET, &mut bytes);
+    Ok(bytes)
+}
+
+/// Admit the envelope and caller ceiling before allocating or reading a payload.
+pub fn stable_cell_payload_length<M: Memory>(
+    memory: &M,
+    maximum: usize,
+) -> Result<usize, StableCellPayloadError> {
     if memory.size() == 0 {
         return Err(StableCellPayloadError::NotStableCell);
     }
@@ -145,18 +156,16 @@ pub fn decode_stable_cell_payload<M: Memory>(
             available_bytes: payload_capacity,
         });
     }
-    if value_len > crate::constants::MAX_LEDGER_RECORD_BYTES as u64 {
+    if value_len > maximum as u64 {
         return Err(StableCellPayloadError::TooLarge { value_len });
     }
     #[expect(
         clippy::cast_possible_truncation,
-        reason = "the admitted recovery ceiling is representable as usize"
+        reason = "the admitted caller ceiling is representable as usize"
     )]
     let value_len = value_len as usize;
 
-    let mut bytes = vec![0; value_len];
-    memory.read(STABLE_CELL_VALUE_OFFSET, &mut bytes);
-    Ok(bytes)
+    Ok(value_len)
 }
 
 /// Decode a `StableCellLedgerRecord` from stable-cell value bytes.
@@ -500,6 +509,19 @@ mod tests {
                 Err(StableCellPayloadError::InvalidLength {
                     value_len: u64::from(value_len),
                     available_bytes: WASM_PAGE_SIZE_BYTES - STABLE_CELL_VALUE_OFFSET,
+                })
+            );
+        }
+        // A fixture's smaller ceiling is admitted by the same header-only path.
+        for value_len in [16_385, u32::MAX] {
+            let memory = HeaderOnly {
+                value_len,
+                pages: 65_537,
+            };
+            assert_eq!(
+                stable_cell_payload_length(&memory, 16_384),
+                Err(StableCellPayloadError::TooLarge {
+                    value_len: u64::from(value_len)
                 })
             );
         }

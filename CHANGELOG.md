@@ -5,6 +5,8 @@
 - Add opt-in fixture byte-cell construction with explicit backing memory, storage
   identity and bucket configuration, with native and Wasm feature checks
   ([#104 — Share fixture byte-cell construction](https://github.com/dragginzgame/ic-memory/issues/104)).
+- Add explicit fresh/retained bounded fixture cells; admit the caller's ceiling
+  before payload allocation and refuse oversized writes or history replacement.
 
 [Detailed notes](docs/changelog/0.39.md)
 
