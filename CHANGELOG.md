@@ -1,6 +1,6 @@
 # Changelog
 
-## [0.41.0]
+## [0.41.0] - 2026-10-15
 
 - Align native Host dependencies with IC Build's exposed process types so Cargo
   metadata checks compile with one dependency identity
