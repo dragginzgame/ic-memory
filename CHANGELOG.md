@@ -1,6 +1,6 @@
 # Changelog
 
-## [0.42.0]
+## [0.42.0] - 2026-10-15
 
 - **Breaking:** remove `Storable` from `StableCellLedgerRecord`. Use the owned
   runtime for allocation persistence and fallible decode helpers for inspection;

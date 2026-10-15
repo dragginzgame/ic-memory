@@ -220,7 +220,7 @@ dependencies = [
 
 [[package]]
 name = "ic-memory"
-version = "0.41.0"
+version = "0.42.0"
 dependencies = [
  "ciborium",
  "ic-build",
