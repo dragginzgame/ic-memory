@@ -1,4 +1,8 @@
-//! Explicit fixture-only cell setup; callers own codecs, bounds and lifecycle calls.
+//! Explicit fixture-only ledger and cell setup; callers own codecs, bounds and lifecycle calls.
+
+mod ledger;
+
+pub use ledger::{AllocationReservationError, AllocationRetirement, AllocationRetirementError};
 
 use crate::{
     GenericAllocationPolicy, MemoryAllocationPool, MemoryAuthority, MemoryManagerConfig,
@@ -9,10 +13,12 @@ use crate::{
 ///
 /// FixtureCell
 ///
-/// One byte cell and its retained allocation runtime, opened only by an explicit
+/// One byte cell opened through an allocation runtime only by an explicit
 /// caller. Namespace grants and the stable key are fixture inputs, not product
 /// authority. Uses the ordinary runtime, ledger and Cell formats without a new
-/// journal schema. No global memory manager, endpoint or lifecycle is installed.
+/// journal schema. The cell's memory handle retains the backing and manager;
+/// bootstrap declarations and policy state are released after opening. No global
+/// memory manager, endpoint or lifecycle is installed.
 ///
 /// Fresh memory has an empty cell. Restored callers must reject empty/invalid
 /// bytes where their journal contract requires retained state. Callers own
@@ -20,7 +26,6 @@ use crate::{
 ///
 
 pub struct FixtureCell<M: Memory> {
-    _runtime: MemoryRuntime<M>,
     cell: Cell<Vec<u8>, RuntimeMemory<M>>,
 }
 
@@ -55,10 +60,7 @@ impl<M: Memory> FixtureCell<M> {
             .open_memory(stable_key)
             .expect("fixture memory grant");
         let cell = Cell::init(memory, Vec::new());
-        Self {
-            _runtime: runtime,
-            cell,
-        }
+        Self { cell }
     }
 
     /// Borrow the original cell bytes without decoding, defaulting or copying them.

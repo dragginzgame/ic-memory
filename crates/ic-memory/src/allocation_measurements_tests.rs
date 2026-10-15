@@ -295,6 +295,20 @@ fn declaration_resolution_allocations() {
             );
             assert_eq!(resolved.declarations().len(), count + 1);
         });
+        measure(&format!("fresh_bootstrap_{count}"), 0, 10, || {
+            let mut runtime = MemoryRuntime::new_with_config(
+                VectorMemory::default(),
+                MemoryManagerConfig::new(1).unwrap(),
+            )
+            .unwrap();
+            assert_eq!(
+                runtime
+                    .bootstrap(&declarations, &pool, &GenericAllocationPolicy)
+                    .unwrap()
+                    .generation(),
+                1
+            );
+        });
     }
 }
 

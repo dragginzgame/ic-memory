@@ -68,7 +68,7 @@ fn summary_matches_report(runtime: &MemoryRuntime<Metered>, memory: &Metered) {
     for row in &report.memories {
         let index = match row.binding {
             AllocationBinding::Current { .. } => 0,
-            AllocationBinding::Ledger { .. } => 1,
+            AllocationBinding::Ledger => 1,
             AllocationBinding::Unknown => 2,
         };
         groups[index].allocated_bytes += row.allocated_bytes;
@@ -211,8 +211,12 @@ fn bounded_conservation_bindings_and_no_effects() {
     assert_eq!(report.summary.unmanaged_bytes, 3 * 65_536);
     assert!(matches!(
         report.memories[usize::from(MEMORY_MANAGER_LEDGER_ID)].binding,
-        AllocationBinding::Ledger { .. }
+        AllocationBinding::Ledger
     ));
+    assert_eq!(
+        serde_json::to_value(&report).unwrap()["memories"][usize::from(MEMORY_MANAGER_LEDGER_ID)]["binding"],
+        "Ledger"
+    );
     assert_eq!(memory.counts().read_bytes, 34_848);
     assert_eq!(memory.counts().reads, 2);
     assert_eq!(memory.counts().writes, 0);

@@ -1,10 +1,7 @@
 use super::{
     MemoryManagerLayoutError, MemoryRuntime, RuntimeDiagnosticError, RuntimeLifecycle, layout,
 };
-use crate::{
-    DiagnosticMemorySize, IC_MEMORY_AUTHORITY_OWNER, IC_MEMORY_LEDGER_STABLE_KEY,
-    MEMORY_MANAGER_LEDGER_ID, WASM_PAGE_SIZE_BYTES,
-};
+use crate::{DiagnosticMemorySize, MEMORY_MANAGER_LEDGER_ID, WASM_PAGE_SIZE_BYTES};
 use ic_stable_structures::Memory;
 use serde::Serialize;
 
@@ -20,8 +17,9 @@ use serde::Serialize;
 pub enum AllocationBinding {
     /// A declaration bound by this runtime's successful bootstrap.
     Current { stable_key: String, owner: String },
-    /// The ic-memory ledger's reserved allocation.
-    Ledger { stable_key: String, owner: String },
+    /// The reserved ledger allocation, identified by
+    /// [`crate::IC_MEMORY_LEDGER_STABLE_KEY`] and [`crate::IC_MEMORY_AUTHORITY_OWNER`].
+    Ledger,
     /// No current stable-key binding is known; this does not mean unused.
     Unknown,
 }
@@ -178,10 +176,7 @@ impl<M: Memory> MemoryRuntime<M> {
                 memory.pool_eligible = Some(binding.pool.contains(memory.memory_manager_id));
             }
         }
-        memories[usize::from(MEMORY_MANAGER_LEDGER_ID)].binding = AllocationBinding::Ledger {
-            stable_key: IC_MEMORY_LEDGER_STABLE_KEY.to_string(),
-            owner: IC_MEMORY_AUTHORITY_OWNER.to_string(),
-        };
+        memories[usize::from(MEMORY_MANAGER_LEDGER_ID)].binding = AllocationBinding::Ledger;
         Ok(MemoryAllocations { summary, memories })
     }
 

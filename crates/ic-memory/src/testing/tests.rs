@@ -34,18 +34,16 @@ fn cell_keeps_existing_runtime_bytes_and_bucket_configuration() {
         config,
     );
     assert_eq!(cell.bytes(), &[0, 255, 42]);
-    assert_eq!(
-        cell._runtime
-            .memory_allocations()
-            .unwrap()
-            .summary
-            .bucket_size_pages,
-        16
-    );
-    cell.set(vec![91]);
+    // Force another bucket after the constructor's runtime has been dropped.
+    let bytes = vec![91; 17 * 65_536];
+    cell.set(bytes.clone());
+    assert_eq!(cell.bytes(), bytes);
     drop(cell);
+    let runtime = MemoryRuntime::new_with_config(backing.clone(), config).unwrap();
+    assert_eq!(runtime.memory_manager_config(), config);
+    drop(runtime);
     let reopened = FixtureCell::new(backing, "fixture", "fixture.", "fixture.journal.v1", config);
-    assert_eq!(reopened.bytes(), &[91]);
+    assert_eq!(reopened.bytes(), bytes);
 }
 
 #[test]

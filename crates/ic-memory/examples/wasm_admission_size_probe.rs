@@ -1,12 +1,12 @@
 use ic_memory::{
-    AllocationPolicy, BootstrapAdmission, MemoryManagerSlot, PolicyIdentity, PolicyIdentityError,
+    BootstrapAdmission, MemoryManagerSlot, PolicyIdentity, PolicyIdentityError,
     RuntimeBootstrapPolicy, StableKey,
 };
 
 const AUTHORITY: &str = "wasm_core_size_probe";
 
 struct HostPolicy;
-impl AllocationPolicy for HostPolicy {
+impl RuntimeBootstrapPolicy for HostPolicy {
     type Error = &'static str;
     fn validate_key(&self, _: &StableKey) -> Result<(), Self::Error> {
         Ok(())
@@ -14,8 +14,7 @@ impl AllocationPolicy for HostPolicy {
     fn validate_slot(&self, _: &StableKey, _: &MemoryManagerSlot) -> Result<(), Self::Error> {
         Ok(())
     }
-}
-impl RuntimeBootstrapPolicy for HostPolicy {
+
     fn runtime_bootstrap_identity(&self) -> Result<PolicyIdentity, PolicyIdentityError> {
         PolicyIdentity::new("probe.admission", 1)
     }
@@ -23,11 +22,11 @@ impl RuntimeBootstrapPolicy for HostPolicy {
         let journals: Vec<_> = admission
             .recovered_allocations()
             .filter(|r| {
-                r.stable_key.as_str().starts_with("wasm_core_size_probe.")
-                    && r.stable_key.as_str().ends_with(".journal.v1")
-                    && !admission.is_declared(r.stable_key)
+                r.stable_key().as_str().starts_with("wasm_core_size_probe.")
+                    && r.stable_key().as_str().ends_with(".journal.v1")
+                    && !admission.is_declared(r.stable_key())
             })
-            .map(|r| r.stable_key.clone())
+            .map(|r| r.stable_key().clone())
             .collect();
         for key in journals {
             admission

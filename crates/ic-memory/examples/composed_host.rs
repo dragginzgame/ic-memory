@@ -2,9 +2,9 @@
 //! Its public-API regressions also run in the ordinary `cargo test` suite.
 use ic_memory::ic_stable_structures::{Memory, VectorMemory};
 use ic_memory::{
-    AllocationPolicy, BootstrapAdmission, MemoryManagerConfig, MemoryManagerSlot, MemoryRequest,
-    MemoryRuntime, PolicyIdentity, PolicyIdentityError, RuntimeBootstrapError,
-    RuntimeBootstrapPolicy, RuntimeOpenError, SchemaMetadata, SealedDeclarationSnapshot, StableKey,
+    BootstrapAdmission, MemoryManagerConfig, MemoryManagerSlot, MemoryRequest, MemoryRuntime,
+    PolicyIdentity, PolicyIdentityError, RuntimeBootstrapError, RuntimeBootstrapPolicy,
+    RuntimeOpenError, SchemaMetadata, SealedDeclarationSnapshot, StableKey,
 };
 use std::cell::Cell;
 
@@ -37,7 +37,7 @@ struct HostPolicy {
     database_preparations: Cell<usize>,
 }
 
-impl AllocationPolicy for HostPolicy {
+impl RuntimeBootstrapPolicy for HostPolicy {
     type Error = ConsumerRejection;
 
     fn validate_key(&self, _: &StableKey) -> Result<(), Self::Error> {
@@ -47,9 +47,7 @@ impl AllocationPolicy for HostPolicy {
     fn validate_slot(&self, _: &StableKey, _: &MemoryManagerSlot) -> Result<(), Self::Error> {
         Ok(())
     }
-}
 
-impl RuntimeBootstrapPolicy for HostPolicy {
     fn runtime_bootstrap_identity(&self) -> Result<PolicyIdentity, PolicyIdentityError> {
         PolicyIdentity::new("example.composed-host", 1)
     }
@@ -69,9 +67,9 @@ fn prepare_database(
 ) -> Result<(), ConsumerRejection> {
     preparations.set(preparations.get() + 1);
     for record in admission.recovered_allocations() {
-        if record.stable_key.as_str().starts_with("db.")
-            && record.stable_key.as_str().ends_with(".control.v1")
-            && !admission.is_declared(record.stable_key)
+        if record.stable_key().as_str().starts_with("db.")
+            && record.stable_key().as_str().ends_with(".control.v1")
+            && !admission.is_declared(record.stable_key())
         {
             return Err(ConsumerRejection::ControlReplacement);
         }

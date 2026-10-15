@@ -6,7 +6,7 @@ use super::{
     policy::GenericAllocationPolicy,
 };
 use crate::{
-    AllocationPolicy, DiagnosticCheck, DiagnosticCode, DiagnosticMemorySize, LedgerCommitError,
+    DiagnosticCheck, DiagnosticCode, DiagnosticMemorySize, LedgerCommitError,
     LedgerPayloadEnvelopeError, MemoryManagerSlot, PolicyIdentity, PolicyIdentityError,
     RuntimeBootstrapPolicy, SealedDeclarationSnapshot, StableKey,
 };
@@ -35,7 +35,7 @@ const WASM_PAGE_SIZE_BYTES: usize = 65_536;
 fn doctor_keeps_memory_observations_before_policy_callbacks() {
     struct GrowingPolicy<'a>(&'a MemoryRuntime<VectorMemory>);
 
-    impl AllocationPolicy for GrowingPolicy<'_> {
+    impl RuntimeBootstrapPolicy for GrowingPolicy<'_> {
         type Error = Infallible;
 
         fn validate_key(&self, _key: &StableKey) -> Result<(), Self::Error> {
@@ -54,9 +54,7 @@ fn doctor_keeps_memory_observations_before_policy_callbacks() {
         ) -> Result<(), Self::Error> {
             Ok(())
         }
-    }
 
-    impl RuntimeBootstrapPolicy for GrowingPolicy<'_> {
         fn runtime_bootstrap_identity(&self) -> Result<PolicyIdentity, PolicyIdentityError> {
             self.0
                 .open_memory("runtime_tests.rows.v1")
@@ -108,25 +106,23 @@ fn read_one_page(memory: &VectorMemory) -> Vec<u8> {
 
 struct CountingPolicy(std::cell::Cell<usize>);
 
-impl AllocationPolicy for CountingPolicy {
+impl RuntimeBootstrapPolicy for CountingPolicy {
     type Error = Infallible;
 
-    fn validate_key(&self, _key: &StableKey) -> Result<(), Self::Error> {
+    fn validate_key(&self, key: &StableKey) -> Result<(), Self::Error> {
+        assert_ne!(key.as_str(), crate::IC_MEMORY_LEDGER_STABLE_KEY);
+        assert_eq!(self.0.get() % 2, 0);
         self.0.set(self.0.get() + 1);
         Ok(())
     }
 
-    fn validate_slot(
-        &self,
-        _key: &StableKey,
-        _slot: &MemoryManagerSlot,
-    ) -> Result<(), Self::Error> {
+    fn validate_slot(&self, key: &StableKey, _slot: &MemoryManagerSlot) -> Result<(), Self::Error> {
+        assert_ne!(key.as_str(), crate::IC_MEMORY_LEDGER_STABLE_KEY);
+        assert_eq!(self.0.get() % 2, 1);
         self.0.set(self.0.get() + 1);
         Ok(())
     }
-}
 
-impl RuntimeBootstrapPolicy for CountingPolicy {
     fn runtime_bootstrap_identity(&self) -> Result<PolicyIdentity, PolicyIdentityError> {
         PolicyIdentity::new("runtime-tests.counting-policy", 1)
     }
@@ -156,7 +152,7 @@ impl IdentityPolicy {
     }
 }
 
-impl AllocationPolicy for IdentityPolicy {
+impl RuntimeBootstrapPolicy for IdentityPolicy {
     type Error = Infallible;
 
     fn validate_key(&self, _key: &StableKey) -> Result<(), Self::Error> {
@@ -170,9 +166,7 @@ impl AllocationPolicy for IdentityPolicy {
     ) -> Result<(), Self::Error> {
         Ok(())
     }
-}
 
-impl RuntimeBootstrapPolicy for IdentityPolicy {
     fn runtime_bootstrap_identity(&self) -> Result<PolicyIdentity, PolicyIdentityError> {
         let identity = PolicyIdentity::new(self.name, self.version)?;
         Ok(match self.configuration_digest {
@@ -548,7 +542,7 @@ fn policy_identity_validation_and_configuration_digest_are_runtime_bound() {
 
 struct RejectPolicy;
 
-impl AllocationPolicy for RejectPolicy {
+impl RuntimeBootstrapPolicy for RejectPolicy {
     type Error = &'static str;
 
     fn validate_key(&self, _key: &StableKey) -> Result<(), Self::Error> {
@@ -562,9 +556,7 @@ impl AllocationPolicy for RejectPolicy {
     ) -> Result<(), Self::Error> {
         Ok(())
     }
-}
 
-impl RuntimeBootstrapPolicy for RejectPolicy {
     fn runtime_bootstrap_identity(&self) -> Result<PolicyIdentity, PolicyIdentityError> {
         PolicyIdentity::new("runtime-tests.reject-policy", 1)
     }

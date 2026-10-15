@@ -220,7 +220,7 @@ mod tests {
 
     #[test]
     fn uniqueness_errors_follow_input_order_and_boundary_precedence() {
-        use crate::{AllocationDeclaration, DeclarationSnapshot, DeclarationSnapshotError};
+        use crate::AllocationDeclaration;
         let duplicate = StableKey::parse("app.b.v1").unwrap();
         for slots in [[10, 11, 12, 13], [10, 11, 10, 13]] {
             let declarations: Vec<_> = ["app.a.v1", "app.b.v1", "app.b.v1", "app.a.v1"]
@@ -228,15 +228,6 @@ mod tests {
                 .zip(slots)
                 .map(|(key, slot)| AllocationDeclaration::memory_manager(key, slot).unwrap())
                 .collect();
-            let expected = if slots[2] == slots[0] {
-                DeclarationSnapshotError::DuplicateSlot(crate::MemoryManagerSlot::new(10).unwrap())
-            } else {
-                DeclarationSnapshotError::DuplicateStableKey(duplicate.clone())
-            };
-            assert_eq!(
-                DeclarationSnapshot::new(declarations.clone()).unwrap_err(),
-                expected
-            );
             let ledger = crate::AllocationLedger {
                 current_generation: 1,
                 records: declarations

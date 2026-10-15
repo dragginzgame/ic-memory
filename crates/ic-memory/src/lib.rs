@@ -148,7 +148,7 @@ pub use capability::CommittedAllocations;
 pub use constants::{
     MAX_LEDGER_BYTES, MAX_LEDGER_NESTING, MAX_LEDGER_RECORD_BYTES, WASM_PAGE_SIZE_BYTES,
 };
-pub use declaration::{AllocationDeclaration, DeclarationSnapshot, DeclarationSnapshotError};
+pub use declaration::{AllocationDeclaration, DeclarationSnapshotError};
 pub use diagnostics::{
     DiagnosticCheck, DiagnosticCode, DiagnosticExport, DiagnosticFailure, DiagnosticMemorySize,
     DiagnosticRecord, DiagnosticRuntimeBinding, DiagnosticStableCell, DiagnosticStableCellStatus,
@@ -159,15 +159,14 @@ pub(crate) use ledger::LedgerCommitStore;
 #[cfg(test)]
 pub(crate) use ledger::LedgerPayloadEnvelope;
 pub use ledger::{
-    AllocationLedger, AllocationRecord, AllocationReservationError, AllocationRetirement,
-    AllocationRetirementError, AllocationStageError, AllocationState,
+    AllocationLedger, AllocationRecord, AllocationStageError, AllocationState,
     LEDGER_PAYLOAD_FORMAT_VERSION, LedgerCommitError, LedgerIntegrityError,
     LedgerPayloadEnvelopeError, RecoveredLedger,
 };
 #[cfg(test)]
 pub(crate) use physical::CommittedGenerationBytes;
 pub use physical::{CommitRecoveryError, CommitSnapshotDiagnostic};
-pub use policy::{AllocationPolicy, PolicyIdentity, PolicyIdentityError, RuntimeBootstrapPolicy};
+pub use policy::{PolicyIdentity, PolicyIdentityError, RuntimeBootstrapPolicy};
 pub use requests::{
     MemoryDeclarationError, MemoryRequest, SealedDeclarationFingerprint, SealedDeclarationSnapshot,
 };
@@ -175,13 +174,12 @@ pub use runtime::{
     AllocationBinding, BootstrapAdmission, BootstrapAdmissionError, GenericAllocationPolicy,
     MemoryAllocation, MemoryAllocationSummary, MemoryAllocations, MemoryBindingSummary,
     MemoryManagerConfig, MemoryManagerLayoutError, MemoryResolutionError, MemoryRuntime,
-    RecoveredAllocationMetadata, RuntimeAdoptionError, RuntimeBootstrapError,
-    RuntimeConstructionError, RuntimeDiagnosticError, RuntimeGrowError, RuntimeMemory,
-    RuntimeOpenError, RuntimeStateError, bootstrap_default_memory_manager,
-    bootstrap_default_memory_manager_with_config, bootstrap_default_memory_manager_with_policy,
-    committed_allocations, default_memory_manager_commit_recovery_diagnostic,
-    default_memory_manager_diagnostic_export, default_memory_manager_doctor_report,
-    default_memory_manager_doctor_report_with_policy,
+    RuntimeAdoptionError, RuntimeBootstrapError, RuntimeConstructionError, RuntimeDiagnosticError,
+    RuntimeGrowError, RuntimeMemory, RuntimeOpenError, RuntimeStateError,
+    bootstrap_default_memory_manager, bootstrap_default_memory_manager_with_config,
+    bootstrap_default_memory_manager_with_policy, committed_allocations,
+    default_memory_manager_commit_recovery_diagnostic, default_memory_manager_diagnostic_export,
+    default_memory_manager_doctor_report, default_memory_manager_doctor_report_with_policy,
     default_memory_manager_memory_allocation_summary, default_memory_manager_memory_allocations,
     default_memory_manager_memory_id, is_default_memory_manager_bootstrapped,
     open_default_memory_manager_memory, verify_default_memory_manager_authority,
@@ -207,5 +205,5 @@ pub(crate) use validation::validate_allocations;
 #[cfg(test)]
 mod allocation_measurements_tests;
 
-#[cfg(feature = "test-support")]
+#[cfg(any(test, feature = "test-support"))]
 pub mod testing;

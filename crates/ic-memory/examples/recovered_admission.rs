@@ -2,8 +2,8 @@
 //! to complete declarations; real journal/commit safety remains consumer-owned.
 use ic_memory::ic_stable_structures::{Memory, VectorMemory};
 use ic_memory::{
-    AllocationPolicy, AllocationState, BootstrapAdmission, MemoryManagerSlot, MemoryRequest,
-    MemoryRuntime, PolicyIdentity, PolicyIdentityError, RuntimeBootstrapPolicy, SchemaMetadata,
+    AllocationState, BootstrapAdmission, MemoryManagerSlot, MemoryRequest, MemoryRuntime,
+    PolicyIdentity, PolicyIdentityError, RuntimeBootstrapPolicy, SchemaMetadata,
     SealedDeclarationSnapshot, StableKey,
 };
 
@@ -11,7 +11,7 @@ const CONTROL: &str = "db.main.control.v1";
 const OLD_JOURNAL: &str = "db.main.old.journal.v1";
 
 struct HostPolicy;
-impl AllocationPolicy for HostPolicy {
+impl RuntimeBootstrapPolicy for HostPolicy {
     type Error = &'static str;
     fn validate_key(&self, _: &StableKey) -> Result<(), Self::Error> {
         Ok(())
@@ -19,8 +19,7 @@ impl AllocationPolicy for HostPolicy {
     fn validate_slot(&self, _: &StableKey, _: &MemoryManagerSlot) -> Result<(), Self::Error> {
         Ok(())
     }
-}
-impl RuntimeBootstrapPolicy for HostPolicy {
+
     fn runtime_bootstrap_identity(&self) -> Result<PolicyIdentity, PolicyIdentityError> {
         PolicyIdentity::new("example.host-with-db-admission", 1)
     }
@@ -34,10 +33,10 @@ impl RuntimeBootstrapPolicy for HostPolicy {
 fn prepare_database(admission: &mut BootstrapAdmission<'_>) -> Result<(), &'static str> {
     let mut omitted = Vec::new();
     for record in admission.recovered_allocations() {
-        let key = record.stable_key.as_str();
+        let key = record.stable_key().as_str();
         if key.starts_with("db.")
             && key.ends_with(".control.v1")
-            && (key != CONTROL || !admission.is_declared(record.stable_key))
+            && (key != CONTROL || !admission.is_declared(record.stable_key()))
         {
             return Err(
                 "database control identity replacement requires an explicit consumer decision",
@@ -45,10 +44,10 @@ fn prepare_database(admission: &mut BootstrapAdmission<'_>) -> Result<(), &'stat
         }
         if key.starts_with("db.main.")
             && key.ends_with(".journal.v1")
-            && !matches!(record.state, AllocationState::Retired)
-            && !admission.is_declared(record.stable_key)
+            && !matches!(record.state(), AllocationState::Retired)
+            && !admission.is_declared(record.stable_key())
         {
-            omitted.push(record.stable_key.clone());
+            omitted.push(record.stable_key().clone());
         }
     }
     for key in omitted {

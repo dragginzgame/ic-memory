@@ -1,7 +1,7 @@
 use super::request_tests::{pool, snapshot};
 use super::*;
 use crate::{
-    AllocationPolicy, BootstrapAdmissionError as AdmissionError, MemoryManagerSlot, StableKey,
+    BootstrapAdmissionError as AdmissionError, MemoryManagerSlot, RuntimeBootstrapPolicy, StableKey,
 };
 use ic_stable_structures::VectorMemory;
 use std::cell::Cell as Counter;
@@ -15,7 +15,7 @@ pub(super) struct AdmissionPolicy {
     pub deny_journals: bool,
 }
 
-impl AllocationPolicy for AdmissionPolicy {
+impl RuntimeBootstrapPolicy for AdmissionPolicy {
     type Error = &'static str;
     fn validate_key(&self, key: &StableKey) -> Result<(), Self::Error> {
         if self.deny_journals && key.as_str().ends_with(".journal.v1") {
@@ -27,8 +27,7 @@ impl AllocationPolicy for AdmissionPolicy {
     fn validate_slot(&self, _: &StableKey, _: &MemoryManagerSlot) -> Result<(), Self::Error> {
         Ok(())
     }
-}
-impl RuntimeBootstrapPolicy for AdmissionPolicy {
+
     fn runtime_bootstrap_identity(&self) -> Result<PolicyIdentity, crate::PolicyIdentityError> {
         PolicyIdentity::new("test.admission", 1)
     }
@@ -40,15 +39,15 @@ impl RuntimeBootstrapPolicy for AdmissionPolicy {
         let mut selected = Vec::new();
         if self.discover {
             for record in admission.recovered_allocations() {
-                if record.stable_key.as_str().ends_with(".control.v1")
-                    && !admission.is_declared(record.stable_key)
+                if record.stable_key().as_str().ends_with(".control.v1")
+                    && !admission.is_declared(record.stable_key())
                 {
                     return Err("identity rejected");
                 }
-                if record.stable_key.as_str().ends_with(".journal.v1")
-                    && !admission.is_declared(record.stable_key)
+                if record.stable_key().as_str().ends_with(".journal.v1")
+                    && !admission.is_declared(record.stable_key())
                 {
-                    selected.push(record.stable_key.clone());
+                    selected.push(record.stable_key().clone());
                 }
             }
         }
@@ -281,8 +280,11 @@ fn current_policy_revoked_grants_and_retirement_still_reject() {
         .unwrap()
         .ledger()
         .stage_retirement_generation(
-            &crate::AllocationRetirement::new(JOURNAL, MemoryManagerSlot::new(11).unwrap())
-                .unwrap(),
+            &crate::testing::AllocationRetirement::new(
+                JOURNAL,
+                MemoryManagerSlot::new(11).unwrap(),
+            )
+            .unwrap(),
         )
         .unwrap();
     record.store_mut().commit_generation(&retired).unwrap();

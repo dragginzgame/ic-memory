@@ -19,7 +19,8 @@ returns latest metadata. `AllocationState::Retired` has no event payload.
 `AllocationLedger::new(counter, records)` validates the one current shape;
 protected recovery still establishes the physical/logical binding before any
 open authority. Bootstrap and staging functions no longer take timestamps, and
-`DeclarationSnapshot` contains declarations only. The separate sealed-declaration
+resolved numeric declarations remain internal to the runtime. Hosts supply
+`SealedDeclarationSnapshot` logical requests. The separate sealed-declaration
 fingerprint remains a transient binding between a runtime and its declarations.
 Its values change with the simplified snapshot shape; regenerate diagnostic
 expectations rather than treating an earlier value as a current binding.

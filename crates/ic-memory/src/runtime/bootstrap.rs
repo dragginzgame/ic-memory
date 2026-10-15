@@ -3,10 +3,9 @@ use crate::{
     capability::{CommittedAllocations, ValidatedAllocations},
     declaration::DeclarationSnapshot,
     ledger::{LedgerCommitStore, stage_validated_generation},
-    policy::AllocationPolicy,
+    policy::RuntimeBootstrapPolicy,
     validation::validate_allocations,
 };
-use std::borrow::Cow;
 
 /// Validate and stage one commit; the runtime persists before confirmation.
 pub fn prepare_commit<P>(
@@ -16,10 +15,10 @@ pub fn prepare_commit<P>(
     policy: &P,
 ) -> Result<PendingBootstrapCommit, RuntimeBootstrapError<P::Error>>
 where
-    P: AllocationPolicy,
+    P: RuntimeBootstrapPolicy,
 {
     let validated = validate_allocations(&prior, snapshot, policy)?;
-    let staged = stage_validated_generation(Cow::Owned(prior.into_ledger()), &validated)?;
+    let staged = stage_validated_generation(prior.into_ledger(), &validated)?;
     store.commit_generation(&staged)?;
 
     Ok(PendingBootstrapCommit {
@@ -70,7 +69,7 @@ mod tests {
     #[derive(Debug, Eq, PartialEq)]
     struct RejectActivePolicy;
 
-    impl AllocationPolicy for RejectActivePolicy {
+    impl RuntimeBootstrapPolicy for RejectActivePolicy {
         type Error = &'static str;
 
         fn validate_key(&self, _key: &crate::StableKey) -> Result<(), Self::Error> {
@@ -83,6 +82,12 @@ mod tests {
             _slot: &MemoryManagerSlot,
         ) -> Result<(), Self::Error> {
             Err("active slot rejected")
+        }
+
+        fn runtime_bootstrap_identity(
+            &self,
+        ) -> Result<crate::PolicyIdentity, crate::PolicyIdentityError> {
+            crate::PolicyIdentity::new("validation-test", 1)
         }
     }
 
@@ -102,8 +107,8 @@ mod tests {
     #[test]
     fn validated_commit_matches_recovered_generation() {
         let mut store = LedgerCommitStore::default();
-        let recovered = store.recover_or_initialize(&ledger()).unwrap();
-        let snapshot = DeclarationSnapshot::new(vec![declaration()]).unwrap();
+        let recovered = store.recover_or_genesis().unwrap();
+        let snapshot = DeclarationSnapshot::canonicalize(vec![declaration()]).unwrap();
         let commit = crate::runtime::bootstrap::prepare_commit(
             &mut store,
             recovered,
@@ -130,7 +135,7 @@ mod tests {
         store.commit(&reserved).unwrap();
         let before = store.clone();
         let recovered = store.recover().unwrap();
-        let snapshot = DeclarationSnapshot::new(vec![declaration()]).unwrap();
+        let snapshot = DeclarationSnapshot::canonicalize(vec![declaration()]).unwrap();
         let err = crate::runtime::bootstrap::prepare_commit(
             &mut store,
             recovered,

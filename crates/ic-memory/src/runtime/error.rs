@@ -129,9 +129,6 @@ pub enum RuntimeBootstrapError<P> {
         /// Policy identity supplied by the repeated call.
         requested: PolicyIdentity,
     },
-    /// Allocation declaration construction or resolution failed.
-    #[error(transparent)]
-    Declarations(#[from] MemoryDeclarationError),
     /// Protected ledger recovery or commit failed.
     #[error(transparent)]
     LedgerCommit(#[from] crate::LedgerCommitError),
@@ -202,9 +199,6 @@ pub enum RuntimeDiagnosticError {
     /// No default runtime exists, or this operation requires completed bootstrap.
     #[error("ic-memory runtime has not completed bootstrap validation")]
     NotBootstrapped,
-    /// Allocation declaration construction or resolution failed.
-    #[error(transparent)]
-    Declarations(#[from] MemoryDeclarationError),
     /// Runtime lifecycle or default TLS access failed.
     #[error(transparent)]
     State(#[from] RuntimeStateError),

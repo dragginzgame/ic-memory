@@ -4,7 +4,10 @@
 //! package travel together in one receipt. Publication checks that evidence
 //! before dispatch; it never resolves a replacement lockfile.
 
-use ic_build::cargo::observation::{CargoFeatureSelection, CargoMetadataSpec, observe_metadata};
+use ic_build::cargo::{
+    lock_projection::{WorkspaceVersionProjection, verify_workspace_version_projection},
+    observation::{CargoFeatureSelection, CargoMetadataSpec, observe_metadata},
+};
 use ic_host_artifacts::artifact::{Sha256Digest, copy_reader};
 use ic_host_fs::durable::{PublicationMode, WriteOptions};
 use ic_host_fs::read::{hash_file, open_regular_file};
@@ -342,27 +345,16 @@ fn toml_string(text: &str, section: &str, field: &str) -> Result<String> {
 }
 
 fn check_lock_update(before: &[u8], after: &str, previous: &str, version: &str) -> Result<()> {
-    let mut expected: toml::Value = toml::from_str(std::str::from_utf8(before)?)?;
-    let packages = expected
-        .get_mut("package")
-        .and_then(toml::Value::as_array_mut)
-        .ok_or("lockfile has no packages")?;
-    let mut count = 0;
-    for package in packages {
-        if package.get("name").and_then(toml::Value::as_str) == Some("ic-memory") {
-            require(
-                package.get("version").and_then(toml::Value::as_str) == Some(previous),
-                "unexpected locked root package version",
-            )?;
-            package["version"] = toml::Value::String(version.to_owned());
-            count += 1;
-        }
-    }
-    require(count == 1, "expected one locked ic-memory package")?;
-    require(
-        expected == toml::from_str::<toml::Value>(after)?,
-        "workspace version refresh changed dependency selection",
-    )
+    verify_workspace_version_projection(
+        std::str::from_utf8(before)?,
+        after,
+        &[WorkspaceVersionProjection {
+            package: "ic-memory",
+            previous,
+            next: version,
+        }],
+    )?;
+    Ok(())
 }
 
 fn check_wasm_artifacts(target: &Path) -> Result<()> {

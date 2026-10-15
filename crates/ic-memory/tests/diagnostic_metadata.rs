@@ -1,7 +1,6 @@
 use ic_memory::{
-    AllocationDeclaration, DeclarationSnapshot, DeclarationSnapshotError, MemoryAllocationPool,
-    MemoryAllocationPoolError, MemoryAuthority, MemoryDeclarationError, MemoryRequest,
-    PolicyIdentity, PolicyIdentityError, SchemaMetadata,
+    AllocationDeclaration, MemoryAllocationPool, MemoryAllocationPoolError, MemoryAuthority,
+    MemoryDeclarationError, MemoryRequest, PolicyIdentity, PolicyIdentityError, SchemaMetadata,
 };
 
 #[test]
@@ -94,116 +93,6 @@ fn diagnostic_metadata_preserves_field_errors_and_rejection_order() {
             MemoryAuthority::new(value.as_str(), "app.").unwrap_err(),
             MemoryAllocationPoolError::InvalidAuthority { reason }
         );
-    }
-}
-
-fn snapshot_decode_error(value: &serde_json::Value, expected: &DeclarationSnapshotError) {
-    let json = serde_json::from_value::<DeclarationSnapshot>(value.clone());
-    let mut bytes = Vec::new();
-    ciborium::into_writer(value, &mut bytes).unwrap();
-    let cbor = ciborium::from_reader::<DeclarationSnapshot, _>(bytes.as_slice());
-    assert_eq!([json.is_err(), cbor.is_err()], [true, true], "{expected}");
-    assert!(
-        json.unwrap_err()
-            .to_string()
-            .contains(&expected.to_string())
-    );
-    assert!(
-        cbor.unwrap_err()
-            .to_string()
-            .contains(&expected.to_string())
-    );
-}
-
-#[test]
-fn snapshot_decode_checks_collection_invariants() {
-    let declaration = AllocationDeclaration::memory_manager("app.rows.v1", 100).unwrap();
-    for (second, expected) in [
-        (
-            declaration.clone(),
-            DeclarationSnapshotError::DuplicateSlot(declaration.slot().clone()),
-        ),
-        (
-            AllocationDeclaration::memory_manager("app.other.v1", 100).unwrap(),
-            DeclarationSnapshotError::DuplicateSlot(declaration.slot().clone()),
-        ),
-        (
-            AllocationDeclaration::memory_manager("app.rows.v1", 101).unwrap(),
-            DeclarationSnapshotError::DuplicateStableKey(declaration.stable_key().clone()),
-        ),
-    ] {
-        let value = serde_json::json!({
-            "declarations": [declaration, second],
-        });
-        snapshot_decode_error(&value, &expected);
-    }
-    let mut value =
-        serde_json::to_value(DeclarationSnapshot::new(vec![declaration]).unwrap()).unwrap();
-    value["declarations"] = serde_json::Value::Array(vec![value["declarations"][0].clone(); 256]);
-    assert!(serde_json::from_value::<DeclarationSnapshot>(value.clone()).is_err());
-    let mut bytes = Vec::new();
-    ciborium::into_writer(&value, &mut bytes).unwrap();
-    assert!(ciborium::from_reader::<DeclarationSnapshot, _>(bytes.as_slice()).is_err());
-}
-
-#[test]
-fn snapshot_decode_rejects_excess_before_decoding_the_extra_declaration() {
-    let declarations = (0..=254)
-        .map(|id| AllocationDeclaration::memory_manager(format!("app.store{id}.v1"), id).unwrap())
-        .collect();
-    let value = serde_json::to_value(DeclarationSnapshot::new(declarations).unwrap()).unwrap();
-    let mut sequence = serde_json::to_string(&value["declarations"]).unwrap();
-    sequence.pop(); // Replace the end with an extra element that cannot be parsed.
-    let input = format!("{{\"declarations\":{sequence},!");
-    let error = serde_json::from_str::<DeclarationSnapshot>(&input).unwrap_err();
-    // A count refusal is a data error; decoding the malformed extra element
-    // would instead produce a syntax error. No error prose is a contract.
-    assert_eq!(error.classify(), serde_json::error::Category::Data);
-
-    // Advertise 256 entries, without providing even the first declaration.
-    // A semantic refusal proves the size hint was checked before an EOF read.
-    let bytes = b"\xa1\x6cdeclarations\x99\x01\x00";
-    let error = ciborium::from_reader::<DeclarationSnapshot, _>(bytes.as_slice()).unwrap_err();
-    assert!(matches!(error, ciborium::de::Error::Semantic(..)));
-}
-
-#[test]
-fn snapshot_decode_preserves_current_shape_order_and_full_slot_domain() {
-    let empty = DeclarationSnapshot::new(Vec::new()).unwrap();
-    let mut bytes = Vec::new();
-    ciborium::into_writer(&empty, &mut bytes).unwrap();
-    assert_eq!(bytes, b"\xa1\x6cdeclarations\x80");
-    let full = DeclarationSnapshot::new(
-        (0..=254)
-            .rev()
-            .map(|id| {
-                AllocationDeclaration::memory_manager(format!("app.store{id}.v1"), id).unwrap()
-            })
-            .collect(),
-    )
-    .unwrap();
-    for snapshot in [empty, full] {
-        let value = serde_json::to_value(&snapshot).unwrap();
-        assert_eq!(
-            serde_json::from_value::<DeclarationSnapshot>(value).unwrap(),
-            snapshot
-        );
-        let mut bytes = Vec::new();
-        ciborium::into_writer(&snapshot, &mut bytes).unwrap();
-        assert_eq!(
-            ciborium::from_reader::<DeclarationSnapshot, _>(bytes.as_slice()).unwrap(),
-            snapshot
-        );
-    }
-    for value in [
-        serde_json::json!({}),
-        serde_json::json!({"declarations": 42}),
-        serde_json::json!({"declarations": [], "extra": true}),
-    ] {
-        assert!(serde_json::from_value::<DeclarationSnapshot>(value.clone()).is_err());
-        let mut bytes = Vec::new();
-        ciborium::into_writer(&value, &mut bytes).unwrap();
-        assert!(ciborium::from_reader::<DeclarationSnapshot, _>(bytes.as_slice()).is_err());
     }
 }
 

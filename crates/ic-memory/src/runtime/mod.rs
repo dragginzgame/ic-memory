@@ -29,7 +29,7 @@ mod request_tests;
 #[cfg(test)]
 mod tests;
 
-pub use admission::{BootstrapAdmission, BootstrapAdmissionError, RecoveredAllocationMetadata};
+pub use admission::{BootstrapAdmission, BootstrapAdmissionError};
 pub use adoption::RuntimeAdoptionError;
 
 pub use allocations::{
@@ -54,10 +54,9 @@ pub use error::{
 pub use layout::MemoryManagerLayoutError;
 pub use policy::GenericAllocationPolicy;
 
-use self::policy::RuntimeMemoryManagerPolicy;
 use crate::{
-    AllocationLedger, CommittedAllocations, PolicyIdentity, RuntimeBootstrapPolicy,
-    STABLE_CELL_VALUE_OFFSET, StableCellLedgerError, StableCellLedgerRecord,
+    CommittedAllocations, PolicyIdentity, RuntimeBootstrapPolicy, STABLE_CELL_VALUE_OFFSET,
+    StableCellLedgerError, StableCellLedgerRecord,
     requests::SealedDeclarationSnapshot,
     slot::MEMORY_MANAGER_LEDGER_ID,
     stable_cell::{EncodedLedgerRecord, decode_stable_cell_ledger_record_from_memory},
@@ -265,8 +264,7 @@ impl<M: Memory> MemoryRuntime<M> {
     ) -> Result<(), RuntimeBootstrapError<P::Error>> {
         let memory = self.memory(MEMORY_MANAGER_LEDGER_ID);
         let mut record = decode_stable_cell_ledger_record_from_memory(&memory)?;
-        let genesis = AllocationLedger::empty_genesis();
-        let recovered = record.store_mut().recover_or_initialize(&genesis)?;
+        let recovered = record.store().recover_or_genesis()?;
         let occupied = recovered.ledger().occupied_slots();
         self.validate_pool_custody(&occupied, pool)?;
         if memory.size() == 0 {
@@ -279,14 +277,11 @@ impl<M: Memory> MemoryRuntime<M> {
         let historical = admission.complete()?;
         preparation.map_err(RuntimeBootstrapError::AdmissionPolicy)?;
         let resolved = declarations.resolve(recovered.ledger(), &occupied, historical, pool)?;
-        let runtime_policy = RuntimeMemoryManagerPolicy {
-            custom_policy: policy,
-        };
         let commit = crate::runtime::bootstrap::prepare_commit(
             record.store_mut(),
             recovered,
             resolved,
-            &runtime_policy,
+            policy,
         )?;
         write_ledger_cell(memory, &record)?;
         let committed = commit.confirm_persisted();

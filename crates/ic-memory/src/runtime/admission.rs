@@ -1,27 +1,7 @@
 use crate::{
-    AllocationDeclaration, AllocationLedger, AllocationState, MemoryManagerSlot, MemoryRequest,
+    AllocationDeclaration, AllocationLedger, AllocationRecord, AllocationState, MemoryRequest,
     SchemaMetadata, SealedDeclarationSnapshot, StableKey,
 };
-
-///
-/// RecoveredAllocationMetadata
-///
-/// Validated allocation evidence borrowed during bootstrap preparation. This
-/// metadata grants no memory access and contains no application payload or
-/// historical authority identity. Host namespace grants supply current authorization.
-///
-
-#[derive(Clone, Copy, Debug)]
-pub struct RecoveredAllocationMetadata<'a> {
-    /// Durable allocation identity.
-    pub stable_key: &'a StableKey,
-    /// Persisted assignment, not permission to open it.
-    pub slot: &'a MemoryManagerSlot,
-    /// Current generic allocation lifecycle state.
-    pub state: AllocationState,
-    /// Latest diagnostic schema metadata, not application schema validation.
-    pub schema: &'a SchemaMetadata,
-}
 
 ///
 /// BootstrapAdmissionError
@@ -85,24 +65,12 @@ impl<'a> BootstrapAdmission<'a> {
         self.declarations
     }
 
-    /// At most 255 validated allocation summaries, including governance records.
-    ///
-    /// # Panics
-    ///
-    /// Panics only if an internal validated-ledger invariant is broken.
+    /// Borrow at most 255 validated allocation records, including governance.
+    /// Records grant no memory access and contain no historical authority label;
+    /// current host namespace grants remain the authorization owner.
     #[must_use = "recovered allocation metadata is inspected only when the iterator is consumed"]
-    pub fn recovered_allocations(
-        &self,
-    ) -> impl ExactSizeIterator<Item = RecoveredAllocationMetadata<'_>> {
-        self.ledger
-            .records()
-            .iter()
-            .map(|record| RecoveredAllocationMetadata {
-                stable_key: record.stable_key(),
-                slot: record.slot(),
-                state: record.state(),
-                schema: record.schema(),
-            })
+    pub fn recovered_allocations(&self) -> impl ExactSizeIterator<Item = &AllocationRecord> {
+        self.ledger.records().iter()
     }
 
     /// Whether the original input or an earlier selection already names this key.

@@ -1,10 +1,9 @@
 use super::{MemoryRuntime, RuntimeDiagnosticError, RuntimeLifecycle};
 use crate::{
-    AllocationLedger, AllocationPolicy, DiagnosticCheck, DiagnosticCode, DiagnosticExport,
-    DiagnosticFailure, DiagnosticMemorySize, DiagnosticRuntimeBinding, DiagnosticStableCell,
-    DiagnosticStableCellStatus, LedgerCommitError, LedgerPayloadEnvelopeError,
-    MemoryRuntimeDoctorReport, PolicyIdentity, RecoveredLedger, RuntimeBootstrapPolicy,
-    StableCellLedgerRecord,
+    DiagnosticCheck, DiagnosticCode, DiagnosticExport, DiagnosticFailure, DiagnosticMemorySize,
+    DiagnosticRuntimeBinding, DiagnosticStableCell, DiagnosticStableCellStatus, LedgerCommitError,
+    LedgerPayloadEnvelopeError, MemoryRuntimeDoctorReport, PolicyIdentity, RecoveredLedger,
+    RuntimeBootstrapPolicy, StableCellLedgerRecord,
     physical::CommitSnapshotDiagnostic,
     requests::{SealedDeclarationFingerprint, SealedDeclarationSnapshot},
     slot::MEMORY_MANAGER_LEDGER_ID,
@@ -185,7 +184,7 @@ struct StableCellDiagnostic {
     record: Option<StableCellLedgerRecord>,
 }
 
-fn diagnostic_validation<M: Memory, P: AllocationPolicy>(
+fn diagnostic_validation<M: Memory, P: RuntimeBootstrapPolicy>(
     runtime: &MemoryRuntime<M>,
     declarations: &SealedDeclarationSnapshot,
     pool: &crate::MemoryAllocationPool,
@@ -209,8 +208,7 @@ where
             return DiagnosticCheck::failed(DiagnosticCode::AllocationValidation, err.to_string());
         }
     };
-    let policy = super::policy::RuntimeMemoryManagerPolicy { custom_policy };
-    match crate::validation::check_allocations(&recovered, &resolved, &policy) {
+    match crate::validation::check_allocations(&recovered, &resolved, custom_policy) {
         Ok(()) => DiagnosticCheck::passed(),
         Err(err) => DiagnosticCheck::failed(DiagnosticCode::AllocationValidation, err.to_string()),
     }
@@ -253,14 +251,8 @@ pub(super) fn diagnostic_validation_ledger(
         return Ok(Cow::Borrowed(recovered));
     }
     if let Some(Err(err)) = recovered {
-        // Protected recovery returns NoValidGeneration only for an absent snapshot.
-        if matches!(
-            err,
-            LedgerCommitError::Recovery(crate::CommitRecoveryError::NoValidGeneration)
-        ) {
-            return Ok(Cow::Owned(RecoveredLedger::from_trusted_ledger(
-                AllocationLedger::empty_genesis(),
-            )));
+        if let Some(genesis) = RecoveredLedger::genesis_for_absent_snapshot(err) {
+            return Ok(Cow::Owned(genesis));
         }
         let code = if matches!(
             err,

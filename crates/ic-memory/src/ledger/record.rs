@@ -1,4 +1,4 @@
-use super::{AllocationRetirementError, LedgerIntegrityError};
+use super::LedgerIntegrityError;
 use crate::{
     declaration::AllocationDeclaration, key::StableKey, schema::SchemaMetadata,
     slot::MemoryManagerSlot,
@@ -60,48 +60,12 @@ pub enum AllocationState {
 }
 
 ///
-/// AllocationRetirement
-///
-/// Explicit request to tombstone one retained allocation identity. Retirement
-/// prevents redeclaration and never frees the physical slot for another key.
-///
-
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-#[serde(deny_unknown_fields)]
-pub struct AllocationRetirement {
-    pub(crate) stable_key: StableKey,
-    pub(crate) slot: MemoryManagerSlot,
-}
-
-impl AllocationRetirement {
-    /// Build an explicit retirement request from checked raw parts.
-    pub fn new(
-        stable_key: impl AsRef<str>,
-        slot: MemoryManagerSlot,
-    ) -> Result<Self, AllocationRetirementError> {
-        let stable_key = StableKey::parse(stable_key).map_err(AllocationRetirementError::Key)?;
-        Ok(Self { stable_key, slot })
-    }
-
-    /// Return the stable key being retired.
-    #[must_use]
-    pub const fn stable_key(&self) -> &StableKey {
-        &self.stable_key
-    }
-
-    /// Return the allocation slot named by the request.
-    #[must_use]
-    pub const fn slot(&self) -> &MemoryManagerSlot {
-        &self.slot
-    }
-}
-
-///
 /// RecoveredLedger
 ///
-/// Proof that a ledger crossed physical recovery, current-format decoding,
-/// integrity validation and physical/logical commit-counter binding. Only this
-/// proof can feed declaration validation; a decoded ledger is a passive DTO.
+/// Validated base for declaration checks: either a recovered ledger that passed
+/// current-format decoding, integrity checks and physical/logical counter binding,
+/// or empty logical genesis admitted only by explicit snapshot absence. Genesis
+/// is not a persisted generation. A decoded ledger alone is a passive DTO.
 ///
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -110,6 +74,16 @@ pub struct RecoveredLedger {
 }
 
 impl RecoveredLedger {
+    // Protected recovery alone establishes absence. All present-snapshot
+    // failures remain failures for bootstrap and diagnostic validation alike.
+    pub(crate) fn genesis_for_absent_snapshot(error: &super::LedgerCommitError) -> Option<Self> {
+        matches!(
+            error,
+            super::LedgerCommitError::Recovery(crate::CommitRecoveryError::NoValidGeneration)
+        )
+        .then(|| Self::from_trusted_ledger(AllocationLedger::empty_genesis()))
+    }
+
     pub(crate) const fn from_trusted_ledger(ledger: AllocationLedger) -> Self {
         Self { ledger }
     }
@@ -120,7 +94,7 @@ impl RecoveredLedger {
         &self.ledger
     }
 
-    /// Return the recovered commit counter, checked against both physical and logical records.
+    /// Return the bound recovered counter, or zero for uncommitted logical genesis.
     #[must_use]
     pub const fn current_generation(&self) -> u64 {
         self.ledger.current_generation
@@ -145,6 +119,7 @@ impl AllocationRecord {
         Self::from_declaration(declaration, AllocationState::Active)
     }
 
+    #[cfg(any(test, feature = "test-support"))]
     pub(crate) fn reserved(declaration: &AllocationDeclaration) -> Self {
         Self::from_declaration(declaration, AllocationState::Reserved)
     }

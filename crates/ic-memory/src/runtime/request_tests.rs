@@ -1,9 +1,9 @@
 use super::*;
+use crate::testing::AllocationRetirement;
 use crate::{
-    AllocationDeclaration, AllocationLedger, AllocationRetirement, GenericAllocationPolicy,
-    LedgerCommitStore, MemoryAllocationPool, MemoryAuthority, MemoryManagerIdRange,
-    MemoryManagerSlot, MemoryRequest, SchemaMetadata, SealedDeclarationSnapshot,
-    StableCellLedgerRecord,
+    AllocationDeclaration, AllocationLedger, GenericAllocationPolicy, LedgerCommitStore,
+    MemoryAllocationPool, MemoryAuthority, MemoryManagerIdRange, MemoryManagerSlot, MemoryRequest,
+    SchemaMetadata, SealedDeclarationSnapshot, StableCellLedgerRecord,
 };
 use ic_stable_structures::{
     Cell, Memory, VectorMemory,
@@ -55,7 +55,7 @@ fn retained(backing: &VectorMemory, declarations: &[AllocationDeclaration]) {
     let pending = crate::runtime::bootstrap::prepare_commit(
         &mut store,
         recovered,
-        crate::DeclarationSnapshot::new(declarations.to_vec()).unwrap(),
+        crate::declaration::DeclarationSnapshot::canonicalize(declarations.to_vec()).unwrap(),
         &GenericAllocationPolicy,
     )
     .unwrap();

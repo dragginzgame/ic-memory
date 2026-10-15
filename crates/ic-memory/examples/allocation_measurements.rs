@@ -2,15 +2,15 @@
 #[path = "support/metered.rs"]
 mod metered;
 use ic_memory::{
-    AllocationPolicy, MemoryAllocations, MemoryManagerConfig, MemoryManagerSlot, MemoryRuntime,
-    PolicyIdentity, PolicyIdentityError, RuntimeBootstrapPolicy, RuntimeMemory, StableKey,
+    MemoryAllocations, MemoryManagerConfig, MemoryManagerSlot, MemoryRuntime, PolicyIdentity,
+    PolicyIdentityError, RuntimeBootstrapPolicy, RuntimeMemory, StableKey,
 };
 use ic_stable_structures::{Cell, Memory, StableVec};
 use metered::Metered;
 use std::{convert::Infallible, hint::black_box, time::Instant};
 
 struct Allow;
-impl AllocationPolicy for Allow {
+impl RuntimeBootstrapPolicy for Allow {
     type Error = Infallible;
     fn validate_key(&self, _: &StableKey) -> Result<(), Infallible> {
         Ok(())
@@ -18,12 +18,12 @@ impl AllocationPolicy for Allow {
     fn validate_slot(&self, _: &StableKey, _: &MemoryManagerSlot) -> Result<(), Infallible> {
         Ok(())
     }
-}
-impl RuntimeBootstrapPolicy for Allow {
+
     fn runtime_bootstrap_identity(&self) -> Result<PolicyIdentity, PolicyIdentityError> {
         PolicyIdentity::new("allocation-measurements", 1)
     }
 }
+
 fn record(
     bucket: u16,
     phase: &str,

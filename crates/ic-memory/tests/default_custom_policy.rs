@@ -1,6 +1,5 @@
 use ic_memory::{
-    AllocationPolicy, MemoryManagerSlot, PolicyIdentity, PolicyIdentityError,
-    RuntimeBootstrapPolicy, StableKey,
+    MemoryManagerSlot, PolicyIdentity, PolicyIdentityError, RuntimeBootstrapPolicy, StableKey,
 };
 
 const AUTHORITY: &str = "default_custom_policy";
@@ -20,7 +19,7 @@ fn snapshot() -> ic_memory::SealedDeclarationSnapshot {
 
 struct CustomPolicy;
 
-impl AllocationPolicy for CustomPolicy {
+impl RuntimeBootstrapPolicy for CustomPolicy {
     type Error = core::convert::Infallible;
 
     fn validate_key(&self, _key: &StableKey) -> Result<(), Self::Error> {
@@ -34,9 +33,7 @@ impl AllocationPolicy for CustomPolicy {
     ) -> Result<(), Self::Error> {
         Ok(())
     }
-}
 
-impl RuntimeBootstrapPolicy for CustomPolicy {
     fn runtime_bootstrap_identity(&self) -> Result<PolicyIdentity, PolicyIdentityError> {
         PolicyIdentity::new(POLICY_IDENTITY, 1)
     }

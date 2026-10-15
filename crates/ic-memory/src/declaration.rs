@@ -3,7 +3,7 @@ use crate::{
     schema::SchemaMetadata,
     slot::{MemoryManagerSlot, MemoryManagerSlotError},
 };
-use serde::{Deserialize, Deserializer, Serialize, de::Error as _};
+use serde::{Deserialize, Serialize};
 
 ///
 /// AllocationDeclaration
@@ -83,43 +83,19 @@ impl AllocationDeclaration {
 ///
 /// DeclarationSnapshot
 ///
-/// Immutable runtime declaration snapshot ready for policy and ownership validation.
-///
-/// Construction and decoding enforce the declaration count and unique keys and
-/// slots. A snapshot is not permission to open storage.
+/// Internal resolved declarations with bounded count and unique keys and slots.
+/// Resolution owns canonical order. A snapshot is not permission to open storage.
 /// [`crate::MemoryRuntime::bootstrap`] owns validation and persistence before
 /// publishing committed allocation authority.
 ///
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[derive(Debug, Eq, PartialEq)]
 pub struct DeclarationSnapshot {
     /// Runtime declarations.
     declarations: Vec<AllocationDeclaration>,
 }
 
-impl<'de> Deserialize<'de> for DeclarationSnapshot {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        #[derive(Deserialize)]
-        #[serde(rename = "DeclarationSnapshot", deny_unknown_fields)]
-        struct Snapshot {
-            #[serde(deserialize_with = "crate::cbor::deserialize_records")]
-            declarations: Vec<AllocationDeclaration>,
-        }
-
-        let snapshot = Snapshot::deserialize(deserializer)?;
-        Self::new(snapshot.declarations).map_err(D::Error::custom)
-    }
-}
-
 impl DeclarationSnapshot {
-    /// Create and validate a declaration snapshot.
-    pub fn new(declarations: Vec<AllocationDeclaration>) -> Result<Self, DeclarationSnapshotError> {
-        validate_declaration_set(&declarations)?;
-        Ok(Self { declarations })
-    }
-
-    // Runtime resolution owns this order; public construction and decoding keep
-    // their original traversal and error precedence. Share identity checks below.
     pub(crate) fn canonicalize(
         mut declarations: Vec<AllocationDeclaration>,
     ) -> Result<Self, DeclarationSnapshotError> {
@@ -127,24 +103,22 @@ impl DeclarationSnapshot {
             return Err(DeclarationSnapshotError::TooManyDeclarations);
         }
         crate::sort::sort_unstable_by(&mut declarations, |a, b| a.stable_key.cmp(&b.stable_key));
-        let mut duplicate_keys = [false; crate::constants::MAX_ALLOCATIONS];
-        for (index, pair) in declarations.windows(2).enumerate() {
-            duplicate_keys[index + 1] = pair[0].stable_key == pair[1].stable_key;
+        let mut slots = [false; crate::constants::MAX_ALLOCATIONS];
+        for (index, declaration) in declarations.iter().enumerate() {
+            let occupied = &mut slots[usize::from(declaration.slot.id())];
+            if *occupied {
+                return Err(DeclarationSnapshotError::DuplicateSlot(
+                    declaration.slot.clone(),
+                ));
+            }
+            *occupied = true;
+            if index > 0 && declarations[index - 1].stable_key == declaration.stable_key {
+                return Err(DeclarationSnapshotError::DuplicateStableKey(
+                    declaration.stable_key.clone(),
+                ));
+            }
         }
-        validate_declaration_identities(&declarations, &duplicate_keys)?;
         Ok(Self { declarations })
-    }
-
-    /// Return true when the snapshot has no declarations.
-    #[must_use]
-    pub const fn is_empty(&self) -> bool {
-        self.declarations.is_empty()
-    }
-
-    /// Return the number of declarations in the snapshot.
-    #[must_use]
-    pub const fn len(&self) -> usize {
-        self.declarations.len()
     }
 
     /// Borrow the sealed declarations.
@@ -179,46 +153,6 @@ pub enum DeclarationSnapshotError {
     /// An allocation slot appeared more than once in one snapshot.
     #[error("allocation slot '{0:?}' is declared more than once")]
     DuplicateSlot(MemoryManagerSlot),
-}
-
-fn validate_declaration_set(
-    declarations: &[AllocationDeclaration],
-) -> Result<(), DeclarationSnapshotError> {
-    if declarations.len() > crate::constants::MAX_ALLOCATIONS {
-        return Err(DeclarationSnapshotError::TooManyDeclarations);
-    }
-    let duplicate_keys = crate::key::duplicate_key_positions(
-        declarations
-            .iter()
-            .enumerate()
-            .map(|(index, declaration)| (&declaration.stable_key, index))
-            .collect(),
-    );
-    validate_declaration_identities(declarations, &duplicate_keys)
-}
-
-fn validate_declaration_identities(
-    declarations: &[AllocationDeclaration],
-    duplicate_keys: &[bool; crate::constants::MAX_ALLOCATIONS],
-) -> Result<(), DeclarationSnapshotError> {
-    let mut slots = [false; crate::constants::MAX_ALLOCATIONS];
-
-    for (index, declaration) in declarations.iter().enumerate() {
-        let occupied = &mut slots[usize::from(declaration.slot.id())];
-        if *occupied {
-            return Err(DeclarationSnapshotError::DuplicateSlot(
-                declaration.slot.clone(),
-            ));
-        }
-        *occupied = true;
-        if duplicate_keys[index] {
-            return Err(DeclarationSnapshotError::DuplicateStableKey(
-                declaration.stable_key.clone(),
-            ));
-        }
-    }
-
-    Ok(())
 }
 
 #[cfg(test)]
@@ -260,16 +194,17 @@ mod tests {
     }
 
     #[test]
-    fn snapshot_decode_rejects_unusable_memory_manager_slot() {
-        let snapshot = DeclarationSnapshot::new(vec![declaration("app.orders.v1", 100)]).unwrap();
-        let mut value = serde_json::to_value(snapshot).unwrap();
-        value["declarations"][0]["slot"] = serde_json::json!(255);
-        assert!(serde_json::from_value::<DeclarationSnapshot>(value).is_err());
+    fn declaration_decode_rejects_unusable_memory_manager_slot() {
+        let mut value = serde_json::to_value(declaration("app.orders.v1", 100)).unwrap();
+        value["slot"] = serde_json::json!(255);
+        assert!(serde_json::from_value::<AllocationDeclaration>(value.clone()).is_err());
+        let bytes = crate::test_cbor::to_vec(&value).unwrap();
+        assert!(crate::test_cbor::from_slice::<AllocationDeclaration>(&bytes).is_err());
     }
 
     #[test]
     fn rejects_duplicate_keys() {
-        let err = DeclarationSnapshot::new(vec![
+        let err = DeclarationSnapshot::canonicalize(vec![
             declaration("app.users.v1", 100),
             declaration("app.users.v1", 101),
         ])
@@ -284,7 +219,7 @@ mod tests {
     #[test]
     fn rejects_duplicate_slots() {
         for second_key in ["app.orders.v1", "app.users.v1"] {
-            let err = DeclarationSnapshot::new(vec![
+            let err = DeclarationSnapshot::canonicalize(vec![
                 declaration("app.users.v1", 100),
                 declaration(second_key, 100),
             ])
@@ -299,8 +234,8 @@ mod tests {
 
     #[test]
     fn canonical_resolution_preserves_identity_failures_and_bounds() {
-        // Compare the runtime boundary with ordinary validation in canonical
-        // traversal order, including competing duplicate-key/slot failures.
+        // Independently inspect prior rows to check competing slot/key failures
+        // in the runtime's canonical traversal order.
         let choices = [
             ("app.a.v1", 10),
             ("app.a.v1", 11),
@@ -318,9 +253,26 @@ mod tests {
                 .collect();
             let mut ordered = input.clone();
             crate::sort::sort_unstable_by(&mut ordered, |a, b| a.stable_key.cmp(&b.stable_key));
+            let expected = ordered.iter().enumerate().find_map(|(index, declaration)| {
+                let prior = &ordered[..index];
+                if prior.iter().any(|row| row.slot == declaration.slot) {
+                    Some(DeclarationSnapshotError::DuplicateSlot(
+                        declaration.slot.clone(),
+                    ))
+                } else if prior
+                    .iter()
+                    .any(|row| row.stable_key == declaration.stable_key)
+                {
+                    Some(DeclarationSnapshotError::DuplicateStableKey(
+                        declaration.stable_key.clone(),
+                    ))
+                } else {
+                    None
+                }
+            });
             assert_eq!(
-                DeclarationSnapshot::canonicalize(input),
-                DeclarationSnapshot::new(ordered)
+                DeclarationSnapshot::canonicalize(input).unwrap_err(),
+                expected.unwrap()
             );
         }
         for count in [0, 1, 254, 255, 256] {
@@ -336,7 +288,7 @@ mod tests {
             let result = DeclarationSnapshot::canonicalize(input);
             if count <= 255 {
                 let snapshot = result.unwrap();
-                assert_eq!(snapshot.len(), count);
+                assert_eq!(snapshot.declarations().len(), count);
                 assert!(
                     snapshot
                         .declarations()

@@ -111,6 +111,17 @@ fn tag_changes_during_shared_admission_stop_publication() {
 #[test]
 fn helper_output_cannot_change_locked_dependency_selection() {
     let fixture = Fixture::new();
+    let same_name_registry = format!(
+        "{LOCK}[[package]]\nname = \"ic-memory\"\nversion = \"0.12.3\"\nsource = \"registry+https://github.com/rust-lang/crates.io-index\"\nchecksum = \"unchanged\"\n"
+    );
+    let rendered = fixture
+        .repo
+        .replace_lock_version(&same_name_registry, "0.12.3", "0.13.0")
+        .unwrap();
+    assert_eq!(
+        rendered,
+        same_name_registry.replacen("version = \"0.12.3\"", "version = \"0.13.0\"", 1)
+    );
     let changed = LOCK.replace("0.12.3", "0.13.0");
     fs::write(
         fixture.repo.root.join(LOCK_REWRITER),
@@ -121,7 +132,10 @@ fn helper_output_cannot_change_locked_dependency_selection() {
         .repo
         .replace_lock_version(LOCK, "0.12.3", "0.13.0")
         .unwrap_err();
-    assert!(error.to_string().contains("changed dependency selection"));
+    assert!(matches!(
+        error.downcast_ref::<ic_build::cargo::lock_projection::LockProjectionError>(),
+        Some(ic_build::cargo::lock_projection::LockProjectionError::ChangedInputs)
+    ));
     fixture.assert_original();
 }
 

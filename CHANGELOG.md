@@ -1,5 +1,30 @@
 # Changelog
 
+## [0.43.0]
+
+- **Breaking API:** implement allocation checks directly on `RuntimeBootstrapPolicy`;
+  the separate `AllocationPolicy` trait and public resolved `DeclarationSnapshot`
+  codec are removed. Hosts continue to supply checked logical request snapshots.
+- **Breaking admission/errors:** inspect recovered `AllocationRecord` getters
+  directly; the duplicate metadata view and unused runtime `Declarations` error
+  variants are removed. Frameworks retain their own request-assembly errors.
+- Avoid encoding a discarded genesis commit during fresh bootstrap, preserving
+  Cell acquisition, first committed generation and persistence ordering.
+- **Breaking diagnostics:** represent the reserved ledger binding with the unit
+  variant `AllocationBinding::Ledger`. Use the canonical ledger key and owner
+  constants when displaying labels; detailed reports avoid two string allocations.
+- Remove the unusable public validated-staging wrapper, retaining the runtime's
+  internal validation and persistence flow.
+- **Breaking fixtures:** enable `test-support` for reservation and retirement
+  staging, and import their request/error types from `ic_memory::testing`.
+  Existing reserved and retired records retain their production recovery checks.
+- Share empty-snapshot admission between bootstrap and diagnostics, and reuse
+  IC Build's semantic lockfile verifier in release preparation and recovery.
+- Release fixture bootstrap state after opening its cell; memory handles retain
+  the backing and manager needed for subsequent growth and restoration.
+
+[Detailed notes](docs/changelog/0.43.md)
+
 ## [0.42.0] - 2026-10-15
 
 - **Breaking:** remove `Storable` from `StableCellLedgerRecord`. Use the owned

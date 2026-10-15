@@ -82,10 +82,10 @@ recognizes strictly increasing generations as unique and avoids building the
 generation set. Unordered DTOs retain the original set and refusal order; record
 key uniqueness and committed chain/recovery validation remain in place.
 
-[`DeclarationSnapshot` decoding](../crates/ic-memory/src/declaration.rs) uses the existing bounded
-visitor to refuse more than 255 declarations before decoding an extra entry.
-Valid wire shape is unchanged; generic serde errors for excess entries may
-occur earlier and use different prose. [`PendingBootstrapCommit`](../crates/ic-memory/src/runtime/bootstrap.rs)
+The [durable ledger decoder](../crates/ic-memory/src/ledger/record.rs) uses the bounded
+visitor to refuse more than 255 records before decoding an extra entry. Resolved
+declaration snapshots are internal and have no serialized input contract.
+[`PendingBootstrapCommit`](../crates/ic-memory/src/runtime/bootstrap.rs)
 now warns when discarded even after consuming its enclosing `Result`. Callers
 with warning denial must complete persistence/confirmation or explicitly discard
 the value in an intentional model/test path. It does not add automatic commit,
