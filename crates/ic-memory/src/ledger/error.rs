@@ -49,7 +49,7 @@ pub enum LedgerCommitError {
         "physical generation {physical_generation} does not match logical ledger generation {logical_generation}"
     )]
     PhysicalLogicalGenerationMismatch {
-        /// Generation encoded in the physical commit slot.
+        /// Generation encoded in the physical snapshot.
         physical_generation: u64,
         /// Generation decoded from the logical allocation ledger.
         logical_generation: u64,

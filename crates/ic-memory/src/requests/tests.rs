@@ -121,3 +121,45 @@ fn oversized_composition_rejects_before_snapshot_publication() {
         Err(MemoryDeclarationError::TooManyDeclarations)
     );
 }
+
+#[test]
+fn decoded_requests_preserve_checked_fields_and_enforce_request_admission() {
+    let request =
+        MemoryRequest::new("app", "app.rows.v1", SchemaMetadata::new(Some(7)).unwrap()).unwrap();
+    let json = serde_json::to_value(&request).unwrap();
+    assert_eq!(
+        json,
+        serde_json::json!({
+            "authority": "app", "stable_key": "app.rows.v1", "schema": {"schema_version":7}
+        })
+    );
+    assert_eq!(
+        serde_json::from_value::<MemoryRequest>(json.clone()).unwrap(),
+        request
+    );
+    let bytes = crate::test_cbor::to_vec(&request).unwrap();
+    assert_eq!(
+        crate::test_cbor::from_slice::<MemoryRequest>(&bytes).unwrap(),
+        request
+    );
+    for (field, value) in [
+        ("authority", serde_json::json!("")),
+        ("authority", serde_json::json!(IC_MEMORY_AUTHORITY_OWNER)),
+        ("authority", serde_json::json!("app\n")),
+        ("stable_key", serde_json::json!("ic_memory.rows.v1")),
+        ("stable_key", serde_json::json!("App.rows.v1")),
+        ("schema", serde_json::json!({"schema_version":0})),
+        ("extra", serde_json::json!(true)),
+    ] {
+        let mut invalid = json.clone();
+        invalid[field] = value;
+        assert!(serde_json::from_value::<MemoryRequest>(invalid.clone()).is_err());
+        let bytes = crate::test_cbor::to_vec(&invalid).unwrap();
+        assert!(crate::test_cbor::from_slice::<MemoryRequest>(&bytes).is_err());
+    }
+    // The raw constructor retains authority-before-key error precedence.
+    assert!(matches!(
+        MemoryRequest::new("", "BAD", SchemaMetadata::default()),
+        Err(MemoryDeclarationError::InvalidAuthority { .. })
+    ));
+}

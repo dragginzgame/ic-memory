@@ -204,14 +204,46 @@ jobs:
           toolchain: ${{ steps.pin.outputs.channel }}
           targets: wasm32-unknown-unknown
       - run: make shared-tooling-check
-      - name: Prepare host tools, selected CLI and Testkit server
+      - name: Prepare host tools and identify runtime tool cache
+        id: runtime-tool-cache-key
         shell: bash
         run: |
           make install-host-tools 2>&1 | tee "$RUNNER_TEMP/runtime-host-setup.log"
           make host-tools-check 2>&1 | tee "$RUNNER_TEMP/runtime-host-check.log"
+          export PATH="$GITHUB_WORKSPACE/.tools/host/bin:$PATH"
+          bash scripts/ci/cargo-tool-cache-key.sh ci/tool-versions.env >> "$GITHUB_OUTPUT"
+      - name: Restore runtime tool builds
+        id: runtime-tool-cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        timeout-minutes: 3
+        continue-on-error: true
+        env:
+          SEGMENT_DOWNLOAD_TIMEOUT_MINS: 2
+        with:
+          path: |
+            ${{ steps.runtime-tool-cache-key.outputs.root }}/cargo-cache
+            ${{ steps.runtime-tool-cache-key.outputs.root }}/rust-*
+            .tools/ic-testkit-server
+          # Make owns the independently selected CLI and server-directory adapter.
+          key: runtime-tools-${{ runner.os }}-${{ runner.arch }}-${{ steps.runtime-tool-cache-key.outputs.key }}-${{ hashFiles('Makefile') }}
+      - name: Prepare and verify selected CLI and Testkit server
+        shell: bash
+        run: |
           make install-ic-tools 2>&1 | tee "$RUNNER_TEMP/runtime-ic-setup.log"
           make ic-tools-check 2>&1 | tee "$RUNNER_TEMP/runtime-ic-check.log"
           make install-runtime-server 2>&1 | tee "$RUNNER_TEMP/runtime-setup.log"
+          make runtime-server-check 2>&1 | tee "$RUNNER_TEMP/runtime-tools-check.log"
+      - name: Save admitted runtime tools
+        if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.runtime-tool-cache.outputs.cache-hit != 'true' }}
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        timeout-minutes: 3
+        continue-on-error: true
+        with:
+          path: |
+            ${{ steps.runtime-tool-cache-key.outputs.root }}/cargo-cache
+            ${{ steps.runtime-tool-cache-key.outputs.root }}/rust-*
+            .tools/ic-testkit-server
+          key: runtime-tools-${{ runner.os }}-${{ runner.arch }}-${{ steps.runtime-tool-cache-key.outputs.key }}-${{ hashFiles('Makefile') }}
       - name: Prepare both tracked dependency graphs
         shell: bash
         run: |
@@ -280,7 +312,7 @@ jobs:
         shell: bash
         env:
           RUSTUP_TOOLCHAIN: ${{ steps.pin.outputs.channel }}
-        run: cargo check --locked --offline --all-targets 2>&1 | tee "$RUNNER_TEMP/msrv.log"
+        run: cargo check --locked --offline --all-targets --features test-support 2>&1 | tee "$RUNNER_TEMP/msrv.log"
       - name: Retain failed MSRV diagnostics
         if: failure()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # reviewed Shared Tooling pin, v7

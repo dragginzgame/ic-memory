@@ -1,9 +1,9 @@
 use super::*;
 use crate::{
-    AllocationBootstrap, AllocationDeclaration, AllocationLedger, AllocationRetirement,
-    GenericAllocationPolicy, LedgerCommitStore, MemoryAllocationPool, MemoryAuthority,
-    MemoryManagerIdRange, MemoryManagerSlot, MemoryRequest, SchemaMetadata,
-    SealedDeclarationSnapshot, StableCellLedgerRecord,
+    AllocationDeclaration, AllocationLedger, AllocationRetirement, GenericAllocationPolicy,
+    LedgerCommitStore, MemoryAllocationPool, MemoryAuthority, MemoryManagerIdRange,
+    MemoryManagerSlot, MemoryRequest, SchemaMetadata, SealedDeclarationSnapshot,
+    StableCellLedgerRecord,
 };
 use ic_stable_structures::{
     Cell, Memory, VectorMemory,
@@ -52,13 +52,13 @@ fn retained(backing: &VectorMemory, declarations: &[AllocationDeclaration]) {
         .commit(&AllocationLedger::new(0, vec![]).unwrap())
         .unwrap();
     let recovered = store.recover().unwrap();
-    let pending = AllocationBootstrap::new(&mut store)
-        .validate_against(
-            recovered,
-            crate::DeclarationSnapshot::new(declarations.to_vec()).unwrap(),
-            &GenericAllocationPolicy,
-        )
-        .unwrap();
+    let pending = crate::bootstrap::prepare_commit(
+        &mut store,
+        recovered,
+        crate::DeclarationSnapshot::new(declarations.to_vec()).unwrap(),
+        &GenericAllocationPolicy,
+    )
+    .unwrap();
     let manager = MemoryManager::init(backing.clone());
     drop(Cell::new(
         manager.get(MemoryId::new(0)),

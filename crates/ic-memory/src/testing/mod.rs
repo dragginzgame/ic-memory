@@ -18,6 +18,7 @@ use crate::{
 /// bytes where their journal contract requires retained state. Callers own
 /// serialization, byte/work budgets and same-release recovery checks.
 ///
+
 pub struct FixtureCell<M: Memory> {
     _runtime: MemoryRuntime<M>,
     cell: Cell<Vec<u8>, RuntimeMemory<M>>,
