@@ -1,6 +1,6 @@
 # Changelog
 
-## [0.39.0]
+## [0.39.0] - 2026-10-15
 
 - **Breaking:** retain one checksummed current ledger snapshot and expose current-snapshot
   recovery diagnostics. Previous physical records are incompatible; retained
