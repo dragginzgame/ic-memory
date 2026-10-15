@@ -117,7 +117,6 @@ mod tests {
         AllocationDeclaration::new(
             "app.users.v1",
             MemoryManagerSlot::new(100).expect("usable slot"),
-            None,
             SchemaMetadata::default(),
         )
         .expect("declaration")

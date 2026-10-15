@@ -115,8 +115,8 @@ caller-selected serde decoders remain outside the maintained recovery contract;
 DTOs are not capabilities. Typed envelope, codec and integrity failures reject
 without replacing existing storage with genesis.
 
-The outer ceiling permits two maximum payloads and record metadata. The current
-`ICMS` format marker and version 1 identify the current ownership layout; earlier
+The outer ceiling permits one maximum payload and record metadata. The current
+`ICMN` format marker and version 1 identify the current ownership layout; earlier
 ledger layouts are unsupported. Before deploying this hard cut to retained
 installations, follow [the explicit data disposition requirements](current-ledger.md).
 No automatic clearing, fallback reader or migration engine is provided.

@@ -1,5 +1,30 @@
 # Changelog
 
+## [0.41.0]
+
+- **Breaking:** serialize allocation slots as checked numeric IDs and remove
+  unused declaration labels. Update constructor calls and raw diagnostic DTO
+  consumers; retained ledger images require explicit disposition before deployment
+  ([#114 — Remove unused allocation declaration labels](https://github.com/dragginzgame/ic-memory/issues/114),
+  [#115 — Hard cut slot encoding to a checked numeric ID](https://github.com/dragginzgame/ic-memory/issues/115)).
+
+- Delegate release version/date grammar to the canonical Shared helper while
+  retaining independent release evidence and recovery admission
+  ([#102 — Converge release version and date admission on Shared](https://github.com/dragginzgame/ic-memory/issues/102)).
+
+- Adopt Shared Tooling 0.15.0's committed snapshot and qualify Host 0.18.6,
+  retaining tool pins and the canister dependency graph
+  ([#62 — Qualify native tooling and evidence](https://github.com/dragginzgame/ic-memory/issues/62)).
+
+- Update the independent installed-runtime test graph to patched rustls 0.23.46
+  ([#107 — Replace rustls 0.23.45](https://github.com/dragginzgame/ic-memory/issues/107)).
+
+- Reuse verified common Cargo tools in native CI and allow a 60-minute cold
+  full-test budget, retaining optional cache transport and every required gate
+  ([#62 — Qualify native tooling and evidence](https://github.com/dragginzgame/ic-memory/issues/62)).
+
+[Detailed notes](docs/changelog/0.41.md)
+
 ## [0.40.0] - 2026-10-15
 
 - **Breaking build requirement:** require Rust 1.91.0 and delegate native Cargo

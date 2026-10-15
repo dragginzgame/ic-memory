@@ -262,6 +262,7 @@ impl Fixture {
             WORKSPACE_VERSION_RENDERER,
             LOCK_REWRITER,
             CHANGELOG_FINALIZER,
+            RELEASE_INPUT_ADMISSION,
         ] {
             source.insert(
                 helper.to_owned(),
@@ -1299,6 +1300,41 @@ fn missing_ambiguous_or_unsupported_dependency_examples_do_not_block_release() {
 }
 
 #[test]
+fn release_input_admission_failures_preserve_files_and_receipts() {
+    for script in [
+        None,
+        Some("exit 19;"),
+        Some("print \"0\\t13\\n\";"),
+        Some("print \"0\\t13\\t0\\textra\\n\";"),
+    ] {
+        let fixture = Fixture::new();
+        let helper = fixture.repo.root.join(RELEASE_INPUT_ADMISSION);
+        match script {
+            Some(script) => fs::write(helper, script).unwrap(),
+            None => fs::remove_file(helper).unwrap(),
+        }
+        let receipt = fixture.repo.root.join("previous.receipt");
+        fs::write(&receipt, b"prior evidence").unwrap();
+        assert!(fixture.prepare().is_err());
+        fixture.assert_original();
+        assert_eq!(fs::read(&receipt).unwrap(), b"prior evidence");
+        assert!(!fixture.repo.exec.state.borrow().calls.iter().any(|call| {
+            matches!(
+                call[0].as_str(),
+                "make" | "cargo" | "shared-runner" | "write" | "stream-write"
+            )
+        }));
+    }
+    let fixture = Fixture::new();
+    fs::write(
+        fixture.repo.root.join(RELEASE_INPUT_ADMISSION),
+        "print \"2000-01-01\\n\";",
+    )
+    .unwrap();
+    assert!(fixture.repo.validate_date("2026-10-15").is_err());
+}
+
+#[test]
 fn release_versions_and_pending_notes_preserve_dependency_versions_and_history() {
     let fixture = Fixture::new();
     let finalize = |text: &str, version: &str| {
@@ -1310,9 +1346,22 @@ fn release_versions_and_pending_notes_preserve_dependency_versions_and_history()
             "2026-10-05",
         )
     };
-    for invalid in ["0.01.3", "0.12", "0.12.3-dev", "0.12.+3"] {
-        assert!(version_parts(invalid).is_err());
+    for invalid in [
+        "0.01.3",
+        "0.12",
+        "0.12.3-dev",
+        "0.12.+3",
+        "18446744073709551616.0.0",
+    ] {
+        assert!(fixture.repo.version_parts(invalid).is_err());
     }
+    assert_eq!(
+        fixture
+            .repo
+            .version_parts("18446744073709551615.0.0")
+            .unwrap(),
+        [u64::MAX, 0, 0]
+    );
     let updated = fixture
         .repo
         .replace_workspace_version(MANIFEST, "0.12.3", "0.13.0")
@@ -1337,15 +1386,17 @@ fn release_versions_and_pending_notes_preserve_dependency_versions_and_history()
         assert!(finalize(&duplicate, "0.13.0").is_err());
     }
     for date in [
+        "1900-02-29",
         "2026-02-29",
         "2026-04-31",
         "2026-13-01",
         "2026-10-05\n",
         "0000-01-01",
     ] {
-        assert!(!valid_date(date));
+        assert!(fixture.repo.validate_date(date).is_err());
     }
-    assert!(valid_date("2024-02-29"));
+    assert!(fixture.repo.validate_date("2000-02-29").is_ok());
+    assert!(fixture.repo.validate_date("2024-02-29").is_ok());
 }
 
 #[test]
@@ -2347,11 +2398,18 @@ fn release_admission_rejects_whitespace_only_paths() {
         exec: Processes,
     };
     fs::create_dir_all(repo.root.join("scripts/ci")).unwrap();
-    fs::copy(
-        Path::new(env!("CARGO_MANIFEST_DIR")).join("../../scripts/ci/next-release-version.sh"),
-        repo.root.join("scripts/ci/next-release-version.sh"),
-    )
-    .unwrap();
+    for path in [
+        "scripts/ci/next-release-version.sh",
+        "scripts/ci/validate-release-inputs.pl",
+    ] {
+        fs::copy(
+            Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("../..")
+                .join(path),
+            repo.root.join(path),
+        )
+        .unwrap();
+    }
     fs::write(repo.root.join(" "), b"original tracked bytes\n").unwrap();
     repo.git(&["init", "--quiet"]).unwrap();
     repo.git(&["add", "--", "."]).unwrap();

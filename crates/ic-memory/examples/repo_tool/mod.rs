@@ -64,6 +64,7 @@ const CHANGELOG_FINALIZER: &str = "scripts/ci/finalize-release-changelog.awk";
 const LOCK_REWRITER: &str = "scripts/ci/rewrite-local-lock-versions.pl";
 const README_VERSION_RENDERER: &str = "scripts/ci/render-cargo-readme-version.pl";
 const WORKSPACE_VERSION_RENDERER: &str = "scripts/ci/render-cargo-workspace-version.pl";
+const RELEASE_INPUT_ADMISSION: &str = "scripts/ci/validate-release-inputs.pl";
 const TAG_CHECKER: &str = "scripts/ci/check-release-tag.sh";
 const REPLACE_FILE_OPTIONS: WriteOptions = WriteOptions {
     mode: PublicationMode::Replace,
@@ -275,7 +276,7 @@ fn require(condition: bool, message: &str) -> Result<()> {
 }
 
 impl ReleaseSelection {
-    fn from_env() -> Result<Self> {
+    fn from_env<E: Execute>(repo: &Repository<E>) -> Result<Self> {
         let selection = Self {
             kind: env::var("RELEASE_KIND")?,
             previous: env::var("RELEASE_PREVIOUS")?,
@@ -289,9 +290,9 @@ impl ReleaseSelection {
             matches!(selection.kind.as_str(), "patch" | "minor" | "major"),
             "invalid release kind",
         )?;
-        version_parts(&selection.previous)?;
-        version_parts(&selection.version)?;
-        require(valid_date(&selection.date), "invalid UTC release date")?;
+        repo.version_parts(&selection.previous)?;
+        repo.version_parts(&selection.version)?;
+        repo.validate_date(&selection.date)?;
         require(
             valid_commit_identity(&selection.source),
             "invalid source commit identity",
@@ -327,50 +328,6 @@ fn release_commit_from_env() -> Result<String> {
         "invalid selected release commit",
     )?;
     Ok(commit)
-}
-
-fn valid_date(date: &str) -> bool {
-    let bytes = date.as_bytes();
-    if bytes.len() != 10
-        || bytes[4] != b'-'
-        || bytes[7] != b'-'
-        || bytes
-            .iter()
-            .enumerate()
-            .any(|(index, byte)| index != 4 && index != 7 && !byte.is_ascii_digit())
-    {
-        return false;
-    }
-    let year = date[..4].parse::<u32>().unwrap_or(0);
-    let month = date[5..7].parse::<u32>().unwrap_or(0);
-    let day = date[8..].parse::<u32>().unwrap_or(0);
-    let maximum = match month {
-        1 | 3 | 5 | 7 | 8 | 10 | 12 => 31,
-        4 | 6 | 9 | 11 => 30,
-        2 if year.is_multiple_of(400) || year.is_multiple_of(4) && !year.is_multiple_of(100) => 29,
-        2 => 28,
-        _ => 0,
-    };
-    year != 0 && day != 0 && day <= maximum
-}
-
-fn version_parts(version: &str) -> Result<[u64; 3]> {
-    let parts: Vec<_> = version.split('.').collect();
-    require(
-        parts.len() == 3,
-        "expected a stable major.minor.patch version",
-    )?;
-    let mut numbers = [0; 3];
-    for (number, part) in numbers.iter_mut().zip(parts) {
-        require(
-            !part.is_empty()
-                && part.bytes().all(|byte| byte.is_ascii_digit())
-                && (part == "0" || !part.starts_with('0')),
-            "invalid release version",
-        )?;
-        *number = part.parse()?;
-    }
-    Ok(numbers)
 }
 
 fn toml_string(text: &str, section: &str, field: &str) -> Result<String> {
@@ -425,6 +382,30 @@ fn check_wasm_artifacts(target: &Path) -> Result<()> {
 }
 
 impl<E: Execute> Repository<E> {
+    fn validate_date(&self, date: &str) -> Result<()> {
+        require(
+            self.output("perl", &[RELEASE_INPUT_ADMISSION, "date", date])? == format!("{date}\n"),
+            "release date admission returned unexpected output",
+        )
+    }
+
+    fn version_parts(&self, version: &str) -> Result<[u64; 3]> {
+        let output = self.output("perl", &[RELEASE_INPUT_ADMISSION, "version", version])?;
+        let mut parts = output.trim_end_matches('\n').split('\t');
+        let mut numbers = [0; 3];
+        for number in &mut numbers {
+            *number = parts
+                .next()
+                .ok_or("release version admission omitted a component")?
+                .parse()?;
+        }
+        require(
+            parts.next().is_none(),
+            "release version admission returned extra components",
+        )?;
+        Ok(numbers)
+    }
+
     // Keep exact helper inputs for retries and diagnosis. Both transforms use
     // Host capture instead of writing to one pipe before draining the others.
     fn transform_text(
@@ -480,8 +461,8 @@ impl<E: Execute> Repository<E> {
         previous: &str,
         version: &str,
     ) -> Result<String> {
-        version_parts(previous)?;
-        version_parts(version)?;
+        self.version_parts(previous)?;
+        self.version_parts(version)?;
         let mut expected: toml::Value = toml::from_str(text)?;
         require(
             expected
@@ -534,9 +515,9 @@ impl<E: Execute> Repository<E> {
         version: &str,
         date: &str,
     ) -> Result<String> {
-        version_parts(previous)?;
-        version_parts(version)?;
-        require(valid_date(date), "invalid UTC release date")?;
+        self.version_parts(previous)?;
+        self.version_parts(version)?;
+        self.validate_date(date)?;
         // Published history includes bare version headings. Keep that refusal;
         // the shared helper owns candidate classification and finalization.
         require(
@@ -598,7 +579,7 @@ impl<E: Execute> Repository<E> {
             "expected the ic-memory package with an inherited workspace version",
         )?;
         let version = toml_string(&text, "workspace.package", "version")?;
-        version_parts(&version)?;
+        self.version_parts(&version)?;
         Ok(version)
     }
 
@@ -647,7 +628,7 @@ impl<E: Execute> Repository<E> {
     }
 
     fn receipt_path(&self, version: &str, prepared: bool) -> Result<PathBuf> {
-        version_parts(version)?;
+        self.version_parts(version)?;
         let suffix = if prepared { "-prepared" } else { "" };
         Ok(self
             .target()?
@@ -656,7 +637,7 @@ impl<E: Execute> Repository<E> {
     }
 
     fn package_path(&self, version: &str) -> Result<PathBuf> {
-        version_parts(version)?;
+        self.version_parts(version)?;
         Ok(self
             .target()?
             .join("package")
@@ -790,12 +771,9 @@ impl<E: Execute> Repository<E> {
     }
 
     fn check_selection(&self, selection: &ReleaseSelection) -> Result<()> {
-        version_parts(&selection.previous)?;
-        version_parts(&selection.version)?;
-        require(
-            valid_date(&selection.date),
-            "invalid saved UTC release date",
-        )?;
+        self.version_parts(&selection.previous)?;
+        self.version_parts(&selection.version)?;
+        self.validate_date(&selection.date)?;
         require(
             self.output(
                 "bash",
@@ -822,7 +800,7 @@ impl<E: Execute> Repository<E> {
         let version = &selection.version;
         let readme = self.text(PACKAGE_README, Some(source))?;
         let readme = self.release_readme(&readme, version)?;
-        let [major, minor, _] = version_parts(version)?;
+        let [major, minor, _] = self.version_parts(version)?;
         let detail = format!("docs/changelog/{major}.{minor}.md");
         let finalizer = self.root.join(CHANGELOG_FINALIZER);
         Ok(BTreeMap::from([
@@ -968,7 +946,7 @@ impl<E: Execute> Repository<E> {
         Ok(())
     }
     fn validation_path(&self, version: &str) -> Result<PathBuf> {
-        version_parts(version)?;
+        self.version_parts(version)?;
         Ok(self
             .target()?
             .join("release-validation")
@@ -1588,29 +1566,35 @@ pub(super) fn main() -> Result<()> {
         "target" => println!("{}", repo.target()?.display()),
         "ensure-clean" => repo.clean()?,
         "wasm-size" => check_wasm_artifacts(&repo.target()?)?,
-        "release-preflight" => repo.preflight(&ReleaseSelection::from_env()?)?,
-        "release-verify" => repo.verify(&ReleaseSelection::from_env()?)?,
-        "release-prepare-version" => repo.prepare_selected(&ReleaseSelection::from_env()?)?,
+        "release-preflight" => repo.preflight(&ReleaseSelection::from_env(&repo)?)?,
+        "release-verify" => repo.verify(&ReleaseSelection::from_env(&repo)?)?,
+        "release-prepare-version" => repo.prepare_selected(&ReleaseSelection::from_env(&repo)?)?,
         "release-prepared-check" => {
-            repo.prepared(&ReleaseSelection::from_env()?)?;
+            repo.prepared(&ReleaseSelection::from_env(&repo)?)?;
         }
         "release-files" => {
-            for path in repo.surfaces(&ReleaseSelection::from_env()?)?.keys() {
+            for path in repo.surfaces(&ReleaseSelection::from_env(&repo)?)?.keys() {
                 print!("{path}\0");
             }
         }
-        "release-commit-check" => repo.commit_check(&ReleaseSelection::from_env()?)?,
+        "release-commit-check" => repo.commit_check(&ReleaseSelection::from_env(&repo)?)?,
         "release-committed-check" => {
             repo.selected_committed_check(
-                &ReleaseSelection::from_env()?,
+                &ReleaseSelection::from_env(&repo)?,
                 &release_commit_from_env()?,
             )?;
         }
         "release-tagged-check" => {
-            repo.tagged_check(&ReleaseSelection::from_env()?, &release_commit_from_env()?)?;
+            repo.tagged_check(
+                &ReleaseSelection::from_env(&repo)?,
+                &release_commit_from_env()?,
+            )?;
         }
         "release-push-check" => {
-            repo.push_check(&ReleaseSelection::from_env()?, &release_commit_from_env()?)?;
+            repo.push_check(
+                &ReleaseSelection::from_env(&repo)?,
+                &release_commit_from_env()?,
+            )?;
         }
         "qualify-release" => repo.qualify_release()?,
         "publish" => {

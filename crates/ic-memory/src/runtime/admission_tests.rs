@@ -462,14 +462,12 @@ fn completion_bound_and_reservation_activation_preserve_evidence() {
         .recover()
         .unwrap()
         .ledger()
-        .stage_reservation_generation(&[
-            crate::AllocationDeclaration::memory_manager_unlabeled_with_schema(
-                "app.reserved.journal.v1",
-                12,
-                crate::SchemaMetadata::new(Some(5)).unwrap(),
-            )
-            .unwrap(),
-        ])
+        .stage_reservation_generation(&[crate::AllocationDeclaration::memory_manager_with_schema(
+            "app.reserved.journal.v1",
+            12,
+            crate::SchemaMetadata::new(Some(5)).unwrap(),
+        )
+        .unwrap()])
         .unwrap();
     record.store_mut().commit_generation(&reserved).unwrap();
     let _cell = Cell::new(runtime.memory(MEMORY_MANAGER_LEDGER_ID), record);

@@ -138,13 +138,9 @@ mod tests {
         let validated = ValidatedAllocations::new(
             1,
             vec![
-                AllocationDeclaration::memory_manager(
-                    crate::IC_MEMORY_LEDGER_STABLE_KEY,
-                    0,
-                    "ledger",
-                )
-                .unwrap(),
-                AllocationDeclaration::memory_manager("app.rows.v1", 100, "rows").unwrap(),
+                AllocationDeclaration::memory_manager(crate::IC_MEMORY_LEDGER_STABLE_KEY, 0)
+                    .unwrap(),
+                AllocationDeclaration::memory_manager("app.rows.v1", 100).unwrap(),
             ],
         );
         let committed = validated.clone().confirm_persisted(2);

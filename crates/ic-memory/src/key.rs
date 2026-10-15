@@ -226,9 +226,7 @@ mod tests {
             let declarations: Vec<_> = ["app.a.v1", "app.b.v1", "app.b.v1", "app.a.v1"]
                 .into_iter()
                 .zip(slots)
-                .map(|(key, slot)| {
-                    AllocationDeclaration::memory_manager_unlabeled(key, slot).unwrap()
-                })
+                .map(|(key, slot)| AllocationDeclaration::memory_manager(key, slot).unwrap())
                 .collect();
             let expected = if slots[2] == slots[0] {
                 DeclarationSnapshotError::DuplicateSlot(crate::MemoryManagerSlot::new(10).unwrap())

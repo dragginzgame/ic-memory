@@ -2,7 +2,6 @@ use crate::{
     key::{StableKey, StableKeyError},
     schema::SchemaMetadata,
     slot::{MemoryManagerSlot, MemoryManagerSlotError},
-    text::{DiagnosticTextError, validate_diagnostic_text},
 };
 use serde::{Deserialize, Deserializer, Serialize, de::Error as _};
 
@@ -12,7 +11,7 @@ use serde::{Deserialize, Deserializer, Serialize, de::Error as _};
 /// Checked runtime claim that a stable key should own an allocation slot.
 ///
 /// Declarations are supplied by the current binary before opening storage.
-/// Construction and decoding check the stable key, label, slot and schema
+/// Construction and decoding check the stable key, slot and schema
 /// metadata. A declaration becomes authoritative only after validation against
 /// the recovered ledger and commitment in a generation.
 ///
@@ -24,9 +23,6 @@ pub struct AllocationDeclaration {
     pub(crate) stable_key: StableKey,
     /// Claimed allocation slot.
     pub(crate) slot: MemoryManagerSlot,
-    /// Optional diagnostic label.
-    #[serde(deserialize_with = "deserialize_label")]
-    pub(crate) label: Option<String>,
     /// Optional diagnostic schema metadata.
     pub(crate) schema: SchemaMetadata,
 }
@@ -36,57 +32,33 @@ impl AllocationDeclaration {
     pub fn new(
         stable_key: impl AsRef<str>,
         slot: MemoryManagerSlot,
-        label: Option<String>,
         schema: SchemaMetadata,
     ) -> Result<Self, DeclarationSnapshotError> {
         let stable_key = StableKey::parse(stable_key).map_err(DeclarationSnapshotError::Key)?;
-        validate_label(label.as_deref())?;
         Ok(Self {
             stable_key,
             slot,
-            label,
             schema,
         })
     }
 
-    /// Build a `MemoryManager` declaration with a diagnostic label.
+    /// Build a checked `MemoryManager` declaration with default schema metadata.
     pub fn memory_manager(
         stable_key: impl AsRef<str>,
         id: u8,
-        label: impl Into<String>,
     ) -> Result<Self, DeclarationSnapshotError> {
-        Self::memory_manager_with_schema(stable_key, id, label, SchemaMetadata::default())
+        Self::memory_manager_with_schema(stable_key, id, SchemaMetadata::default())
     }
 
-    /// Build an unlabeled `MemoryManager` declaration.
-    pub fn memory_manager_unlabeled(
-        stable_key: impl AsRef<str>,
-        id: u8,
-    ) -> Result<Self, DeclarationSnapshotError> {
-        Self::memory_manager_unlabeled_with_schema(stable_key, id, SchemaMetadata::default())
-    }
-
-    /// Build a `MemoryManager` declaration with a diagnostic label and schema metadata.
+    /// Build a checked `MemoryManager` declaration with schema metadata.
     pub fn memory_manager_with_schema(
         stable_key: impl AsRef<str>,
         id: u8,
-        label: impl Into<String>,
         schema: SchemaMetadata,
     ) -> Result<Self, DeclarationSnapshotError> {
         let slot =
             MemoryManagerSlot::new(id).map_err(DeclarationSnapshotError::MemoryManagerSlot)?;
-        Self::new(stable_key, slot, Some(label.into()), schema)
-    }
-
-    /// Build an unlabeled `MemoryManager` declaration with schema metadata.
-    pub fn memory_manager_unlabeled_with_schema(
-        stable_key: impl AsRef<str>,
-        id: u8,
-        schema: SchemaMetadata,
-    ) -> Result<Self, DeclarationSnapshotError> {
-        let slot =
-            MemoryManagerSlot::new(id).map_err(DeclarationSnapshotError::MemoryManagerSlot)?;
-        Self::new(stable_key, slot, None, schema)
+        Self::new(stable_key, slot, schema)
     }
 
     /// Return the durable stable key claimed by this declaration.
@@ -99,12 +71,6 @@ impl AllocationDeclaration {
     #[must_use]
     pub const fn slot(&self) -> &MemoryManagerSlot {
         &self.slot
-    }
-
-    /// Return the optional diagnostic label.
-    #[must_use]
-    pub fn label(&self) -> Option<&str> {
-        self.label.as_deref()
     }
 
     /// Return the optional schema metadata.
@@ -213,40 +179,6 @@ pub enum DeclarationSnapshotError {
     /// An allocation slot appeared more than once in one snapshot.
     #[error("allocation slot '{0:?}' is declared more than once")]
     DuplicateSlot(MemoryManagerSlot),
-    /// Present declaration labels must be non-empty.
-    #[error("allocation declaration label must not be empty when present")]
-    EmptyLabel,
-    /// Declaration labels must stay bounded for durable ledger storage.
-    #[error("allocation declaration label must be at most 256 bytes")]
-    LabelTooLong,
-    /// Declaration labels must not require Unicode normalization.
-    #[error("allocation declaration label must be ASCII")]
-    NonAsciiLabel,
-    /// Declaration labels must be printable metadata.
-    #[error("allocation declaration label must not contain ASCII control characters")]
-    ControlCharacterLabel,
-}
-
-fn validate_label(label: Option<&str>) -> Result<(), DeclarationSnapshotError> {
-    let Some(label) = label else {
-        return Ok(());
-    };
-    validate_diagnostic_text(label).map_err(|error| match error {
-        DiagnosticTextError::Empty => DeclarationSnapshotError::EmptyLabel,
-        DiagnosticTextError::TooLong => DeclarationSnapshotError::LabelTooLong,
-        DiagnosticTextError::NonAscii => DeclarationSnapshotError::NonAsciiLabel,
-        DiagnosticTextError::ControlCharacter => DeclarationSnapshotError::ControlCharacterLabel,
-    })
-}
-
-// Decode explicitly present optional labels through the same constructor rule.
-// Retain the owned string; no intermediate label type or compatibility default.
-fn deserialize_label<'de, D: Deserializer<'de>>(
-    deserializer: D,
-) -> Result<Option<String>, D::Error> {
-    let label = Option::<String>::deserialize(deserializer)?;
-    validate_label(label.as_deref()).map_err(D::Error::custom)?;
-    Ok(label)
 }
 
 fn validate_declaration_set(
@@ -298,42 +230,27 @@ mod tests {
         AllocationDeclaration::new(
             key,
             MemoryManagerSlot::new(id).expect("usable slot"),
-            None,
             SchemaMetadata::default(),
         )
         .expect("declaration")
     }
 
     #[test]
-    fn declaration_rejects_unbounded_label_metadata() {
-        let err = AllocationDeclaration::new(
-            "app.users.v1",
-            MemoryManagerSlot::new(100).expect("usable slot"),
-            Some("x".repeat(257)),
-            SchemaMetadata::default(),
-        )
-        .expect_err("label too long");
-
-        assert_eq!(err, DeclarationSnapshotError::LabelTooLong);
-    }
-
-    #[test]
     fn memory_manager_declaration_constructor_builds_common_declaration() {
-        let declaration = AllocationDeclaration::memory_manager("app.orders.v1", 100, "orders")
-            .expect("declaration");
+        let declaration =
+            AllocationDeclaration::memory_manager("app.orders.v1", 100).expect("declaration");
 
         assert_eq!(declaration.stable_key.as_str(), "app.orders.v1");
         assert_eq!(
             declaration.slot,
             MemoryManagerSlot::new(100).expect("usable slot")
         );
-        assert_eq!(declaration.label.as_deref(), Some("orders"));
         assert_eq!(declaration.schema, SchemaMetadata::default());
     }
 
     #[test]
     fn memory_manager_declaration_constructor_rejects_invalid_slot() {
-        let err = AllocationDeclaration::memory_manager("app.orders.v1", u8::MAX, "orders")
+        let err = AllocationDeclaration::memory_manager("app.orders.v1", u8::MAX)
             .expect_err("sentinel must fail");
 
         assert!(matches!(
@@ -346,7 +263,7 @@ mod tests {
     fn snapshot_decode_rejects_unusable_memory_manager_slot() {
         let snapshot = DeclarationSnapshot::new(vec![declaration("app.orders.v1", 100)]).unwrap();
         let mut value = serde_json::to_value(snapshot).unwrap();
-        value["declarations"][0]["slot"]["slot"]["MemoryManagerId"] = serde_json::json!(255);
+        value["declarations"][0]["slot"] = serde_json::json!(255);
         assert!(serde_json::from_value::<DeclarationSnapshot>(value).is_err());
     }
 

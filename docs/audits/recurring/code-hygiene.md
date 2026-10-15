@@ -58,7 +58,7 @@ for focused runtime checks and full qualification.
   or `lint-tooling` as relevant. Scripts use disposable substitutes where effects
   would otherwise create commits, tags or publication; never run the real hook.
 - Check active builds before compilation or edits. Select focused checks for repairs
-  under the [validation cadence](../../../AGENTS.md#validation-policy).
+  under the [shared validation cadence](../../../DRAGGINZGAME.md#validation-and-evidence).
   The full `make validate` release suite includes Wasm budgets, development
   packaging and MSRV qualification.
   Documentation-only work needs link, consistency and diff checks. Release,

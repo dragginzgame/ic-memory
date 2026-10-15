@@ -102,11 +102,11 @@ mod tests {
 
     #[test]
     fn retired_moved_key_keeps_each_operations_error_precedence() {
-        let original = AllocationDeclaration::memory_manager_unlabeled("app.rows.v1", 100).unwrap();
+        let original = AllocationDeclaration::memory_manager("app.rows.v1", 100).unwrap();
         let mut record = AllocationRecord::active(&original);
         record.state = AllocationState::Retired;
         let ledger = AllocationLedger::new(1, vec![record]).unwrap();
-        let moved = AllocationDeclaration::memory_manager_unlabeled("app.rows.v1", 101).unwrap();
+        let moved = AllocationDeclaration::memory_manager("app.rows.v1", 101).unwrap();
         assert!(matches!(
             validate_declaration_claim(&ledger, &moved),
             Err(ClaimConflict::Tombstoned { .. })

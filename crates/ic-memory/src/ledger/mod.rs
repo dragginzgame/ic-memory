@@ -287,7 +287,6 @@ mod tests {
         AllocationDeclaration::new(
             key,
             MemoryManagerSlot::new(id).expect("usable slot"),
-            None,
             SchemaMetadata::new(schema_version).expect("schema metadata"),
         )
         .expect("declaration")
@@ -505,24 +504,6 @@ mod tests {
         let err = decode_mutated_ledger(value);
 
         assert!(err.contains("future_record_field"));
-    }
-
-    #[test]
-    fn cbor_ledger_codec_rejects_unknown_nested_slot_fields() {
-        let mut value = active_ledger_value();
-        let records = map_field_mut(value_map_mut(&mut value), "records");
-        let record = value_array_mut(records)
-            .first_mut()
-            .expect("allocation record");
-        let slot = map_field_mut(value_map_mut(record), "slot");
-        value_map_mut(slot).push((
-            crate::test_cbor::Value::Text("future_slot_field".to_string()),
-            crate::test_cbor::Value::Bool(true),
-        ));
-
-        let err = decode_mutated_ledger(value);
-
-        assert!(err.contains("future_slot_field"));
     }
 
     #[test]
@@ -1122,7 +1103,7 @@ mod tests {
             AllocationRetirement::new("app.users.v1", MemoryManagerSlot::new(100).unwrap())
                 .unwrap();
         let mut value = serde_json::to_value(retirement).unwrap();
-        value["slot"]["slot"]["MemoryManagerId"] = serde_json::json!(255);
+        value["slot"] = serde_json::json!(255);
         assert!(serde_json::from_value::<AllocationRetirement>(value).is_err());
     }
 
@@ -1392,7 +1373,7 @@ mod tests {
         let mut ledger = committed_ledger(1);
         ledger.records.push(active_record("app.users.v1", 100));
         let mut value = serde_json::to_value(ledger).unwrap();
-        value["records"][0]["slot"]["slot"]["MemoryManagerId"] = serde_json::json!(255);
+        value["records"][0]["slot"] = serde_json::json!(255);
         let bytes = crate::test_cbor::to_vec(&value).unwrap();
         assert!(decode_ledger(&bytes).is_err());
     }
@@ -1530,7 +1511,7 @@ mod tests {
         assert_eq!(
             err,
             LedgerCommitError::PayloadEnvelope(LedgerPayloadEnvelopeError::UnsupportedFormat {
-                marker: *b"ICMS",
+                marker: *b"ICMN",
                 version: Some(LEDGER_PAYLOAD_FORMAT_VERSION + 1),
             })
         );

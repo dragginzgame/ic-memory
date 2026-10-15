@@ -30,7 +30,7 @@ record is limited to 64 KiB + 4 KiB. Recovery and serialization scale with recor
 count, not the number of upgrades. Stable allocation remains page/bucket rounded.
 
 One checksummed current snapshot is retained. The physical `current` field and
-`ICMESNAP` marker identify the 0.39.0 representation; missing, corrupt or
+`ICMESNAP` marker identify the enclosing snapshot. Missing, corrupt or
 incompatible current bytes never silently initialize a ledger. Recovery checks
 the marker, checksum, logical envelope, ownership integrity and physical/logical
 generation binding. A commit replaces the current record only after validating
@@ -49,19 +49,24 @@ Current measurements and rejection/upgrade checks are recorded in
 
 ## Hard cut and retained installations
 
-The 0.39.0 hard cut changes the physical representation and public recovery
-diagnostics. Two-slot images are incompatible. The logical family magic remains
-`ICMEMLED`, marker `ICMS`, version 1. The earlier 0.27.0 logical cut and historical
-single-snapshot experiments retain their original source bindings in
-[historical qualification](current-ledger-qualification.md); they do not qualify
-the current implementation. There is one current decoder, with no earlier-layout
-reader, automatic reset or migration engine.
+The 0.41.0 hard cut encodes `MemoryManagerSlot` as a checked integer instead of
+nested tagged maps, and removes transient declaration display labels. The
+logical family magic remains `ICMEMLED`, with distinct marker `ICMN` and version
+1. Earlier `ICMS` logical payloads are incompatible; their discriminator is never
+reused to interpret the new layout. The physical `current`/`ICMESNAP` checksum
+representation introduced in 0.39.0 is unchanged, as are the pinned manager
+layout and application collection bytes. Changed logical payloads necessarily
+change snapshot lengths and checksums.
 
-Current fixture producers, readers, examples and source callers use the current
-snapshot. External diagnostics must consume the one `current` snapshot status and
-`InvalidSnapshot` failure instead of two-slot fields/ambiguity errors. The pinned
-MemoryManager layout, application collection bytes and permanent logical mappings
-are unchanged; existing physical ledger bytes still require explicit disposition.
+Current fixture producers, readers, examples and source callers use numeric
+slots. Update raw diagnostic DTO consumers to read numeric slot fields and
+remove declaration label arguments; the ordinary key-request/pool contract is
+unchanged. Canic's source callers and retained-data review are tracked in
+[Canic #573 — Adopt Memory numeric slot and label API hard cut after publication](https://github.com/dragginzgame/canic/issues/573).
+Historical [logical qualification](current-ledger-qualification.md) and
+[physical qualification](single-snapshot-qualification.md) retain their original
+source/format bindings and do not qualify this cut. There is one current decoder,
+with no earlier-layout reader, automatic reset or migration engine.
 
 Before installing on a canister with an earlier ledger, the maintainer must
 identify the retained installation and choose its explicit data disposition.

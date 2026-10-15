@@ -322,6 +322,11 @@ common pool has space, and the complete layout passes admission and validation.
 
 ## Operations and advanced integration
 
+The current durable ledger uses checked numeric slot encoding (`ICMEMLED` /
+`ICMN` / version 1). Earlier ledger images are incompatible. Before deploying on
+retained data, follow the [explicit disposition requirements](https://github.com/dragginzgame/ic-memory/blob/main/docs/current-ledger.md#hard-cut-and-retained-installations);
+there is no automatic ledger reset or earlier-format reader.
+
 For fixture-only byte cells, opt in to `test-support` and construct
 `testing::FixtureCell` with explicit backing memory, owner, namespace, key and
 `MemoryManagerConfig`. The helper retains its runtime and uses the ordinary Cell

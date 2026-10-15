@@ -2,8 +2,8 @@ use crate::{
     declaration::{AllocationDeclaration, DeclarationSnapshot},
     schema::SchemaMetadata,
     slot::{
-        IC_MEMORY_AUTHORITY_OWNER, IC_MEMORY_LEDGER_LABEL, IC_MEMORY_LEDGER_STABLE_KEY,
-        MEMORY_MANAGER_LEDGER_ID, is_ic_memory_stable_key,
+        IC_MEMORY_AUTHORITY_OWNER, IC_MEMORY_LEDGER_STABLE_KEY, MEMORY_MANAGER_LEDGER_ID,
+        is_ic_memory_stable_key,
     },
     text::validate_diagnostic_text,
 };
@@ -83,7 +83,6 @@ impl MemoryRequest {
         AllocationDeclaration {
             stable_key: self.stable_key,
             slot,
-            label: None,
             schema,
         }
     }
@@ -270,7 +269,6 @@ impl SealedDeclarationSnapshot {
             declarations.push(AllocationDeclaration {
                 stable_key: request.stable_key.clone(),
                 slot,
-                label: None,
                 schema: request.schema.clone(),
             });
         }
@@ -349,12 +347,8 @@ fn sealed_declaration_fingerprint(requests: &[MemoryRequest]) -> SealedDeclarati
 const SEALED_DECLARATION_FINGERPRINT_VERSION: u8 = 1;
 
 fn internal_ledger_declaration() -> AllocationDeclaration {
-    AllocationDeclaration::memory_manager(
-        IC_MEMORY_LEDGER_STABLE_KEY,
-        MEMORY_MANAGER_LEDGER_ID,
-        IC_MEMORY_LEDGER_LABEL,
-    )
-    .unwrap_or_else(|_| unreachable!("built-in ledger declaration constants are valid"))
+    AllocationDeclaration::memory_manager(IC_MEMORY_LEDGER_STABLE_KEY, MEMORY_MANAGER_LEDGER_ID)
+        .unwrap_or_else(|_| unreachable!("built-in ledger declaration constants are valid"))
 }
 
 #[cfg(test)]

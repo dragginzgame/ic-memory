@@ -1,5 +1,5 @@
 const LEDGER_PAYLOAD_MAGIC: &[u8; 8] = b"ICMEMLED";
-const LEDGER_PAYLOAD_FORMAT_MARKER: &[u8; 4] = b"ICMS";
+const LEDGER_PAYLOAD_FORMAT_MARKER: &[u8; 4] = b"ICMN";
 /// Current durable ledger payload format version.
 pub const LEDGER_PAYLOAD_FORMAT_VERSION: u32 = 1;
 use crate::constants::LEDGER_PAYLOAD_HEADER_LEN;

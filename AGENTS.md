@@ -29,7 +29,8 @@ and prerequisites are declared in [docs/host-support.md](docs/host-support.md).
   `make test-failure-evidence`, `make fmt-check`, `make lint-tooling`, or an appropriately
   selected Rust test. `make runtime-server-check` and `make test-runtime` are
   focused installed qualification with explicitly prepared tools and both caches.
-- Full release suite: `make validate`, under the validation cadence below.
+- Full release suite: `make validate`, under the shared
+  [validation cadence](DRAGGINZGAME.md#validation-and-evidence).
   Development packaging qualifies working-tree edits; release
   admission and the separate `make package` target still require clean source.
   Release, publication and installed runtime qualification retain their separate
@@ -158,14 +159,3 @@ pub struct SchemaMetadata {
 
 Keep this shape for new or edited item-level docs unless local context clearly
 requires a different style.
-
-## Validation policy
-
-Apply Shared Tooling's [canonical validation cadence](https://github.com/dragginzgame/shared-tooling/blob/4256171b5b7ec4c4cc4078548c1c1617ee150699/DRAGGINZGAME.md#validation-and-evidence),
-adopted by exact revision `4256171b5b7ec4c4cc4078548c1c1617ee150699` (0.12.5).
-This revision-bound policy reference supersedes only the validation cadence in
-our older snapshot; executable tooling and all other shared rules retain their
-recorded snapshot revision. Local guidance supplies commands and product
-qualification requirements. Configured CI and release gates remain unchanged.
-On snapshot adoption of this policy, replace this separate reference with the
-local baseline link; do not keep a duplicate cadence or temporary exception.

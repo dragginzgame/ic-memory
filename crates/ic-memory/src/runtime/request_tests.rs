@@ -172,8 +172,8 @@ fn retained_fixed_claims_and_tombstones_are_never_remapped_or_reused() {
     retained(
         &backing,
         &[
-            AllocationDeclaration::memory_manager_unlabeled("app.retained.v1", 100).unwrap(),
-            AllocationDeclaration::memory_manager_unlabeled("app.retired.v1", 10).unwrap(),
+            AllocationDeclaration::memory_manager("app.retained.v1", 100).unwrap(),
+            AllocationDeclaration::memory_manager("app.retired.v1", 10).unwrap(),
         ],
     );
     let manager = MemoryManager::init(backing.clone());
@@ -231,7 +231,7 @@ fn foreign_namespace_and_excluded_historical_claims_fail_before_commit() {
     let backing = VectorMemory::default();
     retained(
         &backing,
-        &[AllocationDeclaration::memory_manager_unlabeled("app.rows.v1", 100).unwrap()],
+        &[AllocationDeclaration::memory_manager("app.rows.v1", 100).unwrap()],
     );
     let before = backing.borrow().clone();
     let mut host = MemoryRuntime::new(backing.clone()).unwrap();

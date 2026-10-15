@@ -4,11 +4,10 @@ mod memory_manager;
 pub use id_range::{MemoryManagerIdRange, MemoryManagerRangeError};
 pub use memory_manager::LEDGER_SLOT;
 pub use memory_manager::{
-    IC_MEMORY_AUTHORITY_OWNER, IC_MEMORY_LEDGER_LABEL, IC_MEMORY_LEDGER_STABLE_KEY,
-    IC_MEMORY_STABLE_KEY_PREFIX, MEMORY_MANAGER_GOVERNANCE_MAX_ID, MEMORY_MANAGER_INVALID_ID,
-    MEMORY_MANAGER_LEDGER_ID, MEMORY_MANAGER_MAX_ID, MEMORY_MANAGER_MIN_ID, MemoryManagerSlot,
-    MemoryManagerSlotError, is_ic_memory_stable_key, memory_manager_governance_range,
-    validate_memory_manager_id,
+    IC_MEMORY_AUTHORITY_OWNER, IC_MEMORY_LEDGER_STABLE_KEY, IC_MEMORY_STABLE_KEY_PREFIX,
+    MEMORY_MANAGER_GOVERNANCE_MAX_ID, MEMORY_MANAGER_INVALID_ID, MEMORY_MANAGER_LEDGER_ID,
+    MEMORY_MANAGER_MAX_ID, MEMORY_MANAGER_MIN_ID, MemoryManagerSlot, MemoryManagerSlotError,
+    is_ic_memory_stable_key, memory_manager_governance_range, validate_memory_manager_id,
 };
 
 #[cfg(test)]
@@ -47,10 +46,7 @@ mod tests {
             let slot = MemoryManagerSlot::new(id).unwrap();
             assert_eq!(slot.id(), id);
             let json = serde_json::to_value(&slot).unwrap();
-            assert_eq!(
-                json,
-                serde_json::json!({ "slot": { "MemoryManagerId": id } })
-            );
+            assert_eq!(json, serde_json::json!(id));
             assert_eq!(
                 serde_json::from_value::<MemoryManagerSlot>(json).unwrap(),
                 slot
@@ -62,12 +58,12 @@ mod tests {
             );
         }
         for json in [
-            serde_json::json!({ "slot": { "MemoryManagerId": 255 } }),
-            serde_json::json!({ "slot": { "MemoryManagerId": 256 } }),
-            serde_json::json!({ "slot": { "MemoryManagerId": -1 } }),
-            serde_json::json!({ "slot": { "MemoryManagerId": 1 }, "extra": true }),
-            serde_json::json!({ "slot": { "Other": 1 } }),
-            serde_json::json!({ "slot": null }),
+            serde_json::json!(255),
+            serde_json::json!(256),
+            serde_json::json!(-1),
+            serde_json::json!(1.5),
+            serde_json::json!("1"),
+            serde_json::json!(null),
             serde_json::json!({}),
         ] {
             assert!(serde_json::from_value::<MemoryManagerSlot>(json.clone()).is_err());

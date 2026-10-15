@@ -13,17 +13,16 @@ current output to catch accidental wire-format drift in reviewable text form.
 Intentional protocol hard cuts replace these fixtures in place. The repository
 contains exactly one current fixture set and one current decoder path.
 
-Slot encoding retains the current nested `slot` / `MemoryManagerId` shape.
-Construction and decoding both reject sentinel ID 255; valid slot bytes are
-unchanged by the 0.25 source API consolidation.
+Slots encode their numeric ID directly. Construction and decoding both reject
+sentinel ID 255. The 0.41.0 hard cut replaces the former nested representation.
 
 Current logical payload envelopes carry the `ICMEMLED` family magic followed
-by the `ICMS` format marker, format version `1`, payload length, and CBOR
-ledger bytes.
+by the distinct `ICMN` format marker, format version `1`, payload length, and
+CBOR ledger bytes. Earlier logical ledger images require explicit disposition;
+there is one current reader and no automatic clearing.
 
 Logical ledgers contain a commit counter and current ownership records only.
-Opaque committed payloads use definite-length CBOR byte strings. The 0.27.0
-hard cut replaces the former logical layout and discriminator; retained
+Opaque committed payloads use definite-length CBOR byte strings. Retained
 installations require explicit disposition before deployment. See
 [the current ledger contract](https://github.com/dragginzgame/ic-memory/blob/main/docs/current-ledger.md).
 The logical format version remains `1`; there is no old-shape reader.
@@ -43,5 +42,6 @@ Fixture groups:
 The 0.39.0 physical hard cut uses one required `current` snapshot field and the
 `ICMESNAP` marker. The current snapshot carries its checked counter, bounded
 opaque logical payload and checksum. Previous physical representations are
-incompatible; there is no fallback reader. Logical payload fixtures and
-MemoryManager slot bytes remain unchanged.
+incompatible; there is no fallback reader. The 0.41.0 numeric-slot cut retains
+that physical representation and changes the logical discriminator, slot bytes
+and resulting payload lengths/checksums.

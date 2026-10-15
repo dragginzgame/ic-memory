@@ -171,7 +171,6 @@ mod tests {
         AllocationDeclaration::new(
             key,
             MemoryManagerSlot::new(id).expect("usable slot"),
-            None,
             SchemaMetadata::default(),
         )
         .expect("declaration")

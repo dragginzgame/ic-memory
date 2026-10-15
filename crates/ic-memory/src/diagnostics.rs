@@ -366,7 +366,6 @@ mod tests {
         let declaration = AllocationDeclaration::new(
             "app.users.v1",
             MemoryManagerSlot::new(100).expect("usable slot"),
-            None,
             SchemaMetadata::default(),
         )
         .expect("declaration");
@@ -506,7 +505,6 @@ mod tests {
         let declaration = AllocationDeclaration::new(
             "app.users.v1",
             MemoryManagerSlot::new(100).expect("usable slot"),
-            None,
             SchemaMetadata::default(),
         )
         .expect("declaration");

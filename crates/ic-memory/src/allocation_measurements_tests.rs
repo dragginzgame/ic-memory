@@ -344,7 +344,7 @@ fn steady_state_snapshot_allocations() {
                     format!("app.store{id:03}.v1")
                 };
                 crate::AllocationRecord::reserved(
-                    &crate::AllocationDeclaration::memory_manager_unlabeled_with_schema(
+                    &crate::AllocationDeclaration::memory_manager_with_schema(
                         key,
                         u8::try_from(id).unwrap(),
                         crate::SchemaMetadata::new(Some(u32::MAX)).unwrap(),

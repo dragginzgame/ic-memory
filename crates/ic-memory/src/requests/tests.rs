@@ -15,7 +15,7 @@ fn resolution_fills_free_slots_around_interleaved_retained_requests() {
             .into_iter()
             .map(|(key, id)| {
                 crate::AllocationRecord::active(
-                    &AllocationDeclaration::memory_manager_unlabeled(key, id).unwrap(),
+                    &AllocationDeclaration::memory_manager(key, id).unwrap(),
                 )
             })
             .collect(),
