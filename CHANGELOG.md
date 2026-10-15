@@ -2,6 +2,10 @@
 
 ## [0.41.0]
 
+- Align native Host dependencies with IC Build's exposed process types so Cargo
+  metadata checks compile with one dependency identity
+  ([#62 — Qualify native tooling and evidence](https://github.com/dragginzgame/ic-memory/issues/62)).
+
 - **Breaking:** serialize allocation slots as checked numeric IDs and remove
   unused declaration labels. Update constructor calls and raw diagnostic DTO
   consumers; retained ledger images require explicit disposition before deployment
