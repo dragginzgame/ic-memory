@@ -1,5 +1,36 @@
 # Changelog
 
+## [0.42.0]
+
+- **Breaking:** remove `Storable` from `StableCellLedgerRecord`. Use the owned
+  runtime for allocation persistence and fallible decode helpers for inspection;
+  persisted bytes and recovery behavior are unchanged.
+
+- **Breaking diagnostics:** remove the always-null per-ID `payload_bytes` field
+  and `RecoveredLedger::physical_generation()`. Use `current_generation()` for
+  the recovered counter and storage-owned diagnostics for payload occupancy.
+
+- **Breaking diagnostics:** return `CommitSnapshotDiagnostic` directly for
+  physical recovery, removing the duplicate status/result wrapper.
+
+- **Breaking API:** use `RuntimeBootstrapError` throughout bootstrap and remove
+  the redundant generic `BootstrapError` type.
+
+- Reuse canonical Shared manifest readers and renderers in the release launcher,
+  preserving supported TOML formatting and refusing invalid selections before builds.
+
+- Simplify allocation capability storage while retaining shared committed
+  declarations and publication only after persistence.
+
+- Build native measurement fixtures from checked allocation types, preserving
+  the current slot encoding and isolating malformed-key recovery measurements.
+
+- Compute declaration fingerprints only when diagnostics request them, reducing
+  bootstrap work and Wasm size while preserving fingerprint values and exact
+  bootstrap binding checks.
+
+[Detailed notes](docs/changelog/0.42.md)
+
 ## [0.41.0] - 2026-10-15
 
 - Align native Host dependencies with IC Build's exposed process types so Cargo

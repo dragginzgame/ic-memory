@@ -1,11 +1,10 @@
+use super::RuntimeBootstrapError;
 use crate::{
     capability::{CommittedAllocations, ValidatedAllocations},
     declaration::DeclarationSnapshot,
-    ledger::{
-        AllocationStageError, LedgerCommitError, LedgerCommitStore, stage_validated_generation,
-    },
+    ledger::{LedgerCommitStore, stage_validated_generation},
     policy::AllocationPolicy,
-    validation::{AllocationValidationError, validate_allocations},
+    validation::validate_allocations,
 };
 use std::borrow::Cow;
 
@@ -15,17 +14,13 @@ pub fn prepare_commit<P>(
     prior: crate::RecoveredLedger,
     snapshot: DeclarationSnapshot,
     policy: &P,
-) -> Result<PendingBootstrapCommit, BootstrapError<P::Error>>
+) -> Result<PendingBootstrapCommit, RuntimeBootstrapError<P::Error>>
 where
     P: AllocationPolicy,
 {
-    let validated =
-        validate_allocations(&prior, snapshot, policy).map_err(BootstrapError::Validation)?;
-    let staged = stage_validated_generation(Cow::Owned(prior.into_ledger()), &validated)
-        .map_err(BootstrapError::Staging)?;
-    store
-        .commit_generation(&staged)
-        .map_err(BootstrapError::Ledger)?;
+    let validated = validate_allocations(&prior, snapshot, policy)?;
+    let staged = stage_validated_generation(Cow::Owned(prior.into_ledger()), &validated)?;
+    store.commit_generation(&staged)?;
 
     Ok(PendingBootstrapCommit {
         validated,
@@ -36,10 +31,10 @@ where
 ///
 /// PendingBootstrapCommit
 ///
-/// Pending result of a successful generic allocation bootstrap commit.
+/// Pending result of a successful runtime allocation bootstrap commit.
 ///
-/// The embedded [`crate::LedgerCommitStore`] has advanced, but this generic
-/// layer does not own stable-memory IO. Persist the owning record first, then
+/// The owning [`crate::LedgerCommitStore`] has advanced. The runtime must finish
+/// stable-memory IO before publishing authority. Persist the owning record first, then
 /// call [`PendingBootstrapCommit::confirm_persisted`] to mint the allocation-open
 /// capability.
 ///
@@ -65,30 +60,12 @@ impl PendingBootstrapCommit {
     }
 }
 
-///
-/// BootstrapError
-///
-/// Failure to recover, validate, or commit an allocation generation.
-#[non_exhaustive]
-#[derive(Clone, Debug, Eq, thiserror::Error, PartialEq)]
-pub enum BootstrapError<P> {
-    /// Ledger recovery or protected commit failed.
-    #[error(transparent)]
-    Ledger(LedgerCommitError),
-    /// Policy or historical allocation validation failed.
-    #[error(transparent)]
-    Validation(AllocationValidationError<P>),
-    /// Validated declarations could not be staged against the recovered ledger.
-    #[error(transparent)]
-    Staging(AllocationStageError),
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::{
-        AllocationDeclaration, AllocationLedger, GenericAllocationPolicy, MemoryManagerSlot,
-        SchemaMetadata,
+        AllocationDeclaration, AllocationLedger, AllocationValidationError,
+        GenericAllocationPolicy, MemoryManagerSlot, SchemaMetadata,
     };
     #[derive(Debug, Eq, PartialEq)]
     struct RejectActivePolicy;
@@ -127,7 +104,7 @@ mod tests {
         let mut store = LedgerCommitStore::default();
         let recovered = store.recover_or_initialize(&ledger()).unwrap();
         let snapshot = DeclarationSnapshot::new(vec![declaration()]).unwrap();
-        let commit = crate::bootstrap::prepare_commit(
+        let commit = crate::runtime::bootstrap::prepare_commit(
             &mut store,
             recovered,
             snapshot,
@@ -154,12 +131,18 @@ mod tests {
         let before = store.clone();
         let recovered = store.recover().unwrap();
         let snapshot = DeclarationSnapshot::new(vec![declaration()]).unwrap();
-        let err =
-            crate::bootstrap::prepare_commit(&mut store, recovered, snapshot, &RejectActivePolicy)
-                .expect_err("active validation must run");
+        let err = crate::runtime::bootstrap::prepare_commit(
+            &mut store,
+            recovered,
+            snapshot,
+            &RejectActivePolicy,
+        )
+        .expect_err("active validation must run");
         assert!(matches!(
             err,
-            BootstrapError::Validation(AllocationValidationError::Policy("active slot rejected"))
+            RuntimeBootstrapError::Validation(AllocationValidationError::Policy(
+                "active slot rejected"
+            ))
         ));
         assert_eq!(store, before);
         assert_eq!(

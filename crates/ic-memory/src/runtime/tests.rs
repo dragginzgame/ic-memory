@@ -728,7 +728,8 @@ fn diagnostics_reject_invalid_persisted_slots_before_measuring_sizes() {
     .unwrap();
     let _cell = Cell::new(
         runtime.memory(crate::MEMORY_MANAGER_LEDGER_ID),
-        crate::StableCellLedgerRecord::new(store),
+        crate::stable_cell::EncodedLedgerRecord::new(&crate::StableCellLedgerRecord::new(store))
+            .unwrap(),
     );
     let before = backing.borrow().clone();
 
@@ -816,7 +817,10 @@ fn doctor_uses_genesis_only_for_empty_commit_storage() {
         if initialized {
             let _cell = Cell::new(
                 runtime.memory(crate::MEMORY_MANAGER_LEDGER_ID),
-                crate::StableCellLedgerRecord::default(),
+                crate::stable_cell::EncodedLedgerRecord::new(
+                    &crate::StableCellLedgerRecord::default(),
+                )
+                .unwrap(),
             );
         }
         let before = backing.borrow().clone();
@@ -840,7 +844,10 @@ fn doctor_uses_genesis_only_for_empty_commit_storage() {
     let mut record = runtime.ledger_record_from_memory().unwrap();
     let genesis = crate::AllocationLedger::new(0, Vec::new()).unwrap();
     record.store_mut().write_corrupt_ledger(&genesis).unwrap();
-    let _cell = Cell::new(runtime.memory(crate::MEMORY_MANAGER_LEDGER_ID), record);
+    let _cell = Cell::new(
+        runtime.memory(crate::MEMORY_MANAGER_LEDGER_ID),
+        crate::stable_cell::EncodedLedgerRecord::new(&record).unwrap(),
+    );
     let before = backing.borrow().clone();
     let report = runtime.doctor_report(&declarations, &pool(), &GenericAllocationPolicy);
     assert!(matches!(

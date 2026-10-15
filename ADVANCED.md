@@ -33,18 +33,21 @@ The native IC ledger anchor is:
 
 ```text
 MemoryManager ID 0
-  -> ic-stable-structures::Cell<StableCellLedgerRecord, _>
+  -> ic-stable-structures::Cell value bytes
+  -> StableCellLedgerRecord (fallibly decoded DTO)
   -> LedgerCommitStore
-  -> redundant committed generation bytes
-  -> LedgerPayloadEnvelope
+  -> one checksummed current snapshot
+  -> current-format allocation ledger
   -> RecoveredLedger
   -> ValidatedAllocations
   -> PendingBootstrapCommit
   -> CommittedAllocations
 ```
 
-The logical payload inside the `LedgerPayloadEnvelope` is the built-in
-`ic-memory` CBOR ledger format. Callers do not provide a custom codec.
+The logical payload uses the built-in `ic-memory` CBOR ledger format. Callers do
+not provide a custom codec. `StableCellLedgerRecord` does not implement
+`Storable`: the runtime owns bounded publication bytes and allocation persistence,
+while the fallible decode helpers support read-only inspection.
 
 The default runtime keeps this internal ledger allocation in its ownership records,
 but it removes `ic_memory.*` governance keys from the committed allocations it

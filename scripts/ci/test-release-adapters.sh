@@ -326,6 +326,9 @@ cp "$ROOT/ci/tool-versions.env" "$FIXTURE/bootstrap/ci/"
 cp "$ROOT/make/consumer.mk" "$ROOT/make/tools.mk" "$ROOT/make/release.mk" "$ROOT/make/rust-format.mk" "$ROOT/make/execution.mk" "$FIXTURE/bootstrap/make/"
 mkdir -p "$FIXTURE/bootstrap/scripts/ci"
 cp "$ROOT/scripts/ci/check-make-execution.sh" "$FIXTURE/bootstrap/scripts/ci/"
+cp "$ROOT/scripts/ci/read-cargo-workspace-version.sh" \
+    "$ROOT/scripts/ci/render-cargo-workspace-version.pl" \
+    "$ROOT/scripts/ci/validate-release-inputs.pl" "$FIXTURE/bootstrap/scripts/ci/"
 cp "$ROOT/scripts/dev/run-repo-tool.sh" "$FIXTURE/bootstrap/scripts/dev/"
 cd "$FIXTURE/bootstrap"
 cat > Cargo.toml <<'MANIFEST'
@@ -346,6 +349,7 @@ name = "other"
 version = "0.12.3"
 LOCK
 echo fixture > crates/ic-memory/README.md
+touch crates/ic-memory/src/lib.rs
 echo fixture-license > LICENSE
 cat > crates/ic-memory/Cargo.toml <<'MANIFEST'
 [package]
@@ -356,6 +360,11 @@ cp Cargo.toml original-manifest
 cat > bin/cargo <<'STUB'
 #!/usr/bin/env bash
 set -euo pipefail
+if [[ "$1" == locate-project ]]; then
+    [[ "$RUSTUP_TOOLCHAIN" == 1.99.0 && "$CARGO_NET_OFFLINE" == true ]] || exit 1
+    [[ "$*" == 'locate-project --workspace --message-format plain --manifest-path Cargo.toml' ]] || exit 1
+    exec "$FIXTURE_REAL_CARGO" "$@"
+fi
 [[ "$1" == +1.99.0 ]] || exit 1
 [[ "$RUSTUP_AUTO_INSTALL" == 0 && "${CARGO_NET_OFFLINE-unset}" == "$CALLER_OFFLINE" ]] || exit 1
 case "$2" in
@@ -424,11 +433,16 @@ STUB
 cat > bin/yq <<'STUB'
 #!/usr/bin/env bash
 set -euo pipefail
-[[ "$*" == '-p=json -r .target_directory' ]] || exit 1
-[[ "$(cat)" == '{"target_directory":"fixture"}' ]] || exit 1
-printf '%s\n' "$BOOTSTRAP_TARGET"
+if [[ "$*" == '-p=json -r .target_directory' ]]; then
+    [[ "$(cat)" == '{"target_directory":"fixture"}' ]] || exit 1
+    printf '%s\n' "$BOOTSTRAP_TARGET"
+else
+    "$FIXTURE_TOML_YQ" "$@"
+    if [[ "${TOML_PARSER_FAILURE:-}" == "${!#}" ]]; then exit 23; fi
+fi
 STUB
 chmod +x bin/cargo bin/yq
+export FIXTURE_REAL_CARGO="$(command -v cargo)" FIXTURE_TOML_YQ="$ROOT/.tools/host/bin/yq"
 export PATH="$PWD/bin:$PATH" YQ="$PWD/bin/yq" BOOTSTRAP_TARGET="$PWD/custom target"
 unset CARGO_NET_OFFLINE
 export CALLER_OFFLINE=unset
@@ -538,7 +552,7 @@ cmp original-manifest Cargo.toml
 cmp prepared-lock Cargo.lock
 # Plausible parser output never overrides its failed observation status.
 cp bin/yq bin/failed-yq
-printf 'exit 23\n' >> bin/failed-yq
+printf '%s\n' 'if [[ "$*" == "-p=json -r .target_directory" ]]; then exit 23; fi' >> bin/failed-yq
 cp calls failed-parser-calls
 printf '%s\n' metadata >> failed-parser-calls
 status=0
@@ -548,6 +562,64 @@ cmp failed-parser-calls calls
 cmp original-manifest Cargo.toml
 cmp prepared-lock Cargo.lock
 export BOOTSTRAP_TARGET="$normal_target"
+# Common helpers preserve supported TOML formatting and leave dependency text intact.
+cp calls saved-format-calls
+cat > Cargo.toml <<'MANIFEST'
+[workspace]
+members = ["crates/ic-memory"]
+[ workspace.package ] # selected metadata
+  version   = "0.12.3" # keep this comment
+[workspace.dependencies]
+other = "0.12.3"
+MANIFEST
+cp Cargo.toml formatted-manifest
+cat > expected-manifest <<'MANIFEST'
+[workspace]
+members = ["crates/ic-memory"]
+[ workspace.package ] # selected metadata
+  version   = "0.13.0" # keep this comment
+[workspace.dependencies]
+other = "0.12.3"
+MANIFEST
+[[ "$(make --no-print-directory -s release-version 2> formatted.log)" == 0.12.3 ]] || exit 1
+cmp formatted-manifest Cargo.toml
+cmp prepared-lock Cargo.lock
+# A parser emitting plausible facts before failing cannot start Cargo preparation.
+for input in Cargo.toml Cargo.lock; do
+    cp calls saved-parser-calls
+    status=0
+    TOML_PARSER_FAILURE="$input" bash scripts/dev/run-repo-tool.sh 1.99.0 version \
+        > "failed-toml-$input.log" 2>&1 || status=$?
+    [[ "$status" != 0 ]] || exit 1
+    cmp saved-parser-calls calls
+    cmp formatted-manifest Cargo.toml
+    cmp prepared-lock Cargo.lock
+done
+# Cargo admits manifest syntax before projection, including duplicate-key refusal.
+sed '/keep this comment/a\
+  version = "0.12.3"' formatted-manifest > Cargo.toml
+cp Cargo.toml duplicate-manifest
+cp calls saved-parser-calls
+if bash scripts/dev/run-repo-tool.sh 1.99.0 version > duplicate-manifest.log 2>&1; then
+    echo 'launcher accepted duplicate manifest metadata' >&2; exit 1
+fi
+cmp saved-parser-calls calls
+cmp duplicate-manifest Cargo.toml
+cmp prepared-lock Cargo.lock
+cp original-manifest Cargo.toml
+# Reject malformed lock values before shell capture can trim or discard bytes.
+for version in '13' '"0.13.0\n"' '"0.13.0\u0000"'; do
+    printf 'version = 4\n[[package]]\nname = "ic-memory"\nversion = %s\n' "$version" > Cargo.lock
+    cp Cargo.lock malformed-lock
+    if bash scripts/dev/run-repo-tool.sh 1.99.0 version > malformed-lock.log 2>&1; then
+        echo 'launcher accepted malformed locked version' >&2; exit 1
+    fi
+    cmp saved-parser-calls calls
+    cmp original-manifest Cargo.toml
+    cmp malformed-lock Cargo.lock
+done
+cp prepared-lock Cargo.lock
+cp saved-format-calls calls
 cp calls saved-calls
 cat >> Cargo.lock <<'LOCK'
 [[package]]

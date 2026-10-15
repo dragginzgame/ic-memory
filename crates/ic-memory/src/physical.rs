@@ -176,7 +176,7 @@ impl SnapshotCommitStore {
         &self,
     ) -> (
         Result<&CommittedGenerationBytes, CommitRecoveryError>,
-        CommitStoreDiagnostic,
+        CommitSnapshotDiagnostic,
     ) {
         let recovery = self.authoritative();
         let current = match self.current() {
@@ -188,15 +188,11 @@ impl SnapshotCommitStore {
                 generation: record.generation(),
             },
         };
-        let diagnostic = CommitStoreDiagnostic {
-            current,
-            recovery: recovery.map(CommittedGenerationBytes::generation),
-        };
-        (recovery, diagnostic)
+        (recovery, current)
     }
 
     /// Report the same checked current record without decoding logical ownership.
-    pub fn diagnostic(&self) -> CommitStoreDiagnostic {
+    pub fn diagnostic(&self) -> CommitSnapshotDiagnostic {
         self.authoritative_with_diagnostic().1
     }
 
@@ -243,22 +239,6 @@ impl SnapshotCommitStore {
         corrupt.checksum ^= 1;
         self.current = Some(corrupt);
     }
-}
-
-///
-/// CommitStoreDiagnostic
-///
-/// Read-only physical snapshot status and checked generation. Logical ledger
-/// decoding and ownership integrity remain independent recovery boundaries.
-///
-
-#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
-#[serde(deny_unknown_fields)]
-pub struct CommitStoreDiagnostic {
-    /// Status of the current physical snapshot.
-    pub current: CommitSnapshotDiagnostic,
-    /// Checked generation, or the reason physical recovery failed.
-    pub recovery: Result<u64, CommitRecoveryError>,
 }
 
 ///
@@ -382,13 +362,7 @@ mod tests {
     #[test]
     fn commits_replace_the_snapshot_and_diagnostics_share_recovery() {
         let mut store = SnapshotCommitStore::default();
-        assert_eq!(
-            store.diagnostic(),
-            CommitStoreDiagnostic {
-                current: CommitSnapshotDiagnostic::Empty,
-                recovery: Err(CommitRecoveryError::NoValidGeneration),
-            }
-        );
+        assert_eq!(store.diagnostic(), CommitSnapshotDiagnostic::Empty);
         for generation in 0..4 {
             let payload = vec![u8::try_from(generation).unwrap(); 4];
             store
@@ -399,16 +373,10 @@ mod tests {
             assert_eq!(record.commit_marker(), COMMIT_MARKER);
             assert_eq!(record.checksum(), generation_checksum(record));
             let diagnostic = store.diagnostic();
-            assert_eq!(
-                diagnostic,
-                CommitStoreDiagnostic {
-                    current: CommitSnapshotDiagnostic::Valid { generation },
-                    recovery: Ok(generation),
-                }
-            );
+            assert_eq!(diagnostic, CommitSnapshotDiagnostic::Valid { generation });
             let bytes = crate::test_cbor::to_vec(&diagnostic).unwrap();
             assert_eq!(
-                crate::test_cbor::from_slice::<CommitStoreDiagnostic>(&bytes).unwrap(),
+                crate::test_cbor::from_slice::<CommitSnapshotDiagnostic>(&bytes).unwrap(),
                 diagnostic
             );
         }
@@ -437,10 +405,7 @@ mod tests {
             assert_eq!(store.authoritative(), Err(expected));
             assert_eq!(
                 store.diagnostic(),
-                CommitStoreDiagnostic {
-                    current: CommitSnapshotDiagnostic::Invalid { generation },
-                    recovery: Err(expected),
-                }
+                CommitSnapshotDiagnostic::Invalid { generation }
             );
             assert_eq!(
                 store.commit_payload_at_generation(8, vec![4]),

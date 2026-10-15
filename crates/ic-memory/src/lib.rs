@@ -75,7 +75,6 @@
 //! `ic-memory` owns allocation governance without wrapping typed collections.
 
 mod allocation_pool;
-mod bootstrap;
 mod bounded_writer;
 mod capability;
 mod cbor;
@@ -145,7 +144,6 @@ mod test_cbor {
 pub use ic_stable_structures;
 
 pub use allocation_pool::{MemoryAllocationPool, MemoryAllocationPoolError, MemoryAuthority};
-pub use bootstrap::BootstrapError;
 pub use capability::CommittedAllocations;
 pub use constants::{
     MAX_LEDGER_BYTES, MAX_LEDGER_NESTING, MAX_LEDGER_RECORD_BYTES, WASM_PAGE_SIZE_BYTES,
@@ -166,9 +164,9 @@ pub use ledger::{
     LEDGER_PAYLOAD_FORMAT_VERSION, LedgerCommitError, LedgerIntegrityError,
     LedgerPayloadEnvelopeError, RecoveredLedger,
 };
-pub use physical::{CommitRecoveryError, CommitSnapshotDiagnostic, CommitStoreDiagnostic};
 #[cfg(test)]
-pub(crate) use physical::{CommittedGenerationBytes, SnapshotCommitStore};
+pub(crate) use physical::CommittedGenerationBytes;
+pub use physical::{CommitRecoveryError, CommitSnapshotDiagnostic};
 pub use policy::{AllocationPolicy, PolicyIdentity, PolicyIdentityError, RuntimeBootstrapPolicy};
 pub use requests::{
     MemoryDeclarationError, MemoryRequest, SealedDeclarationFingerprint, SealedDeclarationSnapshot,

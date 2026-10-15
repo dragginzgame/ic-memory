@@ -52,7 +52,7 @@ fn retained(backing: &VectorMemory, declarations: &[AllocationDeclaration]) {
         .commit(&AllocationLedger::new(0, vec![]).unwrap())
         .unwrap();
     let recovered = store.recover().unwrap();
-    let pending = crate::bootstrap::prepare_commit(
+    let pending = crate::runtime::bootstrap::prepare_commit(
         &mut store,
         recovered,
         crate::DeclarationSnapshot::new(declarations.to_vec()).unwrap(),
@@ -62,7 +62,7 @@ fn retained(backing: &VectorMemory, declarations: &[AllocationDeclaration]) {
     let manager = MemoryManager::init(backing.clone());
     drop(Cell::new(
         manager.get(MemoryId::new(0)),
-        StableCellLedgerRecord::new(store),
+        crate::stable_cell::EncodedLedgerRecord::new(&StableCellLedgerRecord::new(store)).unwrap(),
     ));
     drop(pending.confirm_persisted());
 }
@@ -194,7 +194,10 @@ fn retained_fixed_claims_and_tombstones_are_never_remapped_or_reused() {
         )
         .unwrap();
     record.store_mut().commit_generation(&retired).unwrap();
-    drop(Cell::new(manager.get(MemoryId::new(0)), record));
+    drop(Cell::new(
+        manager.get(MemoryId::new(0)),
+        crate::stable_cell::EncodedLedgerRecord::new(&record).unwrap(),
+    ));
     drop(manager);
     let mut host = MemoryRuntime::new(backing.clone()).unwrap();
     host.bootstrap(

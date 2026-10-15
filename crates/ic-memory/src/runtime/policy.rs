@@ -1,19 +1,8 @@
-use super::RuntimeBootstrapError;
 use crate::{
     AllocationPolicy, MemoryManagerSlot, PolicyIdentity, PolicyIdentityError,
     RuntimeBootstrapPolicy, StableKey, slot::IC_MEMORY_LEDGER_STABLE_KEY,
 };
 use std::convert::Infallible;
-
-pub(super) fn runtime_bootstrap_error_from_bootstrap<P>(
-    err: crate::BootstrapError<P>,
-) -> RuntimeBootstrapError<P> {
-    match err {
-        crate::BootstrapError::Ledger(err) => RuntimeBootstrapError::LedgerCommit(err),
-        crate::BootstrapError::Validation(err) => RuntimeBootstrapError::Validation(err),
-        crate::BootstrapError::Staging(err) => RuntimeBootstrapError::Staging(err),
-    }
-}
 
 // Resolution admits every external row under the host pool. This adapter only
 // keeps private governance outside application callbacks; it cannot accept raw

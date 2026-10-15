@@ -6,7 +6,7 @@ mod record;
 mod stage;
 
 use crate::physical::{
-    CommitRecoveryError, CommitStoreDiagnostic, CommittedGenerationBytes, SnapshotCommitStore,
+    CommitRecoveryError, CommitSnapshotDiagnostic, CommittedGenerationBytes, SnapshotCommitStore,
 };
 use serde::{Deserialize, Serialize};
 
@@ -69,7 +69,7 @@ impl LedgerCommitStore {
         &self,
     ) -> (
         Result<RecoveredLedger, LedgerCommitError>,
-        CommitStoreDiagnostic,
+        CommitSnapshotDiagnostic,
     ) {
         let (committed, diagnostic) = self.physical.authoritative_with_diagnostic();
         let recovered = committed
@@ -180,7 +180,7 @@ mod tests {
                 DeclarationSnapshot::new(vec![declaration("app.users.v1", 100, Some(version))])
                     .unwrap();
             let recovered = store.recover().unwrap();
-            let pending = crate::bootstrap::prepare_commit(
+            let pending = crate::runtime::bootstrap::prepare_commit(
                 &mut store,
                 recovered,
                 snapshot,
@@ -200,7 +200,14 @@ mod tests {
         }
         // CBOR integer widths may grow; the number of records and metadata do not.
         assert!(largest_payload < 200);
-        assert!(crate::StableCellLedgerRecord::new(store).to_bytes().len() < 600);
+        assert!(
+            crate::stable_cell::EncodedLedgerRecord::new(&crate::StableCellLedgerRecord::new(
+                store
+            ))
+            .unwrap()
+            .len()
+                < 600
+        );
     }
 
     #[test]
@@ -224,7 +231,9 @@ mod tests {
         let next = AllocationLedger::new(u64::MAX, ledger.records().to_vec()).unwrap();
         store.commit(&next).unwrap();
         let record = crate::StableCellLedgerRecord::new(store);
-        let bytes = record.to_bytes();
+        let bytes = crate::stable_cell::EncodedLedgerRecord::new(&record)
+            .unwrap()
+            .into_bytes();
         assert!(bytes.len() <= crate::constants::MAX_LEDGER_RECORD_BYTES);
         let decoded = crate::decode_stable_cell_ledger_record(&bytes).unwrap();
         assert_eq!(decoded.store().recover().unwrap().ledger(), &next);
@@ -238,7 +247,7 @@ mod tests {
             .unwrap();
         let before = store.clone();
         let recovered = store.recover().unwrap();
-        let result = crate::bootstrap::prepare_commit(
+        let result = crate::runtime::bootstrap::prepare_commit(
             &mut store,
             recovered,
             DeclarationSnapshot::new(Vec::new()).unwrap(),
@@ -246,7 +255,7 @@ mod tests {
         );
         assert!(matches!(
             result,
-            Err(crate::BootstrapError::Staging(
+            Err(crate::RuntimeBootstrapError::Staging(
                 AllocationStageError::GenerationOverflow {
                     generation: u64::MAX
                 }
@@ -616,7 +625,10 @@ mod tests {
             "../../fixtures/current/snapshot_store_valid.cbor.hex"
         ));
 
-        assert_eq!(store.physical().diagnostic().recovery, Ok(2));
+        assert_eq!(
+            store.physical().diagnostic(),
+            crate::CommitSnapshotDiagnostic::Valid { generation: 2 }
+        );
         let recovered = store.recover().expect("fixture store recovers");
         assert_eq!(recovered.current_generation(), 2);
     }
@@ -629,11 +641,7 @@ mod tests {
 
         let diagnostic = store.physical().diagnostic();
         assert_eq!(
-            diagnostic.recovery,
-            Err(CommitRecoveryError::InvalidSnapshot { generation: 2 })
-        );
-        assert_eq!(
-            diagnostic.current,
+            diagnostic,
             crate::CommitSnapshotDiagnostic::Invalid { generation: 2 }
         );
         let err = store
@@ -1452,7 +1460,6 @@ mod tests {
         let recovered = store.recover().expect("recovered ledger");
 
         assert_eq!(recovered.current_generation(), 2);
-        assert_eq!(recovered.physical_generation(), 2);
     }
 
     #[test]
@@ -1571,7 +1578,6 @@ mod tests {
             if empty {
                 let initialized = initialized.expect("empty store accepts genesis");
                 assert_eq!(initialized.current_generation(), 0);
-                assert_eq!(initialized.physical_generation(), 0);
                 assert_eq!(initializing.recover().unwrap(), initialized);
             } else {
                 assert_eq!(initialized, recovered, "{label}");
@@ -1579,9 +1585,21 @@ mod tests {
             }
 
             if let Err(LedgerCommitError::Recovery(error)) = recovered {
-                assert_eq!(diagnostic.recovery, Err(error), "{label}");
+                let expected = match error {
+                    CommitRecoveryError::NoValidGeneration => {
+                        crate::CommitSnapshotDiagnostic::Empty
+                    }
+                    CommitRecoveryError::InvalidSnapshot { generation } => {
+                        crate::CommitSnapshotDiagnostic::Invalid { generation }
+                    }
+                    _ => panic!("unexpected physical recovery failure: {error}"),
+                };
+                assert_eq!(diagnostic, expected, "{label}");
             } else {
-                assert!(diagnostic.recovery.is_ok(), "{label}");
+                assert!(
+                    matches!(diagnostic, crate::CommitSnapshotDiagnostic::Valid { .. }),
+                    "{label}"
+                );
             }
         }
     }
@@ -1595,7 +1613,6 @@ mod tests {
             .recover_or_initialize(&genesis)
             .expect("current-format genesis ledger");
         assert_eq!(recovered.current_generation(), 0);
-        assert_eq!(recovered.physical_generation(), 0);
 
         assert_eq!(recovered, store.recover().unwrap());
 
@@ -1610,7 +1627,6 @@ mod tests {
 
         assert_eq!(recovered, store.recover().unwrap());
         assert_eq!(recovered.current_generation(), 1);
-        assert_eq!(recovered.physical_generation(), 1);
     }
 
     #[test]
@@ -1716,7 +1732,6 @@ mod tests {
             .expect("initialized ledger");
 
         assert_eq!(recovered.current_generation(), 3);
-        assert_eq!(recovered.physical_generation(), 3);
         assert!(store.physical().current().is_some());
     }
 
@@ -1794,7 +1809,9 @@ mod tests {
                 .commit_payload_at_generation(1, payload)
                 .unwrap();
             let record = crate::StableCellLedgerRecord::new(store);
-            let bytes = record.to_bytes();
+            let bytes = crate::stable_cell::EncodedLedgerRecord::new(&record)
+                .unwrap()
+                .into_bytes();
             let mut decoded = crate::decode_stable_cell_ledger_record(&bytes).unwrap();
             assert_eq!(decoded, record);
             let before = decoded.clone();

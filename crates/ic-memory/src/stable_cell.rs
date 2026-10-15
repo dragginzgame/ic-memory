@@ -20,7 +20,8 @@ pub const STABLE_CELL_VALUE_OFFSET: u64 = 8;
 /// ledger commit store.
 ///
 /// This is a substrate adapter DTO. It owns no framework policy and does not
-/// open application allocations.
+/// open application allocations. Decode through the fallible helpers; the
+/// runtime separately prepares bounded bytes before publishing a Cell value.
 ///
 
 #[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
@@ -46,24 +47,6 @@ impl StableCellLedgerRecord {
     /// Mutably borrow the embedded commit store.
     pub(crate) const fn store_mut(&mut self) -> &mut LedgerCommitStore {
         &mut self.store
-    }
-}
-
-impl Storable for StableCellLedgerRecord {
-    const BOUND: Bound = Bound::Unbounded;
-
-    fn to_bytes(&self) -> Cow<'_, [u8]> {
-        Cow::Owned(serialize_record(self))
-    }
-
-    fn into_bytes(self) -> Vec<u8> {
-        serialize_record(&self)
-    }
-
-    fn from_bytes(bytes: Cow<'_, [u8]>) -> Self {
-        decode_stable_cell_ledger_record(&bytes).unwrap_or_else(|err| {
-            panic!("StableCellLedgerRecord deserialize failed: {err}");
-        })
     }
 }
 
@@ -178,8 +161,8 @@ pub fn decode_stable_cell_ledger_record(
 /// Empty memory returns an uninitialized record without writing a cell. Nonempty
 /// memory must pass the current envelope, byte bounds and record decoding. The
 /// returned DTO still requires protected ledger recovery before it is authority.
-/// Keep this record for recovery rather than decoding again through the
-/// panic-based [`Storable::from_bytes`] used by `Cell::init`.
+/// The runtime retains this decoded record for recovery and separately prepares
+/// bounded publication bytes; reading never initializes a Cell.
 pub fn decode_stable_cell_ledger_record_from_memory<M: Memory>(
     memory: &M,
 ) -> Result<StableCellLedgerRecord, StableCellLedgerError> {
@@ -189,13 +172,6 @@ pub fn decode_stable_cell_ledger_record_from_memory<M: Memory>(
 
     let payload = decode_stable_cell_payload(memory)?;
     decode_stable_cell_ledger_record(&payload).map_err(StableCellLedgerError::Record)
-}
-
-fn serialize_record(record: &StableCellLedgerRecord) -> Vec<u8> {
-    EncodedLedgerRecord::new(record)
-        .unwrap_or_else(|size| panic!("stable-cell ledger record exceeds limit: {size}"))
-        .buffer
-        .bytes
 }
 
 ///
@@ -276,11 +252,12 @@ mod tests {
     fn stable_cell_ledger_record_round_trips_through_cell() {
         let memory = VectorMemory::default();
         let record = StableCellLedgerRecord::default();
-        let cell = Cell::init(memory.clone(), record.clone());
-
-        assert_eq!(cell.get(), &record);
+        drop(Cell::new(
+            memory.clone(),
+            EncodedLedgerRecord::new(&record).unwrap(),
+        ));
         let payload = decode_stable_cell_payload(&memory).expect("decode stable cell payload");
-        let decoded = StableCellLedgerRecord::from_bytes(Cow::Owned(payload));
+        let decoded = decode_stable_cell_ledger_record(&payload).unwrap();
         assert_eq!(decoded, record);
         assert_eq!(
             crate::decode_stable_cell_ledger_record_from_memory(&memory).unwrap(),
@@ -304,8 +281,10 @@ mod tests {
         let memory = VectorMemory::default();
         drop(Cell::new(memory.clone(), encoded));
         assert_eq!(decode_stable_cell_payload(&memory).unwrap(), bytes);
-        assert_eq!(record.to_bytes().as_ref(), bytes.as_slice());
-        assert_eq!(record.clone().into_bytes(), bytes);
+        assert_eq!(
+            EncodedLedgerRecord::new(&record).unwrap().into_bytes(),
+            bytes
+        );
         assert_eq!(
             bytes,
             crate::test_cbor::to_vec(&record).expect("re-encoded stable-cell fixture")
@@ -368,7 +347,9 @@ mod tests {
 
     #[test]
     fn stable_cell_ledger_record_rejects_trailing_bytes() {
-        let mut bytes = serialize_record(&StableCellLedgerRecord::default());
+        let mut bytes = EncodedLedgerRecord::new(&StableCellLedgerRecord::default())
+            .unwrap()
+            .into_bytes();
         bytes.push(0);
 
         let err =

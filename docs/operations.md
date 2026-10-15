@@ -54,8 +54,9 @@ application data are present. In particular:
 - **Unknown binding bytes** belong to IDs whose current store cannot be named
   safely.
 - **Unmanaged bytes** lie outside the manager's assigned region.
-- `payload_bytes` is unavailable because `ic-memory` does not inspect each
-  collection's internal format.
+
+Payload occupancy belongs to the storage owner's diagnostics. This report does
+not inspect collection formats or include a payload-occupancy field.
 
 The following identities should hold:
 
@@ -73,8 +74,9 @@ from their bytes.
 ## Ledger size and upgrade count
 
 The ledger keeps current ownership and latest schema metadata, with at most 255
-records. Repeated upgrades add no audit entries. Two protected snapshots and one
-commit counter remain for recovery and stale-proof checks. Logical metadata is
+records. Repeated upgrades add no audit entries. One checksummed current snapshot
+remains for recovery. Recovery checks its physical and logical counters agree;
+the recovered counter also binds stale-proof checks. Logical metadata is
 bounded to 64 KiB; the enclosing record to 64 KiB + 4 KiB. Physical allocation
 also depends on the configured manager bucket size, so smaller encoded bytes do
 not necessarily reduce assigned bucket bytes. See [the current ledger contract](current-ledger.md).
@@ -149,8 +151,10 @@ admission. It is a read-only diagnostic, not permission to open memory.
 
 Use `default_memory_manager_commit_recovery_diagnostic()` when only current-snapshot
 presence, validity, checked generation, and corruption status are
-needed. `default_memory_manager_diagnostic_export()` additionally requires a
-completed bootstrap.
+needed. It returns `CommitSnapshotDiagnostic` directly: `Empty`,
+`Valid { generation }` or `Invalid { generation }`. Only the valid case carries
+a checked physical generation; it does not certify logical ledger recovery.
+`default_memory_manager_diagnostic_export()` additionally requires a completed bootstrap.
 
 ## Read and write bounds
 

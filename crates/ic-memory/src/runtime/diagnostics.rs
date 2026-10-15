@@ -5,7 +5,7 @@ use crate::{
     DiagnosticStableCellStatus, LedgerCommitError, LedgerPayloadEnvelopeError,
     MemoryRuntimeDoctorReport, PolicyIdentity, RecoveredLedger, RuntimeBootstrapPolicy,
     StableCellLedgerRecord,
-    physical::CommitStoreDiagnostic,
+    physical::CommitSnapshotDiagnostic,
     requests::{SealedDeclarationFingerprint, SealedDeclarationSnapshot},
     slot::MEMORY_MANAGER_LEDGER_ID,
     stable_cell::decode_stable_cell_ledger_record_from_memory,
@@ -33,7 +33,7 @@ impl<M: Memory> MemoryRuntime<M> {
     /// envelope is readable or the ledger memory is empty.
     pub fn commit_recovery_diagnostic(
         &self,
-    ) -> Result<CommitStoreDiagnostic, RuntimeDiagnosticError> {
+    ) -> Result<CommitSnapshotDiagnostic, RuntimeDiagnosticError> {
         let record = self.ledger_record_from_memory()?;
         Ok(record.store().physical().diagnostic())
     }
@@ -123,7 +123,7 @@ impl<M: Memory> MemoryRuntime<M> {
     fn recovered_diagnostic_export(
         &self,
         recovered: RecoveredLedger,
-        commit_recovery: CommitStoreDiagnostic,
+        commit_recovery: CommitSnapshotDiagnostic,
     ) -> DiagnosticExport {
         let mut export =
             DiagnosticExport::from_owned_ledger(recovered.into_ledger(), crate::slot::LEDGER_SLOT);

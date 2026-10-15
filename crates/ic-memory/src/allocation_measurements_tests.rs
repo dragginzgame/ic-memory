@@ -2,11 +2,12 @@
 use crate::{
     AllocationLedger, GenericAllocationPolicy, LedgerCommitError, LedgerCommitStore,
     LedgerPayloadEnvelope, MemoryManagerConfig, MemoryRuntime, SealedDeclarationSnapshot,
-    SnapshotCommitStore, StableCellLedgerRecord,
+    StableCellLedgerRecord,
     ic_stable_structures::{
         Memory, Storable, VectorMemory,
         memory_manager::{MemoryId, MemoryManager},
     },
+    stable_cell::EncodedLedgerRecord,
 };
 use std::{
     alloc::{GlobalAlloc, Layout, System},
@@ -108,23 +109,24 @@ fn ledger_encoding_and_validation_allocations() {
         for generations in [1, 1024, u64::MAX] {
             let records = (0..count)
                 .map(|id| {
-                    serde_json::json!({
-                        "stable_key": format!("app.store{id}.v1"),
-                        "slot": { "slot": { "MemoryManagerId": id } },
-                        "state": "Active", "schema": { "schema_version": u32::MAX }
-                    })
+                    crate::AllocationRecord::active(
+                        &crate::AllocationDeclaration::memory_manager_with_schema(
+                            format!("app.store{id}.v1"),
+                            u8::try_from(id).unwrap(),
+                            crate::SchemaMetadata::new(Some(u32::MAX)).unwrap(),
+                        )
+                        .unwrap(),
+                    )
                 })
-                .collect::<Vec<_>>();
-            let ledger = AllocationLedger::new(
-                generations,
-                serde_json::from_value(serde_json::Value::Array(records)).unwrap(),
-            )
-            .unwrap();
+                .collect();
+            let ledger = AllocationLedger::new(generations, records).unwrap();
             let mut store = LedgerCommitStore::default();
             store.commit(&ledger).unwrap();
             let record = StableCellLedgerRecord::new(store);
             measure(&format!("encode_records_{count}"), generations, 10, || {
-                drop(black_box(record.to_bytes()));
+                drop(black_box(
+                    EncodedLedgerRecord::new(&record).unwrap().into_bytes(),
+                ));
             });
             measure(
                 &format!("validate_records_{count}"),
@@ -148,12 +150,10 @@ fn ledger_encoding_and_validation_allocations() {
 // owns a correctly checksummed opaque envelope; text must be checked by logical
 // recovery, not by decoding the enclosing physical DTO.
 fn key_text_store(text_bytes: usize) -> LedgerCommitStore {
-    #[derive(serde::Serialize)]
-    struct Store<'a> {
-        physical: &'a SnapshotCommitStore,
-    }
-
-    let mut dto = serde_json::json!({"current_generation":1,"records":[{"stable_key":"app.rows.v1","slot":{"slot":{"MemoryManagerId":100}},"state":"Active","schema":{"schema_version":null}}]});
+    let declaration = crate::AllocationDeclaration::memory_manager("app.rows.v1", 100).unwrap();
+    let ledger =
+        AllocationLedger::new(1, vec![crate::AllocationRecord::active(&declaration)]).unwrap();
+    let mut dto = serde_json::to_value(&ledger).unwrap();
     dto["records"][0]["stable_key"] =
         serde_json::Value::String(format!("app.{}.v1", "x".repeat(text_bytes - 7)));
     let mut payload = Vec::new();
@@ -161,17 +161,10 @@ fn key_text_store(text_bytes: usize) -> LedgerCommitStore {
     let envelope = LedgerPayloadEnvelope::current(payload)
         .try_encode()
         .unwrap();
-    let mut physical = SnapshotCommitStore::default();
-    physical.commit_payload_at_generation(1, envelope).unwrap();
-    let mut record = Vec::new();
-    ciborium::into_writer(
-        &Store {
-            physical: &physical,
-        },
-        &mut record,
-    )
-    .unwrap();
-    ciborium::from_reader(record.as_slice()).unwrap()
+    let mut store = serde_json::to_value(LedgerCommitStore::default()).unwrap();
+    store["physical"]["current"] =
+        serde_json::to_value(crate::CommittedGenerationBytes::new(1, envelope)).unwrap();
+    serde_json::from_value(store).unwrap()
 }
 
 #[test]
@@ -190,6 +183,21 @@ fn ledger_text_recovery_allocations() {
             }
         });
     }
+}
+
+#[test]
+fn text_measurement_fixture_changes_only_key_bound() {
+    let valid = key_text_store(128).recover().unwrap();
+    assert_eq!(valid.current_generation(), 1);
+    let record = &valid.ledger().records()[0];
+    assert_eq!(record.stable_key().as_str().len(), 128);
+    assert_eq!(record.slot().id(), 100);
+    assert_eq!(record.state(), crate::AllocationState::Active);
+    assert_eq!(record.schema(), &crate::SchemaMetadata::default());
+    assert!(matches!(
+        key_text_store(129).recover(),
+        Err(LedgerCommitError::Codec(_))
+    ));
 }
 
 #[test]
@@ -365,12 +373,20 @@ fn steady_state_snapshot_allocations() {
             "snapshot_{count}_{}",
             if long { "maximum" } else { "short" }
         );
-        println!("encoded_bytes,{label},{}", record.to_bytes().len());
+        println!(
+            "encoded_bytes,{label},{}",
+            EncodedLedgerRecord::new(&record).unwrap().len()
+        );
         measure(&format!("encode_{label}"), 2, 10, || {
-            drop(black_box(record.to_bytes()));
+            drop(black_box(
+                EncodedLedgerRecord::new(&record).unwrap().into_bytes(),
+            ));
         });
         let memory = VectorMemory::default();
-        drop(ic_stable_structures::Cell::new(memory.clone(), record));
+        drop(ic_stable_structures::Cell::new(
+            memory.clone(),
+            EncodedLedgerRecord::new(&record).unwrap(),
+        ));
         measure(&format!("reopen_{label}"), 2, 10, || {
             let decoded = crate::decode_stable_cell_ledger_record_from_memory(&memory).unwrap();
             drop(black_box(decoded.store().recover().unwrap()));
@@ -380,7 +396,10 @@ fn steady_state_snapshot_allocations() {
             let mut next = decoded.store().recover().unwrap().into_ledger();
             next.current_generation += 1;
             decoded.store_mut().commit_generation(&next).unwrap();
-            drop(ic_stable_structures::Cell::new(memory.clone(), decoded));
+            drop(ic_stable_structures::Cell::new(
+                memory.clone(),
+                EncodedLedgerRecord::new(&decoded).unwrap(),
+            ));
         });
     }
 }

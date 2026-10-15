@@ -286,7 +286,10 @@ fn current_policy_revoked_grants_and_retirement_still_reject() {
         )
         .unwrap();
     record.store_mut().commit_generation(&retired).unwrap();
-    let _cell = Cell::new(runtime.memory(MEMORY_MANAGER_LEDGER_ID), record);
+    let _cell = Cell::new(
+        runtime.memory(MEMORY_MANAGER_LEDGER_ID),
+        EncodedLedgerRecord::new(&record).unwrap(),
+    );
     drop(runtime);
     let before = backing.borrow().clone();
     let mut runtime = MemoryRuntime::new(backing.clone()).unwrap();
@@ -470,7 +473,10 @@ fn completion_bound_and_reservation_activation_preserve_evidence() {
         .unwrap()])
         .unwrap();
     record.store_mut().commit_generation(&reserved).unwrap();
-    let _cell = Cell::new(runtime.memory(MEMORY_MANAGER_LEDGER_ID), record);
+    let _cell = Cell::new(
+        runtime.memory(MEMORY_MANAGER_LEDGER_ID),
+        EncodedLedgerRecord::new(&record).unwrap(),
+    );
     drop(runtime);
     let mut runtime = MemoryRuntime::new(backing).unwrap();
     let policy = AdmissionPolicy {

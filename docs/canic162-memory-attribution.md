@@ -14,6 +14,10 @@ bootstrap owner. This is source-adoption evidence, not a live Toko measurement
 or a new consumer lifecycle qualification. The reported 232 MiB observation
 remains separate from this fixture evidence.
 
+This is historical API and adoption evidence. Memory 0.42 removes the always-null
+`payload_bytes` report field; integrations upgrading to that contract must remove
+the projection. Current report guidance is in [Operations and diagnostics](operations.md).
+
 ## Supported API and accounting
 
 The following signatures summarize the API; they are not a standalone program.

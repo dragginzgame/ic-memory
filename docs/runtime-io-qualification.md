@@ -85,7 +85,7 @@ key uniqueness and committed chain/recovery validation remain in place.
 [`DeclarationSnapshot` decoding](../crates/ic-memory/src/declaration.rs) uses the existing bounded
 visitor to refuse more than 255 declarations before decoding an extra entry.
 Valid wire shape is unchanged; generic serde errors for excess entries may
-occur earlier and use different prose. [`PendingBootstrapCommit`](../crates/ic-memory/src/bootstrap.rs)
+occur earlier and use different prose. [`PendingBootstrapCommit`](../crates/ic-memory/src/runtime/bootstrap.rs)
 now warns when discarded even after consuming its enclosing `Result`. Callers
 with warning denial must complete persistence/confirmation or explicitly discard
 the value in an intentional model/test path. It does not add automatic commit,

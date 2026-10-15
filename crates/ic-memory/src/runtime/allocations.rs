@@ -46,8 +46,6 @@ pub struct MemoryAllocation {
     pub allocated_buckets: u16,
     pub allocated_bytes: u64,
     pub bucket_slack_bytes: u64,
-    /// Unavailable: neither manager metadata nor virtual extent measures payload.
-    pub payload_bytes: Option<u64>,
 }
 
 ///
@@ -156,7 +154,6 @@ impl<M: Memory> MemoryRuntime<M> {
                 allocated_buckets: measured.buckets[index],
                 allocated_bytes,
                 bucket_slack_bytes: allocated_bytes - virtual_extent.bytes,
-                payload_bytes: None,
             });
         }
         // Resolution guarantees usable unique IDs.

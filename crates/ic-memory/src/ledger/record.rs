@@ -120,13 +120,7 @@ impl RecoveredLedger {
         &self.ledger
     }
 
-    /// Return the checked physical commit counter.
-    #[must_use]
-    pub const fn physical_generation(&self) -> u64 {
-        self.ledger.current_generation
-    }
-
-    /// Return the matching logical commit counter.
+    /// Return the recovered commit counter, checked against both physical and logical records.
     #[must_use]
     pub const fn current_generation(&self) -> u64 {
         self.ledger.current_generation

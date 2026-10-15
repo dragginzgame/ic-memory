@@ -155,7 +155,7 @@ pub enum MemoryDeclarationError {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct SealedDeclarationSnapshot {
-    inner: Arc<SealedDeclarationSnapshotInner>,
+    inner: Arc<Vec<MemoryRequest>>,
 }
 
 ///
@@ -190,15 +190,9 @@ impl SealedDeclarationFingerprint {
     }
 }
 
-#[derive(Debug, Eq, PartialEq)]
-struct SealedDeclarationSnapshotInner {
-    requests: Vec<MemoryRequest>,
-    fingerprint: SealedDeclarationFingerprint,
-}
-
 impl SealedDeclarationSnapshot {
     /// Take ownership of the host's complete requests, checking the bound and
-    /// rejecting duplicate keys before publishing their canonical fingerprint.
+    /// rejecting duplicate keys before sharing their canonical contents.
     pub fn new(mut requests: Vec<MemoryRequest>) -> Result<Self, MemoryDeclarationError> {
         if requests.len() > 254 {
             return Err(MemoryDeclarationError::TooManyDeclarations);
@@ -211,19 +205,15 @@ impl SealedDeclarationSnapshot {
                 });
             }
         }
-        let fingerprint = sealed_declaration_fingerprint(&requests);
         Ok(Self {
-            inner: Arc::new(SealedDeclarationSnapshotInner {
-                requests,
-                fingerprint,
-            }),
+            inner: Arc::new(requests),
         })
     }
 
     /// Borrow canonical unresolved key-only requests.
     #[must_use]
     pub fn requests(&self) -> &[MemoryRequest] {
-        &self.inner.requests
+        &self.inner
     }
 
     pub(crate) fn resolve(
@@ -280,9 +270,10 @@ impl SealedDeclarationSnapshot {
     }
 
     /// Return the deterministic fingerprint of this sealed declaration meaning.
+    /// Computed on demand for diagnostics; bootstrap compares canonical contents.
     #[must_use]
     pub fn fingerprint(&self) -> SealedDeclarationFingerprint {
-        self.inner.fingerprint
+        sealed_declaration_fingerprint(self.requests())
     }
 
     #[cfg(test)]

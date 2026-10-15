@@ -47,7 +47,6 @@ fn conservation(report: &super::MemoryAllocations) {
             row.allocated_bytes,
             row.virtual_extent.bytes + row.bucket_slack_bytes
         );
-        assert_eq!(row.payload_bytes, None);
     }
 }
 

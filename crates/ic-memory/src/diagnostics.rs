@@ -1,7 +1,7 @@
 use crate::{
     constants::WASM_PAGE_SIZE_BYTES,
     ledger::{AllocationLedger, AllocationRecord},
-    physical::CommitStoreDiagnostic,
+    physical::CommitSnapshotDiagnostic,
     policy::PolicyIdentity,
     requests::SealedDeclarationFingerprint,
     slot::MemoryManagerSlot,
@@ -23,7 +23,7 @@ pub struct DiagnosticExport {
     pub records: Vec<DiagnosticRecord>,
     /// Optional protected commit recovery diagnostic.
     #[serde(deserialize_with = "crate::cbor::deserialize_present_option")]
-    pub commit_recovery: Option<CommitStoreDiagnostic>,
+    pub commit_recovery: Option<CommitSnapshotDiagnostic>,
 }
 
 ///
@@ -92,7 +92,7 @@ pub struct MemoryRuntimeDoctorReport {
     pub stable_cell: DiagnosticStableCell,
     /// Protected commit recovery status when a ledger record was readable.
     #[serde(deserialize_with = "crate::cbor::deserialize_present_option")]
-    pub commit_recovery: Option<CommitStoreDiagnostic>,
+    pub commit_recovery: Option<CommitSnapshotDiagnostic>,
     /// Recovered allocation ledger export when protected recovery succeeded.
     #[serde(deserialize_with = "crate::cbor::deserialize_present_option")]
     pub ledger: Option<DiagnosticExport>,
@@ -356,9 +356,7 @@ mod tests {
     use super::*;
     use crate::AllocationDeclaration;
     use crate::{
-        ledger::AllocationRecord,
-        physical::{CommitRecoveryError, CommitSnapshotDiagnostic, CommitStoreDiagnostic},
-        schema::SchemaMetadata,
+        ledger::AllocationRecord, physical::CommitSnapshotDiagnostic, schema::SchemaMetadata,
     };
 
     #[test]
@@ -487,11 +485,7 @@ mod tests {
             current_generation: 3,
             records: Vec::new(),
         };
-        let commit_recovery = CommitStoreDiagnostic {
-            current: CommitSnapshotDiagnostic::Valid { generation: 3 },
-
-            recovery: Ok(3),
-        };
+        let commit_recovery = CommitSnapshotDiagnostic::Valid { generation: 3 };
 
         let mut export =
             DiagnosticExport::from_ledger(&ledger, MemoryManagerSlot::new(0).expect("usable slot"));
@@ -537,19 +531,15 @@ mod tests {
             current_generation: 0,
             records: Vec::new(),
         };
-        let commit_recovery = CommitStoreDiagnostic {
-            current: CommitSnapshotDiagnostic::Empty,
-
-            recovery: Err(CommitRecoveryError::NoValidGeneration),
-        };
+        let commit_recovery = CommitSnapshotDiagnostic::Empty;
 
         let mut export =
             DiagnosticExport::from_ledger(&ledger, MemoryManagerSlot::new(0).expect("usable slot"));
         export.commit_recovery = Some(commit_recovery);
 
         assert_eq!(
-            export.commit_recovery.expect("commit recovery").recovery,
-            Err(CommitRecoveryError::NoValidGeneration)
+            export.commit_recovery.expect("commit recovery"),
+            CommitSnapshotDiagnostic::Empty
         );
     }
 }

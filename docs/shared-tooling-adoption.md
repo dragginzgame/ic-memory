@@ -30,8 +30,11 @@ helpers, including status and evidence preservation. The upstream 0.15.0 changel
 also describes open PR work; only bytes in the exact committed export are adopted.
 
 Memory's native release adapter directly invokes the canonical version/date
-admission helper. It is the 81st explicit root, retaining the same 113 payloads
-and source revision. The adapter parses the helper's typed projection while
+admission helper. The launcher also selects the workspace-version reader directly,
+bringing the selection to 82 explicit roots with the same 113 payloads and source
+revision. It shares manifest admission/rendering and stable-version admission;
+Memory retains lock-package selection, scratch custody and network scope.
+The adapter parses the helper's typed projection while
 retaining independent release input, receipt and recovery binding. No executable
 payload changes or prepared-tool refresh is required for that selection change.
 
@@ -51,7 +54,7 @@ qualification, tracked by [Shared #179 — Correct dashboard width fixtures](htt
 
 The single 113-file snapshot uses reviewed committed Shared Tooling at that
 revision, whose committed source `VERSION` is 0.15.0. The manifest records that
-display version separately from its authoritative commit identity. The 81 explicit
+display version separately from its authoritative commit identity. The 82 explicit
 roots select the reviewed governance catalog and Memory's maintained Make, hook, CI,
 archive and fixture entrypoints. Their generated companion closure preserves
 the directly invoked canonical local-package lock rewriter and the baseline-linked

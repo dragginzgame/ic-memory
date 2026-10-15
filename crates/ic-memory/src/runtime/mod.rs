@@ -6,6 +6,7 @@ mod adoption;
 mod adoption_tests;
 mod allocations;
 mod backing;
+pub mod bootstrap;
 mod config;
 mod default;
 mod diagnostics;
@@ -53,7 +54,7 @@ pub use error::{
 pub use layout::MemoryManagerLayoutError;
 pub use policy::GenericAllocationPolicy;
 
-use self::policy::{RuntimeMemoryManagerPolicy, runtime_bootstrap_error_from_bootstrap};
+use self::policy::RuntimeMemoryManagerPolicy;
 use crate::{
     AllocationLedger, CommittedAllocations, PolicyIdentity, RuntimeBootstrapPolicy,
     STABLE_CELL_VALUE_OFFSET, StableCellLedgerError, StableCellLedgerRecord,
@@ -281,15 +282,14 @@ impl<M: Memory> MemoryRuntime<M> {
         let runtime_policy = RuntimeMemoryManagerPolicy {
             custom_policy: policy,
         };
-        let commit = crate::bootstrap::prepare_commit(
+        let commit = crate::runtime::bootstrap::prepare_commit(
             record.store_mut(),
             recovered,
             resolved,
             &runtime_policy,
-        )
-        .map_err(runtime_bootstrap_error_from_bootstrap)?;
+        )?;
         write_ledger_cell(memory, &record)?;
-        let committed = commit.confirm_persisted().into_application_allocations();
+        let committed = commit.confirm_persisted();
         self.lifecycle = RuntimeLifecycle::Bootstrapped {
             committed_allocations: committed,
             binding: RuntimeBootstrapBinding {

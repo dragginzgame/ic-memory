@@ -84,6 +84,7 @@ revision	3bef3f2daec7f64f875397ed4d53d5b9e2e68a08
 # entrypoint	scripts/ci/fixture-retention-probes.sh
 # entrypoint	scripts/ci/render-cargo-readme-version.pl
 # entrypoint	scripts/ci/validate-release-inputs.pl
+# entrypoint	scripts/ci/read-cargo-workspace-version.sh
 file	b7af05c3ee820b1032136db1a6414a99cfb70dddec841d97ae6f07bedabf3bc2	-	DRAGGINZGAME.md
 file	ef2a017ec18674af6b67329424bcebf4a211f0c4ec69fa70a4ff3a9da4a17583	-	rules/contributions.md
 file	372e8a256767514d119ecd3e584cd20f15732b3eb169b212716069be7c3f9c80	-	rules/changelogs.md
@@ -165,6 +166,7 @@ file	a1a9739e4749bfa9c594c8714a89aac3c2394b87cdfbc7c27c3936c8071ece4b	x	scripts/
 file	3c6a8c83940049b37e44464753a5ce9f7352ceb702758ead55794246a2e77eae	-	scripts/ci/fixture-retention-probes.sh
 file	c05199b50c2875849d49ee08ada6ff805eebd34c6ef10fbf71b8a22c6ff0c05e	x	scripts/ci/render-cargo-readme-version.pl
 file	567f3e1618305539cf99365454040638788d035fe59742e574bcd4c30b9ba546	x	scripts/ci/validate-release-inputs.pl
+file	40f31a19d6115411ebffe7c26e3ed30b8af7eead10dd4830de8d5a9312291222	x	scripts/ci/read-cargo-workspace-version.sh
 file	4c981184847462ab3c01cac087e28309f8e054253fd95c7bbe56f643877aa708	x	scripts/ci/verify-file-checksum.sh
 file	a4682503812f210b951aede536cdd65642bfe266b02ab532853a1aeff64f9742	x	scripts/ci/verify-shared-tooling-snapshot.sh
 file	0eeb04f87a50c93b485bc3b7d845187b8f1161d62904848d01e959c207c492d5	-	docs/tool-catalog-bindings.md
@@ -180,7 +182,6 @@ file	ee8a8a07148c199481149331602cb6f9292793a1ca8455dfa9d5a04628dbc4e7	x	scripts/
 file	ebf236f1db579744a13bc995ec1c58c2ee87e34caed23088a6d9b75e638dd27f	x	scripts/ci/verify-evidence-checksums.sh
 file	b58328912fddccf643b243bccfb963bfe0d90dcbc77a6b12fff5af803f5e07d7	x	scripts/ci/test-tool-evidence.sh
 file	afacaf5289ec27b932ea6edd7e3827a9b8ec9e4bd03d2d5009adf674d258cf80	-	scripts/ci/test-tool-store.sh
-file	40f31a19d6115411ebffe7c26e3ed30b8af7eead10dd4830de8d5a9312291222	x	scripts/ci/read-cargo-workspace-version.sh
 file	a52db278800a9f02d85a6b8a780a9b1eed860c49d5442cef9db1f7f9d7ddee0a	x	scripts/ci/check-format-tools.sh
 file	88bbb42f74ea77aca4e826433ed4c75a1033516460d4844df8613dd3f4e9acb7	x	scripts/dev/cloc.sh
 file	7fef45969bee38b2e9be9ffc3e100653e48f15e862d5925b739572c5d27def42	x	scripts/dev/install-rust-tools.sh

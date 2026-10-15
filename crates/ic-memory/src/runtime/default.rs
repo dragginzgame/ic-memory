@@ -5,7 +5,7 @@ use super::{
 };
 use crate::{
     CommittedAllocations, DiagnosticExport, MemoryRuntimeDoctorReport, RuntimeBootstrapPolicy,
-    SealedDeclarationSnapshot, physical::CommitStoreDiagnostic,
+    SealedDeclarationSnapshot, physical::CommitSnapshotDiagnostic,
 };
 use ic_stable_structures::DefaultMemoryImpl;
 use std::{cell::RefCell, convert::Infallible, fmt::Display};
@@ -173,7 +173,7 @@ pub fn default_memory_manager_diagnostic_export() -> Result<DiagnosticExport, Ru
 /// Returns `NotBootstrapped` if no runtime exists without initializing memory
 /// or choosing configuration. An existing runtime can be inspected before bootstrap.
 pub fn default_memory_manager_commit_recovery_diagnostic()
--> Result<CommitStoreDiagnostic, RuntimeDiagnosticError> {
+-> Result<CommitSnapshotDiagnostic, RuntimeDiagnosticError> {
     with_existing_default_runtime(|runtime| {
         runtime
             .ok_or(RuntimeDiagnosticError::NotBootstrapped)?

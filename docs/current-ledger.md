@@ -39,10 +39,10 @@ stored. The runtime persists the owning Cell before publishing allocation author
 IC message rollback owns atomic stable writes; arbitrary native backends must
 provide their own transaction boundary.
 
-`CommitStoreDiagnostic.current` reports `CommitSnapshotDiagnostic::{Empty, Valid,
-Invalid}`. Its `recovery` result carries the checked physical generation or its
-error; logical decoding remains a separate boundary. `InvalidSnapshot` reports
-an untrusted observed generation. It never authorizes fallback or a reset.
+`CommitSnapshotDiagnostic::{Empty, Valid, Invalid}` reports the physical snapshot
+directly. `Valid` carries the checksum-checked physical generation; `Invalid`
+carries an untrusted observed generation. Logical decoding remains a separate
+boundary. An invalid diagnostic never authorizes fallback or a reset.
 
 Current measurements and rejection/upgrade checks are recorded in
 [single-snapshot qualification](single-snapshot-qualification.md).
