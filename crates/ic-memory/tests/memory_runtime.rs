@@ -34,14 +34,6 @@ impl AllocationPolicy for AllowAll {
     ) -> Result<(), Self::Error> {
         Ok(())
     }
-
-    fn validate_reserved_slot(
-        &self,
-        _key: &StableKey,
-        _slot: &MemoryManagerSlot,
-    ) -> Result<(), Self::Error> {
-        Ok(())
-    }
 }
 
 impl RuntimeBootstrapPolicy for AllowAll {
@@ -118,7 +110,7 @@ fn owned_report_and_cloned_handles_support_borrowed_nonclone_backing() {
     clone.read(0, &mut value);
     assert_eq!(value, [7]);
     assert_eq!(report.memories[10].virtual_extent.wasm_pages, 1);
-    assert_eq!(report.bucket_size_pages, 8);
+    assert_eq!(report.summary.bucket_size_pages, 8);
 }
 
 fn pool() -> ic_memory::MemoryAllocationPool {

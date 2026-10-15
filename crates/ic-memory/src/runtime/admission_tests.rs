@@ -27,13 +27,6 @@ impl AllocationPolicy for AdmissionPolicy {
     fn validate_slot(&self, _: &StableKey, _: &MemoryManagerSlot) -> Result<(), Self::Error> {
         Ok(())
     }
-    fn validate_reserved_slot(
-        &self,
-        _: &StableKey,
-        _: &MemoryManagerSlot,
-    ) -> Result<(), Self::Error> {
-        Ok(())
-    }
 }
 impl RuntimeBootstrapPolicy for AdmissionPolicy {
     fn runtime_bootstrap_identity(&self) -> Result<PolicyIdentity, crate::PolicyIdentityError> {
@@ -345,76 +338,56 @@ fn corruption_precedes_admission_and_exhaustion_follows_it_without_commit() {
 
 #[test]
 fn failed_persistence_retries_admission_without_partial_publication() {
-    struct Limited {
+    struct RefuseFirstWrite<'a> {
         backing: VectorMemory,
-        limit: std::rc::Rc<Counter<u64>>,
+        calls: &'a Counter<usize>,
+        refused: Counter<bool>,
     }
-    impl Memory for Limited {
+    impl Memory for RefuseFirstWrite<'_> {
         fn size(&self) -> u64 {
             self.backing.size()
         }
         fn grow(&self, pages: u64) -> i64 {
-            if self.size() + pages > self.limit.get() {
-                -1
-            } else {
-                self.backing.grow(pages)
-            }
+            self.backing.grow(pages)
         }
         fn read(&self, offset: u64, bytes: &mut [u8]) {
             self.backing.read(offset, bytes);
         }
         fn write(&self, offset: u64, bytes: &[u8]) {
+            // Fail after admission, before the first persistence mutation.
+            // Native Memory does not promise rollback of arbitrary partial writes.
+            assert!(
+                self.calls.get() != 1 || self.refused.replace(true),
+                "injected write failure"
+            );
             self.backing.write(offset, bytes);
         }
     }
     let backing = seeded();
-    // Two current snapshots with many retained keys require a second ledger page.
-    let keys: Vec<_> = (0..240)
-        .map(|i| format!("app.new{i}.{}.v1", "x".repeat(110)))
-        .collect();
-    let refs: Vec<_> = keys.iter().map(String::as_str).collect();
-    let mut seeded_refs = refs.clone();
-    seeded_refs.extend([CONTROL, JOURNAL]);
-    MemoryRuntime::new(backing.clone())
-        .unwrap()
-        .bootstrap(
-            &snapshot(&seeded_refs, "app"),
-            &pool(),
-            &GenericAllocationPolicy,
-        )
-        .unwrap();
     let before = backing.borrow().clone();
-    let limit = std::rc::Rc::new(Counter::new(backing.size()));
-    let current = snapshot(&refs, "app");
+    let current = snapshot(&[CONTROL], "app");
     let policy = AdmissionPolicy {
         selections: vec![("app", JOURNAL)],
         ..Default::default()
     };
-    let mut runtime = MemoryRuntime::new(Limited {
+    let mut runtime = MemoryRuntime::new(RefuseFirstWrite {
         backing: backing.clone(),
-        limit: limit.clone(),
+        calls: &policy.calls,
+        refused: Counter::new(false),
     })
     .unwrap();
-    let result = runtime.bootstrap(&current, &pool(), &policy);
-    assert!(
-        matches!(
-            result,
-            Err(RuntimeBootstrapError::LedgerGrowth(
-                super::RuntimeGrowError::BackingRefused { .. }
-            ))
-        ),
-        "{:?}",
-        result.err()
-    );
+    let failed = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let _ = runtime.bootstrap(&current, &pool(), &policy);
+    }));
+    assert!(failed.is_err());
     assert!(!runtime.is_bootstrapped());
     assert_eq!(*backing.borrow(), before);
-    limit.set(100);
     assert_eq!(
         runtime
             .bootstrap(&current, &pool(), &policy)
             .unwrap()
             .generation(),
-        3
+        2
     );
     assert_eq!(policy.calls.get(), 2);
     let mut marker = [0; 12];
@@ -445,7 +418,8 @@ fn fresh_rejection_can_acquire_root_but_cannot_commit_genesis() {
             .unwrap()
             .store()
             .physical()
-            .is_uninitialized()
+            .current()
+            .is_none()
     );
     let before = backing.borrow().clone();
     assert!(matches!(

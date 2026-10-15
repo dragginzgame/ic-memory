@@ -33,11 +33,15 @@ Fixture groups:
 - `*_payload_envelope.hex`: logical `LedgerPayloadEnvelope` bytes.
 - `ledger_commit_store_single_active.cbor.hex`: full `LedgerCommitStore` bytes
   with one active allocation snapshot.
-- `dual_slot_store_valid_newer.cbor.hex`: full dual-slot store where the newer
-  generation is valid and authoritative.
-- `dual_slot_store_corrupt_newer.cbor.hex`: full dual-slot store where the
-  newer generation is corrupt and recovery must fail closed without rolling
-  back to the prior valid generation.
+- `snapshot_store_valid.cbor.hex`: one valid current physical snapshot.
+- `snapshot_store_corrupt.cbor.hex`: one corrupt current snapshot; recovery
+  refuses it without initializing or publishing allocations.
 - `stable_cell_record.cbor.hex`: `StableCellLedgerRecord` value bytes stored
   inside the `ic-stable-structures::Cell` envelope.
 - `memory_manager_slot.cbor.hex`: checked `MemoryManagerSlot` bytes.
+
+The 0.39.0 physical hard cut uses one required `current` snapshot field and the
+`ICMESNAP` marker. The current snapshot carries its checked counter, bounded
+opaque logical payload and checksum. Previous physical representations are
+incompatible; there is no fallback reader. Logical payload fixtures and
+MemoryManager slot bytes remain unchanged.

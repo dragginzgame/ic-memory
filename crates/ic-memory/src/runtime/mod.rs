@@ -55,10 +55,11 @@ pub use policy::GenericAllocationPolicy;
 
 use self::policy::{RuntimeMemoryManagerPolicy, runtime_bootstrap_error_from_bootstrap};
 use crate::{
-    AllocationBootstrap, AllocationLedger, CommittedAllocations, PolicyIdentity,
-    RuntimeBootstrapPolicy, STABLE_CELL_VALUE_OFFSET, StableCellLedgerError,
-    StableCellLedgerRecord, requests::SealedDeclarationSnapshot, slot::MEMORY_MANAGER_LEDGER_ID,
-    stable_cell::decode_stable_cell_ledger_record_from_memory,
+    AllocationLedger, CommittedAllocations, PolicyIdentity, RuntimeBootstrapPolicy,
+    STABLE_CELL_VALUE_OFFSET, StableCellLedgerError, StableCellLedgerRecord,
+    requests::SealedDeclarationSnapshot,
+    slot::MEMORY_MANAGER_LEDGER_ID,
+    stable_cell::{EncodedLedgerRecord, decode_stable_cell_ledger_record_from_memory},
 };
 use ic_stable_structures::{
     Cell, Memory,
@@ -275,8 +276,7 @@ impl<M: Memory> MemoryRuntime<M> {
         if memory.size() == 0 {
             // Empty memory decodes to an uninitialized record. Preserve fresh
             // cell acquisition before admission without persisting genesis.
-            ensure_ledger_cell_capacity(&memory, &record)?;
-            drop(Cell::new(memory.clone(), StableCellLedgerRecord::default()));
+            write_ledger_cell(memory.clone(), &StableCellLedgerRecord::default())?;
         }
         let mut admission = BootstrapAdmission::new(recovered.ledger(), declarations, pool);
         let preparation = policy.prepare_bootstrap(&mut admission);
@@ -286,11 +286,14 @@ impl<M: Memory> MemoryRuntime<M> {
         let runtime_policy = RuntimeMemoryManagerPolicy {
             custom_policy: policy,
         };
-        let commit = AllocationBootstrap::new(record.store_mut())
-            .validate_against(recovered, resolved, &runtime_policy)
-            .map_err(runtime_bootstrap_error_from_bootstrap)?;
-        ensure_ledger_cell_capacity(&memory, &record)?;
-        drop(Cell::new(memory, record));
+        let commit = crate::bootstrap::prepare_commit(
+            record.store_mut(),
+            recovered,
+            resolved,
+            &runtime_policy,
+        )
+        .map_err(runtime_bootstrap_error_from_bootstrap)?;
+        write_ledger_cell(memory, &record)?;
         let committed = commit.confirm_persisted().into_application_allocations();
         self.lifecycle = RuntimeLifecycle::Bootstrapped {
             committed_allocations: committed,
@@ -381,22 +384,22 @@ impl RuntimeBootstrapBinding {
     }
 }
 
-fn ensure_ledger_cell_capacity<M: Memory, P>(
-    memory: &RuntimeMemory<M>,
+fn write_ledger_cell<M: Memory, P>(
+    memory: RuntimeMemory<M>,
     record: &StableCellLedgerRecord,
 ) -> Result<(), RuntimeBootstrapError<P>> {
-    let value_size = record.encoded_size();
-    if value_size > crate::constants::MAX_LEDGER_RECORD_BYTES {
-        return Err(RuntimeBootstrapError::StableCellLedgerWriteTooLarge { value_size });
-    }
+    let encoded = EncodedLedgerRecord::new(record).map_err(|value_size| {
+        RuntimeBootstrapError::StableCellLedgerWriteTooLarge { value_size }
+    })?;
+    let value_size = encoded.len();
     // The record limit is below u32::MAX, including the eight-byte cell header.
     let required_bytes = STABLE_CELL_VALUE_OFFSET + value_size as u64;
     let available_bytes = memory.size().saturating_mul(crate::WASM_PAGE_SIZE_BYTES);
-    if required_bytes <= available_bytes {
-        return Ok(());
+    if required_bytes > available_bytes {
+        let grow_by = (required_bytes - available_bytes).div_ceil(crate::WASM_PAGE_SIZE_BYTES);
+        memory.grow(grow_by)?;
     }
-    let grow_by = (required_bytes - available_bytes).div_ceil(crate::WASM_PAGE_SIZE_BYTES);
-    memory.grow(grow_by)?;
+    drop(Cell::new(memory, encoded));
     Ok(())
 }
 

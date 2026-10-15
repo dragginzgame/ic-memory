@@ -2,24 +2,16 @@
 
 ## Active shared rules and local overlay
 
-At the maintainer's explicit direction, read and follow the current local
-[Shared Tooling baseline](../shared-tooling/DRAGGINZGAME.md) and its linked rules
-and guides. This includes uncommitted working-tree changes in `../shared-tooling`.
-Read the applicable rules again when they change; no upstream commit, clean tree
-or snapshot refresh is required for them to apply. This is the maintainer-approved
-exception to revision-bound policy adoption while the shared rules are being
-developed locally. Other repositories, including Shared Tooling, are read-only
-by default. Prefer reporting proposed repairs through issues in their owning
-repository. An explicit maintainer authorization naming the repository and
-intended change permits that scoped exception; carry it through the necessary
-implementation and qualification without asking again. It does not authorize
-unrelated sibling edits, commits, pushes, releases or publication.
+Apply the reviewed local [Shared Tooling baseline](DRAGGINZGAME.md) and its
+linked rules. [.shared-tooling.snapshot](.shared-tooling.snapshot) owns the exact
+policy and executable revision. The maintainer-approved cleanup retires live
+inheritance from the sibling checkout; uncommitted upstream rules do not apply
+until reviewed adoption. Other repositories remain read-only unless explicitly
+authorized under the shared contribution rules.
 
-The executable snapshot and its file identities are recorded in
-[.shared-tooling.snapshot](.shared-tooling.snapshot), independently of the live
-policy exception above. Before changing tooling, formatting, release adapters
-or retention, read [the local adoption boundaries](docs/shared-tooling-adoption.md).
-Never patch vendored files or attribute dirty shared source to a committed export.
+Before changing tooling, formatting, release adapters or retention, read
+[the local adoption boundaries](docs/shared-tooling-adoption.md). Never patch
+vendored files or attribute dirty shared source to a committed export.
 
 The virtual repository-root workspace owns shared package metadata and the
 dependency catalog. The library package is `crates/ic-memory/`; its source,
@@ -58,11 +50,11 @@ and prerequisites are declared in [docs/host-support.md](docs/host-support.md).
 
 ## Formatting and Git hooks
 
-Follow the current local [Git hook rules](../shared-tooling/rules/git-hooks.md).
+Follow the reviewed [Git hook rules](rules/git-hooks.md).
 The reviewed hook and installer are vendored unchanged. `make fmt` and
 `make fmt-check` cover both the library and `testing/runtime-qualification`,
-using exactly cargo-sort 2.1.4 before the pinned Rust formatter. Setup is explicit
-in [docs/host-support.md](docs/host-support.md); formatting never installs tools,
+using the [selected catalog](ci/tool-versions.env) before the pinned Rust formatter.
+Setup is explicit in [docs/host-support.md](docs/host-support.md); formatting never installs tools,
 builds, fetches dependencies or changes selected lockfiles. The shared formatter
 prerequisite checker owns exact cargo-sort and rustfmt admission; this consumer
 owns the selected pin, toolchain and two-workspace roster.
@@ -77,23 +69,7 @@ aliases work without a consumer setup adapter.
 
 ## Release recovery policy
 
-Read the current local [release contract](../shared-tooling/docs/releases.md).
-The latest local rule requires a normal release target to select saved unfinished
-intent before computing any new increment, reconcile exact effects on descendant
-history, then run fresh gates for a requested next increment. Late checks bind
-`RELEASE_COMMIT` separately from the validation source and current HEAD. Stop on
-identity, payload, destination, qualification-input or concurrency conflicts. Explicit
-`release-resume` is an optional selection command, not a required recovery step.
-Preflight/validation failures repeat fresh gates while preserving earlier evidence.
-Before staging, direct preparation at an older source can be superseded by a
-clean descendant commit recording its local metadata disposition. The normal
-target archives that intent and repeats fresh gates for the requested increment
-from current metadata. Exact resume remains bound to its saved source/version.
-The runner rechecks the payload, index, working files and exact annotated tag
-after the final push hook. Completed direct resume observes the local/remote tag
-and branch ancestry without replaying effects; known descendants remain valid.
-Missing or conflicting refs and unavailable observations stop completion.
-
+Read the reviewed [release contract](docs/releases.md).
 The common vendored runner owns release ordering, locks, saved intent and Git
 effects; Rust consumer adapters own metadata and qualification receipts. See
 [RELEASING.md](RELEASING.md) for actual commands and evidence. Qualify canonical
@@ -104,9 +80,9 @@ to prove adoption.
 
 ## Contributions, compatibility and changelogs
 
-Follow the current local shared [contribution rules](../shared-tooling/rules/contributions.md),
-[hard-cut baseline](../shared-tooling/DRAGGINZGAME.md#pre-10-contracts) and
-[changelog rules](../shared-tooling/rules/changelogs.md). Ordinary work leaves
+Follow the reviewed shared [contribution rules](rules/contributions.md),
+[hard-cut baseline](DRAGGINZGAME.md#pre-10-contracts) and
+[changelog rules](rules/changelogs.md). Ordinary work leaves
 staging, commits, package versions and release effects to the user. An explicit
 PR request includes its scoped contribution workflow; it does not select PR
 release delivery. Memory uses direct release delivery. Never commit merely to
@@ -122,8 +98,8 @@ or tests whose sole purpose is prohibiting a retired name.
 Keep direct dependency versions, sources and default-feature selections in
 the root `[workspace.dependencies]`; package dependency tables inherit them.
 Centralization must preserve selected dependency versions and effective features.
-Apply the current local
-[Cargo dependency rules](../shared-tooling/rules/cargo-dependencies.md).
+Apply the reviewed
+[Cargo dependency rules](rules/cargo-dependencies.md).
 
 The maintainer-accepted 0.25.14 qualification design is the local exception for
 `testing/runtime-qualification`: it remains an unpublished independent workspace,

@@ -18,13 +18,6 @@ impl AllocationPolicy for Allow {
     fn validate_slot(&self, _: &StableKey, _: &MemoryManagerSlot) -> Result<(), Infallible> {
         Ok(())
     }
-    fn validate_reserved_slot(
-        &self,
-        _: &StableKey,
-        _: &MemoryManagerSlot,
-    ) -> Result<(), Infallible> {
-        Ok(())
-    }
 }
 impl RuntimeBootstrapPolicy for Allow {
     fn runtime_bootstrap_identity(&self) -> Result<PolicyIdentity, PolicyIdentityError> {
@@ -39,14 +32,16 @@ fn record(
     report: &MemoryAllocations,
 ) {
     assert_eq!(
-        report.physical_extent.bytes,
-        report.manager_metadata_bytes + report.allocated_bucket_bytes + report.unmanaged_bytes
+        report.summary.physical_extent.bytes,
+        report.summary.manager_metadata_bytes
+            + report.summary.allocated_bucket_bytes
+            + report.summary.unmanaged_bytes
     );
     println!(
         "{bucket},{phase},{},{},{},{},{},{},{},{},{},{},{elapsed}",
-        report.physical_extent.bytes,
-        report.virtual_extent.bytes,
-        report.allocated_buckets,
+        report.summary.physical_extent.bytes,
+        report.summary.virtual_extent.bytes,
+        report.summary.allocated_buckets,
         report.memories[0].allocated_bytes,
         counts.grows,
         counts.grown_pages,
@@ -173,8 +168,11 @@ fn main() {
         let start = Instant::now();
         let mut runtime = MemoryRuntime::new(memory.clone()).unwrap();
         let report = runtime.memory_allocations().unwrap();
-        assert_eq!(report.physical_extent, before.physical_extent);
-        assert!(report.unknown_binding_bytes > 0);
+        assert_eq!(
+            report.summary.physical_extent,
+            before.summary.physical_extent
+        );
+        assert!(report.summary.unknown_binding_bytes > 0);
         assert_eq!(memory.counts().writes, 0);
         assert_eq!(memory.counts().grows, 0);
         record(

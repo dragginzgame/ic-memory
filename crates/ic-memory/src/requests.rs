@@ -35,12 +35,9 @@ impl<'de> Deserialize<'de> for MemoryRequest {
             schema: SchemaMetadata,
         }
         let request = Request::deserialize(deserializer)?;
-        Self::new(
-            request.authority,
-            request.stable_key.as_str(),
-            request.schema,
-        )
-        .map_err(D::Error::custom)
+        validate_external_authority(&request.authority).map_err(D::Error::custom)?;
+        Self::from_checked_key(request.authority, request.stable_key, request.schema)
+            .map_err(D::Error::custom)
     }
 }
 
@@ -55,6 +52,16 @@ impl MemoryRequest {
         validate_external_authority(&authority)?;
         let stable_key =
             crate::StableKey::parse(stable_key).map_err(crate::DeclarationSnapshotError::Key)?;
+        Self::from_checked_key(authority, stable_key, schema)
+    }
+
+    // Callers validate authority before entry. Preserve the checked key's owned
+    // allocation; decoding has already enforced its grammar and wire shape.
+    fn from_checked_key(
+        authority: String,
+        stable_key: crate::StableKey,
+        schema: SchemaMetadata,
+    ) -> Result<Self, MemoryDeclarationError> {
         if is_ic_memory_stable_key(stable_key.as_str()) {
             return Err(MemoryDeclarationError::ReservedStableKey {
                 stable_key: stable_key.as_str().to_string(),
@@ -227,6 +234,9 @@ impl SealedDeclarationSnapshot {
         for record in ledger.records() {
             occupied[usize::from(record.slot().id())] = true;
         }
+        // Retained slots are already occupied. The iterator consumes each new
+        // ID once, so no request rescans or updates that recovered occupancy.
+        let mut available_ids = 0..crate::MEMORY_MANAGER_INVALID_ID;
         // Only the original requests can allocate new slots and they are already
         // canonical. Admission selections are known-only: all their slots are
         // occupied above regardless of selection order. Final declarations are
@@ -248,7 +258,7 @@ impl SealedDeclarationSnapshot {
                 pool.validate_id(record.slot().id())?;
                 record.slot().id()
             } else {
-                (0..crate::MEMORY_MANAGER_INVALID_ID)
+                available_ids
                     .find(|id| pool.contains(*id) && !occupied[usize::from(*id)])
                     .ok_or_else(|| crate::MemoryResolutionError::Exhausted {
                         stable_key: request.stable_key.clone(),
@@ -256,7 +266,6 @@ impl SealedDeclarationSnapshot {
                     })?
             };
             let slot = crate::MemoryManagerSlot::new(id).expect("usable id");
-            occupied[usize::from(id)] = true;
             // Request construction checked authority/key/schema, and recovery
             // checked historical schemas. The final declaration needs only
             // key/schema: do not copy the already-checked authority string.

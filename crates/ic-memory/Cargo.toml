@@ -51,11 +51,6 @@ path = "examples/wasm_diagnostics_size_probe.rs"
 crate-type = ["cdylib"]
 
 [[example]]
-name = "wasm-key-only-size-probe"
-path = "examples/wasm_key_only_size_probe.rs"
-crate-type = ["cdylib"]
-
-[[example]]
 name = "wasm-admission-size-probe"
 path = "examples/wasm_admission_size_probe.rs"
 crate-type = ["cdylib"]

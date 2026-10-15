@@ -2,55 +2,35 @@ use crate::{
     capability::{CommittedAllocations, ValidatedAllocations},
     declaration::DeclarationSnapshot,
     ledger::{
-        AllocationLedger, AllocationStageError, LedgerCommitError, LedgerCommitStore,
-        stage_validated_generation,
+        AllocationStageError, LedgerCommitError, LedgerCommitStore, stage_validated_generation,
     },
     policy::AllocationPolicy,
     validation::{AllocationValidationError, validate_allocations},
 };
 use std::borrow::Cow;
 
-///
-/// AllocationBootstrap
-///
-/// Internal validation and protected commit step used by `MemoryRuntime`.
-/// The runtime persists the owning stable-cell record before confirming the
-/// pending commit.
-///
+/// Validate and stage one commit; the runtime persists before confirmation.
+pub fn prepare_commit<P>(
+    store: &mut LedgerCommitStore,
+    prior: crate::RecoveredLedger,
+    snapshot: DeclarationSnapshot,
+    policy: &P,
+) -> Result<PendingBootstrapCommit, BootstrapError<P::Error>>
+where
+    P: AllocationPolicy,
+{
+    let validated =
+        validate_allocations(&prior, snapshot, policy).map_err(BootstrapError::Validation)?;
+    let staged = stage_validated_generation(Cow::Owned(prior.into_ledger()), &validated)
+        .map_err(BootstrapError::Staging)?;
+    store
+        .commit_generation(&staged)
+        .map_err(BootstrapError::Ledger)?;
 
-#[derive(Debug)]
-pub struct AllocationBootstrap<'store> {
-    store: &'store mut LedgerCommitStore,
-}
-
-impl<'store> AllocationBootstrap<'store> {
-    /// Build a bootstrap pipeline over a protected ledger commit store.
-    pub const fn new(store: &'store mut LedgerCommitStore) -> Self {
-        Self { store }
-    }
-
-    pub(crate) fn validate_against<P>(
-        &mut self,
-        prior: crate::RecoveredLedger,
-        snapshot: DeclarationSnapshot,
-        policy: &P,
-    ) -> Result<PendingBootstrapCommit, BootstrapError<P::Error>>
-    where
-        P: AllocationPolicy,
-    {
-        let validated =
-            validate_allocations(&prior, snapshot, policy).map_err(BootstrapError::Validation)?;
-        let staged = stage_validated_generation(Cow::Owned(prior.into_ledger()), &validated)
-            .map_err(BootstrapError::Staging)?;
-        self.store
-            .commit_generation(&staged)
-            .map_err(BootstrapError::Ledger)?;
-
-        Ok(PendingBootstrapCommit {
-            validated,
-            ledger: staged,
-        })
-    }
+    Ok(PendingBootstrapCommit {
+        validated,
+        generation: staged.current_generation(),
+    })
 }
 
 ///
@@ -67,24 +47,13 @@ impl<'store> AllocationBootstrap<'store> {
 #[derive(Debug, Eq, PartialEq)]
 #[must_use = "persist the owning ledger record, then confirm_persisted before opening allocations"]
 pub struct PendingBootstrapCommit {
-    /// Staged ledger accepted by the protected generation commit.
-    ledger: AllocationLedger,
+    /// Generation accepted by the protected commit, awaiting stable persistence.
+    generation: u64,
     /// Validated allocation declarations awaiting persistence confirmation.
     validated: ValidatedAllocations,
 }
 
 impl PendingBootstrapCommit {
-    /// Borrow the committed logical ledger for diagnostics.
-    ///
-    /// The persistence owner must write the owning record that contains the
-    /// mutated [`crate::LedgerCommitStore`], not serialize this ledger DTO as a
-    /// replacement protocol.
-    #[must_use]
-    #[cfg(test)]
-    pub const fn ledger(&self) -> &AllocationLedger {
-        &self.ledger
-    }
-
     /// Confirm that the owning integration durably persisted this commit.
     ///
     /// Calling this method before the stable-memory write succeeds violates the
@@ -92,8 +61,7 @@ impl PendingBootstrapCommit {
     /// before confirmation.
     #[must_use]
     pub fn confirm_persisted(self) -> CommittedAllocations {
-        self.validated
-            .confirm_persisted(self.ledger.current_generation())
+        self.validated.confirm_persisted(self.generation)
     }
 }
 
@@ -119,7 +87,8 @@ pub enum BootstrapError<P> {
 mod tests {
     use super::*;
     use crate::{
-        AllocationDeclaration, GenericAllocationPolicy, MemoryManagerSlot, SchemaMetadata,
+        AllocationDeclaration, AllocationLedger, GenericAllocationPolicy, MemoryManagerSlot,
+        SchemaMetadata,
     };
     #[derive(Debug, Eq, PartialEq)]
     struct RejectActivePolicy;
@@ -137,14 +106,6 @@ mod tests {
             _slot: &MemoryManagerSlot,
         ) -> Result<(), Self::Error> {
             Err("active slot rejected")
-        }
-
-        fn validate_reserved_slot(
-            &self,
-            _key: &crate::StableKey,
-            _slot: &MemoryManagerSlot,
-        ) -> Result<(), Self::Error> {
-            Ok(())
         }
     }
 
@@ -167,12 +128,20 @@ mod tests {
         let mut store = LedgerCommitStore::default();
         let recovered = store.recover_or_initialize(&ledger()).unwrap();
         let snapshot = DeclarationSnapshot::new(vec![declaration()]).unwrap();
-        let commit = AllocationBootstrap::new(&mut store)
-            .validate_against(recovered, snapshot, &GenericAllocationPolicy)
-            .unwrap();
-        assert_eq!(commit.ledger().current_generation(), 1);
-        assert_eq!(commit.ledger().records().len(), 1);
-        assert_eq!(store.recover().unwrap().ledger(), commit.ledger());
+        let commit = crate::bootstrap::prepare_commit(
+            &mut store,
+            recovered,
+            snapshot,
+            &GenericAllocationPolicy,
+        )
+        .unwrap();
+        let recovered = store.recover().unwrap();
+        assert_eq!(recovered.current_generation(), 1);
+        assert_eq!(recovered.ledger().records().len(), 1);
+        assert_eq!(
+            recovered.ledger().records()[0],
+            crate::AllocationRecord::active(&declaration())
+        );
         assert_eq!(commit.confirm_persisted().generation(), 1);
     }
 
@@ -186,9 +155,9 @@ mod tests {
         let before = store.clone();
         let recovered = store.recover().unwrap();
         let snapshot = DeclarationSnapshot::new(vec![declaration()]).unwrap();
-        let err = AllocationBootstrap::new(&mut store)
-            .validate_against(recovered, snapshot, &RejectActivePolicy)
-            .expect_err("active validation must run");
+        let err =
+            crate::bootstrap::prepare_commit(&mut store, recovered, snapshot, &RejectActivePolicy)
+                .expect_err("active validation must run");
         assert!(matches!(
             err,
             BootstrapError::Validation(AllocationValidationError::Policy("active slot rejected"))

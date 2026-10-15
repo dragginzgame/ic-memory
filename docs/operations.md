@@ -22,7 +22,8 @@ without opening application stores. The report distinguishes:
 Use `runtime.memory_allocations()` or
 `default_memory_manager_memory_allocations()` for the detailed, per-ID
 `MemoryAllocations` report. It returns all 255 usable IDs in order, including
-zero-size IDs and the ledger at ID 0.
+zero-size IDs and the ledger at ID 0. Numeric totals are in `report.summary`;
+per-ID rows are in `report.memories`. Serialized reports use the same two fields.
 
 Use `runtime.memory_allocation_summary()` or
 `default_memory_manager_memory_allocation_summary()` for recurring numeric
@@ -74,7 +75,7 @@ from their bytes.
 The ledger keeps current ownership and latest schema metadata, with at most 255
 records. Repeated upgrades add no audit entries. Two protected snapshots and one
 commit counter remain for recovery and stale-proof checks. Logical metadata is
-bounded to 64 KiB; the enclosing record to 128 KiB + 4 KiB. Physical allocation
+bounded to 64 KiB; the enclosing record to 64 KiB + 4 KiB. Physical allocation
 also depends on the configured manager bucket size, so smaller encoded bytes do
 not necessarily reduce assigned bucket bytes. See [the current ledger contract](current-ledger.md).
 
@@ -146,8 +147,8 @@ Doctor validation does not run `RuntimeBootstrapPolicy::prepare_bootstrap`,
 predict which historical stores a consumer will select, or certify consumer
 admission. It is a read-only diagnostic, not permission to open memory.
 
-Use `default_memory_manager_commit_recovery_diagnostic()` when only commit-slot
-presence, validity, authoritative generation, and corruption or ambiguity are
+Use `default_memory_manager_commit_recovery_diagnostic()` when only current-snapshot
+presence, validity, checked generation, and corruption status are
 needed. `default_memory_manager_diagnostic_export()` additionally requires a
 completed bootstrap.
 

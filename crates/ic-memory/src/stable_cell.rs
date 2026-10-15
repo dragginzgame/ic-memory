@@ -47,13 +47,6 @@ impl StableCellLedgerRecord {
     pub(crate) const fn store_mut(&mut self) -> &mut LedgerCommitStore {
         &mut self.store
     }
-
-    /// Measure the current encoded record without allocating a payload buffer.
-    pub(crate) fn encoded_size(&self) -> usize {
-        let mut writer = CountingWriter(0);
-        encode_record(self, &mut writer);
-        writer.0
-    }
 }
 
 impl Storable for StableCellLedgerRecord {
@@ -199,30 +192,61 @@ pub fn decode_stable_cell_ledger_record_from_memory<M: Memory>(
 }
 
 fn serialize_record(record: &StableCellLedgerRecord) -> Vec<u8> {
-    let mut bytes = Vec::with_capacity(record.encoded_size());
-    encode_record(record, &mut bytes);
-    bytes
+    EncodedLedgerRecord::new(record)
+        .unwrap_or_else(|size| panic!("stable-cell ledger record exceeds limit: {size}"))
+        .buffer
+        .bytes
 }
 
-fn encode_record(record: &StableCellLedgerRecord, writer: impl std::io::Write) {
-    ciborium::into_writer(record, writer).unwrap_or_else(|err| {
-        panic!("StableCellLedgerRecord serialize failed: {err}");
-    });
+///
+/// EncodedLedgerRecord
+///
+/// Temporary publication bytes, never recovered authority or retained runtime state.
+///
+
+pub struct EncodedLedgerRecord {
+    buffer: crate::bounded_writer::BoundedWriter,
 }
 
-struct CountingWriter(usize);
-
-impl std::io::Write for CountingWriter {
-    fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
-        self.0 = self
-            .0
-            .checked_add(bytes.len())
-            .ok_or_else(|| std::io::Error::other("encoded record length overflow"))?;
-        Ok(bytes.len())
+impl EncodedLedgerRecord {
+    pub(crate) fn new(record: &StableCellLedgerRecord) -> Result<Self, usize> {
+        // Payload lengths plus small DTO-sized slack are only a capacity hint,
+        // not a second CBOR layout calculation. The writer owns the exact bound.
+        let physical = record.store().physical();
+        let capacity = physical
+            .current()
+            .map_or(0, |slot| slot.payload().len())
+            .saturating_add(std::mem::size_of::<StableCellLedgerRecord>().saturating_mul(2))
+            .min(crate::constants::MAX_LEDGER_RECORD_BYTES);
+        let mut buffer = crate::bounded_writer::BoundedWriter::new(
+            Vec::with_capacity(capacity),
+            crate::constants::MAX_LEDGER_RECORD_BYTES,
+        );
+        if let Err(error) = ciborium::into_writer(record, &mut buffer) {
+            if buffer.attempted_len > crate::constants::MAX_LEDGER_RECORD_BYTES {
+                return Err(buffer.attempted_len);
+            }
+            panic!("StableCellLedgerRecord serialize failed: {error}");
+        }
+        Ok(Self { buffer })
     }
 
-    fn flush(&mut self) -> std::io::Result<()> {
-        Ok(())
+    pub(crate) const fn len(&self) -> usize {
+        self.buffer.bytes.len()
+    }
+}
+
+impl Storable for EncodedLedgerRecord {
+    const BOUND: Bound = Bound::Unbounded;
+
+    fn to_bytes(&self) -> Cow<'_, [u8]> {
+        Cow::Borrowed(&self.buffer.bytes)
+    }
+    fn into_bytes(self) -> Vec<u8> {
+        self.buffer.bytes
+    }
+    fn from_bytes(_: Cow<'_, [u8]>) -> Self {
+        panic!("publication bytes cannot recover ledger authority")
     }
 }
 
@@ -231,6 +255,22 @@ mod tests {
     use super::*;
     use crate::test_cbor::hex_fixture;
     use ic_stable_structures::{Cell, VectorMemory};
+
+    #[test]
+    fn publication_payload_refuses_oversized_chunks_before_buffering() {
+        use std::io::Write as _;
+
+        let mut encoded = EncodedLedgerRecord {
+            buffer: crate::bounded_writer::BoundedWriter::new(
+                Vec::new(),
+                crate::constants::MAX_LEDGER_RECORD_BYTES,
+            ),
+        };
+        let oversized = vec![0; crate::constants::MAX_LEDGER_RECORD_BYTES + 1];
+        assert!(encoded.buffer.write_all(&oversized).is_err());
+        assert_eq!(encoded.len(), 0);
+        assert_eq!(encoded.buffer.bytes.capacity(), 0);
+    }
 
     #[test]
     fn stable_cell_ledger_record_round_trips_through_cell() {
@@ -255,7 +295,15 @@ mod tests {
         ));
         let record = decode_stable_cell_ledger_record(&bytes).expect("stable-cell fixture");
 
-        assert_eq!(record.encoded_size(), bytes.len());
+        assert_eq!(
+            EncodedLedgerRecord::new(&record).unwrap().len(),
+            bytes.len()
+        );
+        let encoded = EncodedLedgerRecord::new(&record).unwrap();
+        assert!(matches!(encoded.to_bytes(), Cow::Borrowed(_)));
+        let memory = VectorMemory::default();
+        drop(Cell::new(memory.clone(), encoded));
+        assert_eq!(decode_stable_cell_payload(&memory).unwrap(), bytes);
         assert_eq!(record.to_bytes().as_ref(), bytes.as_slice());
         assert_eq!(record.clone().into_bytes(), bytes);
         assert_eq!(
@@ -349,20 +397,14 @@ mod tests {
     }
 
     #[test]
-    fn stable_cell_ledger_record_requires_both_commit_slot_fields() {
-        use crate::test_cbor::Value;
-
-        for (missing, present) in [("slot0", "slot1"), ("slot1", "slot0")] {
-            let physical = vec![(Value::Text(present.to_string()), Value::Null)];
-            let store = vec![(Value::Text("physical".to_string()), Value::Map(physical))];
-            let record = vec![(Value::Text("store".to_string()), Value::Map(store))];
-            let bytes = crate::test_cbor::to_vec(&Value::Map(record)).expect("record bytes");
-
-            let err = decode_stable_cell_ledger_record(&bytes)
-                .expect_err("missing commit slot must fail closed");
-
-            assert!(err.to_string().contains(missing));
-        }
+    fn stable_cell_ledger_record_requires_an_explicit_current_snapshot() {
+        let bytes = crate::test_cbor::to_vec(&serde_json::json!({
+            "store": { "physical": {} }
+        }))
+        .unwrap();
+        let err = decode_stable_cell_ledger_record(&bytes)
+            .expect_err("missing current snapshot must not initialize");
+        assert!(err.to_string().contains("current"));
     }
 
     #[test]

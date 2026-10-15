@@ -63,6 +63,7 @@ The owned, serializable report contains:
 
 - `current_generation: Option<u64>` from committed runtime authority; unknown
   before bootstrap, without decoding ledger state to recover it.
+- Numeric accounting is nested under `summary`; per-ID rows remain in `memories`.
 - Actual `bucket_size_pages`, `bucket_size_bytes`, `manager_layout_version`,
   `bucket_capacity`, `allocated_buckets`, `remaining_buckets`, and
   `maximum_bucket_bytes` (table capacity, before backing limits).
@@ -75,7 +76,7 @@ The owned, serializable report contains:
 - `allocated_bucket_bytes`, `bucket_slack_bytes`, `known_binding_bytes`,
   `unknown_binding_bytes`, and `unmanaged_bytes` after the assigned region.
 - Exactly 255 `memories`, ordered by ID 0–254, each with `binding`, optional
-  `range_claim`, `virtual_extent`, `allocated_buckets`, `allocated_bytes`,
+  `pool_eligible`, `virtual_extent`, `allocated_buckets`, `allocated_bytes`,
   `bucket_slack_bytes`, and `payload_bytes: None`.
 
 `AllocationBinding::Current { stable_key, owner }` comes from successfully bound
@@ -152,7 +153,7 @@ fn allocation_snapshot()
 {
     let report = ic_memory::default_memory_manager_memory_allocations()?;
     // A protected integration may require completed bootstrap.
-    if report.current_generation.is_none() {
+    if report.summary.current_generation.is_none() {
         return Err(ic_memory::RuntimeDiagnosticError::NotBootstrapped);
     }
     Ok(report)

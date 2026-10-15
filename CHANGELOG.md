@@ -1,5 +1,86 @@
 # Changelog
 
+## [0.39.0] - 2026-10-15
+
+- **Breaking:** retain one checksummed current ledger snapshot and expose current-snapshot
+  recovery diagnostics. Previous physical records are incompatible; retained
+  installations require explicit data disposition before deployment
+  ([#106 — One checksummed current ledger snapshot](https://github.com/dragginzgame/ic-memory/issues/106)).
+
+
+- Reuse admitted runtime tools in native CI through optional, bounded caches,
+  retaining exact CLI/server checks and the complete host matrix
+  ([#62 — Qualify native tooling and evidence](https://github.com/dragginzgame/ic-memory/issues/62)).
+
+- Share bounded ledger and Cell serialization buffers, preserving wire bytes,
+  oversized-write refusal and installed persistence recovery
+  ([#100 — Share bounded serialization buffers](https://github.com/dragginzgame/ic-memory/issues/100)).
+
+[Detailed notes](docs/changelog/0.39.md)
+
+## [0.38.0] - 2026-10-14
+
+### Fixed
+
+- Run formatting and hook qualification once per native CI host, retaining both
+  workspace checks and CDPATH isolation
+  ([#88 — Avoid repeated formatting and hook fixtures](https://github.com/dragginzgame/ic-memory/issues/88)).
+
+- Share declaration and reservation slot-conflict checks while preserving their
+  distinct lifecycle errors
+  ([#91 — Share claim checks and preserve error precedence](https://github.com/dragginzgame/ic-memory/issues/91)).
+
+- Release staged ledger records before persistence, retaining the committed
+  generation and post-write allocation authority
+  ([#94 — Release staged ledger records](https://github.com/dragginzgame/ic-memory/issues/94)).
+- Delegate hook-fixture completion and cleanup to Shared while preserving
+  command diagnostics and failed evidence
+  ([#95 — Share hook fixture lifecycle](https://github.com/dragginzgame/ic-memory/issues/95)).
+
+### Breaking
+
+- Remove the unused `AllocationPolicy::validate_reserved_slot` callback; delete
+  that method from custom policies when upgrading. Stored formats are unchanged
+  ([#98 — Hard-cut the unused reservation policy callback](https://github.com/dragginzgame/ic-memory/issues/98)).
+
+### Changed
+
+- Keep ledger codecs private and the owned envelope fixture test-only
+  ([#97 — Use private ledger codec functions](https://github.com/dragginzgame/ic-memory/issues/97)).
+- Keep doctor binding details in structured fields and shorten the mismatch message
+  ([#99 — Remove redundant Debug payload from doctor binding mismatch](https://github.com/dragginzgame/ic-memory/issues/99)).
+
+[Detailed notes](docs/changelog/0.38.md)
+
+## [0.37.0] - 2026-10-14
+
+- **Breaking:** detailed allocation reports contain `summary` and `memories`;
+  read numeric totals through `report.summary`
+  ([#84 — Compose allocation reports from their summary](https://github.com/dragginzgame/ic-memory/issues/84)).
+- Encode bounded ledger publication bytes once while preserving the Cell format
+  and capacity-refusal checks
+  ([#85 — Prepare bounded ledger bytes once](https://github.com/dragginzgame/ic-memory/issues/85)).
+
+- Admit retained package copy descriptors through Host 0.17.9, refusing
+  replacement FIFOs without waiting for a writer
+  ([#83 — Prevent retained-package FIFO hangs](https://github.com/dragginzgame/ic-memory/issues/83)).
+- Adopt Shared Tooling 0.12.4 and delegate fixture-retention probes to their
+  canonical helper, preserving actual archive and refusal checks
+  ([#81 — Adopt canonical fixture-retention probes](https://github.com/dragginzgame/ic-memory/issues/81),
+  [Shared #174 — Share fixture-retention qualification](https://github.com/dragginzgame/shared-tooling/issues/174)).
+- Delegate advisory README dependency rendering to Shared, preserving reminders
+  without turning documentation examples into release admission
+  ([#87 — Adopt the canonical advisory README renderer](https://github.com/dragginzgame/ic-memory/issues/87),
+  [Shared #178 — Own advisory README dependency rendering](https://github.com/dragginzgame/shared-tooling/issues/178)).
+- Retire the duplicate key-only Wasm probe; retain the core baseline and distinct
+  runtime qualification probes
+  ([#80 — Retire the duplicate key-only Wasm probe](https://github.com/dragginzgame/ic-memory/issues/80)).
+- Resolve new allocation IDs with one forward scan, preserving lowest-free
+  placement and retained reservations
+  ([#79 — Avoid repeated free-slot scans](https://github.com/dragginzgame/ic-memory/issues/79)).
+
+[Detailed notes](docs/changelog/0.37.md)
+
 ## [0.36.4] - 2026-10-13
 
 - Reduce bootstrap Wasm by sharing bounded sorting and validating namespace

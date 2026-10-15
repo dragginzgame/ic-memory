@@ -121,8 +121,8 @@ after the allocation ledger has been recovered, checked, and durably updated.
 
 The ledger stores one current record per allocated identity and the latest schema
 metadata. It keeps no per-upgrade or schema-change history. Omitted and retired
-identities retain their IDs to prevent accidental reuse. A commit counter and two
-protected commit slots support stale-proof checks and corruption detection.
+identities retain their IDs to prevent accidental reuse. A commit counter and one
+checksummed current snapshot support stale-proof checks and corruption detection.
 
 ## What happens when a check fails?
 
@@ -168,7 +168,7 @@ Add the crate:
 
 ```toml
 [dependencies]
-ic-memory = "0.36.4"
+ic-memory = "0.39.0"
 ```
 
 `ic-memory` re-exports its exact `ic-stable-structures` dependency through

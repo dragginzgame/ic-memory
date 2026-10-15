@@ -161,14 +161,6 @@ pub trait AllocationPolicy {
     /// Validate a stable-key to allocation-slot claim.
     /// The slot already contains a usable ID; policy checks ownership and scope.
     fn validate_slot(&self, key: &StableKey, slot: &MemoryManagerSlot) -> Result<(), Self::Error>;
-
-    /// Validate a reserved stable-key to allocation-slot claim.
-    /// The checked slot does not establish permission to reserve that ID.
-    fn validate_reserved_slot(
-        &self,
-        key: &StableKey,
-        slot: &MemoryManagerSlot,
-    ) -> Result<(), Self::Error>;
 }
 
 ///

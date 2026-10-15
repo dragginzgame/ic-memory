@@ -128,8 +128,8 @@ test-release-adapters:
 	bash scripts/ci/test-release-adapters.sh
 
 test-hooks: format-tools-check
-	+RUSTUP_AUTO_INSTALL=0 CARGO_NET_OFFLINE=true bash scripts/ci/test-format-tools.sh
-	+RUSTUP_AUTO_INSTALL=0 CARGO_NET_OFFLINE=true bash scripts/ci/test-git-hooks.sh
+	+CDPATH="$(CURDIR)" RUSTUP_AUTO_INSTALL=0 CARGO_NET_OFFLINE=true bash scripts/ci/test-format-tools.sh
+	+CDPATH="$(CURDIR)" RUSTUP_AUTO_INSTALL=0 CARGO_NET_OFFLINE=true bash scripts/ci/test-git-hooks.sh
 
 test:
 	+cargo +$(VALIDATION_TOOLCHAIN) test --locked --offline -- --test-threads=1
@@ -159,7 +159,7 @@ validate-toolchain:
 
 wasm-size:
 	+cargo +$(VALIDATION_TOOLCHAIN) build --locked --offline --profile wasm-size --target wasm32-unknown-unknown \
-		--example wasm-core-size-probe --example wasm-diagnostics-size-probe --example wasm-key-only-size-probe --example wasm-admission-size-probe \
+		--example wasm-core-size-probe --example wasm-diagnostics-size-probe --example wasm-admission-size-probe \
 		--example wasm-runtime-integration-size-probe
 	+@$(TOOL) wasm-size
 

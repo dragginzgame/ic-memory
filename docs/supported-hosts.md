@@ -80,6 +80,13 @@ a newer commit's success does not qualify an older release. Consumers must updat
 their owned workflows when adopting this guidance; snapshot refresh alone does
 not change their concurrency settings.
 
+Routine issue acceptance can use the latest delivered version that retains and
+tests the behavior; it need not wait for cancelled superseded runs. Follow the
+[issue maintenance procedure](../rules/agent-maintenance.md#issue-review-and-repair)
+to preserve historical evidence and require an explicit version-specific reason
+for any older run kept as an active gate. This does not qualify an older release
+or weaken the current version's required native matrix.
+
 Use the [CI-health task](../tasks/ci-health.md#queued-native-jobs-and-repeated-validation)
 to diagnose persistent native queues and repeated branch/tag gates. Keep all
 required hosts and checks on the retained run. Release, publication and deployment

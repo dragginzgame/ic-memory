@@ -6,7 +6,7 @@
 
 use ic_host_artifacts::artifact::{Sha256Digest, copy_reader};
 use ic_host_fs::durable::{PublicationMode, WriteOptions};
-use ic_host_fs::read::hash_file;
+use ic_host_fs::read::{hash_file, open_regular_file};
 use ic_host_process::tool::{
     CompletedExecution, OutputLimit, OutputLimits, ToolError, capture_command,
 };
@@ -61,16 +61,16 @@ const PACKAGE_MANIFEST: &str = "crates/ic-memory/Cargo.toml";
 const PACKAGE_README: &str = "crates/ic-memory/README.md";
 const CHANGELOG_FINALIZER: &str = "scripts/ci/finalize-release-changelog.awk";
 const LOCK_REWRITER: &str = "scripts/ci/rewrite-local-lock-versions.pl";
+const README_VERSION_RENDERER: &str = "scripts/ci/render-cargo-readme-version.pl";
 const WORKSPACE_VERSION_RENDERER: &str = "scripts/ci/render-cargo-workspace-version.pl";
 const TAG_CHECKER: &str = "scripts/ci/check-release-tag.sh";
 const REPLACE_FILE_OPTIONS: WriteOptions = WriteOptions {
     mode: PublicationMode::Replace,
     permissions: 0o666,
 };
-const PROBES: [(&str, u64); 5] = [
+const PROBES: [(&str, u64); 4] = [
     ("core", 260_000),
     ("diagnostics", 315_000),
-    ("key_only", 260_000),
     ("admission", 264_000),
     ("runtime_integration", 270_000),
 ];
@@ -220,6 +220,7 @@ impl Execute for Processes {
                     eprint!("{}", String::from_utf8_lossy(&failure.evidence.stderr));
                 }
             })?;
+            eprint!("{}", String::from_utf8_lossy(&output.stderr));
             Ok(String::from_utf8(output.stdout)?)
         } else {
             let status = command
@@ -352,40 +353,6 @@ fn toml_string(text: &str, section: &str, field: &str) -> Result<String> {
         .and_then(toml::Value::as_str)
         .map(str::to_owned)
         .ok_or_else(|| format!("missing {section}.{field}").into())
-}
-
-// README examples are advisory documentation, not the release identity.
-// Use TOML spans to preserve comments, spacing and other dependency options.
-fn release_readme(text: &str, version: &str) -> Option<String> {
-    let mut matches = Vec::new();
-    let mut offset = 0;
-    for line in text.split_inclusive('\n') {
-        if let Ok(mut entries) =
-            toml::from_str::<BTreeMap<String, toml::Spanned<toml::Value>>>(line)
-            && let Some(value) = entries.remove("ic-memory")
-        {
-            let span = if value.get_ref().is_str() {
-                Some(value.span())
-            } else {
-                toml::from_str::<BTreeMap<String, BTreeMap<String, toml::Spanned<toml::Value>>>>(
-                    line,
-                )
-                .ok()
-                .and_then(|mut entries| entries.remove("ic-memory"))
-                .and_then(|mut fields| fields.remove("version"))
-                .filter(|value| value.get_ref().is_str())
-                .map(|value| value.span())
-            };
-            matches.push(span.map(|span| offset + span.start..offset + span.end));
-        }
-        offset += line.len();
-    }
-    let [Some(span)] = matches.as_slice() else {
-        return None;
-    };
-    let mut updated = text.to_owned();
-    updated.replace_range(span.clone(), &format!("\"{version}\""));
-    Some(updated)
 }
 
 fn check_lock_update(before: &[u8], after: &str, previous: &str, version: &str) -> Result<()> {
@@ -522,6 +489,15 @@ impl<E: Execute> Repository<E> {
             "workspace version rendering changed other metadata",
         )?;
         Ok(updated)
+    }
+
+    fn release_readme(&self, text: &str, version: &str) -> Result<String> {
+        self.transform_text(
+            "perl",
+            &[README_VERSION_RENDERER],
+            text,
+            &["ic-memory", version],
+        )
     }
 
     fn replace_lock_version(&self, text: &str, previous: &str, version: &str) -> Result<String> {
@@ -704,7 +680,8 @@ impl<E: Execute> Repository<E> {
         let retained = self.retained_package(&digest)?;
         if !retained.exists() {
             self.exec.write_with(&retained, |staging| {
-                let copied = copy_reader(fs::File::open(&package)?, staging, u64::MAX)?;
+                let source = open_regular_file(&package).map_err(std::io::Error::from)?;
+                let copied = copy_reader(source, staging, u64::MAX)?;
                 if copied.sha256.to_string() != digest {
                     return Err(std::io::Error::other(
                         "package changed while retaining evidence",
@@ -834,7 +811,7 @@ impl<E: Execute> Repository<E> {
         let previous = &selection.previous;
         let version = &selection.version;
         let readme = self.text(PACKAGE_README, Some(source))?;
-        let readme = release_readme(&readme, version).unwrap_or(readme);
+        let readme = self.release_readme(&readme, version)?;
         let [major, minor, _] = version_parts(version)?;
         let detail = format!("docs/changelog/{major}.{minor}.md");
         let finalizer = self.root.join(CHANGELOG_FINALIZER);
@@ -1007,16 +984,10 @@ impl<E: Execute> Repository<E> {
     fn preflight(&self, selection: &ReleaseSelection) -> Result<()> {
         self.configuration()?;
         self.check_selection(selection)?;
-        if release_readme(
+        self.release_readme(
             &self.text(PACKAGE_README, Some(&selection.source))?,
             &selection.version,
-        )
-        .is_none()
-        {
-            eprintln!(
-                "Reminder: review {PACKAGE_README}'s dependency examples; no unique supported version example was found, so release preparation will leave them unchanged."
-            );
-        }
+        )?;
         require(
             self.git(&["rev-parse", "HEAD"])? == selection.source,
             "source HEAD differs from the saved release",

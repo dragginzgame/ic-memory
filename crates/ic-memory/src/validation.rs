@@ -158,14 +158,6 @@ mod tests {
         ) -> Result<(), Self::Error> {
             Ok(())
         }
-
-        fn validate_reserved_slot(
-            &self,
-            _key: &StableKey,
-            _slot: &MemoryManagerSlot,
-        ) -> Result<(), Self::Error> {
-            Ok(())
-        }
     }
 
     fn ledger(records: Vec<AllocationRecord>) -> AllocationLedger {
