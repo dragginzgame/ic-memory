@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.40.1]
+
+- Add fallible fixture-cell admission and memory transfer, preserving typed
+  runtime refusals and rejecting non-Cell metadata before initialization.
+  [Detailed notes](docs/changelog/0.40.md).
+
 ## [0.40.0] - 2026-10-15
 
 - **Breaking build requirement:** require Rust 1.91.0 and delegate native Cargo

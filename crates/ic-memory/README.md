@@ -345,3 +345,9 @@ fresh empty bytes must never substitute for a required retained journal.
 `ic-memory` is pre-1.0 infrastructure extracted from Canic. Current releases use
 the current API and durable format only; earlier pre-1.0 wire formats are not a
 compatibility target.
+## Fallible fixture admission
+
+With `test-support`, `testing::FixtureCell::try_new` exposes typed admission
+failures and checks committed authority. The trusted opener leaves codecs,
+initialization and payload ceilings with the caller. `into_memory` transfers the
+admitted grant for explicit raw-memory inspection; it performs no reset or cleanup.

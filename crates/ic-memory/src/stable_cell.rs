@@ -121,6 +121,18 @@ pub enum StableCellLedgerError {
 pub fn decode_stable_cell_payload<M: Memory>(
     memory: &M,
 ) -> Result<Vec<u8>, StableCellPayloadError> {
+    let value_len = stable_cell_payload_length(memory, crate::constants::MAX_LEDGER_RECORD_BYTES)?;
+    let mut bytes = vec![0; value_len];
+    memory.read(STABLE_CELL_VALUE_OFFSET, &mut bytes);
+    Ok(bytes)
+}
+
+// Share envelope admission without imposing the ledger's payload ceiling on a
+// caller-owned fixture cell. This does not read or allocate its payload.
+pub fn stable_cell_payload_length<M: Memory>(
+    memory: &M,
+    maximum: usize,
+) -> Result<usize, StableCellPayloadError> {
     if memory.size() == 0 {
         return Err(StableCellPayloadError::NotStableCell);
     }
@@ -145,18 +157,16 @@ pub fn decode_stable_cell_payload<M: Memory>(
             available_bytes: payload_capacity,
         });
     }
-    if value_len > crate::constants::MAX_LEDGER_RECORD_BYTES as u64 {
+    if value_len > maximum as u64 {
         return Err(StableCellPayloadError::TooLarge { value_len });
     }
     #[expect(
         clippy::cast_possible_truncation,
-        reason = "the admitted recovery ceiling is representable as usize"
+        reason = "the admitted caller ceiling is representable as usize"
     )]
     let value_len = value_len as usize;
 
-    let mut bytes = vec![0; value_len];
-    memory.read(STABLE_CELL_VALUE_OFFSET, &mut bytes);
-    Ok(bytes)
+    Ok(value_len)
 }
 
 /// Decode a `StableCellLedgerRecord` from stable-cell value bytes.
