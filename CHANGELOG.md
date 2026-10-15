@@ -2,6 +2,8 @@
 
 ## [0.39.1]
 
+- Expose fallible fixture-cell admission with typed setup errors and explicit
+  authority verification, retaining caller-owned codecs and effect disposition.
 - Add opt-in fixture byte-cell construction with explicit backing memory, storage
   identity and bucket configuration, with native and Wasm feature checks
   ([#104 — Share fixture byte-cell construction](https://github.com/dragginzgame/ic-memory/issues/104)).

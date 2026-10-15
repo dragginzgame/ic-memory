@@ -333,6 +333,12 @@ require bounded allocation. The retained opener checks the envelope and length
 before Cell allocates its payload, and both enforce the ceiling on writes.
 They distinguish fresh allocation from required history and refuse replacement;
 unbounded `new` is suitable only for trusted fixture images.
+Use unbounded `try_new` when a trusted fixture caller must return typed setup
+errors instead of trapping. It preserves declaration, runtime, ledger, authority
+and cell-envelope causes in `testing::FixtureCellError`. Raw Memory operations
+and initial Cell publication can still panic. All constructors share setup and
+authority verification; `into_memory` transfers the existing virtual grant when
+the fixture needs explicit raw-memory inspection. Neither API resets history.
 
 - [Operations and diagnostics](https://github.com/dragginzgame/ic-memory/blob/main/docs/operations.md)
   explains memory attribution, bucket configuration, and runtime reports.
