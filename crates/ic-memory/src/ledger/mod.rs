@@ -6,7 +6,7 @@ mod record;
 mod stage;
 
 use crate::physical::{
-    CommitRecoveryError, CommitStoreDiagnostic, CommittedGenerationBytes, DualCommitStore,
+    CommitRecoveryError, CommitStoreDiagnostic, CommittedGenerationBytes, SnapshotCommitStore,
 };
 use serde::{Deserialize, Serialize};
 
@@ -45,14 +45,14 @@ fn decode_ledger(bytes: &[u8]) -> Result<AllocationLedger, String> {
 #[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct LedgerCommitStore {
-    /// Protected physical commit slots.
-    physical: DualCommitStore,
+    /// Protected current physical snapshot.
+    physical: SnapshotCommitStore,
 }
 
 impl LedgerCommitStore {
     /// Borrow the protected physical commit store for diagnostics.
     #[must_use]
-    pub const fn physical(&self) -> &DualCommitStore {
+    pub const fn physical(&self) -> &SnapshotCommitStore {
         &self.physical
     }
 
@@ -98,7 +98,7 @@ impl LedgerCommitStore {
 
     /// Recover the authoritative ledger, or explicitly initialize an empty store.
     ///
-    /// Initialization is allowed only when no physical commit slot has ever
+    /// Initialization is allowed only when no physical snapshot has ever
     /// been written. Corrupt or partially written stores fail closed even when
     /// a genesis ledger is supplied.
     ///
@@ -110,7 +110,7 @@ impl LedgerCommitStore {
     ) -> Result<RecoveredLedger, LedgerCommitError> {
         match self.recover() {
             Ok(ledger) => Ok(ledger),
-            // Physical selection returns this error only when both slots are absent.
+            // Physical selection returns this error only for an explicitly empty current snapshot.
             Err(LedgerCommitError::Recovery(CommitRecoveryError::NoValidGeneration)) => {
                 self.commit(genesis)
             }
@@ -150,15 +150,15 @@ impl LedgerCommitStore {
             .map_err(LedgerCommitError::Recovery)
     }
 
-    /// Simulate corruption of a logical ledger payload in the inactive slot.
+    /// Simulate corruption of the current logical ledger snapshot.
     #[cfg(test)]
-    pub fn write_corrupt_inactive_ledger(
+    pub fn write_corrupt_ledger(
         &mut self,
         ledger: &AllocationLedger,
     ) -> Result<(), LedgerCommitError> {
         let payload = payload::encode_ledger(ledger).map_err(LedgerCommitError::Integrity)?;
         self.physical
-            .write_corrupt_inactive_slot(ledger.current_generation, payload);
+            .write_corrupt_snapshot(ledger.current_generation, payload);
         Ok(())
     }
 }
@@ -180,9 +180,13 @@ mod tests {
                 DeclarationSnapshot::new(vec![declaration("app.users.v1", 100, Some(version))])
                     .unwrap();
             let recovered = store.recover().unwrap();
-            let pending = crate::AllocationBootstrap::new(&mut store)
-                .validate_against(recovered, snapshot, &crate::GenericAllocationPolicy)
-                .unwrap();
+            let pending = crate::bootstrap::prepare_commit(
+                &mut store,
+                recovered,
+                snapshot,
+                &crate::GenericAllocationPolicy,
+            )
+            .unwrap();
             let committed = pending.confirm_persisted();
             assert_eq!(committed.generation(), 65_530 + u64::from(version));
             let recovered = store.recover().unwrap();
@@ -234,7 +238,8 @@ mod tests {
             .unwrap();
         let before = store.clone();
         let recovered = store.recover().unwrap();
-        let result = crate::AllocationBootstrap::new(&mut store).validate_against(
+        let result = crate::bootstrap::prepare_commit(
+            &mut store,
             recovered,
             DeclarationSnapshot::new(Vec::new()).unwrap(),
             &crate::GenericAllocationPolicy,
@@ -254,7 +259,7 @@ mod tests {
     fn unsupported_discriminator_precedes_logical_decode_and_preserves_storage() {
         let mut payload = LedgerPayloadEnvelope::current(vec![0xff]).encode();
         payload[8..12].copy_from_slice(b"BAD!");
-        let mut physical = DualCommitStore::default();
+        let mut physical = SnapshotCommitStore::default();
         physical.commit_payload_at_generation(1, payload).unwrap();
         let mut store = LedgerCommitStore { physical };
         let before = store.clone();
@@ -380,7 +385,7 @@ mod tests {
         .unwrap();
         let bytes = crate::test_cbor::to_vec(&value).unwrap();
         let payload = LedgerPayloadEnvelope::current(bytes).try_encode().unwrap();
-        let mut physical = DualCommitStore::default();
+        let mut physical = SnapshotCommitStore::default();
         physical.commit_payload_at_generation(2, payload).unwrap();
         let record = StableCellLedgerRecord::new(LedgerCommitStore { physical });
         let encoded = crate::test_cbor::to_vec(&record).unwrap();
@@ -542,7 +547,7 @@ mod tests {
         let map = vec![
             (
                 Value::Text("physical".to_string()),
-                crate::test_cbor::to_value(DualCommitStore::default()).expect("physical value"),
+                crate::test_cbor::to_value(SnapshotCommitStore::default()).expect("physical value"),
             ),
             (Value::Text("future_field".to_string()), Value::Bool(true)),
         ];
@@ -625,9 +630,9 @@ mod tests {
     }
 
     #[test]
-    fn current_dual_slot_valid_newer_fixture_recovers_newer() {
+    fn current_snapshot_fixture_recovers() {
         let store = store_from_fixture(include_str!(
-            "../../fixtures/current/dual_slot_store_valid_newer.cbor.hex"
+            "../../fixtures/current/snapshot_store_valid.cbor.hex"
         ));
 
         assert_eq!(store.physical().diagnostic().recovery, Ok(2));
@@ -636,32 +641,26 @@ mod tests {
     }
 
     #[test]
-    fn current_dual_slot_corrupt_newer_fixture_fails_closed() {
+    fn current_corrupt_snapshot_fixture_fails_closed() {
         let store = store_from_fixture(include_str!(
-            "../../fixtures/current/dual_slot_store_corrupt_newer.cbor.hex"
+            "../../fixtures/current/snapshot_store_corrupt.cbor.hex"
         ));
 
         let diagnostic = store.physical().diagnostic();
         assert_eq!(
             diagnostic.recovery,
-            Err(CommitRecoveryError::InvalidCommitSlots {
-                slot0_invalid: false,
-                slot1_invalid: true,
-            })
+            Err(CommitRecoveryError::InvalidSnapshot { generation: 2 })
         );
         assert_eq!(
-            diagnostic.slot1,
-            crate::CommitSlotDiagnostic::Invalid { generation: 2 }
+            diagnostic.current,
+            crate::CommitSnapshotDiagnostic::Invalid { generation: 2 }
         );
         let err = store
             .recover()
             .expect_err("corrupt fixture must fail closed");
         assert!(matches!(
             err,
-            LedgerCommitError::Recovery(CommitRecoveryError::InvalidCommitSlots {
-                slot0_invalid: false,
-                slot1_invalid: true,
-            })
+            LedgerCommitError::Recovery(CommitRecoveryError::InvalidSnapshot { generation: 2 })
         ));
     }
 
@@ -1380,7 +1379,7 @@ mod tests {
         bytes[key_start] = b'A';
         assert!(crate::test_cbor::from_slice::<AllocationLedger>(&bytes).is_err());
         let payload = LedgerPayloadEnvelope::current(bytes).encode();
-        let mut physical = DualCommitStore::default();
+        let mut physical = SnapshotCommitStore::default();
         physical.commit_payload_at_generation(1, payload).unwrap();
         let store = LedgerCommitStore { physical };
         let before = store.clone();
@@ -1411,7 +1410,7 @@ mod tests {
         let bytes = crate::test_cbor::to_vec(&value).unwrap();
         assert!(crate::test_cbor::from_slice::<AllocationLedger>(&bytes).is_err());
         let payload = LedgerPayloadEnvelope::current(bytes).encode();
-        let mut physical = DualCommitStore::default();
+        let mut physical = SnapshotCommitStore::default();
         physical.commit_payload_at_generation(1, payload).unwrap();
         let store = LedgerCommitStore { physical };
         let before = store.clone();
@@ -1458,7 +1457,7 @@ mod tests {
             err,
             LedgerCommitError::Integrity(LedgerIntegrityError::DuplicateSlot { .. })
         ));
-        assert!(store.physical().is_uninitialized());
+        assert!(store.physical().current().is_none());
     }
 
     #[test]
@@ -1501,9 +1500,8 @@ mod tests {
     fn ledger_commit_store_rejects_bad_payload_envelope_before_ledger_decode() {
         let committed = CommittedGenerationBytes::new(1, vec![b'X'; 28]);
         let store = LedgerCommitStore {
-            physical: DualCommitStore {
-                slot0: Some(committed),
-                slot1: None,
+            physical: SnapshotCommitStore {
+                current: Some(committed),
             },
         };
 
@@ -1520,9 +1518,8 @@ mod tests {
         let mut payload = enveloped_payload(&committed_ledger(1));
         payload[12..16].copy_from_slice(&(LEDGER_PAYLOAD_FORMAT_VERSION + 1).to_le_bytes());
         let store = LedgerCommitStore {
-            physical: DualCommitStore {
-                slot0: Some(CommittedGenerationBytes::new(1, payload)),
-                slot1: None,
+            physical: SnapshotCommitStore {
+                current: Some(CommittedGenerationBytes::new(1, payload)),
             },
         };
 
@@ -1548,28 +1545,12 @@ mod tests {
         let mut unsupported = genesis.clone();
         unsupported[12..16].copy_from_slice(&(LEDGER_PAYLOAD_FORMAT_VERSION + 1).to_le_bytes());
         let cases = [
-            ("empty", None, None),
-            ("one slot", Some(committed.clone()), None),
-            (
-                "identical slots",
-                Some(committed.clone()),
-                Some(committed.clone()),
-            ),
-            (
-                "corrupt inactive",
-                Some(committed.clone()),
-                Some(corrupt.clone()),
-            ),
-            ("corrupt active", Some(corrupt), Some(committed.clone())),
-            (
-                "ambiguous",
-                Some(committed),
-                Some(CommittedGenerationBytes::new(0, vec![1])),
-            ),
+            ("empty", None),
+            ("current", Some(committed)),
+            ("corrupt", Some(corrupt)),
             (
                 "unsupported format",
                 Some(CommittedGenerationBytes::new(0, unsupported)),
-                None,
             ),
             (
                 "invalid CBOR",
@@ -1579,12 +1560,10 @@ mod tests {
                         .try_encode()
                         .unwrap(),
                 )),
-                None,
             ),
             (
                 "generation mismatch",
                 Some(CommittedGenerationBytes::new(1, genesis)),
-                None,
             ),
             (
                 "invalid committed integrity",
@@ -1592,14 +1571,13 @@ mod tests {
                     3,
                     enveloped_payload(&ledger()),
                 )),
-                None,
             ),
         ];
 
-        for (label, slot0, slot1) in cases {
-            let empty = slot0.is_none() && slot1.is_none();
+        for (label, current) in cases {
+            let empty = current.is_none();
             let store = LedgerCommitStore {
-                physical: DualCommitStore { slot0, slot1 },
+                physical: SnapshotCommitStore { current },
             };
             let before = store.clone();
             let (recovered, diagnostic) = store.recover_with_diagnostic();
@@ -1655,7 +1633,7 @@ mod tests {
     }
 
     #[test]
-    fn ledger_commit_store_rejects_corrupt_latest_slot_without_rollback() {
+    fn ledger_commit_store_rejects_corrupt_current_snapshot() {
         let mut store = LedgerCommitStore::default();
         let genesis = committed_ledger(0);
         store.commit(&genesis).expect("genesis commit");
@@ -1675,7 +1653,12 @@ mod tests {
             .expect("second generation");
 
         store.commit(&second).expect("second commit");
-        store.physical.slot0.as_mut().expect("latest slot").checksum ^= 1;
+        store
+            .physical
+            .current
+            .as_mut()
+            .expect("latest slot")
+            .checksum ^= 1;
 
         let err = store
             .recover()
@@ -1683,65 +1666,34 @@ mod tests {
 
         assert_eq!(
             err,
-            LedgerCommitError::Recovery(CommitRecoveryError::InvalidCommitSlots {
-                slot0_invalid: true,
-                slot1_invalid: false,
-            })
+            LedgerCommitError::Recovery(CommitRecoveryError::InvalidSnapshot { generation: 2 })
         );
     }
 
     #[test]
-    fn ledger_commit_store_recovers_identical_duplicate_slots() {
-        let ledger = committed_ledger(0)
-            .stage_validated_generation(&validated(
-                0,
-                vec![declaration("app.users.v1", 100, Some(1))],
-            ))
-            .expect("first generation");
-        let payload = enveloped_payload(&ledger);
-        let committed = CommittedGenerationBytes::new(ledger.current_generation, payload);
-        let store = LedgerCommitStore {
-            physical: DualCommitStore {
-                slot0: Some(committed.clone()),
-                slot1: Some(committed),
-            },
-        };
-
-        let recovered = store.recover().expect("recovered");
-
-        assert_eq!(recovered.ledger(), &ledger);
-    }
-
-    #[test]
-    fn ledger_commit_store_rejects_corrupt_inactive_ledger() {
+    fn ledger_commit_store_rejects_corrupt_current_ledger() {
         let mut store = LedgerCommitStore::default();
         let first = committed_ledger(1);
         let second = committed_ledger(2);
 
         store.commit(&first).expect("first commit");
-        store
-            .write_corrupt_inactive_ledger(&second)
-            .expect("corrupt write");
+        store.write_corrupt_ledger(&second).expect("corrupt write");
         let err = store.recover().expect_err("corrupt slot");
 
         assert_eq!(
             err,
-            LedgerCommitError::Recovery(CommitRecoveryError::InvalidCommitSlots {
-                slot0_invalid: false,
-                slot1_invalid: true,
-            })
+            LedgerCommitError::Recovery(CommitRecoveryError::InvalidSnapshot { generation: 2 })
         );
     }
 
     #[test]
     fn ledger_commit_store_rejects_physical_logical_generation_mismatch() {
         let store = LedgerCommitStore {
-            physical: DualCommitStore {
-                slot0: Some(CommittedGenerationBytes::new(
+            physical: SnapshotCommitStore {
+                current: Some(CommittedGenerationBytes::new(
                     7,
                     enveloped_payload(&committed_ledger(6)),
                 )),
-                slot1: None,
             },
         };
         let err = store.recover().expect_err("mismatch");
@@ -1784,14 +1736,14 @@ mod tests {
 
         assert_eq!(recovered.current_generation(), 3);
         assert_eq!(recovered.physical_generation(), 3);
-        assert!(!store.physical().is_uninitialized());
+        assert!(store.physical().current().is_some());
     }
 
     #[test]
     fn ledger_commit_store_rejects_corrupt_store_even_with_genesis() {
         let mut store = LedgerCommitStore::default();
         store
-            .write_corrupt_inactive_ledger(&ledger())
+            .write_corrupt_ledger(&ledger())
             .expect("corrupt write");
 
         let err = store
@@ -1800,10 +1752,7 @@ mod tests {
 
         assert!(matches!(
             err,
-            LedgerCommitError::Recovery(CommitRecoveryError::InvalidCommitSlots {
-                slot0_invalid: true,
-                slot1_invalid: false,
-            })
+            LedgerCommitError::Recovery(CommitRecoveryError::InvalidSnapshot { generation: 3 })
         ));
     }
 
@@ -1825,9 +1774,8 @@ mod tests {
         ));
         let payload = enveloped_payload(&ledger);
         let mut invalid = LedgerCommitStore {
-            physical: DualCommitStore {
-                slot0: Some(CommittedGenerationBytes::new(1, payload)),
-                slot1: None,
+            physical: SnapshotCommitStore {
+                current: Some(CommittedGenerationBytes::new(1, payload)),
             },
         };
         assert!(invalid.recover().is_err());
@@ -1839,9 +1787,8 @@ mod tests {
         ] {
             let payload = LedgerPayloadEnvelope::current(bytes).try_encode().unwrap();
             let invalid = LedgerCommitStore {
-                physical: DualCommitStore {
-                    slot0: Some(CommittedGenerationBytes::new(1, payload)),
-                    slot1: None,
+                physical: SnapshotCommitStore {
+                    current: Some(CommittedGenerationBytes::new(1, payload)),
                 },
             };
             assert!(matches!(

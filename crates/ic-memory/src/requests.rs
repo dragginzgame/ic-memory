@@ -35,12 +35,9 @@ impl<'de> Deserialize<'de> for MemoryRequest {
             schema: SchemaMetadata,
         }
         let request = Request::deserialize(deserializer)?;
-        Self::new(
-            request.authority,
-            request.stable_key.as_str(),
-            request.schema,
-        )
-        .map_err(D::Error::custom)
+        validate_external_authority(&request.authority).map_err(D::Error::custom)?;
+        Self::from_checked_key(request.authority, request.stable_key, request.schema)
+            .map_err(D::Error::custom)
     }
 }
 
@@ -55,6 +52,16 @@ impl MemoryRequest {
         validate_external_authority(&authority)?;
         let stable_key =
             crate::StableKey::parse(stable_key).map_err(crate::DeclarationSnapshotError::Key)?;
+        Self::from_checked_key(authority, stable_key, schema)
+    }
+
+    // Callers validate authority before entry. Preserve the checked key's owned
+    // allocation; decoding has already enforced its grammar and wire shape.
+    fn from_checked_key(
+        authority: String,
+        stable_key: crate::StableKey,
+        schema: SchemaMetadata,
+    ) -> Result<Self, MemoryDeclarationError> {
         if is_ic_memory_stable_key(stable_key.as_str()) {
             return Err(MemoryDeclarationError::ReservedStableKey {
                 stable_key: stable_key.as_str().to_string(),

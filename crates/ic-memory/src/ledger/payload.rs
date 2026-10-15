@@ -74,7 +74,10 @@ impl LedgerPayloadEnvelope {
 pub(super) fn encode_ledger(
     ledger: &super::AllocationLedger,
 ) -> Result<Vec<u8>, super::LedgerIntegrityError> {
-    let mut writer = LedgerWriter(vec![0; LEDGER_PAYLOAD_HEADER_LEN]);
+    let mut writer = crate::bounded_writer::BoundedWriter::new(
+        vec![0; LEDGER_PAYLOAD_HEADER_LEN],
+        crate::constants::MAX_COMMITTED_PAYLOAD_BYTES,
+    );
     match ciborium::into_writer(ledger, &mut writer) {
         Ok(()) => (),
         Err(ciborium::ser::Error::Io(err)) if err.kind() == std::io::ErrorKind::WriteZero => {
@@ -88,7 +91,7 @@ pub(super) fn encode_ledger(
             panic!("allocation ledger serialization failed");
         }
     }
-    let mut bytes = writer.0;
+    let mut bytes = writer.bytes;
     let payload_len = bytes.len() - LEDGER_PAYLOAD_HEADER_LEN;
     bytes[..LEDGER_PAYLOAD_HEADER_LEN].copy_from_slice(&encoded_header(payload_len));
     Ok(bytes)
@@ -159,39 +162,6 @@ pub(super) fn decode_payload(bytes: &[u8]) -> Result<&[u8], LedgerPayloadEnvelop
     Ok(&bytes[LEDGER_PAYLOAD_HEADER_LEN..])
 }
 
-// Keep a single serialization pass, but stop before an oversized write or a
-// geometric capacity reservation can exceed the final envelope's byte ceiling.
-// Partial output is local and discarded on refusal, before physical mutation.
-struct LedgerWriter(Vec<u8>);
-
-impl std::io::Write for LedgerWriter {
-    fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
-        self.write_all(bytes)?;
-        Ok(bytes.len())
-    }
-
-    // Ciborium uses write_all; this buffer accepts an entire slice or refuses
-    // it, so it needs no partial-write retry loop from the default adapter.
-    #[inline]
-    fn write_all(&mut self, bytes: &[u8]) -> std::io::Result<()> {
-        let limit = crate::constants::MAX_COMMITTED_PAYLOAD_BYTES;
-        if bytes.len() > limit - self.0.len() {
-            return Err(std::io::ErrorKind::WriteZero.into());
-        }
-        let required = self.0.len() + bytes.len();
-        if required > self.0.capacity() {
-            let capacity = self.0.capacity().saturating_mul(2).max(required).min(limit);
-            self.0.reserve_exact(capacity - self.0.len());
-        }
-        self.0.extend_from_slice(bytes);
-        Ok(())
-    }
-
-    fn flush(&mut self) -> std::io::Result<()> {
-        Ok(())
-    }
-}
-
 // Both writers establish the payload bound before constructing this header.
 fn encoded_header(payload_len: usize) -> [u8; LEDGER_PAYLOAD_HEADER_LEN] {
     let mut header = [0; LEDGER_PAYLOAD_HEADER_LEN];
@@ -259,13 +229,16 @@ mod tests {
     fn ledger_writer_admits_exact_ceiling_and_refuses_without_partial_append() {
         use std::io::Write;
 
-        let mut writer = LedgerWriter(vec![0; LEDGER_PAYLOAD_HEADER_LEN]);
+        let mut writer = crate::bounded_writer::BoundedWriter::new(
+            vec![0; LEDGER_PAYLOAD_HEADER_LEN],
+            crate::constants::MAX_COMMITTED_PAYLOAD_BYTES,
+        );
         let chunk = [42; 4096];
         for _ in 0..crate::constants::MAX_LEDGER_BYTES / chunk.len() {
             writer.write_all(&chunk).unwrap();
         }
         assert_eq!(
-            writer.0.len(),
+            writer.bytes.len(),
             crate::constants::MAX_COMMITTED_PAYLOAD_BYTES
         );
         writer.write_all(&[]).unwrap();
@@ -274,23 +247,26 @@ mod tests {
             std::io::ErrorKind::WriteZero
         );
         assert_eq!(
-            writer.0.len(),
+            writer.bytes.len(),
             crate::constants::MAX_COMMITTED_PAYLOAD_BYTES
         );
         assert!(
-            writer.0[LEDGER_PAYLOAD_HEADER_LEN..]
+            writer.bytes[LEDGER_PAYLOAD_HEADER_LEN..]
                 .iter()
                 .all(|&byte| byte == 42)
         );
 
-        let mut writer = LedgerWriter(vec![0; LEDGER_PAYLOAD_HEADER_LEN]);
-        let before = writer.0.clone();
+        let mut writer = crate::bounded_writer::BoundedWriter::new(
+            vec![0; LEDGER_PAYLOAD_HEADER_LEN],
+            crate::constants::MAX_COMMITTED_PAYLOAD_BYTES,
+        );
+        let before = writer.bytes.clone();
         assert!(
             writer
                 .write(&vec![42; crate::constants::MAX_LEDGER_BYTES + 1])
                 .is_err()
         );
-        assert_eq!(writer.0, before);
+        assert_eq!(writer.bytes, before);
     }
 
     #[test]

@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.39.0]
+
+- **Breaking:** retain one checksummed current ledger snapshot and expose current-snapshot
+  recovery diagnostics. Previous physical records are incompatible; retained
+  installations require explicit data disposition before deployment
+  ([#106 — One checksummed current ledger snapshot](https://github.com/dragginzgame/ic-memory/issues/106)).
+
+
+- Reuse admitted runtime tools in native CI through optional, bounded caches,
+  retaining exact CLI/server checks and the complete host matrix
+  ([#62 — Qualify native tooling and evidence](https://github.com/dragginzgame/ic-memory/issues/62)).
+
+- Share bounded ledger and Cell serialization buffers, preserving wire bytes,
+  oversized-write refusal and installed persistence recovery
+  ([#100 — Share bounded serialization buffers](https://github.com/dragginzgame/ic-memory/issues/100)).
+
+[Detailed notes](docs/changelog/0.39.md)
+
 ## [0.38.0] - 2026-10-14
 
 ### Fixed

@@ -55,9 +55,8 @@ pub use policy::GenericAllocationPolicy;
 
 use self::policy::{RuntimeMemoryManagerPolicy, runtime_bootstrap_error_from_bootstrap};
 use crate::{
-    AllocationBootstrap, AllocationLedger, CommittedAllocations, PolicyIdentity,
-    RuntimeBootstrapPolicy, STABLE_CELL_VALUE_OFFSET, StableCellLedgerError,
-    StableCellLedgerRecord,
+    AllocationLedger, CommittedAllocations, PolicyIdentity, RuntimeBootstrapPolicy,
+    STABLE_CELL_VALUE_OFFSET, StableCellLedgerError, StableCellLedgerRecord,
     requests::SealedDeclarationSnapshot,
     slot::MEMORY_MANAGER_LEDGER_ID,
     stable_cell::{EncodedLedgerRecord, decode_stable_cell_ledger_record_from_memory},
@@ -287,9 +286,13 @@ impl<M: Memory> MemoryRuntime<M> {
         let runtime_policy = RuntimeMemoryManagerPolicy {
             custom_policy: policy,
         };
-        let commit = AllocationBootstrap::new(record.store_mut())
-            .validate_against(recovered, resolved, &runtime_policy)
-            .map_err(runtime_bootstrap_error_from_bootstrap)?;
+        let commit = crate::bootstrap::prepare_commit(
+            record.store_mut(),
+            recovered,
+            resolved,
+            &runtime_policy,
+        )
+        .map_err(runtime_bootstrap_error_from_bootstrap)?;
         write_ledger_cell(memory, &record)?;
         let committed = commit.confirm_persisted().into_application_allocations();
         self.lifecycle = RuntimeLifecycle::Bootstrapped {

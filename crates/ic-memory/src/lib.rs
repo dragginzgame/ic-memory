@@ -66,7 +66,7 @@
 //! `ic-stable-structures` `MemoryManager` IDs are the first-class supported
 //! physical slot substrate. That ID domain is `u8`: IDs `0..=254` are usable,
 //! and ID `255` is always the `ic-stable-structures` unallocated sentinel.
-//! Protected dual-slot commits and stable-cell encoding remain internal to the
+//! Protected current-snapshot commits and stable-cell encoding remain internal to the
 //! runtime. Public diagnostics describe their state without granting a manual
 //! commit or persistence-confirmation route.
 //!
@@ -76,6 +76,7 @@
 
 mod allocation_pool;
 mod bootstrap;
+mod bounded_writer;
 mod capability;
 mod cbor;
 mod constants;
@@ -144,7 +145,6 @@ mod test_cbor {
 pub use ic_stable_structures;
 
 pub use allocation_pool::{MemoryAllocationPool, MemoryAllocationPoolError, MemoryAuthority};
-pub(crate) use bootstrap::AllocationBootstrap;
 pub use bootstrap::BootstrapError;
 pub use capability::CommittedAllocations;
 pub use constants::{
@@ -166,9 +166,9 @@ pub use ledger::{
     LEDGER_PAYLOAD_FORMAT_VERSION, LedgerCommitError, LedgerIntegrityError,
     LedgerPayloadEnvelopeError, RecoveredLedger,
 };
-pub use physical::{CommitRecoveryError, CommitSlotDiagnostic, CommitStoreDiagnostic};
+pub use physical::{CommitRecoveryError, CommitSnapshotDiagnostic, CommitStoreDiagnostic};
 #[cfg(test)]
-pub(crate) use physical::{CommittedGenerationBytes, DualCommitStore};
+pub(crate) use physical::{CommittedGenerationBytes, SnapshotCommitStore};
 pub use policy::{AllocationPolicy, PolicyIdentity, PolicyIdentityError, RuntimeBootstrapPolicy};
 pub use requests::{
     MemoryDeclarationError, MemoryRequest, SealedDeclarationFingerprint, SealedDeclarationSnapshot,

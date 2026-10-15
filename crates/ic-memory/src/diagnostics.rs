@@ -357,7 +357,7 @@ mod tests {
     use crate::AllocationDeclaration;
     use crate::{
         ledger::AllocationRecord,
-        physical::{CommitRecoveryError, CommitSlotDiagnostic, CommitStoreDiagnostic},
+        physical::{CommitRecoveryError, CommitSnapshotDiagnostic, CommitStoreDiagnostic},
         schema::SchemaMetadata,
     };
 
@@ -489,8 +489,8 @@ mod tests {
             records: Vec::new(),
         };
         let commit_recovery = CommitStoreDiagnostic {
-            slot0: CommitSlotDiagnostic::Valid { generation: 3 },
-            slot1: CommitSlotDiagnostic::Empty,
+            current: CommitSnapshotDiagnostic::Valid { generation: 3 },
+
             recovery: Ok(3),
         };
 
@@ -540,8 +540,8 @@ mod tests {
             records: Vec::new(),
         };
         let commit_recovery = CommitStoreDiagnostic {
-            slot0: CommitSlotDiagnostic::Empty,
-            slot1: CommitSlotDiagnostic::Empty,
+            current: CommitSnapshotDiagnostic::Empty,
+
             recovery: Err(CommitRecoveryError::NoValidGeneration),
         };
 

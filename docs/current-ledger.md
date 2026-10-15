@@ -26,28 +26,42 @@ expectations rather than treating an earlier value as a current binding.
 
 There is one bounded codec and integrity validator. Logical CBOR is limited to
 64 KiB; each opaque payload adds its 24-byte envelope. The enclosing protected
-record is limited to 128 KiB + 4 KiB. Recovery and serialization scale with record
+record is limited to 64 KiB + 4 KiB. Recovery and serialization scale with record
 count, not the number of upgrades. Stable allocation remains page/bucket rounded.
 
-Two checksummed commit slots remain. They detect corrupt/ambiguous persisted
-state and preserve the current commit protocol. They are not an application audit
-log or rollback facility: any present corrupt slot fails closed. Both snapshots
-are serialized inside one stable Cell. IC message rollback owns atomic stable
-writes; arbitrary native files are not made crash atomic by this protocol.
+One checksummed current snapshot is retained. The physical `current` field and
+`ICMESNAP` marker identify the 0.39.0 representation; missing, corrupt or
+incompatible current bytes never silently initialize a ledger. Recovery checks
+the marker, checksum, logical envelope, ownership integrity and physical/logical
+generation binding. A commit replaces the current record only after validating
+its predecessor and exact successor. No previous payload or rollback history is
+stored. The runtime persists the owning Cell before publishing allocation authority.
+IC message rollback owns atomic stable writes; arbitrary native backends must
+provide their own transaction boundary.
+
+`CommitStoreDiagnostic.current` reports `CommitSnapshotDiagnostic::{Empty, Valid,
+Invalid}`. Its `recovery` result carries the checked physical generation or its
+error; logical decoding remains a separate boundary. `InvalidSnapshot` reports
+an untrusted observed generation. It never authorizes fallback or a reset.
+
+Current measurements and rejection/upgrade checks are recorded in
+[single-snapshot qualification](single-snapshot-qualification.md).
 
 ## Hard cut and retained installations
 
-Released 0.27.0 changed public APIs, diagnostic JSON and the durable logical ledger.
-The family magic remains `ICMEMLED`; the current format marker is `ICMS`, version
-1. The former discriminator is unsupported before its logical data is decoded.
-There is no earlier-layout reader, automatic reset or migration engine.
+The 0.39.0 hard cut changes the physical representation and public recovery
+diagnostics. Two-slot images are incompatible. The logical family magic remains
+`ICMEMLED`, marker `ICMS`, version 1. The earlier 0.27.0 logical cut and historical
+single-snapshot experiments retain their original source bindings in
+[historical qualification](current-ledger-qualification.md); they do not qualify
+the current implementation. There is one current decoder, with no earlier-layout
+reader, automatic reset or migration engine.
 
-Current fixture producers, readers, examples and source callers are updated
-inside this repository. External framework/application callers must remove
-history and timestamp APIs, consume current record/schema fields, and regenerate
-their own current DTO fixtures. The underlying pinned MemoryManager layout and
-application collection bytes are unchanged by this cut, but that does not make
-an existing ledger directly readable.
+Current fixture producers, readers, examples and source callers use the current
+snapshot. External diagnostics must consume the one `current` snapshot status and
+`InvalidSnapshot` failure instead of two-slot fields/ambiguity errors. The pinned
+MemoryManager layout, application collection bytes and permanent logical mappings
+are unchanged; existing physical ledger bytes still require explicit disposition.
 
 Before installing on a canister with an earlier ledger, the maintainer must
 identify the retained installation and choose its explicit data disposition.
