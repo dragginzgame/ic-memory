@@ -1,6 +1,6 @@
 # Changelog
 
-## [0.40.0]
+## [0.40.0] - 2026-10-15
 
 - **Breaking build requirement:** require Rust 1.91.0 and delegate native Cargo
   metadata observation to IC Build 0.4.0, retaining Memory's release admission
