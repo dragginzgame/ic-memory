@@ -208,3 +208,6 @@ pub(crate) use validation::validate_allocations;
 
 #[cfg(test)]
 mod allocation_measurements_tests;
+
+#[cfg(feature = "test-support")]
+pub mod testing;

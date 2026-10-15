@@ -244,17 +244,11 @@ impl<M: Memory> MemoryRuntime<M> {
 
     fn validate_pool_custody(
         &self,
-        ledger: &AllocationLedger,
+        occupied: &[bool; crate::constants::MAX_ALLOCATIONS],
         pool: &crate::MemoryAllocationPool,
     ) -> Result<(), super::MemoryResolutionError> {
         for id in 0..crate::MEMORY_MANAGER_INVALID_ID {
-            if pool.contains(id)
-                && self.memory_size_pages(id) != 0
-                && !ledger
-                    .records()
-                    .iter()
-                    .any(|record| record.slot().id() == id)
-            {
+            if pool.contains(id) && self.memory_size_pages(id) != 0 && !occupied[usize::from(id)] {
                 return Err(super::MemoryResolutionError::UnmanagedAllocation { id });
             }
         }
@@ -272,7 +266,8 @@ impl<M: Memory> MemoryRuntime<M> {
         let mut record = decode_stable_cell_ledger_record_from_memory(&memory)?;
         let genesis = AllocationLedger::empty_genesis();
         let recovered = record.store_mut().recover_or_initialize(&genesis)?;
-        self.validate_pool_custody(recovered.ledger(), pool)?;
+        let occupied = recovered.ledger().occupied_slots();
+        self.validate_pool_custody(&occupied, pool)?;
         if memory.size() == 0 {
             // Empty memory decodes to an uninitialized record. Preserve fresh
             // cell acquisition before admission without persisting genesis.
@@ -282,7 +277,7 @@ impl<M: Memory> MemoryRuntime<M> {
         let preparation = policy.prepare_bootstrap(&mut admission);
         let historical = admission.complete()?;
         preparation.map_err(RuntimeBootstrapError::AdmissionPolicy)?;
-        let resolved = declarations.resolve(recovered.ledger(), historical, pool)?;
+        let resolved = declarations.resolve(recovered.ledger(), &occupied, historical, pool)?;
         let runtime_policy = RuntimeMemoryManagerPolicy {
             custom_policy: policy,
         };

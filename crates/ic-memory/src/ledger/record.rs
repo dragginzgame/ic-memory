@@ -213,4 +213,13 @@ impl AllocationLedger {
     pub fn records(&self) -> &[AllocationRecord] {
         &self.records
     }
+
+    // Every retained lifecycle state owns its ID, including omitted/retired keys.
+    pub(crate) fn occupied_slots(&self) -> [bool; crate::constants::MAX_ALLOCATIONS] {
+        let mut occupied = [false; crate::constants::MAX_ALLOCATIONS];
+        for record in &self.records {
+            occupied[usize::from(record.slot.id())] = true;
+        }
+        occupied
+    }
 }

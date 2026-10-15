@@ -31,6 +31,65 @@ fn empty_runtime() -> MemoryRuntime<VectorMemory> {
 
 const WASM_PAGE_SIZE_BYTES: usize = 65_536;
 
+#[test]
+fn doctor_keeps_memory_observations_before_policy_callbacks() {
+    struct GrowingPolicy<'a>(&'a MemoryRuntime<VectorMemory>);
+
+    impl AllocationPolicy for GrowingPolicy<'_> {
+        type Error = Infallible;
+
+        fn validate_key(&self, _key: &StableKey) -> Result<(), Self::Error> {
+            self.0
+                .open_memory("runtime_tests.rows.v1")
+                .unwrap()
+                .grow(1)
+                .unwrap();
+            Ok(())
+        }
+
+        fn validate_slot(
+            &self,
+            _key: &StableKey,
+            _slot: &MemoryManagerSlot,
+        ) -> Result<(), Self::Error> {
+            Ok(())
+        }
+    }
+
+    impl RuntimeBootstrapPolicy for GrowingPolicy<'_> {
+        fn runtime_bootstrap_identity(&self) -> Result<PolicyIdentity, PolicyIdentityError> {
+            self.0
+                .open_memory("runtime_tests.rows.v1")
+                .unwrap()
+                .grow(1)
+                .unwrap();
+            PolicyIdentity::new("runtime-tests.growing-doctor", 1)
+        }
+    }
+
+    let mut runtime = MemoryRuntime::new_with_config(
+        VectorMemory::default(),
+        super::MemoryManagerConfig::new(1).unwrap(),
+    )
+    .unwrap();
+    runtime
+        .bootstrap(&declarations(), &pool(), &GenericAllocationPolicy)
+        .unwrap();
+    let memory = runtime.open_memory("runtime_tests.rows.v1").unwrap();
+    memory.grow(1).unwrap();
+    let report = runtime.doctor_report(&declarations(), &pool(), &GrowingPolicy(&runtime));
+    assert_eq!(memory.size(), 3);
+    assert_eq!(report.validation, DiagnosticCheck::Passed);
+    let record = report
+        .ledger
+        .unwrap()
+        .records
+        .into_iter()
+        .find(|record| record.allocation.stable_key().as_str() == "runtime_tests.rows.v1")
+        .unwrap();
+    assert_eq!(record.memory_size.unwrap().wasm_pages, 1);
+}
+
 fn one_page_backing(prefix: [u8; 4]) -> (VectorMemory, Vec<u8>) {
     let memory = VectorMemory::default();
     assert_eq!(memory.grow(1), 0);

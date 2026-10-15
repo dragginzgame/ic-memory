@@ -1,6 +1,6 @@
 use crate::{
-    AllocationLedger, AllocationState, MemoryManagerSlot, MemoryRequest, SchemaMetadata,
-    SealedDeclarationSnapshot, StableKey,
+    AllocationDeclaration, AllocationLedger, AllocationState, MemoryManagerSlot, MemoryRequest,
+    SchemaMetadata, SealedDeclarationSnapshot, StableKey,
 };
 
 ///
@@ -60,7 +60,7 @@ pub struct BootstrapAdmission<'a> {
     ledger: &'a AllocationLedger,
     declarations: &'a SealedDeclarationSnapshot,
     pool: &'a crate::MemoryAllocationPool,
-    selected: Vec<MemoryRequest>,
+    selected: Vec<AllocationDeclaration>,
     failure: Option<BootstrapAdmissionError>,
 }
 
@@ -119,7 +119,7 @@ impl<'a> BootstrapAdmission<'a> {
             || self
                 .selected
                 .iter()
-                .any(|request| request.stable_key() == key)
+                .any(|declaration| declaration.stable_key() == key)
     }
 
     /// Include a known, nonretired key under an explicit current host namespace grant.
@@ -162,11 +162,11 @@ impl<'a> BootstrapAdmission<'a> {
         self.pool.validate_authority(key, authority)?;
         self.pool.validate_id(record.slot().id())?;
         self.selected
-            .push(request.with_schema(record.schema().clone()));
+            .push(request.into_declaration(record.slot().clone(), record.schema().clone()));
         Ok(())
     }
 
-    pub(super) fn complete(self) -> Result<Vec<MemoryRequest>, BootstrapAdmissionError> {
+    pub(super) fn complete(self) -> Result<Vec<AllocationDeclaration>, BootstrapAdmissionError> {
         if let Some(error) = self.failure {
             return Err(error);
         }

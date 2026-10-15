@@ -476,7 +476,7 @@ fn completion_bound_and_reservation_activation_preserve_evidence() {
     drop(runtime);
     let mut runtime = MemoryRuntime::new(backing).unwrap();
     let policy = AdmissionPolicy {
-        selections: vec![("app", "app.reserved.journal.v1")],
+        selections: vec![("app", "app.reserved.journal.v1"), ("app", JOURNAL)],
         ..Default::default()
     };
     let committed = runtime
@@ -493,4 +493,17 @@ fn completion_bound_and_reservation_activation_preserve_evidence() {
         &crate::SchemaMetadata::new(Some(5)).unwrap()
     );
     assert_eq!(declaration.slot().id(), 12);
+    assert!(
+        committed
+            .declarations()
+            .windows(2)
+            .all(|pair| { pair[0].stable_key() < pair[1].stable_key() })
+    );
+    assert_eq!(
+        committed
+            .slot_for(&StableKey::parse(JOURNAL).unwrap())
+            .unwrap()
+            .id(),
+        11
+    );
 }

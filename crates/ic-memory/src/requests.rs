@@ -8,7 +8,7 @@ use crate::{
     text::validate_diagnostic_text,
 };
 use serde::{Deserialize, Serialize};
-use std::{borrow::Cow, sync::Arc};
+use std::sync::Arc;
 
 ///
 /// MemoryRequest
@@ -74,10 +74,18 @@ impl MemoryRequest {
         })
     }
 
-    /// Attach schema metadata from the immutable, integrity-checked recovered ledger.
-    pub(crate) const fn with_schema(mut self, schema: SchemaMetadata) -> Self {
-        self.schema = schema;
-        self
+    // Admission has checked the immutable recovered slot and host grant.
+    pub(crate) fn into_declaration(
+        self,
+        slot: crate::MemoryManagerSlot,
+        schema: SchemaMetadata,
+    ) -> AllocationDeclaration {
+        AllocationDeclaration {
+            stable_key: self.stable_key,
+            slot,
+            label: None,
+            schema,
+        }
     }
 
     /// Borrow the requested durable key.
@@ -222,7 +230,8 @@ impl SealedDeclarationSnapshot {
     pub(crate) fn resolve(
         &self,
         ledger: &crate::AllocationLedger,
-        historical: Vec<MemoryRequest>,
+        occupied: &[bool; crate::constants::MAX_ALLOCATIONS],
+        historical: Vec<AllocationDeclaration>,
         pool: &crate::MemoryAllocationPool,
     ) -> Result<DeclarationSnapshot, crate::MemoryResolutionError> {
         if self.requests().len() + historical.len() > 254 {
@@ -230,23 +239,12 @@ impl SealedDeclarationSnapshot {
         }
         let mut declarations = Vec::with_capacity(self.requests().len() + historical.len() + 1);
         declarations.push(internal_ledger_declaration());
-        let mut occupied = [false; 255];
-        for record in ledger.records() {
-            occupied[usize::from(record.slot().id())] = true;
-        }
         // Retained slots are already occupied. The iterator consumes each new
         // ID once, so no request rescans or updates that recovered occupancy.
         let mut available_ids = 0..crate::MEMORY_MANAGER_INVALID_ID;
-        // Only the original requests can allocate new slots and they are already
-        // canonical. Admission selections are known-only: all their slots are
-        // occupied above regardless of selection order. Final declarations are
-        // canonicalized and checked together below.
-        for request in self
-            .requests()
-            .iter()
-            .map(Cow::Borrowed)
-            .chain(historical.into_iter().map(Cow::Owned))
-        {
+        // Admission already resolved historical selections against this ledger
+        // and pool. Only the original requests can allocate new slots.
+        for request in self.requests() {
             let historical = ledger
                 .records()
                 .iter()
@@ -269,25 +267,18 @@ impl SealedDeclarationSnapshot {
             // Request construction checked authority/key/schema, and recovery
             // checked historical schemas. The final declaration needs only
             // key/schema: do not copy the already-checked authority string.
-            // Admission selections transfer those owned fields without copying.
-            let declaration = match request {
-                Cow::Borrowed(request) => AllocationDeclaration {
-                    stable_key: request.stable_key.clone(),
-                    slot,
-                    label: None,
-                    schema: request.schema.clone(),
-                },
-                Cow::Owned(request) => AllocationDeclaration {
-                    stable_key: request.stable_key,
-                    slot,
-                    label: None,
-                    schema: request.schema,
-                },
-            };
-            declarations.push(declaration);
+            declarations.push(AllocationDeclaration {
+                stable_key: request.stable_key.clone(),
+                slot,
+                label: None,
+                schema: request.schema.clone(),
+            });
         }
-        crate::sort::sort_unstable_by(&mut declarations, |a, b| a.stable_key().cmp(b.stable_key()));
-        Ok(DeclarationSnapshot::new(declarations).map_err(MemoryDeclarationError::from)?)
+        declarations.extend(historical);
+        Ok(
+            DeclarationSnapshot::canonicalize(declarations)
+                .map_err(MemoryDeclarationError::from)?,
+        )
     }
 
     /// Return the deterministic fingerprint of this sealed declaration meaning.

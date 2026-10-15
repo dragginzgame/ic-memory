@@ -280,8 +280,47 @@ fn declaration_resolution_allocations() {
         )
         .unwrap();
         measure(&format!("resolve_{count}"), 0, 10, || {
-            let resolved = black_box(declarations.resolve(&ledger, vec![], &pool).unwrap());
+            let resolved = black_box(
+                declarations
+                    .resolve(&ledger, &ledger.occupied_slots(), vec![], &pool)
+                    .unwrap(),
+            );
             assert_eq!(resolved.declarations().len(), count + 1);
+        });
+    }
+}
+
+#[test]
+#[ignore = "explicit matched doctor allocation measurement; release mode and one thread"]
+fn doctor_report_allocations() {
+    println!("phase,generations,iterations,allocations,reallocations,peak_bytes,elapsed_us");
+    let pool = crate::MemoryAllocationPool::new(
+        vec![crate::MemoryAuthority::new("doctor", "app.").unwrap()],
+        vec![],
+    )
+    .unwrap();
+    for count in [0, 1, 64, 245] {
+        let requests = (0..count)
+            .map(|id| {
+                let prefix = format!("app.store{id:03}.");
+                let key = format!("{prefix}{}.v1", "k".repeat(128 - prefix.len() - 3));
+                crate::MemoryRequest::new("doctor", &key, crate::SchemaMetadata::default()).unwrap()
+            })
+            .collect();
+        let declarations = SealedDeclarationSnapshot::new(requests).unwrap();
+        let mut runtime = MemoryRuntime::new_with_config(
+            VectorMemory::default(),
+            MemoryManagerConfig::new(1).unwrap(),
+        )
+        .unwrap();
+        runtime
+            .bootstrap(&declarations, &pool, &GenericAllocationPolicy)
+            .unwrap();
+        measure(&format!("doctor_{count}"), 1, 20, || {
+            let report =
+                black_box(runtime.doctor_report(&declarations, &pool, &GenericAllocationPolicy));
+            assert_eq!(report.ledger.as_ref().unwrap().records.len(), count + 1);
+            assert_eq!(report.validation, crate::DiagnosticCheck::Passed);
         });
     }
 }

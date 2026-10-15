@@ -577,6 +577,16 @@ struct Substitute {
 }
 
 impl Execute for Substitute {
+    fn cargo_target(&self, root: &Path) -> Result<PathBuf> {
+        let mut state = self.state.borrow_mut();
+        state.calls.push(vec!["cargo-metadata".to_owned()]);
+        match state.fail.as_deref() {
+            Some("metadata") => Err("fixture metadata failure".into()),
+            Some("relative-metadata") => Ok(PathBuf::from("relative output")),
+            _ => Ok(root.join("configured output")),
+        }
+    }
+
     fn write_json(&self, path: &Path, value: &impl Serialize) -> Result<()> {
         // Reuse the fixture's before/after-publication fault injection. The
         // native streaming boundary is exercised separately below.
@@ -712,22 +722,6 @@ impl Execute for Substitute {
                 true,
             ),
             "rustc" => Ok(format!("fixture-rustc {}\n", args[0])),
-            "cargo"
-                if args
-                    == [
-                        "metadata",
-                        "--locked",
-                        "--offline",
-                        "--no-deps",
-                        "--format-version",
-                        "1",
-                    ] =>
-            {
-                if state.fail.as_deref() == Some("metadata") {
-                    return Err("fixture metadata failure".into());
-                }
-                Ok(serde_json::json!({"target_directory": target}).to_string())
-            }
             "cargo" if args.get(1) == Some(&"--version") => {
                 Ok(format!("fixture-cargo {}\n", args[0]))
             }
@@ -1564,6 +1558,10 @@ fn preparation_retains_primary_and_rollback_errors_and_restores_other_owned_file
     struct RollbackFailures<'a>(&'a Substitute);
 
     impl Execute for RollbackFailures<'_> {
+        fn cargo_target(&self, root: &Path) -> Result<PathBuf> {
+            self.0.cargo_target(root)
+        }
+
         fn run(&self, root: &Path, program: &str, args: &[&str], capture: bool) -> Result<String> {
             let result = self.0.run(root, program, args, capture)?;
             if program == "cargo" && args.get(1) == Some(&"package") {
@@ -2869,7 +2867,8 @@ fn wasm_metadata_and_budgets_use_only_the_selected_artifact_directory() {
     assert!(check_wasm_artifacts(&target).is_err());
     fs::remove_file(path).unwrap();
     assert!(check_wasm_artifacts(&target).is_err());
-    assert!(target_directory("{}").is_err());
+    fixture.fail("relative-metadata");
+    assert!(fixture.repo.target().is_err());
     fixture.fail("metadata");
     assert!(fixture.repo.target().is_err());
 }

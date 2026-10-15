@@ -1,7 +1,7 @@
 .DEFAULT_GOAL := help
 .PHONY: help test version ensure-clean fetch-dependencies check-pins test-pins \
         install-tools tools-check install-host-tools host-tools-check install-ic-tools ic-tools-check test-tools test-failure-evidence \
-        lint-tooling test-hooks test-tooling validate validate-toolchain wasm-size \
+        lint-tooling test-hooks test-tooling test-fixture-cell validate validate-toolchain wasm-size \
         install-runtime-server runtime-server-check test-runtime \
         test-release-runner test-release-adapters \
         release-version release-preflight release-verify release-prepare-version \
@@ -40,8 +40,8 @@ TESTKIT_SERVER_DIRECTORY := $(CURDIR)/.tools/ic-testkit-server
 
 help:
 	@echo 'Setup: install-tools (host, IC, Cargo tools), fetch-dependencies, install-hooks; prepare the Rust toolchain first.'
-	@echo 'Focused checks: shared-tooling-check, tools-check, test-tools, test-failure-evidence, check-pins, test-pins, test-tooling, test-release-adapters, test-release-runner, test-hooks, fmt-check, lint-tooling.'
-	@echo 'Formatting: fmt. Full delivery checks: validate, validate-toolchain.'
+	@echo 'Focused checks: shared-tooling-check, tools-check, test-tools, test-failure-evidence, check-pins, test-pins, test-tooling, test-fixture-cell, test-release-adapters, test-release-runner, test-hooks, fmt-check, lint-tooling.'
+	@echo 'Formatting: fmt. Full release checks: validate, validate-toolchain.'
 	@echo 'Installed runtime: install-runtime-server (explicit Testkit setup), runtime-server-check (offline), test-runtime (prepared server and locked caches).'
 	@echo 'Report: cloc (root workspace; CLOC_MANIFEST selects an independent Cargo manifest). Fleet reports run in Shared Tooling.'
 	@echo 'Maintainer releases: release-patch, release-minor, release-major; normal targets recover unfinished releases.'
@@ -134,13 +134,18 @@ test-hooks: format-tools-check
 test:
 	+cargo +$(VALIDATION_TOOLCHAIN) test --locked --offline -- --test-threads=1
 
+test-fixture-cell:
+	+cargo +$(VALIDATION_TOOLCHAIN) clippy --locked --offline --lib --tests --features test-support -- -D warnings
+	+cargo +$(VALIDATION_TOOLCHAIN) test --locked --offline --lib --features test-support testing:: -- --test-threads=1
+	+cargo +$(VALIDATION_TOOLCHAIN) check --locked --offline --target wasm32-unknown-unknown --lib --features test-support
+
 version:
 	+@$(TOOL) version
 
 ensure-clean:
 	+@$(TOOL) ensure-clean
 
-# Full delivery suite; release/publication remain separately authorized.
+# Full release suite; release/publication remain separately authorized.
 validate:
 	$(MAKE) --no-print-directory validate-toolchain
 	+msrv="$$($(TOOL) msrv)" && \
@@ -148,7 +153,7 @@ validate:
 
 validate-toolchain:
 	$(MAKE) --no-print-directory shared-tooling-check tools-check format-tools-check
-	$(MAKE) --no-print-directory check-pins test-pins test-tools test-tooling test-release-adapters test-release-runner test-hooks fmt-check
+	$(MAKE) --no-print-directory check-pins test-pins test-tools test-tooling test-release-adapters test-release-runner test-hooks fmt-check test-fixture-cell
 	+cargo +$(VALIDATION_TOOLCHAIN) clippy --locked --offline --all-targets -- -D warnings
 	+cargo +$(VALIDATION_TOOLCHAIN) test --locked --offline -- --test-threads=1
 	+RUSTDOCFLAGS='-D warnings' cargo +$(VALIDATION_TOOLCHAIN) doc --locked --offline --no-deps

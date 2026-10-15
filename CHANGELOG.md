@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.40.0]
+
+- **Breaking build requirement:** require Rust 1.91.0 and delegate native Cargo
+  metadata observation to IC Build 0.4.0, retaining Memory's release admission
+  ([#113 — Adopt Build metadata and Rust 1.91](https://github.com/dragginzgame/ic-memory/issues/113)).
+- Carry resolved historical declarations through bootstrap and avoid a second
+  declaration-key sort, preserving policy and collision refusal semantics
+  ([#112 — Carry resolved declarations](https://github.com/dragginzgame/ic-memory/issues/112)).
+
+- Reuse recovered-slot membership during bootstrap and consume doctor-report
+  records without copying their keys, preserving custody and policy observations
+  ([#108 — Reuse recovered-slot membership](https://github.com/dragginzgame/ic-memory/issues/108),
+  [#109 — Consume recovered doctor records](https://github.com/dragginzgame/ic-memory/issues/109)).
+
+- Add opt-in fixture byte-cell construction with explicit backing memory, storage
+  identity and bucket configuration, with native and Wasm feature checks
+  ([#104 — Share fixture byte-cell construction](https://github.com/dragginzgame/ic-memory/issues/104)).
+
+[Detailed notes](docs/changelog/0.40.md)
+
 ## [0.39.0] - 2026-10-15
 
 - **Breaking:** retain one checksummed current ledger snapshot and expose current-snapshot

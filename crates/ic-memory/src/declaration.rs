@@ -152,6 +152,23 @@ impl DeclarationSnapshot {
         Ok(Self { declarations })
     }
 
+    // Runtime resolution owns this order; public construction and decoding keep
+    // their original traversal and error precedence. Share identity checks below.
+    pub(crate) fn canonicalize(
+        mut declarations: Vec<AllocationDeclaration>,
+    ) -> Result<Self, DeclarationSnapshotError> {
+        if declarations.len() > crate::constants::MAX_ALLOCATIONS {
+            return Err(DeclarationSnapshotError::TooManyDeclarations);
+        }
+        crate::sort::sort_unstable_by(&mut declarations, |a, b| a.stable_key.cmp(&b.stable_key));
+        let mut duplicate_keys = [false; crate::constants::MAX_ALLOCATIONS];
+        for (index, pair) in declarations.windows(2).enumerate() {
+            duplicate_keys[index + 1] = pair[0].stable_key == pair[1].stable_key;
+        }
+        validate_declaration_identities(&declarations, &duplicate_keys)?;
+        Ok(Self { declarations })
+    }
+
     /// Return true when the snapshot has no declarations.
     #[must_use]
     pub const fn is_empty(&self) -> bool {
@@ -245,6 +262,13 @@ fn validate_declaration_set(
             .map(|(index, declaration)| (&declaration.stable_key, index))
             .collect(),
     );
+    validate_declaration_identities(declarations, &duplicate_keys)
+}
+
+fn validate_declaration_identities(
+    declarations: &[AllocationDeclaration],
+    duplicate_keys: &[bool; crate::constants::MAX_ALLOCATIONS],
+) -> Result<(), DeclarationSnapshotError> {
     let mut slots = [false; crate::constants::MAX_ALLOCATIONS];
 
     for (index, declaration) in declarations.iter().enumerate() {
@@ -353,6 +377,58 @@ mod tests {
                 err,
                 DeclarationSnapshotError::DuplicateSlot(MemoryManagerSlot::new(100).unwrap())
             );
+        }
+    }
+
+    #[test]
+    fn canonical_resolution_preserves_identity_failures_and_bounds() {
+        // Compare the runtime boundary with ordinary validation in canonical
+        // traversal order, including competing duplicate-key/slot failures.
+        let choices = [
+            ("app.a.v1", 10),
+            ("app.a.v1", 11),
+            ("app.b.v1", 10),
+            ("app.b.v1", 11),
+        ];
+        for code in 0..256 {
+            let mut code = code;
+            let input: Vec<_> = (0..4)
+                .map(|_| {
+                    let (key, id) = choices[code % choices.len()];
+                    code /= choices.len();
+                    declaration(key, id)
+                })
+                .collect();
+            let mut ordered = input.clone();
+            crate::sort::sort_unstable_by(&mut ordered, |a, b| a.stable_key.cmp(&b.stable_key));
+            assert_eq!(
+                DeclarationSnapshot::canonicalize(input),
+                DeclarationSnapshot::new(ordered)
+            );
+        }
+        for count in [0, 1, 254, 255, 256] {
+            let input: Vec<_> = (0..count)
+                .rev()
+                .map(|index| {
+                    declaration(
+                        &format!("app.store{index:03}.v1"),
+                        u8::try_from(index % 255).unwrap(),
+                    )
+                })
+                .collect();
+            let result = DeclarationSnapshot::canonicalize(input);
+            if count <= 255 {
+                let snapshot = result.unwrap();
+                assert_eq!(snapshot.len(), count);
+                assert!(
+                    snapshot
+                        .declarations()
+                        .windows(2)
+                        .all(|pair| { pair[0].stable_key < pair[1].stable_key })
+                );
+            } else {
+                assert_eq!(result, Err(DeclarationSnapshotError::TooManyDeclarations));
+            }
         }
     }
 }

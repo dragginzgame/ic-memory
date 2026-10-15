@@ -4,6 +4,7 @@
 //! package travel together in one receipt. Publication checks that evidence
 //! before dispatch; it never resolves a replacement lockfile.
 
+use ic_build::cargo::observation::{CargoFeatureSelection, CargoMetadataSpec, observe_metadata};
 use ic_host_artifacts::artifact::{Sha256Digest, copy_reader};
 use ic_host_fs::durable::{PublicationMode, WriteOptions};
 use ic_host_fs::read::{hash_file, open_regular_file};
@@ -153,6 +154,8 @@ struct Repository<E> {
 trait Execute {
     fn run(&self, root: &Path, program: &str, args: &[&str], capture: bool) -> Result<String>;
 
+    fn cargo_target(&self, root: &Path) -> Result<PathBuf>;
+
     fn write_bytes(&self, path: &Path, bytes: &[u8]) -> Result<()> {
         Ok(ic_host_fs::durable::write_bytes(path, bytes)?)
     }
@@ -194,6 +197,31 @@ trait Execute {
 struct Processes;
 
 impl Execute for Processes {
+    fn cargo_target(&self, root: &Path) -> Result<PathBuf> {
+        let metadata = observe_metadata(
+            &CargoMetadataSpec {
+                manifest_path: &root.join("Cargo.toml"),
+                include_dependencies: false,
+                filter_platform: None,
+                locked: true,
+                offline: true,
+                features: &CargoFeatureSelection::default(),
+            },
+            OutputLimits {
+                stdout: OutputLimit::Terminate(4 * 1024 * 1024),
+                stderr: OutputLimit::Terminate(64 * 1024),
+                timeout: None,
+            },
+            Command::new("cargo"),
+        )
+        .inspect_err(|error| {
+            if let Some(error) = error.downcast_ref::<ToolError>() {
+                report_tool_error("cargo", error);
+            }
+        })?;
+        Ok(metadata.target_directory.into_std_path_buf())
+    }
+
     fn run(&self, root: &Path, program: &str, args: &[&str], capture: bool) -> Result<String> {
         let mut command = Command::new(program);
         command.current_dir(root).args(args);
@@ -210,16 +238,7 @@ impl Execute for Processes {
             )
             .and_then(CompletedExecution::require_success)
             .and_then(CompletedExecution::require_complete)
-            .inspect_err(|error| {
-                // Host error formatting excludes output bytes; retain the
-                // command's stderr in CLI/gate logs before returning its cause.
-                if let ToolError::Execution(failure) = error {
-                    if let Some(status) = failure.evidence.status {
-                        eprintln!("{program} failed ({status})");
-                    }
-                    eprint!("{}", String::from_utf8_lossy(&failure.evidence.stderr));
-                }
-            })?;
+            .inspect_err(|error| report_tool_error(program, error))?;
             eprint!("{}", String::from_utf8_lossy(&output.stderr));
             Ok(String::from_utf8(output.stdout)?)
         } else {
@@ -234,6 +253,16 @@ impl Execute for Processes {
             )?;
             Ok(String::new())
         }
+    }
+}
+
+fn report_tool_error(program: &str, error: &ToolError) {
+    // Host formatting excludes bytes; preserve stderr before returning its cause.
+    if let ToolError::Execution(failure) = error {
+        if let Some(status) = failure.evidence.status {
+            eprintln!("{program} failed ({status})");
+        }
+        eprint!("{}", String::from_utf8_lossy(&failure.evidence.stderr));
     }
 }
 
@@ -377,20 +406,6 @@ fn check_lock_update(before: &[u8], after: &str, previous: &str, version: &str) 
         expected == toml::from_str::<toml::Value>(after)?,
         "workspace version refresh changed dependency selection",
     )
-}
-
-fn target_directory(metadata: &str) -> Result<PathBuf> {
-    let value: serde_json::Value = serde_json::from_str(metadata)?;
-    let target = value
-        .get("target_directory")
-        .and_then(serde_json::Value::as_str)
-        .map(PathBuf::from)
-        .ok_or("Cargo metadata has no target_directory")?;
-    require(
-        target.is_absolute(),
-        "Cargo target_directory must be absolute",
-    )?;
-    Ok(target)
 }
 
 fn check_wasm_artifacts(target: &Path) -> Result<()> {
@@ -623,17 +638,12 @@ impl<E: Execute> Repository<E> {
     }
 
     fn target(&self) -> Result<PathBuf> {
-        target_directory(&self.output(
-            "cargo",
-            &[
-                "metadata",
-                "--locked",
-                "--offline",
-                "--no-deps",
-                "--format-version",
-                "1",
-            ],
-        )?)
+        let target = self.exec.cargo_target(&self.root)?;
+        require(
+            target.is_absolute(),
+            "Cargo target_directory must be absolute",
+        )?;
+        Ok(target)
     }
 
     fn receipt_path(&self, version: &str, prepared: bool) -> Result<PathBuf> {

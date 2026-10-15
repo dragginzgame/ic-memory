@@ -28,7 +28,9 @@ fn resolution_fills_free_slots_around_interleaved_retained_requests() {
             .collect(),
     )
     .unwrap();
-    let resolved = requests.resolve(&ledger, vec![], &pool).unwrap();
+    let resolved = requests
+        .resolve(&ledger, &ledger.occupied_slots(), vec![], &pool)
+        .unwrap();
     let external: Vec<_> = resolved
         .declarations()
         .iter()
