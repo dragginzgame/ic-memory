@@ -72,6 +72,23 @@ const PACKAGE: &str = "[package]\nname = \"ic-memory\"\nversion.workspace = true
 const LOCK: &str = "version = 4\n[[package]]\nname = \"ic-memory\"\nversion = \"0.12.3\"\n[[package]]\nname = \"other\"\nversion = \"0.12.3\"\n";
 
 #[test]
+fn native_metadata_refuses_invalid_selected_manifest_without_touching_lock() {
+    let fixture = Fixture::new();
+    let lock = fs::read(fixture.repo.root.join("Cargo.lock")).unwrap();
+    fs::write(fixture.repo.root.join("Cargo.toml"), "[invalid manifest").unwrap();
+    let error = Processes.cargo_target(&fixture.repo.root).unwrap_err();
+    let ToolError::Execution(failure) = error.downcast_ref::<ToolError>().unwrap() else {
+        panic!("expected the selected Host's execution failure");
+    };
+    assert!(!failure.evidence.status.unwrap().success());
+    assert!(!failure.evidence.stderr.is_empty());
+    assert_eq!(
+        fs::read(fixture.repo.root.join("Cargo.lock")).unwrap(),
+        lock
+    );
+}
+
+#[test]
 fn captured_failure_preserves_status_and_both_output_streams() {
     let fixture = Fixture::new();
     let error = Processes

@@ -22,6 +22,8 @@
   IC Build's semantic lockfile verifier in release preparation and recovery.
 - Release fixture bootstrap state after opening its cell; memory handles retain
   the backing and manager needed for subsequent growth and restoration.
+- Fix native release-helper compilation with Host 0.21 by keeping metadata
+  process execution within the helper's selected Host API.
 
 [Detailed notes](docs/changelog/0.43.md)
 

@@ -6,7 +6,7 @@
 
 use ic_build::cargo::{
     lock_projection::{WorkspaceVersionProjection, verify_workspace_version_projection},
-    observation::{CargoFeatureSelection, CargoMetadataSpec, observe_metadata},
+    observation::schema::{Metadata, MetadataCommand},
 };
 use ic_host_artifacts::artifact::{Sha256Digest, copy_reader};
 use ic_host_fs::durable::{PublicationMode, WriteOptions};
@@ -202,27 +202,27 @@ struct Processes;
 
 impl Execute for Processes {
     fn cargo_target(&self, root: &Path) -> Result<PathBuf> {
-        let metadata = observe_metadata(
-            &CargoMetadataSpec {
-                manifest_path: &root.join("Cargo.toml"),
-                include_dependencies: false,
-                filter_platform: None,
-                locked: true,
-                offline: true,
-                features: &CargoFeatureSelection::default(),
-            },
+        // Cargo owns command construction and its schema. Execute with this
+        // consumer's Host so no process types cross IC Build's Host boundary.
+        let mut command = MetadataCommand::new()
+            .cargo_path("cargo")
+            .manifest_path(root.join("Cargo.toml"))
+            .current_dir(root)
+            .no_deps()
+            .other_options(vec!["--locked".into(), "--offline".into()])
+            .cargo_command();
+        let output = capture_command(
+            &mut command,
             OutputLimits {
                 stdout: OutputLimit::Terminate(4 * 1024 * 1024),
                 stderr: OutputLimit::Terminate(64 * 1024),
                 timeout: None,
             },
-            Command::new("cargo"),
         )
-        .inspect_err(|error| {
-            if let Some(error) = error.downcast_ref::<ToolError>() {
-                report_tool_error("cargo", error);
-            }
-        })?;
+        .and_then(CompletedExecution::require_success)
+        .and_then(CompletedExecution::require_complete)
+        .inspect_err(|error| report_tool_error("cargo", error))?;
+        let metadata: Metadata = serde_json::from_slice(&output.stdout)?;
         Ok(metadata.target_directory.into_std_path_buf())
     }
 
