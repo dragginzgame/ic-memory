@@ -1,6 +1,6 @@
 # Changelog
 
-## [0.43.0]
+## [0.43.0] - 2026-10-16
 
 - **Breaking API:** implement allocation checks directly on `RuntimeBootstrapPolicy`;
   the separate `AllocationPolicy` trait and public resolved `DeclarationSnapshot`
