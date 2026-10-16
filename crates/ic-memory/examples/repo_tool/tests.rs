@@ -81,7 +81,7 @@ fn native_metadata_refuses_invalid_selected_manifest_without_touching_lock() {
         panic!("expected the selected Host's execution failure");
     };
     assert!(!failure.evidence.status.unwrap().success());
-    assert!(!failure.evidence.stderr.is_empty());
+    assert_ne!(failure.evidence.stderr.as_slice(), b"");
     assert_eq!(
         fs::read(fixture.repo.root.join("Cargo.lock")).unwrap(),
         lock
