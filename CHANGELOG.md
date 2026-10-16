@@ -1,6 +1,6 @@
 # Changelog
 
-## [0.45.0]
+## [0.45.0] - 2026-10-16
 
 - **Breaking API/JSON:** replace pool exclusion ranges with checked numeric IDs
   and one fixed mask; hosts own range presentation.
