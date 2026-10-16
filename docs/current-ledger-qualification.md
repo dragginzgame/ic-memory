@@ -7,6 +7,54 @@ These are local Linux source, behavior and footprint observations; they do not
 establish publication or retained-installation qualification. The
 [current contract](current-ledger.md) owns consumer API and deployment requirements.
 
+## 0.44.0 direct-CBOR and single-pass staging qualification
+
+This local working-tree batch starts from `dd0f77564215d8e1891dbfb8ccddeae3b6b8eebd`
+plus the saved incoming edits, including the selected IC Build 0.8.0 graph and
+prior request/admission cleanup. Both selected lockfiles, toolchains and package
+versions are unchanged. The package still declares 0.43.0; 0.44.0 is the pending
+breaking release, not a publication claim. Before/after sources, commands,
+artifacts and failed attempts are retained under
+`target/qualification/cleanup0440/`.
+
+The new `ICMDIRCT` physical marker identifies a bounded direct-CBOR payload.
+The nested logical header is removed. Marker/checksum admission, logical
+integrity, physical/logical counter binding and Cell persistence before capability
+publication remain. Each declaration's policy and historical claim are checked
+once against the owned staging ledger. Doctor shares that checker without
+staging. The maintainer authorized retirement of old images and fresh/reset
+memory for this cut; no installation or stable memory was reset.
+
+Matched raw Wasm uses Rust 1.99.0, the selected root lockfile, the committed
+`wasm-size` profile and `wasm32-unknown-unknown`, without Binaryen optimization:
+
+| Probe | Before bytes | After bytes | Delta |
+| --- | ---: | ---: | ---: |
+| Core | 168,650 | 166,895 | -1,755 |
+| Diagnostics | 201,970 | 198,885 | -3,085 |
+| Admission | 173,094 | 170,976 | -2,118 |
+| Runtime integration | 177,229 | 175,470 | -1,759 |
+
+The matched release-mode native declaration-resolution measurement runs ten
+fresh bootstraps each at 1, 32 and 245 external requests. Allocation totals are
+unchanged; peak measured heap falls by 64, 512 and 4,120 bytes respectively.
+Removing the initial envelope buffer adds two buffer reallocations per fresh
+bootstrap. Capacity-hint experiments reduced that churn but increased Wasm or
+peak heap; the simpler, smaller writer was selected. Native timings do not
+establish an IC instruction or cycle delta.
+
+Focused strict Clippy, Rust 1.91, current-wire recovery, malformed input,
+claim-conflict/retirement rejection, failed local staging, generation overflow,
+consumer/compile-fail and generic example checks pass. Installed qualification
+uses the unchanged PocketIC 16.0.0 client and Testkit 0.25.4-selected 16.1.0 server.
+The first sandboxed server attempt could not bind localhost; the authorized
+local-network retry passed original, `-O3`, `-Os` and `-Oz` variants. Each variant
+passed 12 invalid-IO traps with neighboring/prior bytes preserved, post-persistence
+upgrade rollback, geometry-conflict rollback and clean retry advancing exactly
+one generation. Evidence is under `target/qualification/runtime/attempt.7T0XAg/`.
+This qualifies fresh and same-format installed behavior, not old-image upgrades,
+retained deployments or a full release matrix.
+
 ## Post-release physical-slot audit
 
 Read-only implementation review of released 0.27.0 at
@@ -481,3 +529,121 @@ same name and fewer arguments are changed contracts, not deleted symbols.
 | `tests/diagnostic_metadata.rs` | `snapshot_decode_checks_collection_invariants_before_fingerprint` | snapshot_decode_checks_collection_invariants (renamed; collection checks retained) |
 | `tests/diagnostic_metadata.rs` | `generation_decode_checks_fingerprint_metadata` | Retired audit-only invariant; current ownership, limits, corruption and overflow tests remain. |
 | `tests/diagnostic_metadata.rs` | `generation_decode_preserves_current_shape_and_metadata_bounds` | Retired audit-only invariant; current ownership, limits, corruption and overflow tests remain. |
+
+## 0.44.0 exact binding and flattened Cell qualification
+
+This follow-on compares the saved incoming pending-0.44 tree at release HEAD
+`dd0f77564215d8e1891dbfb8ccddeae3b6b8eebd` with the additional exact-binding,
+fixture-construction and direct-Cell changes. It excludes earlier changes in
+that dirty tree. The current Cell value is `LedgerCommitStore` itself; its
+seven-byte `store` wrapper and duplicate Cell-value fixture are removed.
+The maintainer-approved fresh/reset disposition for 0.44 still applies; no
+previous-layout reader or real stable-memory reset is included.
+
+Matched Rust 1.99 raw `wasm-size` builds use the same lockfile and profile,
+without Binaryen for these size comparisons:
+
+| Probe | Before bytes | After bytes | Delta |
+| --- | ---: | ---: | ---: |
+| Core | 166,895 | 164,958 | -1,937 |
+| Diagnostics | 198,885 | 194,984 | -3,901 |
+| Admission | 170,976 | 168,932 | -2,044 |
+| Runtime integration | 175,470 | 173,549 | -1,921 |
+| Installed IO fixture | 183,408 | 181,471 | -1,937 |
+
+All 86 native measurement rows preserve allocation counts. Reallocation counts
+are unchanged except that each extreme-counter Cell encoding avoids one buffer
+reallocation. Cell reopening and doctor peaks fall by seven bytes; those encoding
+cases also avoid capacity doubling. Numeric summaries remain zero-allocation.
+These native heap observations do not establish an IC instruction speedup.
+
+The final 200 library tests, 12 selected native integration/compile-fail harness
+tests and four doctests pass. Strict all-target `test-support` Clippy, actual
+Rust 1.91 all-target checks, Wasm test compilation, warning-denied Rustdoc,
+formatting and all four Wasm budgets pass. The old fixture engine's dedicated
+transition API tests are removed; production staging is exercised against
+reserved, active and retired starting records, retaining ownership/integrity
+and corruption coverage.
+
+Final installed qualification at `target/qualification/runtime/attempt.w4o79N/`
+passes original, `-O3`, `-Os` and `-Oz` artifacts with the selected Testkit 0.25.4,
+PocketIC client 16.0.0 and server 16.1.0. Every variant checks 12 invalid-IO traps,
+neighbor/prior-write conservation, post-persistence upgrade and geometry-conflict
+rollback, and clean retry advancing exactly one generation. The final original
+artifact is byte-matched to the retained input. This proves current-format
+startup and same-format upgrade behavior, not an upgrade from retired images.
+Both maintained lockfiles, package versions and tool selections remain unchanged.
+
+Evidence, matched inputs and command logs are retained at
+`target/qualification/cleanup0440b/`. Full release validation, packaging and
+native macOS acceptance were not run. Canic's three direct-record projection
+fixture edits are prepared separately; its registry-selected 0.44 adoption and
+application-owned retained-data decision remain under
+[Canic #573](https://github.com/dragginzgame/canic/issues/573#issuecomment-6213455806).
+
+## 0.44.0 explicit host runtime and primary report facts
+
+This follow-on compares the saved incoming pending-0.44 tree at release HEAD
+`dd0f77564215d8e1891dbfb8ccddeae3b6b8eebd` with the host-runtime, primary-report
+and opaque-CBOR cleanup. It excludes earlier work in that dirty tree. Both
+maintained lockfiles, dependency selections, package versions, toolchain and
+vendored snapshot remain unchanged by this task. The selected Host 0.22.1
+helper call now supplies explicit replacement/0o666 options.
+
+Memory no longer owns singleton/TLS state. Wasm fixtures explicitly retain one
+host-owned runtime; exported operations, backing geometry and IO checks remain.
+Reports store counts/pages/geometry and derive byte totals through accessors.
+Their serialized output changes accordingly; Canic owns expanded API projections.
+Opaque payload input uses only bounded CBOR byte strings, preserving the current
+CBOR bytes while retiring JSON-array input. There is no further stored-format
+change beyond the already approved 0.44 cut.
+
+Matched Rust 1.99 raw `wasm-size` builds, with identical lockfile/profile and
+without Binaryen for this table:
+
+| Probe | Before bytes | After bytes | Delta |
+| --- | ---: | ---: | ---: |
+| Core | 164,958 | 164,644 | -314 |
+| Diagnostics | 194,984 | 192,275 | -2,709 |
+| Admission | 168,932 | 168,746 | -186 |
+| Runtime integration | 173,549 | 169,361 | -4,188 |
+| Installed IO fixture | 181,471 | 179,283 | -2,188 |
+
+All 86 native measurement rows retain allocation/reallocation counts. Detailed
+report peak heap falls from 22,440 to 16,320 bytes in all four empty/populated,
+bootstrapped/unbootstrapped cases; numeric summaries remain allocation-free.
+These measurements do not establish application instruction savings.
+
+Installed qualification at `target/qualification/runtime/attempt.I1pFkA/`
+passes original, `-O3`, `-Os` and `-Oz` artifacts with the selected Testkit 0.25.4,
+PocketIC client 16.0.0 and server 16.1.0. Every artifact passes 12 invalid-IO
+traps, neighbor/prior-write preservation, post-persistence upgrade and geometry
+conflict rollback, and clean retry advancing exactly one generation. This is
+current-format startup and same-format upgrade evidence, not earlier-image
+compatibility or application-owned composition.
+
+There is a measured IO instruction tradeoff. The saved baseline Wasm is
+byte-identical to the earlier installed baseline in `attempt.w4o79N`; the
+qualifier, server and optimizer identities also match. In the unchanged 1,000-IO
+loops, the original artifact adds 2 instructions per safe read/write and 26 per
+raw read; optimized artifacts add 2 and 25 respectively. These are bounded
+fixture measurements, not a speedup claim or application cycle estimate. The IO
+implementation and bounds checks are unchanged; the smaller host/report build
+changes generated code.
+
+Focused qualification passes 191 library tests, six explicit allocation
+measurements, current native integration/compile-fail tests, 57 release-helper
+tests and four public doctests. Strict all-target `test-support` Clippy, actual
+Rust 1.91 all-target checks, Wasm test compilation, warning-denied Rustdoc,
+formatting and all four Wasm budgets pass. README/operations/admission examples
+now use the explicit instance. Facade-only tests are retired; explicit custom
+policy, host independence, injected-handle lifetime, admission, corruption,
+conservation and installed IO/upgrade coverage remain.
+
+Evidence and matched inputs are retained at `target/qualification/cleanup0440c/`.
+Full release validation, packaging and native macOS acceptance were not run.
+[Canic #573](https://github.com/dragginzgame/canic/issues/573#issuecomment-6214373359)
+and [IcyDB #355](https://github.com/dragginzgame/icydb/issues/355#issuecomment-6214373692)
+own the coordinated consumer changes after publication;
+their normal checkouts remain untouched. No downstream application build or
+retained installation has been qualified by this task.

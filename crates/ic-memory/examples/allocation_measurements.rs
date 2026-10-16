@@ -2,28 +2,12 @@
 #[path = "support/metered.rs"]
 mod metered;
 use ic_memory::{
-    AllocationPolicy, MemoryAllocations, MemoryManagerConfig, MemoryManagerSlot, MemoryRuntime,
-    PolicyIdentity, PolicyIdentityError, RuntimeBootstrapPolicy, RuntimeMemory, StableKey,
+    GenericAllocationPolicy, MemoryAllocations, MemoryManagerConfig, MemoryRuntime, RuntimeMemory,
 };
 use ic_stable_structures::{Cell, Memory, StableVec};
 use metered::Metered;
-use std::{convert::Infallible, hint::black_box, time::Instant};
+use std::{hint::black_box, time::Instant};
 
-struct Allow;
-impl AllocationPolicy for Allow {
-    type Error = Infallible;
-    fn validate_key(&self, _: &StableKey) -> Result<(), Infallible> {
-        Ok(())
-    }
-    fn validate_slot(&self, _: &StableKey, _: &MemoryManagerSlot) -> Result<(), Infallible> {
-        Ok(())
-    }
-}
-impl RuntimeBootstrapPolicy for Allow {
-    fn runtime_bootstrap_identity(&self) -> Result<PolicyIdentity, PolicyIdentityError> {
-        PolicyIdentity::new("allocation-measurements", 1)
-    }
-}
 fn record(
     bucket: u16,
     phase: &str,
@@ -32,17 +16,17 @@ fn record(
     report: &MemoryAllocations,
 ) {
     assert_eq!(
-        report.summary.physical_extent.bytes,
-        report.summary.manager_metadata_bytes
-            + report.summary.allocated_bucket_bytes
-            + report.summary.unmanaged_bytes
+        report.summary.physical_extent.bytes(),
+        ic_memory::MemoryAllocationSummary::MANAGER_METADATA_BYTES
+            + report.summary.allocated_bucket_bytes()
+            + report.summary.unmanaged_bytes()
     );
     println!(
         "{bucket},{phase},{},{},{},{},{},{},{},{},{},{},{elapsed}",
-        report.summary.physical_extent.bytes,
-        report.summary.virtual_extent.bytes,
+        report.summary.physical_extent.bytes(),
+        report.summary.virtual_extent.bytes(),
         report.summary.allocated_buckets,
-        report.memories[0].allocated_bytes,
+        report.memories[0].allocated_bytes(report.summary.bucket_size_pages),
         counts.grows,
         counts.grown_pages,
         counts.reads,
@@ -85,7 +69,9 @@ fn main() {
         );
         memory.reset();
         let start = Instant::now();
-        runtime.bootstrap(&declarations, &pool(), &Allow).unwrap();
+        runtime
+            .bootstrap(&declarations, &pool(), &GenericAllocationPolicy)
+            .unwrap();
         let elapsed = start.elapsed().as_micros();
         record(
             bucket,
@@ -111,7 +97,10 @@ fn main() {
             &runtime.memory_allocations().unwrap(),
         );
         let unopened = runtime.memory_allocations().unwrap();
-        assert_eq!(unopened.memories[139].allocated_bytes, 0);
+        assert_eq!(
+            unopened.memories[139].allocated_bytes(unopened.summary.bucket_size_pages),
+            0
+        );
         let handle = runtime.open_memory("fixture.store128.v1").unwrap();
         let growing = StableVec::<[u8; 1024], RuntimeMemory<Metered>>::init(handle.clone());
         memory.reset();
@@ -172,7 +161,7 @@ fn main() {
             report.summary.physical_extent,
             before.summary.physical_extent
         );
-        assert!(report.summary.unknown_binding_bytes > 0);
+        assert!(report.summary.unknown_binding_bytes() > 0);
         assert_eq!(memory.counts().writes, 0);
         assert_eq!(memory.counts().grows, 0);
         record(
@@ -182,7 +171,9 @@ fn main() {
             start.elapsed().as_micros(),
             &report,
         );
-        runtime.bootstrap(&declarations, &pool(), &Allow).unwrap();
+        runtime
+            .bootstrap(&declarations, &pool(), &GenericAllocationPolicy)
+            .unwrap();
         let recovered = runtime.memory_allocations().unwrap();
         memory.reset();
         let start = Instant::now();
@@ -203,7 +194,9 @@ fn main() {
         for _ in 0..64 {
             drop(runtime);
             runtime = MemoryRuntime::new(memory.clone()).unwrap();
-            runtime.bootstrap(&declarations, &pool(), &Allow).unwrap();
+            runtime
+                .bootstrap(&declarations, &pool(), &GenericAllocationPolicy)
+                .unwrap();
         }
         record(
             bucket,

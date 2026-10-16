@@ -1,6 +1,6 @@
 use ic_memory::{
-    AllocationPolicy, MemoryManagerSlot, MemoryRuntime, PolicyIdentity, PolicyIdentityError,
-    RuntimeBootstrapPolicy, StableKey,
+    MemoryManagerSlot, MemoryRuntime, PolicyIdentity, PolicyIdentityError, RuntimeBootstrapPolicy,
+    StableKey,
     ic_stable_structures::{Cell, Memory, VectorMemory},
 };
 
@@ -20,7 +20,7 @@ fn snapshot() -> ic_memory::SealedDeclarationSnapshot {
 
 struct AllowAll;
 
-impl AllocationPolicy for AllowAll {
+impl RuntimeBootstrapPolicy for AllowAll {
     type Error = core::convert::Infallible;
 
     fn validate_key(&self, _key: &StableKey) -> Result<(), Self::Error> {
@@ -34,9 +34,7 @@ impl AllocationPolicy for AllowAll {
     ) -> Result<(), Self::Error> {
         Ok(())
     }
-}
 
-impl RuntimeBootstrapPolicy for AllowAll {
     fn runtime_bootstrap_identity(&self) -> Result<PolicyIdentity, PolicyIdentityError> {
         PolicyIdentity::new("explicit-runtime.allow-all", 1)
     }

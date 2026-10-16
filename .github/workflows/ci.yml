@@ -51,7 +51,8 @@ jobs:
       matrix:
         os: [ubuntu-24.04, macos-15, macos-15-intel]
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 30
+    # Cold Intel setup plus the complete native gate exceeds thirty minutes.
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # reviewed Shared Tooling pin
         with:
@@ -73,6 +74,27 @@ jobs:
           toolchain: ${{ steps.pin.outputs.channel }}
           components: clippy, rustfmt
           targets: wasm32-unknown-unknown
+      - run: make shared-tooling-check
+      - name: Prepare host tools and identify common Cargo tool cache
+        id: common-tool-cache-key
+        shell: bash
+        run: |
+          make install-host-tools 2>&1 | tee "$RUNNER_TEMP/native-host-setup.log"
+          make host-tools-check 2>&1 | tee "$RUNNER_TEMP/native-host-check.log"
+          export PATH="$GITHUB_WORKSPACE/.tools/host/bin:$PATH"
+          bash scripts/ci/cargo-tool-cache-key.sh ci/tool-versions.env >> "$GITHUB_OUTPUT"
+      - name: Restore common Cargo tool builds
+        id: common-tool-cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        timeout-minutes: 3
+        continue-on-error: true
+        env:
+          SEGMENT_DOWNLOAD_TIMEOUT_MINS: 2
+        with:
+          path: |
+            ${{ steps.common-tool-cache-key.outputs.root }}/cargo-cache
+            ${{ steps.common-tool-cache-key.outputs.root }}/rust-*
+          key: common-tools-${{ runner.os }}-${{ runner.arch }}-${{ steps.common-tool-cache-key.outputs.key }}
       - name: Install and verify selected common tools
         shell: bash
         run: |
@@ -83,6 +105,16 @@ jobs:
             echo "$PWD/.tools/ic/bin"
             echo "$PWD/.tools/rust/common/bin"
           } >> "$GITHUB_PATH"
+      - name: Save admitted common Cargo tools
+        if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.common-tool-cache.outputs.cache-hit != 'true' }}
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        timeout-minutes: 3
+        continue-on-error: true
+        with:
+          path: |
+            ${{ steps.common-tool-cache-key.outputs.root }}/cargo-cache
+            ${{ steps.common-tool-cache-key.outputs.root }}/rust-*
+          key: common-tools-${{ runner.os }}-${{ runner.arch }}-${{ steps.common-tool-cache-key.outputs.key }}
       - name: Qualify native shared host, IC and Cargo reuse offline
         shell: bash
         run: |

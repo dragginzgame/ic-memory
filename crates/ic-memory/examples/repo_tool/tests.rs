@@ -72,6 +72,23 @@ const PACKAGE: &str = "[package]\nname = \"ic-memory\"\nversion.workspace = true
 const LOCK: &str = "version = 4\n[[package]]\nname = \"ic-memory\"\nversion = \"0.12.3\"\n[[package]]\nname = \"other\"\nversion = \"0.12.3\"\n";
 
 #[test]
+fn native_metadata_refuses_invalid_selected_manifest_without_touching_lock() {
+    let fixture = Fixture::new();
+    let lock = fs::read(fixture.repo.root.join("Cargo.lock")).unwrap();
+    fs::write(fixture.repo.root.join("Cargo.toml"), "[invalid manifest").unwrap();
+    let error = Processes.cargo_target(&fixture.repo.root).unwrap_err();
+    let ToolError::Execution(failure) = error.downcast_ref::<ToolError>().unwrap() else {
+        panic!("expected the selected Host's execution failure");
+    };
+    assert!(!failure.evidence.status.unwrap().success());
+    assert_ne!(failure.evidence.stderr.as_slice(), b"");
+    assert_eq!(
+        fs::read(fixture.repo.root.join("Cargo.lock")).unwrap(),
+        lock
+    );
+}
+
+#[test]
 fn captured_failure_preserves_status_and_both_output_streams() {
     let fixture = Fixture::new();
     let error = Processes
@@ -111,6 +128,17 @@ fn tag_changes_during_shared_admission_stop_publication() {
 #[test]
 fn helper_output_cannot_change_locked_dependency_selection() {
     let fixture = Fixture::new();
+    let same_name_registry = format!(
+        "{LOCK}[[package]]\nname = \"ic-memory\"\nversion = \"0.12.3\"\nsource = \"registry+https://github.com/rust-lang/crates.io-index\"\nchecksum = \"unchanged\"\n"
+    );
+    let rendered = fixture
+        .repo
+        .replace_lock_version(&same_name_registry, "0.12.3", "0.13.0")
+        .unwrap();
+    assert_eq!(
+        rendered,
+        same_name_registry.replacen("version = \"0.12.3\"", "version = \"0.13.0\"", 1)
+    );
     let changed = LOCK.replace("0.12.3", "0.13.0");
     fs::write(
         fixture.repo.root.join(LOCK_REWRITER),
@@ -121,7 +149,10 @@ fn helper_output_cannot_change_locked_dependency_selection() {
         .repo
         .replace_lock_version(LOCK, "0.12.3", "0.13.0")
         .unwrap_err();
-    assert!(error.to_string().contains("changed dependency selection"));
+    assert!(matches!(
+        error.downcast_ref::<ic_build::cargo::lock_projection::LockProjectionError>(),
+        Some(ic_build::cargo::lock_projection::LockProjectionError::ChangedInputs)
+    ));
     fixture.assert_original();
 }
 
@@ -262,6 +293,7 @@ impl Fixture {
             WORKSPACE_VERSION_RENDERER,
             LOCK_REWRITER,
             CHANGELOG_FINALIZER,
+            RELEASE_INPUT_ADMISSION,
         ] {
             source.insert(
                 helper.to_owned(),
@@ -577,6 +609,16 @@ struct Substitute {
 }
 
 impl Execute for Substitute {
+    fn cargo_target(&self, root: &Path) -> Result<PathBuf> {
+        let mut state = self.state.borrow_mut();
+        state.calls.push(vec!["cargo-metadata".to_owned()]);
+        match state.fail.as_deref() {
+            Some("metadata") => Err("fixture metadata failure".into()),
+            Some("relative-metadata") => Ok(PathBuf::from("relative output")),
+            _ => Ok(root.join("configured output")),
+        }
+    }
+
     fn write_json(&self, path: &Path, value: &impl Serialize) -> Result<()> {
         // Reuse the fixture's before/after-publication fault injection. The
         // native streaming boundary is exercised separately below.
@@ -712,22 +754,6 @@ impl Execute for Substitute {
                 true,
             ),
             "rustc" => Ok(format!("fixture-rustc {}\n", args[0])),
-            "cargo"
-                if args
-                    == [
-                        "metadata",
-                        "--locked",
-                        "--offline",
-                        "--no-deps",
-                        "--format-version",
-                        "1",
-                    ] =>
-            {
-                if state.fail.as_deref() == Some("metadata") {
-                    return Err("fixture metadata failure".into());
-                }
-                Ok(serde_json::json!({"target_directory": target}).to_string())
-            }
             "cargo" if args.get(1) == Some(&"--version") => {
                 Ok(format!("fixture-cargo {}\n", args[0]))
             }
@@ -1170,6 +1196,77 @@ fn compiler_configuration_overrides_refuse_preparation() {
 }
 
 #[test]
+fn included_compiler_configuration_refuses_preparation() {
+    let fixture = Fixture::new();
+    let directory = fixture.repo.root.join(".cargo");
+    fs::create_dir(&directory).unwrap();
+    fs::write(directory.join("config.toml"), "include = 'compiler.toml'\n").unwrap();
+    fs::write(
+        directory.join("compiler.toml"),
+        "[build]\nrustc-wrapper = 'outside-receipt-compiler'\n",
+    )
+    .unwrap();
+    assert!(fixture.prepare().is_err());
+    fixture.assert_original();
+    assert!(
+        !fixture
+            .repo
+            .exec
+            .state
+            .borrow()
+            .calls
+            .iter()
+            .any(|call| { call[0] == "make" || call.get(2).is_some_and(|arg| arg == "update") })
+    );
+}
+
+#[test]
+fn included_and_shadowed_configuration_changes_invalidate_release_evidence() {
+    let fixture = Fixture::new();
+    let directory = fixture.repo.root.join(".cargo");
+    fs::create_dir(&directory).unwrap();
+    let files = [
+        (directory.join("config"), "include = 'shared.toml'\n"),
+        (directory.join("config.toml"), "[build]\njobs = 1\n"),
+        (directory.join("shared.toml"), "[build]\njobs = 2\n"),
+    ];
+    for (path, bytes) in &files {
+        fs::write(path, bytes).unwrap();
+    }
+    fixture.release();
+    let observed = fixture.repo.configuration().unwrap();
+    for (path, bytes) in &files {
+        assert_eq!(
+            observed[&format!("config:{}", path.display())],
+            Sha256Digest::compute(bytes.as_bytes()).to_string()
+        );
+        // Even a comment-only change must invalidate existing raw-byte custody.
+        fs::write(path, format!("{bytes}# changed\n")).unwrap();
+        let calls = fixture.repo.exec.state.borrow().calls.len();
+        assert!(
+            fixture
+                .repo
+                .push_check(&fixture.selection, "release")
+                .is_err()
+        );
+        assert!(fixture.repo.publish(true).is_err());
+        assert!(
+            !fixture.repo.exec.state.borrow().calls[calls..]
+                .iter()
+                .any(|call| {
+                    call.get(1).is_some_and(|arg| arg == "push")
+                        || call.get(2).is_some_and(|arg| arg == "publish")
+                })
+        );
+        fs::write(path, bytes).unwrap();
+        fixture
+            .repo
+            .verify_evidence(&fixture.selection, "release", false, true)
+            .unwrap();
+    }
+}
+
+#[test]
 fn inherited_compiler_configuration_refuses_preparation() {
     let fixture = Fixture::new();
     let directory = fixture.repo.root.join(".cargo");
@@ -1305,6 +1402,41 @@ fn missing_ambiguous_or_unsupported_dependency_examples_do_not_block_release() {
 }
 
 #[test]
+fn release_input_admission_failures_preserve_files_and_receipts() {
+    for script in [
+        None,
+        Some("exit 19;"),
+        Some("print \"0\\t13\\n\";"),
+        Some("print \"0\\t13\\t0\\textra\\n\";"),
+    ] {
+        let fixture = Fixture::new();
+        let helper = fixture.repo.root.join(RELEASE_INPUT_ADMISSION);
+        match script {
+            Some(script) => fs::write(helper, script).unwrap(),
+            None => fs::remove_file(helper).unwrap(),
+        }
+        let receipt = fixture.repo.root.join("previous.receipt");
+        fs::write(&receipt, b"prior evidence").unwrap();
+        assert!(fixture.prepare().is_err());
+        fixture.assert_original();
+        assert_eq!(fs::read(&receipt).unwrap(), b"prior evidence");
+        assert!(!fixture.repo.exec.state.borrow().calls.iter().any(|call| {
+            matches!(
+                call[0].as_str(),
+                "make" | "cargo" | "shared-runner" | "write" | "stream-write"
+            )
+        }));
+    }
+    let fixture = Fixture::new();
+    fs::write(
+        fixture.repo.root.join(RELEASE_INPUT_ADMISSION),
+        "print \"2000-01-01\\n\";",
+    )
+    .unwrap();
+    assert!(fixture.repo.validate_date("2026-10-15").is_err());
+}
+
+#[test]
 fn release_versions_and_pending_notes_preserve_dependency_versions_and_history() {
     let fixture = Fixture::new();
     let finalize = |text: &str, version: &str| {
@@ -1316,9 +1448,22 @@ fn release_versions_and_pending_notes_preserve_dependency_versions_and_history()
             "2026-10-05",
         )
     };
-    for invalid in ["0.01.3", "0.12", "0.12.3-dev", "0.12.+3"] {
-        assert!(version_parts(invalid).is_err());
+    for invalid in [
+        "0.01.3",
+        "0.12",
+        "0.12.3-dev",
+        "0.12.+3",
+        "18446744073709551616.0.0",
+    ] {
+        assert!(fixture.repo.version_parts(invalid).is_err());
     }
+    assert_eq!(
+        fixture
+            .repo
+            .version_parts("18446744073709551615.0.0")
+            .unwrap(),
+        [u64::MAX, 0, 0]
+    );
     let updated = fixture
         .repo
         .replace_workspace_version(MANIFEST, "0.12.3", "0.13.0")
@@ -1343,15 +1488,17 @@ fn release_versions_and_pending_notes_preserve_dependency_versions_and_history()
         assert!(finalize(&duplicate, "0.13.0").is_err());
     }
     for date in [
+        "1900-02-29",
         "2026-02-29",
         "2026-04-31",
         "2026-13-01",
         "2026-10-05\n",
         "0000-01-01",
     ] {
-        assert!(!valid_date(date));
+        assert!(fixture.repo.validate_date(date).is_err());
     }
-    assert!(valid_date("2024-02-29"));
+    assert!(fixture.repo.validate_date("2000-02-29").is_ok());
+    assert!(fixture.repo.validate_date("2024-02-29").is_ok());
 }
 
 #[test]
@@ -1564,6 +1711,10 @@ fn preparation_retains_primary_and_rollback_errors_and_restores_other_owned_file
     struct RollbackFailures<'a>(&'a Substitute);
 
     impl Execute for RollbackFailures<'_> {
+        fn cargo_target(&self, root: &Path) -> Result<PathBuf> {
+            self.0.cargo_target(root)
+        }
+
         fn run(&self, root: &Path, program: &str, args: &[&str], capture: bool) -> Result<String> {
             let result = self.0.run(root, program, args, capture)?;
             if program == "cargo" && args.get(1) == Some(&"package") {
@@ -2349,11 +2500,18 @@ fn release_admission_rejects_whitespace_only_paths() {
         exec: Processes,
     };
     fs::create_dir_all(repo.root.join("scripts/ci")).unwrap();
-    fs::copy(
-        Path::new(env!("CARGO_MANIFEST_DIR")).join("../../scripts/ci/next-release-version.sh"),
-        repo.root.join("scripts/ci/next-release-version.sh"),
-    )
-    .unwrap();
+    for path in [
+        "scripts/ci/next-release-version.sh",
+        "scripts/ci/validate-release-inputs.pl",
+    ] {
+        fs::copy(
+            Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("../..")
+                .join(path),
+            repo.root.join(path),
+        )
+        .unwrap();
+    }
     fs::write(repo.root.join(" "), b"original tracked bytes\n").unwrap();
     repo.git(&["init", "--quiet"]).unwrap();
     repo.git(&["add", "--", "."]).unwrap();
@@ -2869,7 +3027,8 @@ fn wasm_metadata_and_budgets_use_only_the_selected_artifact_directory() {
     assert!(check_wasm_artifacts(&target).is_err());
     fs::remove_file(path).unwrap();
     assert!(check_wasm_artifacts(&target).is_err());
-    assert!(target_directory("{}").is_err());
+    fixture.fail("relative-metadata");
+    assert!(fixture.repo.target().is_err());
     fixture.fail("metadata");
     assert!(fixture.repo.target().is_err());
 }

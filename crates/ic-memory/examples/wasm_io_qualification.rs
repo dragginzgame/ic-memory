@@ -2,17 +2,35 @@
 //! Raw replies avoid adding a CDK or Candid dependency to the library graph.
 
 #[cfg(target_arch = "wasm32")]
+#[path = "support/host.rs"]
+mod host;
+
+#[cfg(target_arch = "wasm32")]
 #[expect(
     unsafe_code,
     reason = "test-only raw IC system calls and Memory::read_unsafe"
 )]
 mod canister {
+    use super::host::RUNTIME;
     use super::pool;
-    use ic_memory::{
-        GenericAllocationPolicy, MemoryManagerConfig, bootstrap_default_memory_manager_with_config,
-        committed_allocations, default_memory_manager_memory_allocation_summary,
-        ic_stable_structures::Memory, open_default_memory_manager_memory,
-    };
+    use ic_memory::{GenericAllocationPolicy, MemoryManagerConfig, ic_stable_structures::Memory};
+
+    fn with_runtime<T>(operation: impl FnOnce(&super::host::Runtime) -> T) -> T {
+        RUNTIME.with(|slot| operation(slot.borrow().as_ref().expect("initialized fixture runtime")))
+    }
+
+    fn open_memory(
+        key: &str,
+    ) -> Result<
+        ic_memory::RuntimeMemory<ic_memory::ic_stable_structures::DefaultMemoryImpl>,
+        ic_memory::RuntimeOpenError,
+    > {
+        with_runtime(|runtime| runtime.open_memory(key))
+    }
+
+    fn memory_id(key: &str) -> Result<u8, ic_memory::RuntimeOpenError> {
+        with_runtime(|runtime| runtime.memory_id(key))
+    }
 
     const PAGE: u64 = 65_536;
     const ROWS: &str = "io_qualification.rows.v1";
@@ -65,23 +83,25 @@ mod canister {
 
     fn bootstrap(mode: u8) {
         let pages = if mode == 2 { 16 } else { 8 };
-        bootstrap_default_memory_manager_with_config(
-            &declarations(),
+        let mut runtime = super::host::Runtime::new_with_config(
+            ic_memory::ic_stable_structures::DefaultMemoryImpl::default(),
             MemoryManagerConfig::new(pages).unwrap(),
-            &pool(),
-            &GenericAllocationPolicy,
         )
         .unwrap();
+        runtime
+            .bootstrap(&declarations(), &pool(), &GenericAllocationPolicy)
+            .unwrap();
+        RUNTIME.with(|slot| *slot.borrow_mut() = Some(runtime));
         assert_ne!(mode, 1, "injected trap after durable bootstrap write");
     }
 
     #[unsafe(export_name = "canister_init")]
     extern "C" fn init() {
         bootstrap(0);
-        let neighbor = open_default_memory_manager_memory(NEIGHBOR).unwrap();
+        let neighbor = open_memory(NEIGHBOR).unwrap();
         neighbor.grow(8).unwrap();
         neighbor.write(8 * PAGE - 1, &[0x6D]);
-        let rows = open_default_memory_manager_memory(ROWS).unwrap();
+        let rows = open_memory(ROWS).unwrap();
         rows.grow(1).unwrap();
         rows.write(0, &[0x42]);
     }
@@ -93,27 +113,20 @@ mod canister {
 
     #[unsafe(export_name = "canister_query snapshot")]
     extern "C" fn snapshot() {
-        let mut bytes = committed_allocations()
-            .unwrap()
-            .generation()
-            .to_le_bytes()
-            .to_vec();
+        let mut bytes =
+            with_runtime(|runtime| runtime.committed_allocations().unwrap().generation())
+                .to_le_bytes()
+                .to_vec();
         // Check assigned identities independently of payload retention.
-        assert_eq!(
-            ic_memory::default_memory_manager_memory_id(NEIGHBOR).unwrap(),
-            10
-        );
-        assert_eq!(
-            ic_memory::default_memory_manager_memory_id(ROWS).unwrap(),
-            11
-        );
-        let rows = open_default_memory_manager_memory(ROWS).unwrap();
-        let neighbor = open_default_memory_manager_memory(NEIGHBOR).unwrap();
+        assert_eq!(memory_id(NEIGHBOR).unwrap(), 10);
+        assert_eq!(memory_id(ROWS).unwrap(), 11);
+        let rows = open_memory(ROWS).unwrap();
+        let neighbor = open_memory(NEIGHBOR).unwrap();
         let mut markers = [0; 2];
         rows.read(0, &mut markers[..1]);
         neighbor.read(8 * PAGE - 1, &mut markers[1..]);
         bytes.extend_from_slice(&markers);
-        let summary = default_memory_manager_memory_allocation_summary().unwrap();
+        let summary = with_runtime(|runtime| runtime.memory_allocation_summary().unwrap());
         bytes.extend_from_slice(&summary.physical_extent.wasm_pages.to_le_bytes());
         bytes.extend_from_slice(&rows.size().to_le_bytes());
         reply(&bytes);
@@ -126,7 +139,7 @@ mod canister {
         let count = usize::from(args[1]);
         assert!(count <= 2);
         let offset = u64::from_le_bytes(args[2..].try_into().unwrap());
-        let rows = open_default_memory_manager_memory(ROWS).unwrap();
+        let rows = open_memory(ROWS).unwrap();
         // Warm the cache and dirty valid state before the candidate failure.
         // A trap must roll this mutation back as well as reject the invalid IO.
         rows.write(0, &[0x99]);

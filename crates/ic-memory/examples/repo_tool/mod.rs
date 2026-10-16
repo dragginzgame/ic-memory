@@ -4,6 +4,13 @@
 //! package travel together in one receipt. Publication checks that evidence
 //! before dispatch; it never resolves a replacement lockfile.
 
+use ic_build::cargo::{
+    environment::{
+        configuration_directories, is_build_variable, is_compiler_override, observe_configurations,
+    },
+    lock_projection::{WorkspaceVersionProjection, verify_workspace_version_projection},
+    observation::schema::{Metadata, MetadataCommand},
+};
 use ic_host_artifacts::artifact::{Sha256Digest, copy_reader};
 use ic_host_fs::durable::{PublicationMode, WriteOptions};
 use ic_host_fs::read::{hash_file, open_regular_file};
@@ -63,6 +70,7 @@ const CHANGELOG_FINALIZER: &str = "scripts/ci/finalize-release-changelog.awk";
 const LOCK_REWRITER: &str = "scripts/ci/rewrite-local-lock-versions.pl";
 const README_VERSION_RENDERER: &str = "scripts/ci/render-cargo-readme-version.pl";
 const WORKSPACE_VERSION_RENDERER: &str = "scripts/ci/render-cargo-workspace-version.pl";
+const RELEASE_INPUT_ADMISSION: &str = "scripts/ci/validate-release-inputs.pl";
 const TAG_CHECKER: &str = "scripts/ci/check-release-tag.sh";
 const REPLACE_FILE_OPTIONS: WriteOptions = WriteOptions {
     mode: PublicationMode::Replace,
@@ -153,8 +161,14 @@ struct Repository<E> {
 trait Execute {
     fn run(&self, root: &Path, program: &str, args: &[&str], capture: bool) -> Result<String>;
 
+    fn cargo_target(&self, root: &Path) -> Result<PathBuf>;
+
     fn write_bytes(&self, path: &Path, bytes: &[u8]) -> Result<()> {
-        Ok(ic_host_fs::durable::write_bytes(path, bytes)?)
+        Ok(ic_host_fs::durable::write_bytes(
+            path,
+            REPLACE_FILE_OPTIONS,
+            bytes,
+        )?)
     }
 
     fn write_json(&self, path: &Path, value: &impl Serialize) -> Result<()> {
@@ -194,6 +208,31 @@ trait Execute {
 struct Processes;
 
 impl Execute for Processes {
+    fn cargo_target(&self, root: &Path) -> Result<PathBuf> {
+        // Cargo owns command construction and its schema. Execute with this
+        // consumer's Host so no process types cross IC Build's Host boundary.
+        let mut command = MetadataCommand::new()
+            .cargo_path("cargo")
+            .manifest_path(root.join("Cargo.toml"))
+            .current_dir(root)
+            .no_deps()
+            .other_options(vec!["--locked".into(), "--offline".into()])
+            .cargo_command();
+        let output = capture_command(
+            &mut command,
+            OutputLimits {
+                stdout: OutputLimit::Terminate(4 * 1024 * 1024),
+                stderr: OutputLimit::Terminate(64 * 1024),
+                timeout: None,
+            },
+        )
+        .and_then(CompletedExecution::require_success)
+        .and_then(CompletedExecution::require_complete)
+        .inspect_err(|error| report_tool_error("cargo", error))?;
+        let metadata: Metadata = serde_json::from_slice(&output.stdout)?;
+        Ok(metadata.target_directory.into_std_path_buf())
+    }
+
     fn run(&self, root: &Path, program: &str, args: &[&str], capture: bool) -> Result<String> {
         let mut command = Command::new(program);
         command.current_dir(root).args(args);
@@ -210,16 +249,7 @@ impl Execute for Processes {
             )
             .and_then(CompletedExecution::require_success)
             .and_then(CompletedExecution::require_complete)
-            .inspect_err(|error| {
-                // Host error formatting excludes output bytes; retain the
-                // command's stderr in CLI/gate logs before returning its cause.
-                if let ToolError::Execution(failure) = error {
-                    if let Some(status) = failure.evidence.status {
-                        eprintln!("{program} failed ({status})");
-                    }
-                    eprint!("{}", String::from_utf8_lossy(&failure.evidence.stderr));
-                }
-            })?;
+            .inspect_err(|error| report_tool_error(program, error))?;
             eprint!("{}", String::from_utf8_lossy(&output.stderr));
             Ok(String::from_utf8(output.stdout)?)
         } else {
@@ -237,6 +267,16 @@ impl Execute for Processes {
     }
 }
 
+fn report_tool_error(program: &str, error: &ToolError) {
+    // Host formatting excludes bytes; preserve stderr before returning its cause.
+    if let ToolError::Execution(failure) = error {
+        if let Some(status) = failure.evidence.status {
+            eprintln!("{program} failed ({status})");
+        }
+        eprint!("{}", String::from_utf8_lossy(&failure.evidence.stderr));
+    }
+}
+
 fn require(condition: bool, message: &str) -> Result<()> {
     if condition {
         Ok(())
@@ -246,7 +286,7 @@ fn require(condition: bool, message: &str) -> Result<()> {
 }
 
 impl ReleaseSelection {
-    fn from_env() -> Result<Self> {
+    fn from_env<E: Execute>(repo: &Repository<E>) -> Result<Self> {
         let selection = Self {
             kind: env::var("RELEASE_KIND")?,
             previous: env::var("RELEASE_PREVIOUS")?,
@@ -260,9 +300,9 @@ impl ReleaseSelection {
             matches!(selection.kind.as_str(), "patch" | "minor" | "major"),
             "invalid release kind",
         )?;
-        version_parts(&selection.previous)?;
-        version_parts(&selection.version)?;
-        require(valid_date(&selection.date), "invalid UTC release date")?;
+        repo.version_parts(&selection.previous)?;
+        repo.version_parts(&selection.version)?;
+        repo.validate_date(&selection.date)?;
         require(
             valid_commit_identity(&selection.source),
             "invalid source commit identity",
@@ -300,50 +340,6 @@ fn release_commit_from_env() -> Result<String> {
     Ok(commit)
 }
 
-fn valid_date(date: &str) -> bool {
-    let bytes = date.as_bytes();
-    if bytes.len() != 10
-        || bytes[4] != b'-'
-        || bytes[7] != b'-'
-        || bytes
-            .iter()
-            .enumerate()
-            .any(|(index, byte)| index != 4 && index != 7 && !byte.is_ascii_digit())
-    {
-        return false;
-    }
-    let year = date[..4].parse::<u32>().unwrap_or(0);
-    let month = date[5..7].parse::<u32>().unwrap_or(0);
-    let day = date[8..].parse::<u32>().unwrap_or(0);
-    let maximum = match month {
-        1 | 3 | 5 | 7 | 8 | 10 | 12 => 31,
-        4 | 6 | 9 | 11 => 30,
-        2 if year.is_multiple_of(400) || year.is_multiple_of(4) && !year.is_multiple_of(100) => 29,
-        2 => 28,
-        _ => 0,
-    };
-    year != 0 && day != 0 && day <= maximum
-}
-
-fn version_parts(version: &str) -> Result<[u64; 3]> {
-    let parts: Vec<_> = version.split('.').collect();
-    require(
-        parts.len() == 3,
-        "expected a stable major.minor.patch version",
-    )?;
-    let mut numbers = [0; 3];
-    for (number, part) in numbers.iter_mut().zip(parts) {
-        require(
-            !part.is_empty()
-                && part.bytes().all(|byte| byte.is_ascii_digit())
-                && (part == "0" || !part.starts_with('0')),
-            "invalid release version",
-        )?;
-        *number = part.parse()?;
-    }
-    Ok(numbers)
-}
-
 fn toml_string(text: &str, section: &str, field: &str) -> Result<String> {
     let value: toml::Value = toml::from_str(text)?;
     section
@@ -356,41 +352,16 @@ fn toml_string(text: &str, section: &str, field: &str) -> Result<String> {
 }
 
 fn check_lock_update(before: &[u8], after: &str, previous: &str, version: &str) -> Result<()> {
-    let mut expected: toml::Value = toml::from_str(std::str::from_utf8(before)?)?;
-    let packages = expected
-        .get_mut("package")
-        .and_then(toml::Value::as_array_mut)
-        .ok_or("lockfile has no packages")?;
-    let mut count = 0;
-    for package in packages {
-        if package.get("name").and_then(toml::Value::as_str) == Some("ic-memory") {
-            require(
-                package.get("version").and_then(toml::Value::as_str) == Some(previous),
-                "unexpected locked root package version",
-            )?;
-            package["version"] = toml::Value::String(version.to_owned());
-            count += 1;
-        }
-    }
-    require(count == 1, "expected one locked ic-memory package")?;
-    require(
-        expected == toml::from_str::<toml::Value>(after)?,
-        "workspace version refresh changed dependency selection",
-    )
-}
-
-fn target_directory(metadata: &str) -> Result<PathBuf> {
-    let value: serde_json::Value = serde_json::from_str(metadata)?;
-    let target = value
-        .get("target_directory")
-        .and_then(serde_json::Value::as_str)
-        .map(PathBuf::from)
-        .ok_or("Cargo metadata has no target_directory")?;
-    require(
-        target.is_absolute(),
-        "Cargo target_directory must be absolute",
+    verify_workspace_version_projection(
+        std::str::from_utf8(before)?,
+        after,
+        &[WorkspaceVersionProjection {
+            package: "ic-memory",
+            previous,
+            next: version,
+        }],
     )?;
-    Ok(target)
+    Ok(())
 }
 
 fn check_wasm_artifacts(target: &Path) -> Result<()> {
@@ -410,6 +381,30 @@ fn check_wasm_artifacts(target: &Path) -> Result<()> {
 }
 
 impl<E: Execute> Repository<E> {
+    fn validate_date(&self, date: &str) -> Result<()> {
+        require(
+            self.output("perl", &[RELEASE_INPUT_ADMISSION, "date", date])? == format!("{date}\n"),
+            "release date admission returned unexpected output",
+        )
+    }
+
+    fn version_parts(&self, version: &str) -> Result<[u64; 3]> {
+        let output = self.output("perl", &[RELEASE_INPUT_ADMISSION, "version", version])?;
+        let mut parts = output.trim_end_matches('\n').split('\t');
+        let mut numbers = [0; 3];
+        for number in &mut numbers {
+            *number = parts
+                .next()
+                .ok_or("release version admission omitted a component")?
+                .parse()?;
+        }
+        require(
+            parts.next().is_none(),
+            "release version admission returned extra components",
+        )?;
+        Ok(numbers)
+    }
+
     // Keep exact helper inputs for retries and diagnosis. Both transforms use
     // Host capture instead of writing to one pipe before draining the others.
     fn transform_text(
@@ -465,8 +460,8 @@ impl<E: Execute> Repository<E> {
         previous: &str,
         version: &str,
     ) -> Result<String> {
-        version_parts(previous)?;
-        version_parts(version)?;
+        self.version_parts(previous)?;
+        self.version_parts(version)?;
         let mut expected: toml::Value = toml::from_str(text)?;
         require(
             expected
@@ -519,9 +514,9 @@ impl<E: Execute> Repository<E> {
         version: &str,
         date: &str,
     ) -> Result<String> {
-        version_parts(previous)?;
-        version_parts(version)?;
-        require(valid_date(date), "invalid UTC release date")?;
+        self.version_parts(previous)?;
+        self.version_parts(version)?;
+        self.validate_date(date)?;
         // Published history includes bare version headings. Keep that refusal;
         // the shared helper owns candidate classification and finalization.
         require(
@@ -583,7 +578,7 @@ impl<E: Execute> Repository<E> {
             "expected the ic-memory package with an inherited workspace version",
         )?;
         let version = toml_string(&text, "workspace.package", "version")?;
-        version_parts(&version)?;
+        self.version_parts(&version)?;
         Ok(version)
     }
 
@@ -623,21 +618,16 @@ impl<E: Execute> Repository<E> {
     }
 
     fn target(&self) -> Result<PathBuf> {
-        target_directory(&self.output(
-            "cargo",
-            &[
-                "metadata",
-                "--locked",
-                "--offline",
-                "--no-deps",
-                "--format-version",
-                "1",
-            ],
-        )?)
+        let target = self.exec.cargo_target(&self.root)?;
+        require(
+            target.is_absolute(),
+            "Cargo target_directory must be absolute",
+        )?;
+        Ok(target)
     }
 
     fn receipt_path(&self, version: &str, prepared: bool) -> Result<PathBuf> {
-        version_parts(version)?;
+        self.version_parts(version)?;
         let suffix = if prepared { "-prepared" } else { "" };
         Ok(self
             .target()?
@@ -646,7 +636,7 @@ impl<E: Execute> Repository<E> {
     }
 
     fn package_path(&self, version: &str) -> Result<PathBuf> {
-        version_parts(version)?;
+        self.version_parts(version)?;
         Ok(self
             .target()?
             .join("package")
@@ -704,29 +694,10 @@ impl<E: Execute> Repository<E> {
             // The receipts identify the declared toolchains. Cargo compiler
             // replacements or wrappers would execute outside those identities.
             require(
-                !matches!(
-                    name,
-                    "RUSTC"
-                        | "RUSTC_WRAPPER"
-                        | "RUSTC_WORKSPACE_WRAPPER"
-                        | "RUSTDOC"
-                        | "CARGO_BUILD_RUSTC"
-                        | "CARGO_BUILD_RUSTC_WRAPPER"
-                        | "CARGO_BUILD_RUSTC_WORKSPACE_WRAPPER"
-                        | "CARGO_BUILD_RUSTDOC"
-                ),
+                !is_compiler_override(name),
                 &format!("unset {name} before release qualification; use the declared toolchains"),
             )?;
-            if matches!(
-                name,
-                "RUSTFLAGS"
-                    | "RUSTDOCFLAGS"
-                    | "CARGO_ENCODED_RUSTFLAGS"
-                    | "CARGO_ENCODED_RUSTDOCFLAGS"
-            ) || name.starts_with("CARGO_BUILD_")
-                || name.starts_with("CARGO_PROFILE_")
-                || name.starts_with("CARGO_TARGET_") && name != "CARGO_TARGET_DIR"
-            {
+            if is_build_variable(name) {
                 configuration.insert(
                     format!("env:{name}"),
                     value
@@ -735,57 +706,41 @@ impl<E: Execute> Repository<E> {
                 );
             }
         }
-        // Cargo reads configuration from checkout ancestors and Cargo home.
-        // Record digests rather than file contents, which may include secrets.
-        let cargo_home = env::var_os("CARGO_HOME")
-            .map(PathBuf::from)
-            .or_else(|| env::var_os("HOME").map(|home| PathBuf::from(home).join(".cargo")))
-            .ok_or("set CARGO_HOME or HOME")?;
-        let directories = self
-            .root
-            .ancestors()
-            .map(|path| path.join(".cargo"))
-            .chain(std::iter::once(cargo_home));
-        for directory in directories {
-            for name in ["config", "config.toml"] {
-                let path = directory.join(name);
-                if path.exists() {
-                    let value: toml::Value =
-                        toml::from_str(&fs::read_to_string(&path)?).map_err(|_| {
-                            format!("invalid TOML Cargo configuration: {}", path.display())
-                        })?;
-                    for field in [
-                        "rustc",
-                        "rustc-wrapper",
-                        "rustc-workspace-wrapper",
-                        "rustdoc",
-                    ] {
-                        require(
-                            value
-                                .get("build")
-                                .and_then(|build| build.get(field))
-                                .is_none(),
-                            &format!(
-                                "remove build.{field} from {} before release qualification; use the declared toolchains",
-                                path.display()
-                            ),
-                        )?;
-                    }
-                    configuration
-                        .insert(format!("config:{}", path.display()), Self::sha256(&path)?);
-                }
+        let cargo_home = env::var_os("CARGO_HOME");
+        let home = env::var_os("HOME");
+        require(
+            cargo_home.is_some() || home.is_some(),
+            "set CARGO_HOME or HOME",
+        )?;
+        // Keep conservative custody of both root names, even when Cargo shadows
+        // one. Build owns discovery, include traversal and same-read raw hashes.
+        let roots: Vec<_> =
+            configuration_directories(&self.root, cargo_home.as_deref(), home.as_deref())?
+                .iter()
+                .flat_map(|directory| [directory.join("config"), directory.join("config.toml")])
+                .filter(|path| path.exists())
+                .collect();
+        for file in observe_configurations(&roots)? {
+            if let Some(field) = file.compiler_overrides.first() {
+                return Err(format!(
+                    "remove build.{field} from {} before release qualification; use the declared toolchains",
+                    file.path.display()
+                ).into());
             }
+            // Contents may contain secrets; receipts retain only lookup labels
+            // and the hash of the exact bytes parsed by the observer.
+            configuration.insert(
+                format!("config:{}", file.path.display()),
+                Sha256Digest::from_bytes(file.sha256).to_string(),
+            );
         }
         Ok(configuration)
     }
 
     fn check_selection(&self, selection: &ReleaseSelection) -> Result<()> {
-        version_parts(&selection.previous)?;
-        version_parts(&selection.version)?;
-        require(
-            valid_date(&selection.date),
-            "invalid saved UTC release date",
-        )?;
+        self.version_parts(&selection.previous)?;
+        self.version_parts(&selection.version)?;
+        self.validate_date(&selection.date)?;
         require(
             self.output(
                 "bash",
@@ -812,7 +767,7 @@ impl<E: Execute> Repository<E> {
         let version = &selection.version;
         let readme = self.text(PACKAGE_README, Some(source))?;
         let readme = self.release_readme(&readme, version)?;
-        let [major, minor, _] = version_parts(version)?;
+        let [major, minor, _] = self.version_parts(version)?;
         let detail = format!("docs/changelog/{major}.{minor}.md");
         let finalizer = self.root.join(CHANGELOG_FINALIZER);
         Ok(BTreeMap::from([
@@ -958,7 +913,7 @@ impl<E: Execute> Repository<E> {
         Ok(())
     }
     fn validation_path(&self, version: &str) -> Result<PathBuf> {
-        version_parts(version)?;
+        self.version_parts(version)?;
         Ok(self
             .target()?
             .join("release-validation")
@@ -1578,29 +1533,35 @@ pub(super) fn main() -> Result<()> {
         "target" => println!("{}", repo.target()?.display()),
         "ensure-clean" => repo.clean()?,
         "wasm-size" => check_wasm_artifacts(&repo.target()?)?,
-        "release-preflight" => repo.preflight(&ReleaseSelection::from_env()?)?,
-        "release-verify" => repo.verify(&ReleaseSelection::from_env()?)?,
-        "release-prepare-version" => repo.prepare_selected(&ReleaseSelection::from_env()?)?,
+        "release-preflight" => repo.preflight(&ReleaseSelection::from_env(&repo)?)?,
+        "release-verify" => repo.verify(&ReleaseSelection::from_env(&repo)?)?,
+        "release-prepare-version" => repo.prepare_selected(&ReleaseSelection::from_env(&repo)?)?,
         "release-prepared-check" => {
-            repo.prepared(&ReleaseSelection::from_env()?)?;
+            repo.prepared(&ReleaseSelection::from_env(&repo)?)?;
         }
         "release-files" => {
-            for path in repo.surfaces(&ReleaseSelection::from_env()?)?.keys() {
+            for path in repo.surfaces(&ReleaseSelection::from_env(&repo)?)?.keys() {
                 print!("{path}\0");
             }
         }
-        "release-commit-check" => repo.commit_check(&ReleaseSelection::from_env()?)?,
+        "release-commit-check" => repo.commit_check(&ReleaseSelection::from_env(&repo)?)?,
         "release-committed-check" => {
             repo.selected_committed_check(
-                &ReleaseSelection::from_env()?,
+                &ReleaseSelection::from_env(&repo)?,
                 &release_commit_from_env()?,
             )?;
         }
         "release-tagged-check" => {
-            repo.tagged_check(&ReleaseSelection::from_env()?, &release_commit_from_env()?)?;
+            repo.tagged_check(
+                &ReleaseSelection::from_env(&repo)?,
+                &release_commit_from_env()?,
+            )?;
         }
         "release-push-check" => {
-            repo.push_check(&ReleaseSelection::from_env()?, &release_commit_from_env()?)?;
+            repo.push_check(
+                &ReleaseSelection::from_env(&repo)?,
+                &release_commit_from_env()?,
+            )?;
         }
         "qualify-release" => repo.qualify_release()?,
         "publish" => {

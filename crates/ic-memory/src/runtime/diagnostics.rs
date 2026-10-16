@@ -1,14 +1,11 @@
 use super::{MemoryRuntime, RuntimeDiagnosticError, RuntimeLifecycle};
 use crate::{
-    AllocationLedger, AllocationPolicy, DiagnosticCheck, DiagnosticCode, DiagnosticExport,
-    DiagnosticFailure, DiagnosticMemorySize, DiagnosticRuntimeBinding, DiagnosticStableCell,
-    DiagnosticStableCellStatus, LedgerCommitError, LedgerPayloadEnvelopeError,
-    MemoryRuntimeDoctorReport, PolicyIdentity, RecoveredLedger, RuntimeBootstrapPolicy,
-    StableCellLedgerRecord,
-    physical::CommitStoreDiagnostic,
-    requests::{SealedDeclarationFingerprint, SealedDeclarationSnapshot},
-    slot::MEMORY_MANAGER_LEDGER_ID,
-    stable_cell::decode_stable_cell_ledger_record_from_memory,
+    DiagnosticCheck, DiagnosticCode, DiagnosticExport, DiagnosticFailure, DiagnosticMemorySize,
+    DiagnosticRuntimeBinding, DiagnosticStableCell, DiagnosticStableCellStatus, LedgerCommitError,
+    LedgerCommitStore, MemoryRuntimeDoctorReport, PolicyIdentity, RecoveredLedger,
+    RuntimeBootstrapPolicy, physical::CommitSnapshotDiagnostic,
+    requests::SealedDeclarationSnapshot, slot::MEMORY_MANAGER_LEDGER_ID,
+    stable_cell::decode_stable_cell_commit_store_from_memory,
 };
 use ic_stable_structures::{Memory, memory_manager::MemoryId};
 use std::{borrow::Cow, fmt::Display};
@@ -19,12 +16,10 @@ impl<M: Memory> MemoryRuntime<M> {
         if !self.is_bootstrapped() {
             return Err(RuntimeDiagnosticError::NotBootstrapped);
         }
-        let (recovered, commit_recovery) = self
-            .ledger_record_from_memory()?
-            .store()
-            .recover_with_diagnostic();
+        let (recovered, commit_recovery) =
+            self.ledger_record_from_memory()?.recover_with_diagnostic();
         let recovered = recovered?;
-        Ok(self.recovered_diagnostic_export(Cow::Owned(recovered), commit_recovery))
+        Ok(self.recovered_diagnostic_export(recovered, commit_recovery))
     }
 
     /// Diagnose protected commit recovery from this runtime's ledger memory.
@@ -33,9 +28,9 @@ impl<M: Memory> MemoryRuntime<M> {
     /// envelope is readable or the ledger memory is empty.
     pub fn commit_recovery_diagnostic(
         &self,
-    ) -> Result<CommitStoreDiagnostic, RuntimeDiagnosticError> {
+    ) -> Result<CommitSnapshotDiagnostic, RuntimeDiagnosticError> {
         let record = self.ledger_record_from_memory()?;
-        Ok(record.store().physical().diagnostic())
+        Ok(record.physical().diagnostic())
     }
 
     /// Build preflight and lifecycle diagnostics for this runtime.
@@ -56,25 +51,27 @@ impl<M: Memory> MemoryRuntime<M> {
     {
         let stable_cell = self.stable_cell_diagnostic();
         // Recovery owns its ledger and diagnostic evidence. Release the decoded
-        // physical slots before projecting the report or invoking custom policy.
+        // physical snapshot before observing memory or invoking custom policy.
         let recovery = stable_cell
             .record
-            .map(|record| record.store().recover_with_diagnostic());
-        let ledger = recovery.as_ref().and_then(|(recovered, diagnostic)| {
-            recovered.as_ref().ok().map(|recovered| {
-                self.recovered_diagnostic_export(Cow::Borrowed(recovered), *diagnostic)
-            })
-        });
+            .map(|record| record.recover_with_diagnostic());
+        // Keep the original observation boundary before policy callbacks, without
+        // copying the recovered keys/records merely to retain those observations.
+        let mut observed_pages = [0; crate::constants::MAX_ALLOCATIONS];
+        if let Some((Ok(recovered), _)) = &recovery {
+            for (record, pages) in recovered.ledger().records().iter().zip(&mut observed_pages) {
+                *pages = self.memory_size_pages(record.slot().id());
+            }
+        }
         let tested_policy_identity = policy
             .runtime_bootstrap_identity()
             .map_err(|err| DiagnosticFailure::new(DiagnosticCode::PolicyIdentity, err.to_string()));
-        let tested_declaration_fingerprint = declarations.fingerprint();
         let established_bootstrap_binding = self.established_bootstrap_binding();
         let bootstrap_binding = diagnostic_bootstrap_binding(
             &tested_policy_identity,
-            tested_declaration_fingerprint,
+            declarations,
             pool,
-            established_bootstrap_binding.as_ref(),
+            &self.lifecycle,
         );
         let validation = match &tested_policy_identity {
             Ok(_) => diagnostic_validation(
@@ -86,16 +83,29 @@ impl<M: Memory> MemoryRuntime<M> {
             ),
             Err(failure) => DiagnosticCheck::not_run(failure.code, failure.message.clone()),
         };
+        let commit_recovery = recovery.as_ref().map(|(_, diagnostic)| *diagnostic);
+        let ledger = recovery.and_then(|(recovered, diagnostic)| {
+            recovered.ok().map(|recovered| {
+                let mut export = DiagnosticExport::from_owned_ledger(
+                    recovered.into_ledger(),
+                    crate::slot::LEDGER_SLOT,
+                );
+                export.commit_recovery = Some(diagnostic);
+                for (record, pages) in export.records.iter_mut().zip(&observed_pages) {
+                    record.memory_size = Some(DiagnosticMemorySize::from_wasm_pages(*pages));
+                }
+                export
+            })
+        });
 
         MemoryRuntimeDoctorReport {
             bootstrapped: self.is_bootstrapped(),
             tested_policy_identity,
-            tested_declaration_fingerprint,
             established_bootstrap_binding,
             bootstrap_binding,
             ledger_anchor: crate::slot::LEDGER_SLOT,
             stable_cell: stable_cell.diagnostic,
-            commit_recovery: recovery.as_ref().map(|(_, diagnostic)| *diagnostic),
+            commit_recovery,
             ledger,
             requests: declarations.requests().to_vec(),
             allocation_pool: pool.clone(),
@@ -105,21 +115,15 @@ impl<M: Memory> MemoryRuntime<M> {
 
     fn recovered_diagnostic_export(
         &self,
-        recovered: Cow<'_, RecoveredLedger>,
-        commit_recovery: CommitStoreDiagnostic,
+        recovered: RecoveredLedger,
+        commit_recovery: CommitSnapshotDiagnostic,
     ) -> DiagnosticExport {
-        let anchor = crate::slot::LEDGER_SLOT;
-        let mut export = match recovered {
-            Cow::Borrowed(recovered) => DiagnosticExport::from_ledger(recovered.ledger(), anchor),
-            Cow::Owned(recovered) => {
-                DiagnosticExport::from_owned_ledger(recovered.into_ledger(), anchor)
-            }
-        };
+        let mut export =
+            DiagnosticExport::from_owned_ledger(recovered.into_ledger(), crate::slot::LEDGER_SLOT);
         export.commit_recovery = Some(commit_recovery);
         for record in &mut export.records {
-            let id = record.allocation.slot().id();
             record.memory_size = Some(DiagnosticMemorySize::from_wasm_pages(
-                self.memory_size_pages(id),
+                self.memory_size_pages(record.allocation.slot().id()),
             ));
         }
         export
@@ -130,7 +134,6 @@ impl<M: Memory> MemoryRuntime<M> {
             RuntimeLifecycle::Unbootstrapped => None,
             RuntimeLifecycle::Bootstrapped { binding, .. } => Some(DiagnosticRuntimeBinding::new(
                 binding.policy_identity.clone(),
-                binding.source.fingerprint(),
                 binding.pool.clone(),
             )),
         }
@@ -141,7 +144,7 @@ impl<M: Memory> MemoryRuntime<M> {
             .memory_manager
             .get(MemoryId::new(MEMORY_MANAGER_LEDGER_ID));
         let memory_size = DiagnosticMemorySize::from_wasm_pages(memory.size());
-        match decode_stable_cell_ledger_record_from_memory(&memory) {
+        match decode_stable_cell_commit_store_from_memory(&memory) {
             Ok(record) => StableCellDiagnostic {
                 diagnostic: DiagnosticStableCell::new(
                     if memory_size.wasm_pages == 0 {
@@ -171,10 +174,10 @@ impl<M: Memory> MemoryRuntime<M> {
 
 struct StableCellDiagnostic {
     diagnostic: DiagnosticStableCell,
-    record: Option<StableCellLedgerRecord>,
+    record: Option<LedgerCommitStore>,
 }
 
-fn diagnostic_validation<M: Memory, P: AllocationPolicy>(
+fn diagnostic_validation<M: Memory, P: RuntimeBootstrapPolicy>(
     runtime: &MemoryRuntime<M>,
     declarations: &SealedDeclarationSnapshot,
     pool: &crate::MemoryAllocationPool,
@@ -188,17 +191,17 @@ where
         Ok(recovered) => recovered,
         Err(failure) => return DiagnosticCheck::not_run(failure.code, failure.message),
     };
-    if let Err(error) = runtime.validate_pool_custody(recovered.ledger(), pool) {
+    let occupied = recovered.ledger().occupied_slots();
+    if let Err(error) = runtime.validate_pool_custody(&occupied, pool) {
         return DiagnosticCheck::failed(DiagnosticCode::AllocationValidation, error.to_string());
     }
-    let resolved = match declarations.resolve(recovered.ledger(), Vec::new(), pool) {
+    let resolved = match declarations.resolve(recovered.ledger(), &occupied, Vec::new(), pool) {
         Ok(resolved) => resolved,
         Err(err) => {
             return DiagnosticCheck::failed(DiagnosticCode::AllocationValidation, err.to_string());
         }
     };
-    let policy = super::policy::RuntimeMemoryManagerPolicy { custom_policy };
-    match crate::validation::check_allocations(&recovered, &resolved, &policy) {
+    match crate::validation::check_allocations(&recovered, &resolved, custom_policy) {
         Ok(()) => DiagnosticCheck::passed(),
         Err(err) => DiagnosticCheck::failed(DiagnosticCode::AllocationValidation, err.to_string()),
     }
@@ -206,9 +209,9 @@ where
 
 fn diagnostic_bootstrap_binding(
     tested_policy_identity: &Result<PolicyIdentity, DiagnosticFailure>,
-    tested_declaration_fingerprint: SealedDeclarationFingerprint,
+    declarations: &SealedDeclarationSnapshot,
     pool: &crate::MemoryAllocationPool,
-    established: Option<&DiagnosticRuntimeBinding>,
+    lifecycle: &RuntimeLifecycle,
 ) -> DiagnosticCheck {
     let tested_policy_identity = match tested_policy_identity {
         Ok(identity) => identity,
@@ -216,22 +219,19 @@ fn diagnostic_bootstrap_binding(
             return DiagnosticCheck::not_run(failure.code, failure.message.clone());
         }
     };
-    let Some(established) = established else {
+    let RuntimeLifecycle::Bootstrapped { binding, .. } = lifecycle else {
         return DiagnosticCheck::not_run(
             DiagnosticCode::RuntimeBinding,
             "runtime has not completed bootstrap",
         );
     };
-    if &established.policy_identity == tested_policy_identity
-        && established.declaration_fingerprint == tested_declaration_fingerprint
-        && &established.allocation_pool == pool
-    {
-        return DiagnosticCheck::passed();
+    match binding.validate::<std::convert::Infallible>(declarations, pool, tested_policy_identity) {
+        Ok(()) => DiagnosticCheck::passed(),
+        Err(_) => DiagnosticCheck::failed(
+            DiagnosticCode::RuntimeBinding,
+            "tested policy/declaration/pool binding differs from established runtime binding",
+        ),
     }
-    DiagnosticCheck::failed(
-        DiagnosticCode::RuntimeBinding,
-        "tested policy/declaration/pool binding differs from established runtime binding",
-    )
 }
 
 pub(super) fn diagnostic_validation_ledger(
@@ -241,20 +241,12 @@ pub(super) fn diagnostic_validation_ledger(
         return Ok(Cow::Borrowed(recovered));
     }
     if let Some(Err(err)) = recovered {
-        // Protected recovery returns NoValidGeneration only for two absent slots.
-        if matches!(
-            err,
-            LedgerCommitError::Recovery(crate::CommitRecoveryError::NoValidGeneration)
-        ) {
-            return Ok(Cow::Owned(RecoveredLedger::from_trusted_ledger(
-                AllocationLedger::empty_genesis(),
-            )));
+        if let Some(genesis) = RecoveredLedger::genesis_for_absent_snapshot(err) {
+            return Ok(Cow::Owned(genesis));
         }
         let code = if matches!(
             err,
-            LedgerCommitError::PayloadEnvelope(
-                LedgerPayloadEnvelopeError::UnsupportedFormat { .. }
-            )
+            LedgerCommitError::Recovery(crate::CommitRecoveryError::UnsupportedFormat { .. })
         ) {
             DiagnosticCode::UnsupportedFormat
         } else {

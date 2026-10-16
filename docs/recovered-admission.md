@@ -12,7 +12,7 @@ original 0.14.0/0.14.1 scope; current downstream acceptance is recorded in the
 ## Contract
 
 `RuntimeBootstrapPolicy::prepare_bootstrap` adds one hook inside the existing
-runtime flow: recover → prepare → resolve → validate → commit → persist → publish.
+runtime flow: recover → prepare → resolve → validate/stage → commit → persist → publish.
 The existing policy identity covers preparation semantics/configuration too.
 There is no additional bootstrap entrypoint or separately published capability.
 
@@ -42,7 +42,13 @@ existing mappings never advance on admission rejection. IC trap rollback still
 owns interrupted-write atomicity. A callback is trusted host code: metadata and
 selection work are structurally bounded, not arbitrary consumer computation.
 
-## IcyDB-shaped example reviewed before implementation
+## Historical IcyDB-shaped design review
+
+The current runnable example demonstrates generic known-key retention. IcyDB owns
+its actual [role admission](https://github.com/dragginzgame/icydb/blob/e104fe1c9f5921336f0e5b292acbda99f8311476/crates/icydb/src/db/memory_admission.rs)
+and [journal integration tests](https://github.com/dragginzgame/icydb/blob/e104fe1c9f5921336f0e5b292acbda99f8311476/crates/icydb/tests/memory_admission.rs).
+That reviewed source selects Memory 0.41; it does not qualify the current Memory
+release. The following review retains its original illustrative grammar.
 
 Given current declarations for `db.main.control.v1` and a new store, inspect all
 recovered keys in the host-granted pool. Consumer policy requires the existing
@@ -70,12 +76,11 @@ contract.
 ## Usage and errors
 
 [`examples/recovered_admission.rs`](../crates/ic-memory/examples/recovered_admission.rs) is the
-runnable example. Run `cargo run --example recovered_admission`. A host calls
-its generated consumers from its policy's `prepare_bootstrap` method. Existing
-`bootstrap_default_memory_manager_with_policy`, configured default bootstrap and
-`MemoryRuntime::bootstrap` all use that same hook. A library joining a warm host
-uses `verify_default_memory_manager_authority(...)` or owned
-`runtime.verify_authority(...)` to check its requirements, then resolves IDs and
+runnable known-key retention example. Run `cargo run --example recovered_admission`.
+It preserves a selected allocation across a cold reopen without interpreting its
+contents, then performs a matching warm bootstrap. A host calls
+its generated consumers from its policy's `prepare_bootstrap` method. `MemoryRuntime::bootstrap` uses that hook. A library joining a warm host
+uses `runtime.verify_authority(...)` to check its requirements, then resolves IDs and
 opens by key. It cannot append selections after the host has committed. Missing
 keys require coordination with the host's next cold bootstrap, not another
 commit or replacement profile.
@@ -126,9 +131,9 @@ ic-memory does not infer application intent or database readiness.
 
 The native regression starts two workers. Each observes typed
 `NotBootstrapped` before adoption, bootstraps the configured host on its own
-thread, and only then adopts consumer authority and touches stores. The static
-declaration registry is shared across the program; native default runtimes and
-their backing are thread-local. Applications must follow this ordering before
+thread, and only then adopts consumer authority and touches stores. Each worker
+constructs its own runtime and backing, using an explicit request snapshot.
+Applications must follow this ordering before
 touching any thread-local store initializer, including host stores that are
 independent of database readiness.
 
@@ -146,8 +151,9 @@ revoked and retired selections, consumer key-set/owner replacement, excessive
 completion, corruption, exhausted placement and failed backing growth. Rejection
 leaves existing memory unchanged and publishes no capability. Retry succeeds
 against the unchanged evidence; reserved selection preserves schema metadata.
-Configured default-runtime tests verify the same preparation flow and warm
-adoption without replay or profile replacement. A compile-fail test demonstrates
+Explicit-runtime tests verify preparation and matching warm bootstrap without
+replaying admission; injected component handles remain usable after the host
+runtime object is dropped. A compile-fail test demonstrates
 that admission supplies no open method. Existing interrupted/corrupt commit tests
 remain applicable; arbitrary partially written native backing is not made
 crash-atomic by this hook.

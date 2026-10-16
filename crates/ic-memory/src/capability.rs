@@ -1,72 +1,6 @@
 use crate::{declaration::AllocationDeclaration, key::StableKey, slot::MemoryManagerSlot};
 use std::sync::Arc;
 
-///
-/// ValidatedAllocations
-///
-/// Pre-commit allocation declarations accepted by policy and historical ledger
-/// validation.
-///
-/// This value is produced by [`crate::validate_allocations`] and may be staged
-/// into the next ledger generation. It cannot open storage. Only a
-/// [`CommittedAllocations`] capability confirmed after persistence can do that.
-///
-/// This is an in-memory capability, not a serde DTO. It has no public
-/// constructor and should only be produced by validation or bootstrap paths.
-/// Its declarations have valid schema metadata and at most 255 unique keys and
-/// slots. These facts are established before the proof is constructed.
-/// The base generation has passed bounded ownership validation.
-///
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct ValidatedAllocations {
-    inner: Arc<ValidatedState>,
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-struct ValidatedState {
-    /// Recovered generation against which these declarations were validated.
-    base_generation: u64,
-    /// Validated declarations.
-    declarations: Vec<AllocationDeclaration>,
-}
-
-impl ValidatedAllocations {
-    pub(crate) fn new(base_generation: u64, declarations: Vec<AllocationDeclaration>) -> Self {
-        Self {
-            inner: Arc::new(ValidatedState {
-                base_generation,
-                declarations,
-            }),
-        }
-    }
-
-    /// Return the recovered generation used as the validation base.
-    #[must_use]
-    pub fn base_generation(&self) -> u64 {
-        self.inner.base_generation
-    }
-
-    /// Borrow the validated declarations.
-    #[must_use]
-    pub fn declarations(&self) -> &[AllocationDeclaration] {
-        &self.inner.declarations
-    }
-
-    /// Find a validated slot by stable key.
-    #[must_use]
-    pub fn slot_for(&self, key: &StableKey) -> Option<&MemoryManagerSlot> {
-        declaration_for_key(self.declarations(), key.as_str()).map(AllocationDeclaration::slot)
-    }
-
-    pub(crate) const fn confirm_persisted(self, generation: u64) -> CommittedAllocations {
-        CommittedAllocations {
-            validated: self,
-            generation,
-        }
-    }
-}
-
 // Typed capability callers and the runtime's validated borrowed input share
 // one lookup. Comparing text needs no temporary owned StableKey or second index.
 pub fn declaration_for_key<'a>(
@@ -96,11 +30,24 @@ pub fn declaration_for_key<'a>(
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CommittedAllocations {
-    validated: ValidatedAllocations,
+    declarations: Arc<Vec<AllocationDeclaration>>,
     generation: u64,
 }
 
 impl CommittedAllocations {
+    pub(crate) fn from_persisted(
+        mut declarations: Vec<AllocationDeclaration>,
+        generation: u64,
+    ) -> Self {
+        // Governance remains durable ownership, never application-open authority.
+        declarations
+            .retain(|declaration| !crate::is_ic_memory_stable_key(declaration.stable_key.as_str()));
+        Self {
+            declarations: Arc::new(declarations),
+            generation,
+        }
+    }
+
     /// Return the persisted ledger generation that grants this capability.
     #[must_use]
     pub const fn generation(&self) -> u64 {
@@ -110,22 +57,13 @@ impl CommittedAllocations {
     /// Borrow the committed allocation declarations.
     #[must_use]
     pub fn declarations(&self) -> &[AllocationDeclaration] {
-        self.validated.declarations()
+        &self.declarations
     }
 
     /// Find a committed slot by stable key.
     #[must_use]
     pub fn slot_for(&self, key: &StableKey) -> Option<&MemoryManagerSlot> {
-        self.validated.slot_for(key)
-    }
-
-    // Runtime publication exposes application allocations only; governance
-    // declarations remain internal to ledger persistence.
-    pub(crate) fn into_application_allocations(mut self) -> Self {
-        Arc::make_mut(&mut self.validated.inner)
-            .declarations
-            .retain(|declaration| !crate::is_ic_memory_stable_key(declaration.stable_key.as_str()));
-        self
+        declaration_for_key(self.declarations(), key.as_str()).map(AllocationDeclaration::slot)
     }
 }
 
@@ -134,29 +72,36 @@ mod tests {
     use super::*;
 
     #[test]
-    fn filtering_governance_does_not_change_shared_capabilities() {
-        let validated = ValidatedAllocations::new(
-            1,
-            vec![
-                AllocationDeclaration::memory_manager(
-                    crate::IC_MEMORY_LEDGER_STABLE_KEY,
-                    0,
-                    "ledger",
-                )
-                .unwrap(),
-                AllocationDeclaration::memory_manager("app.rows.v1", 100, "rows").unwrap(),
-            ],
-        );
-        let committed = validated.clone().confirm_persisted(2);
-        let filtered = committed.clone().into_application_allocations();
+    fn persistence_confirmation_publishes_shared_application_authority() {
+        let declarations = vec![
+            AllocationDeclaration::memory_manager(crate::IC_MEMORY_LEDGER_STABLE_KEY, 0).unwrap(),
+            AllocationDeclaration::memory_manager("app.rows.v1", 100).unwrap(),
+        ];
+        let committed = CommittedAllocations::from_persisted(declarations, 2);
+        let shared = committed.clone();
 
-        assert_eq!(validated.declarations().len(), 2);
-        assert_eq!(committed.declarations().len(), 2);
-        assert_eq!(filtered.declarations().len(), 1);
+        assert_eq!(committed.declarations().len(), 1);
+        assert_eq!(shared, committed);
+        assert!(std::ptr::eq(
+            shared.declarations(),
+            committed.declarations()
+        ));
         assert_eq!(
-            filtered.declarations()[0].stable_key().as_str(),
+            committed.declarations()[0].stable_key().as_str(),
             "app.rows.v1"
         );
-        assert_eq!(filtered.generation(), committed.generation());
+        assert_eq!(committed.generation(), 2);
+        assert_eq!(
+            committed
+                .slot_for(&StableKey::parse("app.rows.v1").unwrap())
+                .unwrap()
+                .id(),
+            100
+        );
+        assert!(
+            committed
+                .slot_for(&StableKey::parse(crate::IC_MEMORY_LEDGER_STABLE_KEY).unwrap())
+                .is_none()
+        );
     }
 }

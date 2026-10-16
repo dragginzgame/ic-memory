@@ -10,12 +10,12 @@ use serde::{Deserialize, Serialize};
 /// (255), so reading the ID is infallible. A slot is an identity, not authority
 /// to open memory; that still requires committed allocation validation.
 ///
-/// The private serde representation describes the current durable slot encoding.
-/// It preserves that encoding independently of this checked in-memory type.
+/// Serde encodes the numeric ID directly. Decoding uses the same checked
+/// constructor, so serialized DTOs cannot introduce the sentinel.
 ///
 
 #[derive(Clone, Debug, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
-#[serde(try_from = "SlotEncoding", into = "SlotEncoding")]
+#[serde(try_from = "u8", into = "u8")]
 pub struct MemoryManagerSlot(u8);
 
 impl MemoryManagerSlot {
@@ -34,33 +34,16 @@ impl MemoryManagerSlot {
     }
 }
 
-// Passive codec fields only: the current format nests the MemoryManagerId tag
-// inside a slot field. These values never enter allocation policy or execution.
-#[derive(Deserialize, Serialize)]
-#[serde(deny_unknown_fields)]
-struct SlotEncoding {
-    slot: SlotIdEncoding,
-}
-
-#[derive(Deserialize, Serialize)]
-#[serde(deny_unknown_fields)]
-enum SlotIdEncoding {
-    MemoryManagerId(u8),
-}
-
-impl From<MemoryManagerSlot> for SlotEncoding {
+impl From<MemoryManagerSlot> for u8 {
     fn from(slot: MemoryManagerSlot) -> Self {
-        Self {
-            slot: SlotIdEncoding::MemoryManagerId(slot.id()),
-        }
+        slot.id()
     }
 }
 
-impl TryFrom<SlotEncoding> for MemoryManagerSlot {
+impl TryFrom<u8> for MemoryManagerSlot {
     type Error = MemoryManagerSlotError;
 
-    fn try_from(encoded: SlotEncoding) -> Result<Self, Self::Error> {
-        let SlotIdEncoding::MemoryManagerId(id) = encoded.slot;
+    fn try_from(id: u8) -> Result<Self, Self::Error> {
         Self::new(id)
     }
 }
@@ -87,9 +70,6 @@ pub const IC_MEMORY_AUTHORITY_OWNER: &str = "ic-memory";
 
 /// Stable key of the allocation ledger when backed by the current MemoryManager substrate.
 pub const IC_MEMORY_LEDGER_STABLE_KEY: &str = "ic_memory.ledger.v1";
-
-/// Diagnostic label of the allocation ledger when backed by the current MemoryManager substrate.
-pub const IC_MEMORY_LEDGER_LABEL: &str = "MemoryLayoutLedger";
 
 /// MemoryManager ID used by the allocation ledger in the current MemoryManager substrate.
 pub const MEMORY_MANAGER_LEDGER_ID: u8 = MEMORY_MANAGER_MIN_ID;

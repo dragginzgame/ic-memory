@@ -1,9 +1,5 @@
-error[E0451]: fields `validated` and `generation` of struct `CommittedAllocations` are private
- --> tests/ui/fabricate_committed_allocations.rs:5:9
+error[E0616]: field `generation` of struct `CommittedAllocations` is private
+ --> tests/ui/fabricate_committed_allocations.rs:4:15
   |
-4 |     CommittedAllocations {
-  |     -------------------- in this type
-5 |         generation,
-  |         ^^^^^^^^^^ private field
-6 |         ..committed
-  |           ^^^^^^^^^ field `validated` is private
+4 |     committed.generation = generation;
+  |               ^^^^^^^^^^ private field

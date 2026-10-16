@@ -2,9 +2,8 @@ use crate::{
     key::{StableKey, StableKeyError},
     schema::SchemaMetadata,
     slot::{MemoryManagerSlot, MemoryManagerSlotError},
-    text::{DiagnosticTextError, validate_diagnostic_text},
 };
-use serde::{Deserialize, Deserializer, Serialize, de::Error as _};
+use serde::{Deserialize, Serialize};
 
 ///
 /// AllocationDeclaration
@@ -12,7 +11,7 @@ use serde::{Deserialize, Deserializer, Serialize, de::Error as _};
 /// Checked runtime claim that a stable key should own an allocation slot.
 ///
 /// Declarations are supplied by the current binary before opening storage.
-/// Construction and decoding check the stable key, label, slot and schema
+/// Construction and decoding check the stable key, slot and schema
 /// metadata. A declaration becomes authoritative only after validation against
 /// the recovered ledger and commitment in a generation.
 ///
@@ -24,9 +23,6 @@ pub struct AllocationDeclaration {
     pub(crate) stable_key: StableKey,
     /// Claimed allocation slot.
     pub(crate) slot: MemoryManagerSlot,
-    /// Optional diagnostic label.
-    #[serde(deserialize_with = "deserialize_label")]
-    pub(crate) label: Option<String>,
     /// Optional diagnostic schema metadata.
     pub(crate) schema: SchemaMetadata,
 }
@@ -36,57 +32,33 @@ impl AllocationDeclaration {
     pub fn new(
         stable_key: impl AsRef<str>,
         slot: MemoryManagerSlot,
-        label: Option<String>,
         schema: SchemaMetadata,
     ) -> Result<Self, DeclarationSnapshotError> {
         let stable_key = StableKey::parse(stable_key).map_err(DeclarationSnapshotError::Key)?;
-        validate_label(label.as_deref())?;
         Ok(Self {
             stable_key,
             slot,
-            label,
             schema,
         })
     }
 
-    /// Build a `MemoryManager` declaration with a diagnostic label.
+    /// Build a checked `MemoryManager` declaration with default schema metadata.
     pub fn memory_manager(
         stable_key: impl AsRef<str>,
         id: u8,
-        label: impl Into<String>,
     ) -> Result<Self, DeclarationSnapshotError> {
-        Self::memory_manager_with_schema(stable_key, id, label, SchemaMetadata::default())
+        Self::memory_manager_with_schema(stable_key, id, SchemaMetadata::default())
     }
 
-    /// Build an unlabeled `MemoryManager` declaration.
-    pub fn memory_manager_unlabeled(
-        stable_key: impl AsRef<str>,
-        id: u8,
-    ) -> Result<Self, DeclarationSnapshotError> {
-        Self::memory_manager_unlabeled_with_schema(stable_key, id, SchemaMetadata::default())
-    }
-
-    /// Build a `MemoryManager` declaration with a diagnostic label and schema metadata.
+    /// Build a checked `MemoryManager` declaration with schema metadata.
     pub fn memory_manager_with_schema(
         stable_key: impl AsRef<str>,
         id: u8,
-        label: impl Into<String>,
         schema: SchemaMetadata,
     ) -> Result<Self, DeclarationSnapshotError> {
         let slot =
             MemoryManagerSlot::new(id).map_err(DeclarationSnapshotError::MemoryManagerSlot)?;
-        Self::new(stable_key, slot, Some(label.into()), schema)
-    }
-
-    /// Build an unlabeled `MemoryManager` declaration with schema metadata.
-    pub fn memory_manager_unlabeled_with_schema(
-        stable_key: impl AsRef<str>,
-        id: u8,
-        schema: SchemaMetadata,
-    ) -> Result<Self, DeclarationSnapshotError> {
-        let slot =
-            MemoryManagerSlot::new(id).map_err(DeclarationSnapshotError::MemoryManagerSlot)?;
-        Self::new(stable_key, slot, None, schema)
+        Self::new(stable_key, slot, schema)
     }
 
     /// Return the durable stable key claimed by this declaration.
@@ -101,12 +73,6 @@ impl AllocationDeclaration {
         &self.slot
     }
 
-    /// Return the optional diagnostic label.
-    #[must_use]
-    pub fn label(&self) -> Option<&str> {
-        self.label.as_deref()
-    }
-
     /// Return the optional schema metadata.
     #[must_use]
     pub const fn schema(&self) -> &SchemaMetadata {
@@ -117,51 +83,42 @@ impl AllocationDeclaration {
 ///
 /// DeclarationSnapshot
 ///
-/// Immutable runtime declaration snapshot ready for policy and ownership validation.
-///
-/// Construction and decoding enforce the declaration count and unique keys and
-/// slots. A snapshot is not permission to open storage.
+/// Internal resolved declarations with bounded count and unique keys and slots.
+/// Resolution owns canonical order. A snapshot is not permission to open storage.
 /// [`crate::MemoryRuntime::bootstrap`] owns validation and persistence before
 /// publishing committed allocation authority.
 ///
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[derive(Debug, Eq, PartialEq)]
 pub struct DeclarationSnapshot {
     /// Runtime declarations.
     declarations: Vec<AllocationDeclaration>,
 }
 
-impl<'de> Deserialize<'de> for DeclarationSnapshot {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        #[derive(Deserialize)]
-        #[serde(rename = "DeclarationSnapshot", deny_unknown_fields)]
-        struct Snapshot {
-            #[serde(deserialize_with = "crate::cbor::deserialize_records")]
-            declarations: Vec<AllocationDeclaration>,
-        }
-
-        let snapshot = Snapshot::deserialize(deserializer)?;
-        Self::new(snapshot.declarations).map_err(D::Error::custom)
-    }
-}
-
 impl DeclarationSnapshot {
-    /// Create and validate a declaration snapshot.
-    pub fn new(declarations: Vec<AllocationDeclaration>) -> Result<Self, DeclarationSnapshotError> {
-        validate_declaration_set(&declarations)?;
+    pub(crate) fn canonicalize(
+        mut declarations: Vec<AllocationDeclaration>,
+    ) -> Result<Self, DeclarationSnapshotError> {
+        if declarations.len() > crate::constants::MAX_ALLOCATIONS {
+            return Err(DeclarationSnapshotError::TooManyDeclarations);
+        }
+        crate::sort::sort_unstable_by(&mut declarations, |a, b| a.stable_key.cmp(&b.stable_key));
+        let mut slots = [false; crate::constants::MAX_ALLOCATIONS];
+        for (index, declaration) in declarations.iter().enumerate() {
+            let occupied = &mut slots[usize::from(declaration.slot.id())];
+            if *occupied {
+                return Err(DeclarationSnapshotError::DuplicateSlot(
+                    declaration.slot.clone(),
+                ));
+            }
+            *occupied = true;
+            if index > 0 && declarations[index - 1].stable_key == declaration.stable_key {
+                return Err(DeclarationSnapshotError::DuplicateStableKey(
+                    declaration.stable_key.clone(),
+                ));
+            }
+        }
         Ok(Self { declarations })
-    }
-
-    /// Return true when the snapshot has no declarations.
-    #[must_use]
-    pub const fn is_empty(&self) -> bool {
-        self.declarations.is_empty()
-    }
-
-    /// Return the number of declarations in the snapshot.
-    #[must_use]
-    pub const fn len(&self) -> usize {
-        self.declarations.len()
     }
 
     /// Borrow the sealed declarations.
@@ -196,73 +153,6 @@ pub enum DeclarationSnapshotError {
     /// An allocation slot appeared more than once in one snapshot.
     #[error("allocation slot '{0:?}' is declared more than once")]
     DuplicateSlot(MemoryManagerSlot),
-    /// Present declaration labels must be non-empty.
-    #[error("allocation declaration label must not be empty when present")]
-    EmptyLabel,
-    /// Declaration labels must stay bounded for durable ledger storage.
-    #[error("allocation declaration label must be at most 256 bytes")]
-    LabelTooLong,
-    /// Declaration labels must not require Unicode normalization.
-    #[error("allocation declaration label must be ASCII")]
-    NonAsciiLabel,
-    /// Declaration labels must be printable metadata.
-    #[error("allocation declaration label must not contain ASCII control characters")]
-    ControlCharacterLabel,
-}
-
-fn validate_label(label: Option<&str>) -> Result<(), DeclarationSnapshotError> {
-    let Some(label) = label else {
-        return Ok(());
-    };
-    validate_diagnostic_text(label).map_err(|error| match error {
-        DiagnosticTextError::Empty => DeclarationSnapshotError::EmptyLabel,
-        DiagnosticTextError::TooLong => DeclarationSnapshotError::LabelTooLong,
-        DiagnosticTextError::NonAscii => DeclarationSnapshotError::NonAsciiLabel,
-        DiagnosticTextError::ControlCharacter => DeclarationSnapshotError::ControlCharacterLabel,
-    })
-}
-
-// Decode explicitly present optional labels through the same constructor rule.
-// Retain the owned string; no intermediate label type or compatibility default.
-fn deserialize_label<'de, D: Deserializer<'de>>(
-    deserializer: D,
-) -> Result<Option<String>, D::Error> {
-    let label = Option::<String>::deserialize(deserializer)?;
-    validate_label(label.as_deref()).map_err(D::Error::custom)?;
-    Ok(label)
-}
-
-fn validate_declaration_set(
-    declarations: &[AllocationDeclaration],
-) -> Result<(), DeclarationSnapshotError> {
-    if declarations.len() > crate::constants::MAX_ALLOCATIONS {
-        return Err(DeclarationSnapshotError::TooManyDeclarations);
-    }
-    let duplicate_keys = crate::key::duplicate_key_positions(
-        declarations
-            .iter()
-            .enumerate()
-            .map(|(index, declaration)| (&declaration.stable_key, index))
-            .collect(),
-    );
-    let mut slots = [false; crate::constants::MAX_ALLOCATIONS];
-
-    for (index, declaration) in declarations.iter().enumerate() {
-        let occupied = &mut slots[usize::from(declaration.slot.id())];
-        if *occupied {
-            return Err(DeclarationSnapshotError::DuplicateSlot(
-                declaration.slot.clone(),
-            ));
-        }
-        *occupied = true;
-        if duplicate_keys[index] {
-            return Err(DeclarationSnapshotError::DuplicateStableKey(
-                declaration.stable_key.clone(),
-            ));
-        }
-    }
-
-    Ok(())
 }
 
 #[cfg(test)]
@@ -274,42 +164,27 @@ mod tests {
         AllocationDeclaration::new(
             key,
             MemoryManagerSlot::new(id).expect("usable slot"),
-            None,
             SchemaMetadata::default(),
         )
         .expect("declaration")
     }
 
     #[test]
-    fn declaration_rejects_unbounded_label_metadata() {
-        let err = AllocationDeclaration::new(
-            "app.users.v1",
-            MemoryManagerSlot::new(100).expect("usable slot"),
-            Some("x".repeat(257)),
-            SchemaMetadata::default(),
-        )
-        .expect_err("label too long");
-
-        assert_eq!(err, DeclarationSnapshotError::LabelTooLong);
-    }
-
-    #[test]
     fn memory_manager_declaration_constructor_builds_common_declaration() {
-        let declaration = AllocationDeclaration::memory_manager("app.orders.v1", 100, "orders")
-            .expect("declaration");
+        let declaration =
+            AllocationDeclaration::memory_manager("app.orders.v1", 100).expect("declaration");
 
         assert_eq!(declaration.stable_key.as_str(), "app.orders.v1");
         assert_eq!(
             declaration.slot,
             MemoryManagerSlot::new(100).expect("usable slot")
         );
-        assert_eq!(declaration.label.as_deref(), Some("orders"));
         assert_eq!(declaration.schema, SchemaMetadata::default());
     }
 
     #[test]
     fn memory_manager_declaration_constructor_rejects_invalid_slot() {
-        let err = AllocationDeclaration::memory_manager("app.orders.v1", u8::MAX, "orders")
+        let err = AllocationDeclaration::memory_manager("app.orders.v1", u8::MAX)
             .expect_err("sentinel must fail");
 
         assert!(matches!(
@@ -319,16 +194,17 @@ mod tests {
     }
 
     #[test]
-    fn snapshot_decode_rejects_unusable_memory_manager_slot() {
-        let snapshot = DeclarationSnapshot::new(vec![declaration("app.orders.v1", 100)]).unwrap();
-        let mut value = serde_json::to_value(snapshot).unwrap();
-        value["declarations"][0]["slot"]["slot"]["MemoryManagerId"] = serde_json::json!(255);
-        assert!(serde_json::from_value::<DeclarationSnapshot>(value).is_err());
+    fn declaration_decode_rejects_unusable_memory_manager_slot() {
+        let mut value = serde_json::to_value(declaration("app.orders.v1", 100)).unwrap();
+        value["slot"] = serde_json::json!(255);
+        assert!(serde_json::from_value::<AllocationDeclaration>(value.clone()).is_err());
+        let bytes = crate::test_cbor::to_vec(&value).unwrap();
+        assert!(crate::test_cbor::from_slice::<AllocationDeclaration>(&bytes).is_err());
     }
 
     #[test]
     fn rejects_duplicate_keys() {
-        let err = DeclarationSnapshot::new(vec![
+        let err = DeclarationSnapshot::canonicalize(vec![
             declaration("app.users.v1", 100),
             declaration("app.users.v1", 101),
         ])
@@ -343,7 +219,7 @@ mod tests {
     #[test]
     fn rejects_duplicate_slots() {
         for second_key in ["app.orders.v1", "app.users.v1"] {
-            let err = DeclarationSnapshot::new(vec![
+            let err = DeclarationSnapshot::canonicalize(vec![
                 declaration("app.users.v1", 100),
                 declaration(second_key, 100),
             ])
@@ -353,6 +229,75 @@ mod tests {
                 err,
                 DeclarationSnapshotError::DuplicateSlot(MemoryManagerSlot::new(100).unwrap())
             );
+        }
+    }
+
+    #[test]
+    fn canonical_resolution_preserves_identity_failures_and_bounds() {
+        // Independently inspect prior rows to check competing slot/key failures
+        // in the runtime's canonical traversal order.
+        let choices = [
+            ("app.a.v1", 10),
+            ("app.a.v1", 11),
+            ("app.b.v1", 10),
+            ("app.b.v1", 11),
+        ];
+        for code in 0..256 {
+            let mut code = code;
+            let input: Vec<_> = (0..4)
+                .map(|_| {
+                    let (key, id) = choices[code % choices.len()];
+                    code /= choices.len();
+                    declaration(key, id)
+                })
+                .collect();
+            let mut ordered = input.clone();
+            crate::sort::sort_unstable_by(&mut ordered, |a, b| a.stable_key.cmp(&b.stable_key));
+            let expected = ordered.iter().enumerate().find_map(|(index, declaration)| {
+                let prior = &ordered[..index];
+                if prior.iter().any(|row| row.slot == declaration.slot) {
+                    Some(DeclarationSnapshotError::DuplicateSlot(
+                        declaration.slot.clone(),
+                    ))
+                } else if prior
+                    .iter()
+                    .any(|row| row.stable_key == declaration.stable_key)
+                {
+                    Some(DeclarationSnapshotError::DuplicateStableKey(
+                        declaration.stable_key.clone(),
+                    ))
+                } else {
+                    None
+                }
+            });
+            assert_eq!(
+                DeclarationSnapshot::canonicalize(input).unwrap_err(),
+                expected.unwrap()
+            );
+        }
+        for count in [0, 1, 254, 255, 256] {
+            let input: Vec<_> = (0..count)
+                .rev()
+                .map(|index| {
+                    declaration(
+                        &format!("app.store{index:03}.v1"),
+                        u8::try_from(index % 255).unwrap(),
+                    )
+                })
+                .collect();
+            let result = DeclarationSnapshot::canonicalize(input);
+            if count <= 255 {
+                let snapshot = result.unwrap();
+                assert_eq!(snapshot.declarations().len(), count);
+                assert!(
+                    snapshot
+                        .declarations()
+                        .windows(2)
+                        .all(|pair| { pair[0].stable_key < pair[1].stable_key })
+                );
+            } else {
+                assert_eq!(result, Err(DeclarationSnapshotError::TooManyDeclarations));
+            }
         }
     }
 }

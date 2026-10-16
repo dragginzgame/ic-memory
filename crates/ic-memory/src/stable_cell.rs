@@ -1,6 +1,5 @@
 use crate::{LedgerCommitStore, constants::WASM_PAGE_SIZE_BYTES};
 use ic_stable_structures::{Memory, Storable, storable::Bound};
-use serde::{Deserialize, Serialize};
 use std::borrow::Cow;
 use thiserror::Error;
 
@@ -12,60 +11,6 @@ pub const STABLE_CELL_LAYOUT_VERSION: u8 = 1;
 pub const STABLE_CELL_HEADER_SIZE: usize = 8;
 /// Byte offset where the stable-cell value payload starts.
 pub const STABLE_CELL_VALUE_OFFSET: u64 = 8;
-
-///
-/// StableCellLedgerRecord
-///
-/// `ic-stable-structures::Cell` record containing an `ic-memory` allocation
-/// ledger commit store.
-///
-/// This is a substrate adapter DTO. It owns no framework policy and does not
-/// open application allocations.
-///
-
-#[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
-#[serde(deny_unknown_fields)]
-pub struct StableCellLedgerRecord {
-    store: LedgerCommitStore,
-}
-
-impl StableCellLedgerRecord {
-    /// Construct a record from a commit store.
-    #[must_use]
-    #[cfg(test)]
-    pub(crate) const fn new(store: LedgerCommitStore) -> Self {
-        Self { store }
-    }
-
-    /// Borrow the embedded commit store.
-    #[must_use]
-    pub(crate) const fn store(&self) -> &LedgerCommitStore {
-        &self.store
-    }
-
-    /// Mutably borrow the embedded commit store.
-    pub(crate) const fn store_mut(&mut self) -> &mut LedgerCommitStore {
-        &mut self.store
-    }
-}
-
-impl Storable for StableCellLedgerRecord {
-    const BOUND: Bound = Bound::Unbounded;
-
-    fn to_bytes(&self) -> Cow<'_, [u8]> {
-        Cow::Owned(serialize_record(self))
-    }
-
-    fn into_bytes(self) -> Vec<u8> {
-        serialize_record(&self)
-    }
-
-    fn from_bytes(bytes: Cow<'_, [u8]>) -> Self {
-        decode_stable_cell_ledger_record(&bytes).unwrap_or_else(|err| {
-            panic!("StableCellLedgerRecord deserialize failed: {err}");
-        })
-    }
-}
 
 ///
 /// StableCellPayloadError
@@ -127,7 +72,8 @@ pub fn decode_stable_cell_payload<M: Memory>(
     Ok(bytes)
 }
 
-/// Admit the envelope and caller ceiling before allocating or reading a payload.
+// Admit only the header; caller-selected fixture ceilings do not change the
+// ledger reader's bound, and no payload is allocated or read here.
 pub fn stable_cell_payload_length<M: Memory>(
     memory: &M,
     maximum: usize,
@@ -164,11 +110,10 @@ pub fn stable_cell_payload_length<M: Memory>(
         reason = "the admitted caller ceiling is representable as usize"
     )]
     let value_len = value_len as usize;
-
     Ok(value_len)
 }
 
-/// Decode a `StableCellLedgerRecord` from stable-cell value bytes.
+/// Decode a `LedgerCommitStore` from stable-cell value bytes.
 ///
 /// This decodes only the cell value payload, not the enclosing stable-cell
 /// header. Use [`decode_stable_cell_payload`] first when inspecting raw stable
@@ -176,9 +121,9 @@ pub fn stable_cell_payload_length<M: Memory>(
 ///
 /// The returned record is decoded DTO state, not authority. The runtime
 /// validates protected commit recovery before trusting any ledger payload.
-pub fn decode_stable_cell_ledger_record(
+pub fn decode_stable_cell_commit_store(
     bytes: &[u8],
-) -> Result<StableCellLedgerRecord, ciborium::de::Error<std::io::Error>> {
+) -> Result<LedgerCommitStore, ciborium::de::Error<std::io::Error>> {
     crate::cbor::from_slice_exact(bytes)
 }
 
@@ -187,24 +132,17 @@ pub fn decode_stable_cell_ledger_record(
 /// Empty memory returns an uninitialized record without writing a cell. Nonempty
 /// memory must pass the current envelope, byte bounds and record decoding. The
 /// returned DTO still requires protected ledger recovery before it is authority.
-/// Keep this record for recovery rather than decoding again through the
-/// panic-based [`Storable::from_bytes`] used by `Cell::init`.
-pub fn decode_stable_cell_ledger_record_from_memory<M: Memory>(
+/// The runtime retains this decoded record for recovery and separately prepares
+/// bounded publication bytes; reading never initializes a Cell.
+pub fn decode_stable_cell_commit_store_from_memory<M: Memory>(
     memory: &M,
-) -> Result<StableCellLedgerRecord, StableCellLedgerError> {
+) -> Result<LedgerCommitStore, StableCellLedgerError> {
     if memory.size() == 0 {
-        return Ok(StableCellLedgerRecord::default());
+        return Ok(LedgerCommitStore::default());
     }
 
     let payload = decode_stable_cell_payload(memory)?;
-    decode_stable_cell_ledger_record(&payload).map_err(StableCellLedgerError::Record)
-}
-
-fn serialize_record(record: &StableCellLedgerRecord) -> Vec<u8> {
-    EncodedLedgerRecord::new(record)
-        .unwrap_or_else(|size| panic!("stable-cell ledger record exceeds limit: {size}"))
-        .buffer
-        .bytes
+    decode_stable_cell_commit_store(&payload).map_err(StableCellLedgerError::Record)
 }
 
 ///
@@ -218,14 +156,14 @@ pub struct EncodedLedgerRecord {
 }
 
 impl EncodedLedgerRecord {
-    pub(crate) fn new(record: &StableCellLedgerRecord) -> Result<Self, usize> {
+    pub(crate) fn new(record: &LedgerCommitStore) -> Result<Self, usize> {
         // Payload lengths plus small DTO-sized slack are only a capacity hint,
         // not a second CBOR layout calculation. The writer owns the exact bound.
-        let physical = record.store().physical();
+        let physical = record.physical();
         let capacity = physical
             .current()
             .map_or(0, |slot| slot.payload().len())
-            .saturating_add(std::mem::size_of::<StableCellLedgerRecord>().saturating_mul(2))
+            .saturating_add(std::mem::size_of::<LedgerCommitStore>().saturating_mul(2))
             .min(crate::constants::MAX_LEDGER_RECORD_BYTES);
         let mut buffer = crate::bounded_writer::BoundedWriter::new(
             Vec::with_capacity(capacity),
@@ -235,7 +173,7 @@ impl EncodedLedgerRecord {
             if buffer.attempted_len > crate::constants::MAX_LEDGER_RECORD_BYTES {
                 return Err(buffer.attempted_len);
             }
-            panic!("StableCellLedgerRecord serialize failed: {error}");
+            panic!("LedgerCommitStore serialize failed: {error}");
         }
         Ok(Self { buffer })
     }
@@ -284,15 +222,16 @@ mod tests {
     #[test]
     fn stable_cell_ledger_record_round_trips_through_cell() {
         let memory = VectorMemory::default();
-        let record = StableCellLedgerRecord::default();
-        let cell = Cell::init(memory.clone(), record.clone());
-
-        assert_eq!(cell.get(), &record);
+        let record = LedgerCommitStore::default();
+        drop(Cell::new(
+            memory.clone(),
+            EncodedLedgerRecord::new(&record).unwrap(),
+        ));
         let payload = decode_stable_cell_payload(&memory).expect("decode stable cell payload");
-        let decoded = StableCellLedgerRecord::from_bytes(Cow::Owned(payload));
+        let decoded = decode_stable_cell_commit_store(&payload).unwrap();
         assert_eq!(decoded, record);
         assert_eq!(
-            crate::decode_stable_cell_ledger_record_from_memory(&memory).unwrap(),
+            crate::decode_stable_cell_commit_store_from_memory(&memory).unwrap(),
             record
         );
     }
@@ -300,9 +239,9 @@ mod tests {
     #[test]
     fn current_stable_cell_record_fixture_recovers() {
         let bytes = hex_fixture(include_str!(
-            "../fixtures/current/stable_cell_record.cbor.hex"
+            "../fixtures/current/ledger_commit_store_single_active.cbor.hex"
         ));
-        let record = decode_stable_cell_ledger_record(&bytes).expect("stable-cell fixture");
+        let record = decode_stable_cell_commit_store(&bytes).expect("stable-cell fixture");
 
         assert_eq!(
             EncodedLedgerRecord::new(&record).unwrap().len(),
@@ -313,15 +252,16 @@ mod tests {
         let memory = VectorMemory::default();
         drop(Cell::new(memory.clone(), encoded));
         assert_eq!(decode_stable_cell_payload(&memory).unwrap(), bytes);
-        assert_eq!(record.to_bytes().as_ref(), bytes.as_slice());
-        assert_eq!(record.clone().into_bytes(), bytes);
+        assert_eq!(
+            EncodedLedgerRecord::new(&record).unwrap().into_bytes(),
+            bytes
+        );
         assert_eq!(
             bytes,
             crate::test_cbor::to_vec(&record).expect("re-encoded stable-cell fixture")
         );
         assert_eq!(
             record
-                .store()
                 .recover()
                 .expect("fixture store recovers")
                 .current_generation(),
@@ -332,7 +272,7 @@ mod tests {
     #[test]
     fn malformed_payload_bytes_fail_closed_without_mutating_memory() {
         let original = hex_fixture(include_str!(
-            "../fixtures/current/stable_cell_record.cbor.hex"
+            "../fixtures/current/ledger_commit_store_single_active.cbor.hex"
         ));
         let start = original
             .windows(8)
@@ -367,7 +307,7 @@ mod tests {
             let before = memory.borrow().clone();
             for _ in 0..2 {
                 assert!(matches!(
-                    decode_stable_cell_ledger_record_from_memory(&memory),
+                    decode_stable_cell_commit_store_from_memory(&memory),
                     Err(StableCellLedgerError::Record(_))
                 ));
             }
@@ -377,11 +317,13 @@ mod tests {
 
     #[test]
     fn stable_cell_ledger_record_rejects_trailing_bytes() {
-        let mut bytes = serialize_record(&StableCellLedgerRecord::default());
+        let mut bytes = EncodedLedgerRecord::new(&LedgerCommitStore::default())
+            .unwrap()
+            .into_bytes();
         bytes.push(0);
 
         let err =
-            decode_stable_cell_ledger_record(&bytes).expect_err("trailing bytes must fail closed");
+            decode_stable_cell_commit_store(&bytes).expect_err("trailing bytes must fail closed");
 
         assert!(err.to_string().contains("trailing bytes"));
     }
@@ -390,16 +332,14 @@ mod tests {
     fn stable_cell_ledger_record_rejects_unknown_top_level_fields() {
         use crate::test_cbor::Value;
 
-        let map = vec![
-            (
-                Value::Text("store".to_string()),
-                crate::test_cbor::to_value(LedgerCommitStore::default()).expect("store value"),
-            ),
-            (Value::Text("future_field".to_string()), Value::Bool(true)),
-        ];
+        let Value::Map(mut map) = crate::test_cbor::to_value(LedgerCommitStore::default()).unwrap()
+        else {
+            panic!("commit store map");
+        };
+        map.push((Value::Text("future_field".to_string()), Value::Bool(true)));
         let bytes = crate::test_cbor::to_vec(&Value::Map(map)).expect("unknown-field stable cell");
 
-        let err = decode_stable_cell_ledger_record(&bytes)
+        let err = decode_stable_cell_commit_store(&bytes)
             .expect_err("unknown stable-cell record field must fail closed");
 
         assert!(err.to_string().contains("future_field"));
@@ -408,10 +348,10 @@ mod tests {
     #[test]
     fn stable_cell_ledger_record_requires_an_explicit_current_snapshot() {
         let bytes = crate::test_cbor::to_vec(&serde_json::json!({
-            "store": { "physical": {} }
+            "physical": {}
         }))
         .unwrap();
-        let err = decode_stable_cell_ledger_record(&bytes)
+        let err = decode_stable_cell_commit_store(&bytes)
             .expect_err("missing current snapshot must not initialize");
         assert!(err.to_string().contains("current"));
     }
@@ -437,8 +377,8 @@ mod tests {
             Err(StableCellPayloadError::NotStableCell)
         );
         assert_eq!(
-            crate::decode_stable_cell_ledger_record_from_memory(&memory).unwrap(),
-            StableCellLedgerRecord::default()
+            crate::decode_stable_cell_commit_store_from_memory(&memory).unwrap(),
+            LedgerCommitStore::default()
         );
         assert_eq!(
             memory.size(),
@@ -456,7 +396,7 @@ mod tests {
         memory.write(4, &1_u32.to_le_bytes());
         memory.write(STABLE_CELL_VALUE_OFFSET, &[0xff]);
 
-        let err = decode_stable_cell_ledger_record_from_memory(&memory)
+        let err = decode_stable_cell_commit_store_from_memory(&memory)
             .expect_err("bad record must be classified");
 
         assert!(matches!(err, StableCellLedgerError::Record(_)));
@@ -494,7 +434,7 @@ mod tests {
                 pages: 65_537,
             };
             assert!(matches!(
-                decode_stable_cell_ledger_record_from_memory(&memory),
+                decode_stable_cell_commit_store_from_memory(&memory),
                 Err(StableCellLedgerError::Payload(StableCellPayloadError::TooLarge {
                     value_len: rejected,
                 })) if rejected == u64::from(value_len)
@@ -512,7 +452,7 @@ mod tests {
                 })
             );
         }
-        // A fixture's smaller ceiling is admitted by the same header-only path.
+        // The same header-only boundary admits a fixture's selected ceiling.
         for value_len in [16_385, u32::MAX] {
             let memory = HeaderOnly {
                 value_len,
@@ -522,7 +462,7 @@ mod tests {
                 stable_cell_payload_length(&memory, 16_384),
                 Err(StableCellPayloadError::TooLarge {
                     value_len: u64::from(value_len)
-                })
+                }),
             );
         }
     }
@@ -534,7 +474,7 @@ mod tests {
         let mut nested = vec![0x81; crate::constants::MAX_LEDGER_NESTING + 1];
         nested.push(0);
         for bytes in [&huge_array[..], &huge_string[..], &nested, &[0xa1], &[0xff]] {
-            assert!(decode_stable_cell_ledger_record(bytes).is_err());
+            assert!(decode_stable_cell_commit_store(bytes).is_err());
         }
     }
 }

@@ -1,27 +1,7 @@
 use crate::{
-    AllocationLedger, AllocationState, MemoryManagerSlot, MemoryRequest, SchemaMetadata,
+    AllocationDeclaration, AllocationLedger, AllocationRecord, AllocationState,
     SealedDeclarationSnapshot, StableKey,
 };
-
-///
-/// RecoveredAllocationMetadata
-///
-/// Validated allocation evidence borrowed during bootstrap preparation. This
-/// metadata grants no memory access and contains no application payload or
-/// historical authority identity. Host namespace grants supply current authorization.
-///
-
-#[derive(Clone, Copy, Debug)]
-pub struct RecoveredAllocationMetadata<'a> {
-    /// Durable allocation identity.
-    pub stable_key: &'a StableKey,
-    /// Persisted assignment, not permission to open it.
-    pub slot: &'a MemoryManagerSlot,
-    /// Current generic allocation lifecycle state.
-    pub state: AllocationState,
-    /// Latest diagnostic schema metadata, not application schema validation.
-    pub schema: &'a SchemaMetadata,
-}
 
 ///
 /// BootstrapAdmissionError
@@ -60,7 +40,7 @@ pub struct BootstrapAdmission<'a> {
     ledger: &'a AllocationLedger,
     declarations: &'a SealedDeclarationSnapshot,
     pool: &'a crate::MemoryAllocationPool,
-    selected: Vec<MemoryRequest>,
+    selected: Vec<AllocationDeclaration>,
     failure: Option<BootstrapAdmissionError>,
 }
 
@@ -85,24 +65,12 @@ impl<'a> BootstrapAdmission<'a> {
         self.declarations
     }
 
-    /// At most 255 validated allocation summaries, including governance records.
-    ///
-    /// # Panics
-    ///
-    /// Panics only if an internal validated-ledger invariant is broken.
+    /// Borrow at most 255 validated allocation records, including governance.
+    /// Records grant no memory access and contain no historical authority label;
+    /// current host namespace grants remain the authorization owner.
     #[must_use = "recovered allocation metadata is inspected only when the iterator is consumed"]
-    pub fn recovered_allocations(
-        &self,
-    ) -> impl ExactSizeIterator<Item = RecoveredAllocationMetadata<'_>> {
-        self.ledger
-            .records()
-            .iter()
-            .map(|record| RecoveredAllocationMetadata {
-                stable_key: record.stable_key(),
-                slot: record.slot(),
-                state: record.state(),
-                schema: record.schema(),
-            })
+    pub fn recovered_allocations(&self) -> impl ExactSizeIterator<Item = &AllocationRecord> {
+        self.ledger.records().iter()
     }
 
     /// Whether the original input or an earlier selection already names this key.
@@ -119,7 +87,7 @@ impl<'a> BootstrapAdmission<'a> {
             || self
                 .selected
                 .iter()
-                .any(|request| request.stable_key() == key)
+                .any(|declaration| declaration.stable_key() == key)
     }
 
     /// Include a known, nonretired key under an explicit current host namespace grant.
@@ -141,32 +109,37 @@ impl<'a> BootstrapAdmission<'a> {
     }
 
     fn select(&mut self, authority: &str, stable_key: &str) -> Result<(), BootstrapAdmissionError> {
-        // Constructor bounds names before they can enter selection diagnostics.
-        let request = MemoryRequest::new(authority, stable_key, SchemaMetadata::default())?;
-        let key = request.stable_key();
-        if self.is_declared(key) {
-            return Err(BootstrapAdmissionError::Duplicate(key.clone()));
+        // Request validation bounds names before selection diagnostics, without
+        // creating an owner string or schema that admission would discard.
+        let key = crate::requests::checked_request_key(authority, stable_key)?;
+        if self.is_declared(&key) {
+            return Err(BootstrapAdmissionError::Duplicate(key));
         }
         if self.declarations.requests().len() + self.selected.len() >= 254 {
             return Err(BootstrapAdmissionError::TooManyDeclarations);
         }
-        let record = self
+        let Some(record) = self
             .ledger
             .records()
             .iter()
-            .find(|r| r.stable_key() == key)
-            .ok_or_else(|| BootstrapAdmissionError::Unknown(key.clone()))?;
+            .find(|r| r.stable_key() == &key)
+        else {
+            return Err(BootstrapAdmissionError::Unknown(key));
+        };
         if matches!(record.state(), AllocationState::Retired) {
-            return Err(BootstrapAdmissionError::Retired(key.clone()));
+            return Err(BootstrapAdmissionError::Retired(key));
         }
-        self.pool.validate_authority(key, authority)?;
+        self.pool.validate_authority(&key, authority)?;
         self.pool.validate_id(record.slot().id())?;
-        self.selected
-            .push(request.with_schema(record.schema().clone()));
+        self.selected.push(AllocationDeclaration {
+            stable_key: key,
+            slot: record.slot().clone(),
+            schema: record.schema().clone(),
+        });
         Ok(())
     }
 
-    pub(super) fn complete(self) -> Result<Vec<MemoryRequest>, BootstrapAdmissionError> {
+    pub(super) fn complete(self) -> Result<Vec<AllocationDeclaration>, BootstrapAdmissionError> {
         if let Some(error) = self.failure {
             return Err(error);
         }

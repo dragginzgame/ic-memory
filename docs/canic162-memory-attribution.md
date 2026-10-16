@@ -14,6 +14,10 @@ bootstrap owner. This is source-adoption evidence, not a live Toko measurement
 or a new consumer lifecycle qualification. The reported 232 MiB observation
 remains separate from this fixture evidence.
 
+This is historical API and adoption evidence. Memory 0.42 removes the always-null
+`payload_bytes` report field; integrations upgrading to that contract must remove
+the projection. Current report guidance is in [Operations and diagnostics](operations.md).
+
 ## Supported API and accounting
 
 The following signatures summarize the API; they are not a standalone program.
@@ -77,11 +81,12 @@ The owned, serializable report contains:
   `unknown_binding_bytes`, and `unmanaged_bytes` after the assigned region.
 - Exactly 255 `memories`, ordered by ID 0–254, each with `binding`, optional
   `pool_eligible`, `virtual_extent`, `allocated_buckets`, `allocated_bytes`,
-  `bucket_slack_bytes`, and `payload_bytes: None`.
+  `bucket_slack_bytes`.
 
 `AllocationBinding::Current { stable_key, owner }` comes from successfully bound
-current declarations. `Ledger { stable_key, owner }` labels ic-memory's reserved
-ledger slot at ID 0; it does not validate that slot's payload. `Unknown` includes
+current declarations. The unit variant `Ledger` labels ic-memory's reserved
+ledger slot at ID 0; its fixed labels are `IC_MEMORY_LEDGER_STABLE_KEY` and
+`IC_MEMORY_AUTHORITY_OWNER`. It does not validate that slot's payload. `Unknown` includes
 retired, absent, and unbound declarations. Pool eligibility is only current policy
 metadata, not proof of historical ownership. No retired ID is omitted merely
 because its key is unavailable. Before bootstrap all application bindings are

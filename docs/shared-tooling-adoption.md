@@ -8,7 +8,7 @@ Historical shared-version descriptions do not override that selected policy
 or establish new native qualification. Code paths are repository-relative.
 
 The existing tooling snapshot at revision
-`8b2dbd70a24330fdc6c102a01772f4d3e5b628d7` is recorded in
+`3bef3f2daec7f64f875397ed4d53d5b9e2e68a08` is recorded in
 [.shared-tooling.snapshot](../.shared-tooling.snapshot). It identifies the vendored
 files, hashes and executable modes, including the adopted policy.
 Keep its provenance accurate and never edit vendored files in place. Do not
@@ -17,6 +17,26 @@ attribute uncommitted shared files to that recorded revision. The adopted
 its activation scope. The former live-policy exception is retired; future policy
 changes require reviewed snapshot adoption.
 These instructions are the repository's local overlay.
+
+The current Shared 0.15.0 export retains the earlier payload closure and adds four
+required companions over 0.12.4: Cargo publication, Rust toolchain and CI
+change-selection guides, plus canonical release version/date admission. The runner and increment
+helper use that admission; Memory retains independent parsed metadata, receipt,
+source and recovery checks. The temporary 0.12.5 validation-policy reference is
+retired in favor of the now-selected local baseline. Tool pins, installer/build
+identities, Make and formatter entrypoints are unchanged, so this refresh requires
+no tool reinstall. Fixture completion and retention use the updated shared
+helpers, including status and evidence preservation. The upstream 0.15.0 changelog
+also describes open PR work; only bytes in the exact committed export are adopted.
+
+Memory's native release adapter directly invokes the canonical version/date
+admission helper. The launcher also selects the workspace-version reader directly,
+bringing the selection to 82 explicit roots with the same 113 payloads and source
+revision. It shares manifest admission/rendering and stable-version admission;
+Memory retains lock-package selection, scratch custody and network scope.
+The adapter parses the helper's typed projection while
+retaining independent release input, receipt and recovery binding. No executable
+payload changes or prepared-tool refresh is required for that selection change.
 
 The 0.12.2 refresh directly selects `fixture-retention-probes.sh`. Memory's
 retention checker supplies its own fixture roster and retains checker-refusal
@@ -32,9 +52,9 @@ reminders; Memory retains independent release identity and receipt admission.
 Producer full-suite failures remain separate from focused renderer and consumer
 qualification, tracked by [Shared #179 — Correct dashboard width fixtures](https://github.com/dragginzgame/shared-tooling/issues/179).
 
-The single 109-file snapshot uses reviewed committed Shared Tooling at that
-revision, whose committed source `VERSION` is 0.12.4. The manifest records that
-display version separately from its authoritative commit identity. The 80 explicit
+The single 113-file snapshot uses reviewed committed Shared Tooling at that
+revision, whose committed source `VERSION` is 0.15.0. The manifest records that
+display version separately from its authoritative commit identity. The 82 explicit
 roots select the reviewed governance catalog and Memory's maintained Make, hook, CI,
 archive and fixture entrypoints. Their generated companion closure preserves
 the directly invoked canonical local-package lock rewriter and the baseline-linked

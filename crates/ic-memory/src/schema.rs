@@ -112,7 +112,7 @@ mod tests {
         }
 
         let mut value = serde_json::to_value(
-            crate::AllocationDeclaration::memory_manager("app.rows.v1", 100, "rows").unwrap(),
+            crate::AllocationDeclaration::memory_manager("app.rows.v1", 100).unwrap(),
         )
         .unwrap();
         value["schema"]["schema_version"] = 0.into();

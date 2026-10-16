@@ -134,39 +134,13 @@ fn validate_policy_identity_name(name: &str) -> Result<(), PolicyIdentityError> 
 }
 
 ///
-/// AllocationPolicy
-///
-/// Framework-supplied rules for whether a key may claim a slot.
-///
-/// Policy is intentionally separate from the durable ledger invariant. The
-/// ledger remembers `stable_key -> allocation_slot`; this trait lets an
-/// integration reject declarations that do not belong to its namespace or
-/// substrate-specific range before staging a generation.
-///
-/// [`crate::MemoryRuntime`] admits host namespace grants and physical pool
-/// eligibility during resolution, before this policy's validation callbacks.
-/// These callbacks receive external declarations only; the internal
-/// allocation-ledger declaration remains exclusively governed by ic-memory.
-/// Framework policies may add restrictions within the host's grants and pool;
-/// they cannot expand the pool or replace host ownership admission.
-///
-
-pub trait AllocationPolicy {
-    /// Policy error type.
-    type Error;
-
-    /// Validate a stable key against framework naming rules.
-    fn validate_key(&self, key: &StableKey) -> Result<(), Self::Error>;
-
-    /// Validate a stable-key to allocation-slot claim.
-    /// The slot already contains a usable ID; policy checks ownership and scope.
-    fn validate_slot(&self, key: &StableKey, slot: &MemoryManagerSlot) -> Result<(), Self::Error>;
-}
-
-///
 /// RuntimeBootstrapPolicy
 ///
-/// Allocation policy with an explicit semantic identity for runtime bootstrap.
+/// Host policy for recovered admission, allocation checks and runtime identity.
+///
+/// The runtime admits host grants and pool eligibility before calling key and
+/// slot checks, in that order, for each external declaration. Governance stays
+/// private; historical ownership checks still apply to every declaration.
 ///
 /// [`crate::MemoryRuntime`] binds its successful bootstrap to this identity.
 /// Repeated bootstrap is idempotent only when the caller supplies the same
@@ -176,7 +150,17 @@ pub trait AllocationPolicy {
 /// from their effective configuration.
 ///
 
-pub trait RuntimeBootstrapPolicy: AllocationPolicy {
+pub trait RuntimeBootstrapPolicy {
+    /// Policy error type.
+    type Error;
+
+    /// Validate a stable key against framework naming rules.
+    fn validate_key(&self, key: &StableKey) -> Result<(), Self::Error>;
+
+    /// Validate a stable-key to allocation-slot claim.
+    /// The slot already contains a usable ID; policy checks ownership and scope.
+    fn validate_slot(&self, key: &StableKey, slot: &MemoryManagerSlot) -> Result<(), Self::Error>;
+
     /// Admit recovered identity and complete declarations before resolution.
     ///
     /// Runs once per cold bootstrap attempt after validated recovery. Warm

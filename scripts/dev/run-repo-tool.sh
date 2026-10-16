@@ -28,24 +28,23 @@ check_dependency_cache() {
     echo 'Dependency preparation failed. Run make fetch-dependencies to populate the selected cache; resolve any reported lockfile or network errors first. Explicit offline settings remain in effect.' >&2
     exit "$status"
 }
-manifest_version="$(awk '
-    /^\[workspace\.package\]$/ { package = 1; next }
-    /^\[/ { package = 0 }
-    package && /^version = "[^"]+"$/ { gsub(/^version = "|"$/, ""); print }
-' Cargo.toml)"
-lock_version="$(awk '
-    /^\[\[package\]\]$/ { root = 0 }
-    /^name = "ic-memory"$/ { root = 1 }
-    root && /^version = "[^"]+"$/ { gsub(/^version = "|"$/, ""); print }
-' Cargo.lock)"
+manifest_version="$(RUSTUP_TOOLCHAIN="$toolchain" \
+    bash scripts/ci/read-cargo-workspace-version.sh --stable Cargo.toml)"
+# The TOML parser owns syntax; Memory selects exactly its named lock package.
+lock_version="$("${YQ:-yq}" -p toml -o json -I 0 '.' Cargo.lock | jq -ers '
+    if length != 1 then error("expected one lock document") else .[0] end
+    | .package | map(select(.name == "ic-memory"))
+    | if length != 1 then error("expected one locked ic-memory package") else .[0].version end
+    | if type != "string" then error("locked version must be a string")
+      elif contains("\n") or contains("\r") or contains("\u0000") then
+        error("locked version contains control bytes")
+      else . end
+')"
+perl scripts/ci/validate-release-inputs.pl version "$lock_version" > /dev/null
 if [[ "$manifest_version" == "$lock_version" ]]; then
     check_dependency_cache
     exec cargo "+$toolchain" run --locked --offline --quiet --example repo-tool -- "$@"
 fi
-[[ "$lock_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || {
-    echo 'cannot bootstrap repo-tool: expected one canonical root lock version' >&2
-    exit 1
-}
 # --no-deps metadata does not resolve or update the mismatched lock. Respect
 # Cargo's selected target directory, including the consumer's configuration.
 # Preserve path bytes, removing only the parser's output record terminator.
@@ -60,12 +59,8 @@ echo "Retained repo-tool bootstrap metadata: $scratch" >&2
 cp Cargo.lock LICENSE "$scratch/"
 mkdir -p "$scratch/crates/ic-memory"
 cp crates/ic-memory/Cargo.toml crates/ic-memory/README.md "$scratch/crates/ic-memory/"
-awk -v version="$lock_version" '
-    /^\[workspace\.package\]$/ { package = 1; print; next }
-    /^\[/ { package = 0 }
-    package && /^version = "[^"]+"$/ { print "version = \"" version "\""; next }
-    { print }
-' Cargo.toml > "$scratch/Cargo.toml"
+perl scripts/ci/render-cargo-workspace-version.pl Cargo.toml \
+    "$manifest_version" "$lock_version" > "$scratch/Cargo.toml"
 ln -s "$PWD/crates/ic-memory/src" "$scratch/crates/ic-memory/src"
 ln -s "$PWD/crates/ic-memory/examples" "$scratch/crates/ic-memory/examples"
 # This only makes compilation metadata coherent; it grants no release authority.

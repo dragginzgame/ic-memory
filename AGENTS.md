@@ -25,15 +25,13 @@ and prerequisites are declared in [docs/host-support.md](docs/host-support.md).
 
 - Before editing or compiling, check for active Cargo, rustc and rustdoc builds.
 - Focused checks: `make shared-tooling-check`, `make check-pins`, `make test-pins`, `make test-tools`, `make test-tooling`,
-  `make test-release-adapters`, `make test-release-runner`, `make test-hooks`,
+  `make test-release-adapters`, `make test-release-runner`, `make test-hooks`, `make test-fixture-cell`,
   `make test-failure-evidence`, `make fmt-check`, `make lint-tooling`, or an appropriately
   selected Rust test. `make runtime-server-check` and `make test-runtime` are
   focused installed qualification with explicitly prepared tools and both caches.
-- Full delivery suite: run `make validate` before reporting a completed code
-  change as ready, under the current shared baseline's standing validation
-  authority. Reuse passing evidence for unchanged inputs; documentation-only
-  work needs link/consistency/diff checks. Inspection alone does not activate the
-  full suite. Development packaging qualifies working-tree edits; release
+- Full release suite: `make validate`, under the shared
+  [validation cadence](DRAGGINZGAME.md#validation-and-evidence).
+  Development packaging qualifies working-tree edits; release
   admission and the separate `make package` target still require clean source.
   Release, publication and installed runtime qualification retain their separate
   authority. Never commit merely to satisfy a check.

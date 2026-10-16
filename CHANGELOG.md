@@ -1,14 +1,148 @@
 # Changelog
 
-## [0.39.1]
+## [0.44.1]
+
+- Add typed fixture-cell setup and bounded fresh/retained admission, refusing
+  invalid headers and oversized payloads before loading or replacing cell bytes
+  ([#104](https://github.com/dragginzgame/ic-memory/issues/104)).
+
+[Detailed notes](docs/changelog/0.44.md)
+
+## [0.44.0] - 2026-10-16
+
+- **Breaking runtime API:** remove the default singleton facade. Hosts own one
+  explicit runtime and inject references or opened handles into components.
+- **Breaking report API/JSON:** store primary pages, bucket counts and geometry;
+  derive byte totals through accessors and expose fixed facts as constants.
+- Keep durable snapshot input to bounded CBOR byte strings; diagnostic JSON is
+  output only. Current CBOR bytes remain unchanged by this codec cleanup.
+
+- **Breaking storage:** store direct ledger CBOR in the checksummed snapshot,
+  removing the nested envelope. Earlier images are retired; use fresh/reset
+  memory. Incompatible bytes reject without automatic clearing.
+- **Breaking errors:** historical claim failures have one validation owner;
+  remove the obsolete stale-proof and claim-conflict staging error variants.
+  Bootstrap validates and stages each claim once before protected commitment.
+- **Breaking diagnostics/fixtures:** compare exact runtime bindings without
+  declaration fingerprints; replace fixture transition staging with checked
+  record construction. Store the commit DTO directly as the Cell value.
+- Keep recovered-admission examples generic; database roles and journal rules
+  belong to IcyDB's integration tests.
+- Avoid temporary request ownership during historical admission and reuse the
+  built-in allocation policy in native measurements.
+- Use IC Build's Cargo configuration observer, including included-file hashes
+  and compiler refusal ([#110 — Adopt canonical Build Cargo environment observation after publication](https://github.com/dragginzgame/ic-memory/issues/110)).
+- Preserve Cargo lookup failures in the release-adapter fixture and fix its
+  ShellCheck rejection ([#117 — Fix release-adapter Cargo discovery failing ShellCheck SC2155](https://github.com/dragginzgame/ic-memory/issues/117)).
+
+[Detailed notes](docs/changelog/0.44.md)
+
+## [0.43.0] - 2026-10-16
+
+- **Breaking API:** implement allocation checks directly on `RuntimeBootstrapPolicy`;
+  the separate `AllocationPolicy` trait and public resolved `DeclarationSnapshot`
+  codec are removed. Hosts continue to supply checked logical request snapshots.
+- **Breaking admission/errors:** inspect recovered `AllocationRecord` getters
+  directly; the duplicate metadata view and unused runtime `Declarations` error
+  variants are removed. Frameworks retain their own request-assembly errors.
+- Avoid encoding a discarded genesis commit during fresh bootstrap, preserving
+  Cell acquisition, first committed generation and persistence ordering.
+- **Breaking diagnostics:** represent the reserved ledger binding with the unit
+  variant `AllocationBinding::Ledger`. Use the canonical ledger key and owner
+  constants when displaying labels; detailed reports avoid two string allocations.
+- Remove the unusable public validated-staging wrapper, retaining the runtime's
+  internal validation and persistence flow.
+- **Breaking fixtures:** enable `test-support` for reservation and retirement
+  staging, and import their request/error types from `ic_memory::testing`.
+  Existing reserved and retired records retain their production recovery checks.
+- Share empty-snapshot admission between bootstrap and diagnostics, and reuse
+  IC Build's semantic lockfile verifier in release preparation and recovery.
+- Release fixture bootstrap state after opening its cell; memory handles retain
+  the backing and manager needed for subsequent growth and restoration.
+- Fix native release-helper compilation with Host 0.21 by keeping metadata
+  process execution within the helper's selected Host API.
+
+[Detailed notes](docs/changelog/0.43.md)
+
+## [0.42.0] - 2026-10-15
+
+- **Breaking:** remove `Storable` from `StableCellLedgerRecord`. Use the owned
+  runtime for allocation persistence and fallible decode helpers for inspection;
+  persisted bytes and recovery behavior are unchanged.
+
+- **Breaking diagnostics:** remove the always-null per-ID `payload_bytes` field
+  and `RecoveredLedger::physical_generation()`. Use `current_generation()` for
+  the recovered counter and storage-owned diagnostics for payload occupancy.
+
+- **Breaking diagnostics:** return `CommitSnapshotDiagnostic` directly for
+  physical recovery, removing the duplicate status/result wrapper.
+
+- **Breaking API:** use `RuntimeBootstrapError` throughout bootstrap and remove
+  the redundant generic `BootstrapError` type.
+
+- Reuse canonical Shared manifest readers and renderers in the release launcher,
+  preserving supported TOML formatting and refusing invalid selections before builds.
+
+- Simplify allocation capability storage while retaining shared committed
+  declarations and publication only after persistence.
+
+- Build native measurement fixtures from checked allocation types, preserving
+  the current slot encoding and isolating malformed-key recovery measurements.
+
+- Compute declaration fingerprints only when diagnostics request them, reducing
+  bootstrap work and Wasm size while preserving fingerprint values and exact
+  bootstrap binding checks.
+
+[Detailed notes](docs/changelog/0.42.md)
+
+## [0.41.0] - 2026-10-15
+
+- Align native Host dependencies with IC Build's exposed process types so Cargo
+  metadata checks compile with one dependency identity
+  ([#62 — Qualify native tooling and evidence](https://github.com/dragginzgame/ic-memory/issues/62)).
+
+- **Breaking:** serialize allocation slots as checked numeric IDs and remove
+  unused declaration labels. Update constructor calls and raw diagnostic DTO
+  consumers; retained ledger images require explicit disposition before deployment
+  ([#114 — Remove unused allocation declaration labels](https://github.com/dragginzgame/ic-memory/issues/114),
+  [#115 — Hard cut slot encoding to a checked numeric ID](https://github.com/dragginzgame/ic-memory/issues/115)).
+
+- Delegate release version/date grammar to the canonical Shared helper while
+  retaining independent release evidence and recovery admission
+  ([#102 — Converge release version and date admission on Shared](https://github.com/dragginzgame/ic-memory/issues/102)).
+
+- Adopt Shared Tooling 0.15.0's committed snapshot and qualify Host 0.18.6,
+  retaining tool pins and the canister dependency graph
+  ([#62 — Qualify native tooling and evidence](https://github.com/dragginzgame/ic-memory/issues/62)).
+
+- Update the independent installed-runtime test graph to patched rustls 0.23.46
+  ([#107 — Replace rustls 0.23.45](https://github.com/dragginzgame/ic-memory/issues/107)).
+
+- Reuse verified common Cargo tools in native CI and allow a 60-minute cold
+  full-test budget, retaining optional cache transport and every required gate
+  ([#62 — Qualify native tooling and evidence](https://github.com/dragginzgame/ic-memory/issues/62)).
+
+[Detailed notes](docs/changelog/0.41.md)
+
+## [0.40.0] - 2026-10-15
+
+- **Breaking build requirement:** require Rust 1.91.0 and delegate native Cargo
+  metadata observation to IC Build 0.4.0, retaining Memory's release admission
+  ([#113 — Adopt Build metadata and Rust 1.91](https://github.com/dragginzgame/ic-memory/issues/113)).
+- Carry resolved historical declarations through bootstrap and avoid a second
+  declaration-key sort, preserving policy and collision refusal semantics
+  ([#112 — Carry resolved declarations](https://github.com/dragginzgame/ic-memory/issues/112)).
+
+- Reuse recovered-slot membership during bootstrap and consume doctor-report
+  records without copying their keys, preserving custody and policy observations
+  ([#108 — Reuse recovered-slot membership](https://github.com/dragginzgame/ic-memory/issues/108),
+  [#109 — Consume recovered doctor records](https://github.com/dragginzgame/ic-memory/issues/109)).
 
 - Add opt-in fixture byte-cell construction with explicit backing memory, storage
   identity and bucket configuration, with native and Wasm feature checks
   ([#104 — Share fixture byte-cell construction](https://github.com/dragginzgame/ic-memory/issues/104)).
-- Add explicit fresh/retained bounded fixture cells; admit the caller's ceiling
-  before payload allocation and refuse oversized writes or history replacement.
 
-[Detailed notes](docs/changelog/0.39.md)
+[Detailed notes](docs/changelog/0.40.md)
 
 ## [0.39.0] - 2026-10-15
 

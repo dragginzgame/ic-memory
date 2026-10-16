@@ -1,10 +1,7 @@
 use super::{
     MemoryManagerLayoutError, MemoryRuntime, RuntimeDiagnosticError, RuntimeLifecycle, layout,
 };
-use crate::{
-    DiagnosticMemorySize, IC_MEMORY_AUTHORITY_OWNER, IC_MEMORY_LEDGER_STABLE_KEY,
-    MEMORY_MANAGER_LEDGER_ID, WASM_PAGE_SIZE_BYTES,
-};
+use crate::{DiagnosticMemorySize, MEMORY_MANAGER_LEDGER_ID, WASM_PAGE_SIZE_BYTES};
 use ic_stable_structures::Memory;
 use serde::Serialize;
 
@@ -20,8 +17,9 @@ use serde::Serialize;
 pub enum AllocationBinding {
     /// A declaration bound by this runtime's successful bootstrap.
     Current { stable_key: String, owner: String },
-    /// The ic-memory ledger's reserved allocation.
-    Ledger { stable_key: String, owner: String },
+    /// The reserved ledger allocation, identified by
+    /// [`crate::IC_MEMORY_LEDGER_STABLE_KEY`] and [`crate::IC_MEMORY_AUTHORITY_OWNER`].
+    Ledger,
     /// No current stable-key binding is known; this does not mean unused.
     Unknown,
 }
@@ -44,10 +42,6 @@ pub struct MemoryAllocation {
     pub pool_eligible: Option<bool>,
     pub virtual_extent: DiagnosticMemorySize,
     pub allocated_buckets: u16,
-    pub allocated_bytes: u64,
-    pub bucket_slack_bytes: u64,
-    /// Unavailable: neither manager metadata nor virtual extent measures payload.
-    pub payload_bytes: Option<u64>,
 }
 
 ///
@@ -82,8 +76,8 @@ pub struct MemoryAllocations {
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Serialize)]
 pub struct MemoryBindingSummary {
-    pub allocated_bytes: u64,
-    pub bucket_slack_bytes: u64,
+    pub allocated_buckets: u16,
+    pub virtual_extent: DiagnosticMemorySize,
 }
 
 ///
@@ -100,35 +94,113 @@ pub struct MemoryBindingSummary {
 pub struct MemoryAllocationSummary {
     /// In-memory committed generation; unavailable before bootstrap.
     pub current_generation: Option<u64>,
-    pub manager_layout_version: u8,
     /// Actual persisted bucket size, never a requested/default assumption.
     pub bucket_size_pages: u16,
-    pub bucket_size_bytes: u64,
-    pub bucket_capacity: u32,
     pub allocated_buckets: u16,
-    pub remaining_buckets: u32,
-    /// Finite table capacity, excluding the metadata page and backing limits.
-    pub maximum_bucket_bytes: u64,
     pub physical_extent: DiagnosticMemorySize,
     pub virtual_extent: DiagnosticMemorySize,
-    /// The complete first page, including header, table, and padding.
-    pub manager_metadata_bytes: u64,
-    pub manager_header_bytes: u64,
-    pub manager_bucket_table_bytes: u64,
-    pub manager_padding_bytes: u64,
-    pub allocated_bucket_bytes: u64,
-    pub bucket_slack_bytes: u64,
-    pub known_binding_bytes: u64,
-    pub unknown_binding_bytes: u64,
-    /// Backing bytes after the assigned bucket region; ownership is unknown.
-    pub unmanaged_bytes: u64,
-    /// Exact fixed metadata read budget; no ledger history or payload is read.
-    pub metadata_bytes_read: u64,
-    /// Number of usable IDs checked, including zero-size IDs and the ledger.
-    pub memories_measured: u16,
     pub current_binding: MemoryBindingSummary,
     pub ledger_binding: MemoryBindingSummary,
     pub unknown_binding: MemoryBindingSummary,
+}
+
+impl MemoryAllocation {
+    /// Bucket capacity assigned to this ID under the measured bucket geometry.
+    #[must_use]
+    pub const fn allocated_bytes(&self, bucket_size_pages: u16) -> u64 {
+        self.allocated_buckets as u64 * bucket_size_pages as u64 * WASM_PAGE_SIZE_BYTES
+    }
+
+    /// Assigned capacity beyond this ID's virtual extent, not live payload occupancy.
+    /// Use the containing report's measured `bucket_size_pages`.
+    #[must_use]
+    pub const fn bucket_slack_bytes(&self, bucket_size_pages: u16) -> u64 {
+        self.allocated_bytes(bucket_size_pages) - self.virtual_extent.bytes()
+    }
+}
+
+impl MemoryBindingSummary {
+    /// Assigned capacity for this provenance group under the measured geometry.
+    #[must_use]
+    pub const fn allocated_bytes(self, bucket_size_pages: u16) -> u64 {
+        self.allocated_buckets as u64 * bucket_size_pages as u64 * WASM_PAGE_SIZE_BYTES
+    }
+
+    /// Assigned capacity beyond the group's virtual extents.
+    /// Use the containing report's measured `bucket_size_pages`.
+    #[must_use]
+    pub const fn bucket_slack_bytes(self, bucket_size_pages: u16) -> u64 {
+        self.allocated_bytes(bucket_size_pages) - self.virtual_extent.bytes()
+    }
+}
+
+impl MemoryAllocationSummary {
+    /// Supported, validated manager layout identity.
+    pub const MANAGER_LAYOUT_VERSION: u8 = 1;
+    /// Finite table capacity, excluding metadata and backing limits.
+    pub const BUCKET_CAPACITY: u32 = layout::BUCKET_CAPACITY as u32;
+    /// The complete metadata page, including header, table and padding.
+    pub const MANAGER_METADATA_BYTES: u64 = WASM_PAGE_SIZE_BYTES;
+    /// Fixed manager header bytes.
+    pub const MANAGER_HEADER_BYTES: u64 = layout::HEADER_BYTES as u64;
+    /// Fixed bucket ownership table bytes.
+    pub const MANAGER_BUCKET_TABLE_BYTES: u64 = layout::BUCKETS as u64;
+    /// Remaining metadata-page bytes.
+    pub const MANAGER_PADDING_BYTES: u64 = WASM_PAGE_SIZE_BYTES - layout::METADATA_BYTES as u64;
+    /// Exact metadata read budget, independent of ledger history and payload.
+    pub const METADATA_BYTES_READ: u64 = layout::METADATA_BYTES as u64;
+    /// Number of usable IDs, including empty IDs and governance.
+    pub const MEMORIES_MEASURED: u16 = crate::MEMORY_MANAGER_INVALID_ID as u16;
+
+    /// Bytes in each measured bucket.
+    #[must_use]
+    pub const fn bucket_size_bytes(&self) -> u64 {
+        self.bucket_size_pages as u64 * WASM_PAGE_SIZE_BYTES
+    }
+
+    /// Available bucket ownership entries, not backing-memory availability.
+    #[must_use]
+    pub const fn remaining_buckets(&self) -> u32 {
+        Self::BUCKET_CAPACITY - self.allocated_buckets as u32
+    }
+
+    /// Maximum assigned bucket capacity, excluding metadata.
+    #[must_use]
+    pub const fn maximum_bucket_bytes(&self) -> u64 {
+        Self::BUCKET_CAPACITY as u64 * self.bucket_size_bytes()
+    }
+
+    /// Assigned bucket capacity across all IDs.
+    #[must_use]
+    pub const fn allocated_bucket_bytes(&self) -> u64 {
+        self.allocated_buckets as u64 * self.bucket_size_bytes()
+    }
+
+    /// Assigned capacity beyond all virtual extents.
+    #[must_use]
+    pub const fn bucket_slack_bytes(&self) -> u64 {
+        self.allocated_bucket_bytes() - self.virtual_extent.bytes()
+    }
+
+    /// Assigned bytes belonging to current declarations or governance.
+    #[must_use]
+    pub const fn known_binding_bytes(&self) -> u64 {
+        (self.current_binding.allocated_buckets as u64
+            + self.ledger_binding.allocated_buckets as u64)
+            * self.bucket_size_bytes()
+    }
+
+    /// Assigned bytes with no current declaration binding.
+    #[must_use]
+    pub const fn unknown_binding_bytes(&self) -> u64 {
+        self.unknown_binding.allocated_bytes(self.bucket_size_pages)
+    }
+
+    /// Backing bytes after metadata and the assigned bucket region.
+    #[must_use]
+    pub const fn unmanaged_bytes(&self) -> u64 {
+        self.physical_extent.bytes() - Self::MANAGER_METADATA_BYTES - self.allocated_bucket_bytes()
+    }
 }
 
 impl<M: Memory> MemoryRuntime<M> {
@@ -147,16 +219,12 @@ impl<M: Memory> MemoryRuntime<M> {
         for id in 0..255_u8 {
             let index = usize::from(id);
             let virtual_extent = DiagnosticMemorySize::from_wasm_pages(measured.pages[index]);
-            let allocated_bytes = u64::from(measured.buckets[index]) * summary.bucket_size_bytes;
             memories.push(MemoryAllocation {
                 memory_manager_id: id,
                 binding: AllocationBinding::Unknown,
                 pool_eligible: (id <= crate::MEMORY_MANAGER_GOVERNANCE_MAX_ID).then_some(false),
                 virtual_extent,
                 allocated_buckets: measured.buckets[index],
-                allocated_bytes,
-                bucket_slack_bytes: allocated_bytes - virtual_extent.bytes,
-                payload_bytes: None,
             });
         }
         // Resolution guarantees usable unique IDs.
@@ -181,10 +249,7 @@ impl<M: Memory> MemoryRuntime<M> {
                 memory.pool_eligible = Some(binding.pool.contains(memory.memory_manager_id));
             }
         }
-        memories[usize::from(MEMORY_MANAGER_LEDGER_ID)].binding = AllocationBinding::Ledger {
-            stable_key: IC_MEMORY_LEDGER_STABLE_KEY.to_string(),
-            owner: IC_MEMORY_AUTHORITY_OWNER.to_string(),
-        };
+        memories[usize::from(MEMORY_MANAGER_LEDGER_ID)].binding = AllocationBinding::Ledger;
         Ok(MemoryAllocations { summary, memories })
     }
 
@@ -217,7 +282,7 @@ impl<M: Memory> MemoryRuntime<M> {
             .growth
             .allocated_buckets
             .try_borrow()
-            .map_err(|_| super::RuntimeStateError::ReentrantAccess)?;
+            .map_err(|_| RuntimeDiagnosticError::ReentrantAccess)?;
         if measured.bucket_pages != self.growth.bucket_size_pages
             || measured.allocated_buckets != *live_buckets
         {
@@ -226,7 +291,6 @@ impl<M: Memory> MemoryRuntime<M> {
             )
             .into());
         }
-        let bucket_size_bytes = u64::from(measured.bucket_pages) * WASM_PAGE_SIZE_BYTES;
         let mut current = [false; layout::IDS];
         if let Some(snapshot) = declarations {
             for declaration in snapshot {
@@ -251,13 +315,10 @@ impl<M: Memory> MemoryRuntime<M> {
             } else {
                 2
             };
-            let allocated_bytes = u64::from(measured.buckets[index]) * bucket_size_bytes;
-            groups[group].allocated_bytes += allocated_bytes;
-            groups[group].bucket_slack_bytes +=
-                allocated_bytes - measured.pages[index] * WASM_PAGE_SIZE_BYTES;
+            groups[group].allocated_buckets += measured.buckets[index];
+            groups[group].virtual_extent.wasm_pages += measured.pages[index];
             total_pages += measured.pages[index];
         }
-        let allocated_bucket_bytes = u64::from(measured.allocated_buckets) * bucket_size_bytes;
         let physical_extent = DiagnosticMemorySize::from_wasm_pages(measured.physical_pages);
         let virtual_extent = DiagnosticMemorySize::from_wasm_pages(total_pages);
         let summary = MemoryAllocationSummary {
@@ -265,27 +326,10 @@ impl<M: Memory> MemoryRuntime<M> {
                 .committed_allocations()
                 .ok()
                 .map(crate::CommittedAllocations::generation),
-            manager_layout_version: 1,
             bucket_size_pages: measured.bucket_pages,
-            bucket_size_bytes,
-            bucket_capacity: u32::from(layout::BUCKET_CAPACITY),
             allocated_buckets: measured.allocated_buckets,
-            remaining_buckets: u32::from(layout::BUCKET_CAPACITY)
-                - u32::from(measured.allocated_buckets),
-            maximum_bucket_bytes: u64::from(layout::BUCKET_CAPACITY) * bucket_size_bytes,
             physical_extent,
             virtual_extent,
-            manager_metadata_bytes: WASM_PAGE_SIZE_BYTES,
-            manager_header_bytes: layout::HEADER_BYTES as u64,
-            manager_bucket_table_bytes: layout::BUCKETS as u64,
-            manager_padding_bytes: WASM_PAGE_SIZE_BYTES - layout::METADATA_BYTES as u64,
-            allocated_bucket_bytes,
-            bucket_slack_bytes: allocated_bucket_bytes - virtual_extent.bytes,
-            known_binding_bytes: groups[0].allocated_bytes + groups[1].allocated_bytes,
-            unknown_binding_bytes: groups[2].allocated_bytes,
-            unmanaged_bytes: physical_extent.bytes - WASM_PAGE_SIZE_BYTES - allocated_bucket_bytes,
-            metadata_bytes_read: layout::METADATA_BYTES as u64,
-            memories_measured: u16::from(crate::MEMORY_MANAGER_INVALID_ID),
             current_binding: groups[0],
             ledger_binding: groups[1],
             unknown_binding: groups[2],

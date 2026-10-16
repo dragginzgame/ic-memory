@@ -44,7 +44,7 @@
 //!
 //! Bounded physical attribution is available through
 //! [`MemoryRuntime::memory_allocations`] and
-//! [`default_memory_manager_memory_allocations`]. It reports actual persisted
+//! [`MemoryRuntime::memory_allocations`]. It reports actual persisted
 //! buckets and explicit residuals without decoding retained ownership. Virtual
 //! extent is not payload occupancy. Opens return [`RuntimeMemory`]; explicit
 //! [`MemoryManagerConfig`] selects fresh-state buckets or checks a persisted
@@ -75,7 +75,6 @@
 //! `ic-memory` owns allocation governance without wrapping typed collections.
 
 mod allocation_pool;
-mod bootstrap;
 mod bounded_writer;
 mod capability;
 mod cbor;
@@ -145,69 +144,50 @@ mod test_cbor {
 pub use ic_stable_structures;
 
 pub use allocation_pool::{MemoryAllocationPool, MemoryAllocationPoolError, MemoryAuthority};
-pub use bootstrap::BootstrapError;
 pub use capability::CommittedAllocations;
 pub use constants::{
     MAX_LEDGER_BYTES, MAX_LEDGER_NESTING, MAX_LEDGER_RECORD_BYTES, WASM_PAGE_SIZE_BYTES,
 };
-pub use declaration::{AllocationDeclaration, DeclarationSnapshot, DeclarationSnapshotError};
+pub use declaration::{AllocationDeclaration, DeclarationSnapshotError};
 pub use diagnostics::{
     DiagnosticCheck, DiagnosticCode, DiagnosticExport, DiagnosticFailure, DiagnosticMemorySize,
     DiagnosticRecord, DiagnosticRuntimeBinding, DiagnosticStableCell, DiagnosticStableCellStatus,
     MemoryRuntimeDoctorReport,
 };
 pub use key::{StableKey, StableKeyError};
-pub(crate) use ledger::LedgerCommitStore;
-#[cfg(test)]
-pub(crate) use ledger::LedgerPayloadEnvelope;
+pub use ledger::LedgerCommitStore;
 pub use ledger::{
-    AllocationLedger, AllocationRecord, AllocationReservationError, AllocationRetirement,
-    AllocationRetirementError, AllocationStageError, AllocationState,
-    LEDGER_PAYLOAD_FORMAT_VERSION, LedgerCommitError, LedgerIntegrityError,
-    LedgerPayloadEnvelopeError, RecoveredLedger,
+    AllocationLedger, AllocationRecord, AllocationStageError, AllocationState, LedgerCommitError,
+    LedgerIntegrityError, RecoveredLedger,
 };
-pub use physical::{CommitRecoveryError, CommitSnapshotDiagnostic, CommitStoreDiagnostic};
-#[cfg(test)]
-pub(crate) use physical::{CommittedGenerationBytes, SnapshotCommitStore};
-pub use policy::{AllocationPolicy, PolicyIdentity, PolicyIdentityError, RuntimeBootstrapPolicy};
-pub use requests::{
-    MemoryDeclarationError, MemoryRequest, SealedDeclarationFingerprint, SealedDeclarationSnapshot,
-};
+pub use physical::{CommitRecoveryError, CommitSnapshotDiagnostic};
+pub use policy::{PolicyIdentity, PolicyIdentityError, RuntimeBootstrapPolicy};
+pub use requests::{MemoryDeclarationError, MemoryRequest, SealedDeclarationSnapshot};
 pub use runtime::{
     AllocationBinding, BootstrapAdmission, BootstrapAdmissionError, GenericAllocationPolicy,
     MemoryAllocation, MemoryAllocationSummary, MemoryAllocations, MemoryBindingSummary,
     MemoryManagerConfig, MemoryManagerLayoutError, MemoryResolutionError, MemoryRuntime,
-    RecoveredAllocationMetadata, RuntimeAdoptionError, RuntimeBootstrapError,
-    RuntimeConstructionError, RuntimeDiagnosticError, RuntimeGrowError, RuntimeMemory,
-    RuntimeOpenError, RuntimeStateError, bootstrap_default_memory_manager,
-    bootstrap_default_memory_manager_with_config, bootstrap_default_memory_manager_with_policy,
-    committed_allocations, default_memory_manager_commit_recovery_diagnostic,
-    default_memory_manager_diagnostic_export, default_memory_manager_doctor_report,
-    default_memory_manager_doctor_report_with_policy,
-    default_memory_manager_memory_allocation_summary, default_memory_manager_memory_allocations,
-    default_memory_manager_memory_id, is_default_memory_manager_bootstrapped,
-    open_default_memory_manager_memory, verify_default_memory_manager_authority,
+    RuntimeAdoptionError, RuntimeBootstrapError, RuntimeConstructionError, RuntimeDiagnosticError,
+    RuntimeGrowError, RuntimeMemory, RuntimeOpenError,
 };
 pub use schema::{SchemaMetadata, SchemaMetadataError};
 pub use slot::{
-    IC_MEMORY_AUTHORITY_OWNER, IC_MEMORY_LEDGER_LABEL, IC_MEMORY_LEDGER_STABLE_KEY,
-    IC_MEMORY_STABLE_KEY_PREFIX, MEMORY_MANAGER_GOVERNANCE_MAX_ID, MEMORY_MANAGER_INVALID_ID,
-    MEMORY_MANAGER_LEDGER_ID, MEMORY_MANAGER_MAX_ID, MEMORY_MANAGER_MIN_ID, MemoryManagerIdRange,
-    MemoryManagerRangeError, MemoryManagerSlot, MemoryManagerSlotError, is_ic_memory_stable_key,
+    IC_MEMORY_AUTHORITY_OWNER, IC_MEMORY_LEDGER_STABLE_KEY, IC_MEMORY_STABLE_KEY_PREFIX,
+    MEMORY_MANAGER_GOVERNANCE_MAX_ID, MEMORY_MANAGER_INVALID_ID, MEMORY_MANAGER_LEDGER_ID,
+    MEMORY_MANAGER_MAX_ID, MEMORY_MANAGER_MIN_ID, MemoryManagerIdRange, MemoryManagerRangeError,
+    MemoryManagerSlot, MemoryManagerSlotError, is_ic_memory_stable_key,
     memory_manager_governance_range, validate_memory_manager_id,
 };
 pub use stable_cell::{
     STABLE_CELL_HEADER_SIZE, STABLE_CELL_LAYOUT_VERSION, STABLE_CELL_MAGIC,
-    STABLE_CELL_VALUE_OFFSET, StableCellLedgerError, StableCellLedgerRecord,
-    StableCellPayloadError, decode_stable_cell_ledger_record,
-    decode_stable_cell_ledger_record_from_memory, decode_stable_cell_payload,
+    STABLE_CELL_VALUE_OFFSET, StableCellLedgerError, StableCellPayloadError,
+    decode_stable_cell_commit_store, decode_stable_cell_commit_store_from_memory,
+    decode_stable_cell_payload,
 };
 pub use validation::AllocationValidationError;
-#[cfg(test)]
-pub(crate) use validation::validate_allocations;
 
 #[cfg(test)]
 mod allocation_measurements_tests;
 
-#[cfg(feature = "test-support")]
+#[cfg(any(test, feature = "test-support"))]
 pub mod testing;

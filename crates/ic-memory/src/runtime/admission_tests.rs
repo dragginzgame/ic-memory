@@ -1,7 +1,8 @@
 use super::request_tests::{pool, snapshot};
 use super::*;
 use crate::{
-    AllocationPolicy, BootstrapAdmissionError as AdmissionError, MemoryManagerSlot, StableKey,
+    BootstrapAdmissionError as AdmissionError, MemoryDeclarationError as DeclarationError,
+    MemoryManagerSlot, RuntimeBootstrapPolicy, StableKey,
 };
 use ic_stable_structures::VectorMemory;
 use std::cell::Cell as Counter;
@@ -15,7 +16,7 @@ pub(super) struct AdmissionPolicy {
     pub deny_journals: bool,
 }
 
-impl AllocationPolicy for AdmissionPolicy {
+impl RuntimeBootstrapPolicy for AdmissionPolicy {
     type Error = &'static str;
     fn validate_key(&self, key: &StableKey) -> Result<(), Self::Error> {
         if self.deny_journals && key.as_str().ends_with(".journal.v1") {
@@ -27,8 +28,7 @@ impl AllocationPolicy for AdmissionPolicy {
     fn validate_slot(&self, _: &StableKey, _: &MemoryManagerSlot) -> Result<(), Self::Error> {
         Ok(())
     }
-}
-impl RuntimeBootstrapPolicy for AdmissionPolicy {
+
     fn runtime_bootstrap_identity(&self) -> Result<PolicyIdentity, crate::PolicyIdentityError> {
         PolicyIdentity::new("test.admission", 1)
     }
@@ -40,15 +40,15 @@ impl RuntimeBootstrapPolicy for AdmissionPolicy {
         let mut selected = Vec::new();
         if self.discover {
             for record in admission.recovered_allocations() {
-                if record.stable_key.as_str().ends_with(".control.v1")
-                    && !admission.is_declared(record.stable_key)
+                if record.stable_key().as_str().ends_with(".control.v1")
+                    && !admission.is_declared(record.stable_key())
                 {
                     return Err("identity rejected");
                 }
-                if record.stable_key.as_str().ends_with(".journal.v1")
-                    && !admission.is_declared(record.stable_key)
+                if record.stable_key().as_str().ends_with(".journal.v1")
+                    && !admission.is_declared(record.stable_key())
                 {
-                    selected.push(record.stable_key.clone());
+                    selected.push(record.stable_key().clone());
                 }
             }
         }
@@ -72,7 +72,6 @@ fn declared_membership_covers_original_inputs_and_retains_poisoned_selections() 
     let recovered = runtime
         .ledger_record_from_memory()
         .unwrap()
-        .store()
         .recover()
         .unwrap();
     // Requests arrive in deliberately noncanonical key order.
@@ -177,6 +176,56 @@ fn discovers_omitted_journal_before_one_commit_and_skips_warm_admission() {
 }
 
 #[test]
+fn historical_request_validation_precedes_selection_and_poisons_the_attempt() {
+    let backing = seeded();
+    let before = backing.borrow().clone();
+    let runtime = MemoryRuntime::new(backing.clone()).unwrap();
+    let recovered = runtime
+        .ledger_record_from_memory()
+        .unwrap()
+        .recover()
+        .unwrap();
+    let original = snapshot(&[CONTROL], "app");
+    let host_pool = pool();
+    for (authority, key, kind) in [
+        ("", "not a key", "authority"),
+        ("ic-memory", "not a key", "reserved authority"),
+        ("app", "not a key", "key"),
+        ("app", crate::IC_MEMORY_LEDGER_STABLE_KEY, "reserved key"),
+    ] {
+        let mut admission = BootstrapAdmission::new(recovered.ledger(), &original, &host_pool);
+        let error = admission.include_historical(authority, key).unwrap_err();
+        let AdmissionError::Declarations(ref declaration_error) = error else {
+            panic!("unexpected selection error: {error:?}");
+        };
+        assert!(matches!(
+            (kind, declaration_error),
+            ("authority", DeclarationError::InvalidAuthority { .. })
+                | (
+                    "reserved authority",
+                    DeclarationError::ReservedAuthority { .. }
+                )
+                | (
+                    "key",
+                    DeclarationError::Declaration(crate::DeclarationSnapshotError::Key(_))
+                )
+                | ("reserved key", DeclarationError::ReservedStableKey { .. })
+        ));
+        assert_eq!(
+            *declaration_error,
+            crate::MemoryRequest::new(authority, key, crate::SchemaMetadata::default())
+                .unwrap_err()
+        );
+        assert_eq!(
+            admission.include_historical("app", JOURNAL).unwrap_err(),
+            error
+        );
+        assert_eq!(admission.complete().unwrap_err(), error);
+        assert_eq!(*backing.borrow(), before);
+    }
+}
+
+#[test]
 fn bad_selections_and_consumer_rejections_leave_mapping_unchanged() {
     for (selections, kind) in [
         (vec![("app", "app.unknown.v1")], "unknown"),
@@ -275,18 +324,18 @@ fn current_policy_revoked_grants_and_retirement_still_reject() {
     ));
     assert_eq!(*backing.borrow(), before);
     let mut record = runtime.ledger_record_from_memory().unwrap();
-    let retired = record
-        .store()
-        .recover()
+    let recovered = record.recover().unwrap();
+    let mut rows = recovered.ledger().records().to_vec();
+    rows.iter_mut()
+        .find(|row| row.stable_key().as_str() == JOURNAL)
         .unwrap()
-        .ledger()
-        .stage_retirement_generation(
-            &crate::AllocationRetirement::new(JOURNAL, MemoryManagerSlot::new(11).unwrap())
-                .unwrap(),
-        )
-        .unwrap();
-    record.store_mut().commit_generation(&retired).unwrap();
-    let _cell = Cell::new(runtime.memory(MEMORY_MANAGER_LEDGER_ID), record);
+        .state = crate::AllocationState::Retired;
+    let retired = crate::AllocationLedger::new(recovered.current_generation() + 1, rows).unwrap();
+    record.commit_generation(&retired).unwrap();
+    let _cell = Cell::new(
+        runtime.memory(MEMORY_MANAGER_LEDGER_ID),
+        EncodedLedgerRecord::new(&record).unwrap(),
+    );
     drop(runtime);
     let before = backing.borrow().clone();
     let mut runtime = MemoryRuntime::new(backing.clone()).unwrap();
@@ -416,7 +465,6 @@ fn fresh_rejection_can_acquire_root_but_cannot_commit_genesis() {
         runtime
             .ledger_record_from_memory()
             .unwrap()
-            .store()
             .physical()
             .current()
             .is_none()
@@ -457,26 +505,27 @@ fn completion_bound_and_reservation_activation_preserve_evidence() {
     ));
     assert_eq!(*backing.borrow(), before);
     let mut record = runtime.ledger_record_from_memory().unwrap();
-    let reserved = record
-        .store()
-        .recover()
-        .unwrap()
-        .ledger()
-        .stage_reservation_generation(&[
-            crate::AllocationDeclaration::memory_manager_unlabeled_with_schema(
-                "app.reserved.journal.v1",
-                12,
-                crate::SchemaMetadata::new(Some(5)).unwrap(),
-            )
-            .unwrap(),
-        ])
-        .unwrap();
-    record.store_mut().commit_generation(&reserved).unwrap();
-    let _cell = Cell::new(runtime.memory(MEMORY_MANAGER_LEDGER_ID), record);
+    let recovered = record.recover().unwrap();
+    let mut rows = recovered.ledger().records().to_vec();
+    rows.push(crate::testing::allocation_record(
+        &crate::AllocationDeclaration::memory_manager_with_schema(
+            "app.reserved.journal.v1",
+            12,
+            crate::SchemaMetadata::new(Some(5)).unwrap(),
+        )
+        .unwrap(),
+        crate::AllocationState::Reserved,
+    ));
+    let reserved = crate::AllocationLedger::new(recovered.current_generation() + 1, rows).unwrap();
+    record.commit_generation(&reserved).unwrap();
+    let _cell = Cell::new(
+        runtime.memory(MEMORY_MANAGER_LEDGER_ID),
+        EncodedLedgerRecord::new(&record).unwrap(),
+    );
     drop(runtime);
     let mut runtime = MemoryRuntime::new(backing).unwrap();
     let policy = AdmissionPolicy {
-        selections: vec![("app", "app.reserved.journal.v1")],
+        selections: vec![("app", "app.reserved.journal.v1"), ("app", JOURNAL)],
         ..Default::default()
     };
     let committed = runtime
@@ -493,4 +542,17 @@ fn completion_bound_and_reservation_activation_preserve_evidence() {
         &crate::SchemaMetadata::new(Some(5)).unwrap()
     );
     assert_eq!(declaration.slot().id(), 12);
+    assert!(
+        committed
+            .declarations()
+            .windows(2)
+            .all(|pair| { pair[0].stable_key() < pair[1].stable_key() })
+    );
+    assert_eq!(
+        committed
+            .slot_for(&StableKey::parse(JOURNAL).unwrap())
+            .unwrap()
+            .id(),
+        11
+    );
 }

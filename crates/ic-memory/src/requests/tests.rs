@@ -15,7 +15,7 @@ fn resolution_fills_free_slots_around_interleaved_retained_requests() {
             .into_iter()
             .map(|(key, id)| {
                 crate::AllocationRecord::active(
-                    &AllocationDeclaration::memory_manager_unlabeled(key, id).unwrap(),
+                    &AllocationDeclaration::memory_manager(key, id).unwrap(),
                 )
             })
             .collect(),
@@ -28,7 +28,9 @@ fn resolution_fills_free_slots_around_interleaved_retained_requests() {
             .collect(),
     )
     .unwrap();
-    let resolved = requests.resolve(&ledger, vec![], &pool).unwrap();
+    let resolved = requests
+        .resolve(&ledger, &ledger.occupied_slots(), vec![], &pool)
+        .unwrap();
     let external: Vec<_> = resolved
         .declarations()
         .iter()
@@ -75,7 +77,6 @@ fn request_permutations_are_canonical_and_duplicate_keys_reject() {
     let reversed: Vec<_> = requests.iter().rev().cloned().collect();
     let second = SealedDeclarationSnapshot::new(reversed).unwrap();
     assert_eq!(first, second);
-    assert_eq!(first.fingerprint(), second.fingerprint());
     let mut conflict = requests;
     conflict
         .push(MemoryRequest::new("foreign", "app.rows0.v1", SchemaMetadata::default()).unwrap());
@@ -86,14 +87,25 @@ fn request_permutations_are_canonical_and_duplicate_keys_reject() {
 }
 
 #[test]
-fn snapshot_fingerprint_covers_linked_declaration_authority() {
-    let make = |owner| {
+fn snapshot_equality_covers_linked_declaration_authority() {
+    let make = |owner, key, schema| {
         SealedDeclarationSnapshot::new(vec![
-            MemoryRequest::new(owner, "app.rows.v1", SchemaMetadata::default()).unwrap(),
+            MemoryRequest::new(owner, key, SchemaMetadata::new(schema).unwrap()).unwrap(),
         ])
         .unwrap()
     };
-    assert_ne!(make("app").fingerprint(), make("foreign").fingerprint());
+    let snapshot = make("app", "app.rows.v1", None);
+    let shared = snapshot.clone();
+    assert_eq!(snapshot, shared);
+    assert!(snapshot.shares_storage_with(&shared));
+    for different in [
+        make("foreign", "app.rows.v1", None),
+        make("app", "app.rows.v1", Some(7)),
+        make("app", "app.other.v1", None),
+        SealedDeclarationSnapshot::new(vec![]).unwrap(),
+    ] {
+        assert_ne!(snapshot, different);
+    }
 }
 
 #[test]

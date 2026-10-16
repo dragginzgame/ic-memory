@@ -19,22 +19,20 @@ without opening application stores. The report distinguishes:
 - allocated locations whose current owner is unknown; and
 - bytes outside the manager's assigned region.
 
-Use `runtime.memory_allocations()` or
-`default_memory_manager_memory_allocations()` for the detailed, per-ID
+Use `runtime.memory_allocations()` for the detailed, per-ID
 `MemoryAllocations` report. It returns all 255 usable IDs in order, including
 zero-size IDs and the ledger at ID 0. Numeric totals are in `report.summary`;
 per-ID rows are in `report.memories`. Serialized reports use the same two fields.
 
-Use `runtime.memory_allocation_summary()` or
-`default_memory_manager_memory_allocation_summary()` for recurring numeric
+Use `runtime.memory_allocation_summary()` for recurring numeric
 metrics. `MemoryAllocationSummary` contains the same capacity and conservation
 totals without constructing 255 rows or copying store names, owners, or range
 claims.
 
 Both paths read exactly 34,848 bytes of validated manager metadata. They do not
 decode retained ownership, initialize stores, write, grow memory, or advance the
-ledger generation. Default-runtime helpers also refuse to construct a missing
-runtime merely to answer a diagnostic request.
+ledger generation. The application owns the runtime instance; observations
+never choose or initialize one implicitly.
 
 Manager validation, including reopen, uses a fixed 32 KiB local table buffer.
 This removes a temporary heap allocation while increasing stack use. Custom
@@ -54,8 +52,16 @@ application data are present. In particular:
 - **Unknown binding bytes** belong to IDs whose current store cannot be named
   safely.
 - **Unmanaged bytes** lie outside the manager's assigned region.
-- `payload_bytes` is unavailable because `ic-memory` does not inspect each
-  collection's internal format.
+
+Reports store primary measurements: Wasm pages, assigned bucket counts and
+persisted bucket geometry. Use `DiagnosticMemorySize::bytes()` and the summary's
+byte-total methods for derived values. Per-ID and binding-group byte methods
+take `summary.bucket_size_pages`. Fixed layout/read-budget facts are associated
+constants on `MemoryAllocationSummary`. JSON contains primary facts only;
+application APIs such as Canic own any expanded presentation DTOs.
+
+Payload occupancy belongs to the storage owner's diagnostics. This report does
+not inspect collection formats or include a payload-occupancy field.
 
 The following identities should hold:
 
@@ -73,8 +79,9 @@ from their bytes.
 ## Ledger size and upgrade count
 
 The ledger keeps current ownership and latest schema metadata, with at most 255
-records. Repeated upgrades add no audit entries. Two protected snapshots and one
-commit counter remain for recovery and stale-proof checks. Logical metadata is
+records. Repeated upgrades add no audit entries. One checksummed current snapshot
+remains for recovery. Recovery checks its physical and logical counters agree;
+the recovered counter also binds stale-proof checks. Logical metadata is
 bounded to 64 KiB; the enclosing record to 64 KiB + 4 KiB. Physical allocation
 also depends on the configured manager bucket size, so smaller encoded bytes do
 not necessarily reduce assigned bucket bytes. See [the current ledger contract](current-ledger.md).
@@ -91,9 +98,7 @@ Fresh runtimes default to 128 Wasm pages, or 8 MiB, per bucket.
 same-release memory.
 
 To choose a different size for new memory, construct an explicit runtime with
-`MemoryRuntime::new_with_config(memory, MemoryManagerConfig::new(pages)?)`, or
-select the default runtime's setting on its first bootstrap with
-`bootstrap_default_memory_manager_with_config(config, &policy)`.
+`MemoryRuntime::new_with_config(memory, MemoryManagerConfig::new(pages)?)`.
 
 All nonzero `u16` page counts are supported. The setting is immutable for that
 runtime. Existing memory must match exactly: configuration never shrinks,
@@ -109,14 +114,10 @@ study that introduced configurable buckets.
 
 ## Bootstrap state and early observations
 
-`is_default_memory_manager_bootstrapped()` and `committed_allocations()` do not
-construct a missing runtime. They return `false` and `NotBootstrapped`,
-respectively, without choosing a bucket size.
-
-Default memory opens, ID resolution, diagnostic export, commit-recovery
-inspection, and doctor reports follow the same rule. This ensures that an early
-observation cannot silently select the 128-page default before the real
-bootstrap owner applies its intended configuration and policy.
+The host constructs and retains one explicit runtime. `runtime.is_bootstrapped()`
+and `runtime.committed_allocations()` inspect that instance; the latter returns
+`NotBootstrapped` until bootstrap succeeds. Pass opened handles to components
+instead of constructing independent managers over the same backing memory.
 
 An existing but unbootstrapped explicit runtime can report physical allocation
 with unknown application bindings. For pre-bootstrap inspection with a known
@@ -125,10 +126,8 @@ then call its recovery or doctor methods.
 
 ## Doctor reports
 
-Use `default_memory_manager_doctor_report(&declarations, &pool)` for operator-facing validation
-with the built-in policy. If the runtime uses a custom policy, call
-`default_memory_manager_doctor_report_with_policy(&declarations, &pool, &policy)`, or call
-`runtime.doctor_report(&declarations, &pool, &policy)` on an explicit runtime.
+Use `runtime.doctor_report(&declarations, &pool, &policy)` for operator-facing
+validation under the host's policy.
 
 A doctor report includes:
 
@@ -147,10 +146,12 @@ Doctor validation does not run `RuntimeBootstrapPolicy::prepare_bootstrap`,
 predict which historical stores a consumer will select, or certify consumer
 admission. It is a read-only diagnostic, not permission to open memory.
 
-Use `default_memory_manager_commit_recovery_diagnostic()` when only current-snapshot
+Use `runtime.commit_recovery_diagnostic()` when only current-snapshot
 presence, validity, checked generation, and corruption status are
-needed. `default_memory_manager_diagnostic_export()` additionally requires a
-completed bootstrap.
+needed. It returns `CommitSnapshotDiagnostic` directly: `Empty`,
+`Valid { generation }` or `Invalid { generation }`. Only the valid case carries
+a checked physical generation; it does not certify logical ledger recovery.
+`runtime.diagnostic_export()` additionally requires a completed bootstrap.
 
 ## Read and write bounds
 

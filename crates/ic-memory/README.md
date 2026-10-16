@@ -168,7 +168,7 @@ Add the crate:
 
 ```toml
 [dependencies]
-ic-memory = "0.39.0"
+ic-memory = "0.44.0"
 ```
 
 `ic-memory` re-exports its exact `ic-stable-structures` dependency through
@@ -206,17 +206,21 @@ fn initialize_stable_storage() -> Result<(), Box<dyn std::error::Error>> {
         vec![],
     )?;
     let declarations = ic_memory::SealedDeclarationSnapshot::new(component_requests()?)?;
-    ic_memory::bootstrap_default_memory_manager(&declarations, &pool)?;
-    let users = ic_memory::open_default_memory_manager_memory(USERS_KEY)?;
+    let mut runtime = ic_memory::MemoryRuntime::new(
+        ic_memory::ic_stable_structures::DefaultMemoryImpl::default(),
+    )?;
+    runtime.bootstrap(&declarations, &pool, &ic_memory::GenericAllocationPolicy)?;
+    let users = runtime.open_memory(USERS_KEY)?;
     drop(users);
     Ok(())
 }
 ```
 
-Call this host bootstrap from initialization and post-upgrade before deferred
-stable collections open. Hosts needing admission or custom bucket geometry use
-the policy or configuration bootstrap helpers with the same explicit snapshot
-and pool. Request factories only construct metadata; they never open stores.
+The application retains this runtime across calls, bootstraps it during
+initialization and post-upgrade, and injects opened handles into components.
+Use `MemoryRuntime::new_with_config` for custom bucket geometry and pass the
+host policy to `bootstrap`. The library owns no singleton or thread-local
+runtime. Request factories only construct metadata; they never open stores.
 
 Known keys retain their committed IDs. New requests are sorted by key and take
 the lowest unclaimed ID in the common pool. Current, omitted, reserved and
@@ -239,12 +243,14 @@ requirements were included without rerunning bootstrap or replacing the host's
 policy:
 
 ```rust
-fn adopt_host() -> Result<(), Box<dyn std::error::Error>> {
+fn adopt_host<M: ic_memory::ic_stable_structures::Memory + Clone>(
+    runtime: &ic_memory::MemoryRuntime<M>,
+) -> Result<(), Box<dyn std::error::Error>> {
     let requests = vec![ic_memory::MemoryRequest::new(
         "library_name", "library_name.rows.v1", ic_memory::SchemaMetadata::default(),
     )?];
     let requirements = ic_memory::SealedDeclarationSnapshot::new(requests)?;
-    ic_memory::verify_default_memory_manager_authority(
+    runtime.verify_authority(
         &requirements,
         "library_name",
     )?;
@@ -257,7 +263,7 @@ historical IDs fail before application stores open. Populated IDs without a
 ledger record must be explicitly excluded by the host; bootstrap refuses to
 infer custody from stored bytes.
 
-The default runtime reserves IDs `0..=9` and keys under `ic_memory.*` for its
+The runtime reserves IDs `0..=9` and keys under `ic_memory.*` for its
 own governance records. ID `0` contains the allocation ledger. Application
 code may use IDs through `254`; ID `255` is the upstream unallocated sentinel
 and can never be declared.
@@ -322,17 +328,25 @@ common pool has space, and the complete layout passes admission and validation.
 
 ## Operations and advanced integration
 
+The current durable ledger uses checked numeric slots and a single `ICMDIRCT`
+checksummed snapshot containing direct ledger CBOR. The 0.44.0 format cut retires
+earlier images: use fresh/reset memory. Incompatible bytes reject without
+initializing genesis or clearing memory. See the
+[current ledger contract](../../docs/current-ledger.md).
+
 For fixture-only byte cells, opt in to `test-support` and construct
 `testing::FixtureCell` with explicit backing memory, owner, namespace, key and
-`MemoryManagerConfig`. The helper retains its runtime and uses the ordinary Cell
-format. It does not install lifecycle handlers or bootstrap the global default
-manager. Keep codecs, byte/work limits and restored-state validation in the host;
-fresh empty bytes must never substitute for a required retained journal.
-Use `create_bounded` or `open_bounded` with the caller's byte ceiling when inputs
-require bounded allocation. The retained opener checks the envelope and length
-before Cell allocates its payload, and both enforce the ceiling on writes.
-They distinguish fresh allocation from required history and refuse replacement;
-unbounded `new` is suitable only for trusted fixture images.
+`MemoryManagerConfig`. The Cell handle retains its backing; the temporary
+bootstrap runtime is dropped. No lifecycle handler or singleton is installed.
+Use `try_new` for typed setup refusal of trusted images, or `create_bounded` /
+`open_bounded` for explicit fresh/retained admission with an enforced byte limit.
+Retained headers are checked before payload loading; malformed cells are refused
+without initialization. `try_set` refuses oversized writes before mutation;
+`into_memory` transfers the admitted handle for caller-owned raw inspection.
+Existing `new` and `set` retain their panic convention. Callers keep codecs,
+work budgets and restored-state/lifecycle validation; fresh empty bytes must
+never substitute for a required retained journal. Bootstrap may update ledger
+metadata before a later Cell refusal, and backing IO can still panic.
 
 - [Operations and diagnostics](https://github.com/dragginzgame/ic-memory/blob/main/docs/operations.md)
   explains memory attribution, bucket configuration, and runtime reports.

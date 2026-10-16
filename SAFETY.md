@@ -50,8 +50,8 @@ authorization, or endpoint safety.
 ## Generation Invariants
 
 - Validated capabilities are bound to exactly one committed ledger generation.
-- Staging a validated generation must reject stale validated capabilities whose
-  generation no longer matches the current ledger.
+- Validation and staging share one owned recovered ledger; a checked claim must
+  not be detached and applied to another ledger.
 - Durable generation counters must never silently saturate or wrap.
 - Physical commit generation must equal logical ledger generation.
 - Counter zero is empty genesis. Nonzero counters need no audit record.
@@ -60,7 +60,7 @@ authorization, or endpoint safety.
 
 ## Physical / Logical Binding
 
-- The checksummed commit slot and the logical allocation ledger must describe
+- The checksummed current snapshot and the logical allocation ledger must describe
   the same generation.
 - A payload committed at physical generation `N` must decode to a ledger whose
   current generation is also `N`.
@@ -72,20 +72,15 @@ authorization, or endpoint safety.
 
 - Corrupt physical state fails closed.
 - Ambiguous physical state fails closed.
-- Dual-slot recovery must not select an authoritative generation when the slots
-  disagree in a way the recovery rules cannot prove safe.
-- Identical duplicate commit slots at the same generation are recoverable
-  deterministically.
-- Every present commit slot must pass marker and checksum validation. Recovery
-  must not discard an invalid slot and fall back to an older generation because
-  doing so could forget committed allocation ownership.
+- The one current snapshot must pass marker and checksum validation. Invalid
+  present state cannot fall back to genesis or an older generation.
 - Decoded ledger DTOs are untrusted until the explicit current-format
   discriminator and committed-integrity checks succeed.
 - Stable-cell ledger storage used by every `MemoryRuntime` must pass fallible
-  envelope and record decoding before recovery and admission, so corruption is
+  Cell-header and record decoding before recovery and admission, so corruption is
   classified as a bootstrap error instead of escaping as a decode panic.
   Capacity-checked writes use `ic-stable-structures::Cell` after successful
-  validation. Fresh-cell initialization writes empty protected slots only.
+  validation. Fresh-cell initialization writes an empty protected store only.
 - Each runtime's internal `ic_memory.*` governance allocations must stay
   recoverable in the durable ledger, but must not be published or opened through
   public application-memory helpers.
@@ -128,9 +123,9 @@ crate.
 
 ## Capability Boundary
 
-`ValidatedAllocations` is an opaque, pre-commit validation result. It must not be
-deserializable, default-constructible, or publicly constructible, and it must
-not be accepted by allocation-opening APIs.
+Validation and staging operate on one owned recovered ledger. A checked claim
+is local to that attempt, not a transferable proof for another ledger. Failure
+discards the attempt before protected commitment and persistence.
 
 `CommittedAllocations` is the in-memory open capability. It must not be
 deserializable, default-constructible, or publicly constructible. A
@@ -139,8 +134,8 @@ succeeds. Callers cannot manually confirm persistence or publish a capability.
 
 Integrations may open storage only from `CommittedAllocations` produced after
 current-format recovery, committed-ledger integrity, declaration validation,
-generation staging, commit, and durable persistence. Diagnostics, durable DTOs,
-and `ValidatedAllocations` are not open authority.
+generation staging, commit, and durable persistence. Diagnostics, durable DTOs
+and staged state are not open authority.
 
 ## Runtime Ownership Invariant
 
@@ -162,22 +157,18 @@ The host explicitly supplies an immutable checked snapshot of component key
 requests and metadata. There is no process-global declaration registry.
 Bootstrap is once per concrete runtime, not once per process.
 
-The default convenience layer is one thread-local runtime. On native targets,
-each thread therefore has independent default memory and runtime state. On
-single-threaded IC Wasm, the TLS runtime naturally has canister-instance
-lifetime. There is no public reset operation because resetting process flags
-cannot reset or replace the concrete backing memory that owns durable facts.
-Each native worker must bootstrap its host before consumer adoption or touching
-thread-local stable stores. Default readiness, open, ID-resolution, adoption and
-diagnostic helpers must observe existing state without constructing an absent
-runtime or choosing its bucket geometry.
+The host explicitly constructs and retains one runtime for each concrete
+backing memory. Memory owns no singleton or TLS lifecycle. Each native worker
+must bootstrap its own host before component adoption or touching thread-local
+stable stores. Hosts pass the same runtime or opened handles to components;
+observations cannot construct a missing runtime or choose its bucket geometry.
+There is no public reset operation: process flags cannot replace durable facts.
 
-A successful runtime bootstrap also binds that runtime in memory to a validated
-`PolicyIdentity` and deterministic sealed-declaration fingerprint. Those values
-prevent a repeated call from silently substituting different policy semantics
-or declarations, and doctor reports expose the same binding. They are
-diagnostic lifecycle metadata, not persisted ledger authority or upgrade audit
-history. The snapshot fingerprint is non-cryptographic.
+A successful bootstrap binds the runtime to the exact canonical requests,
+allocation pool and `PolicyIdentity`. Matching warm bootstrap does not replay
+admission or write another generation; changed bindings reject. Doctor checks
+the same exact binding without publishing authority. These are in-memory
+lifecycle facts, not a durable ownership history or hash protocol.
 
 ## Growth and Physical Accounting
 
@@ -205,20 +196,19 @@ authority.
 - A retired slot cannot be claimed by a different stable key.
 - Retirement requires the stable key and slot to match the historical allocation
   record.
-- The retired lifecycle state carries its committed retirement generation
-  directly; a retired record without that generation is unrepresentable.
+- Retirement retains the stable key, slot and latest schema metadata. No
+  per-retirement event or generation history is required.
 - Tombstones are preserved for rollback safety, diagnostics, and historical ABI
   integrity.
 
 ## Integrity Boundary
 
-The redundant commit slots are serialized together inside the default
-`ic-stable-structures::Cell`; they are not independently atomic physical
-writes. ICP message execution provides atomic stable-memory commit and rollback.
-If the enclosing record remains decodable, the slot checksum can detect
-accidental corruption. Any present invalid slot fails closed; the other slot is
-not a rollback path. The checksum is non-cryptographic and does not provide
-adversarial tamper resistance, authenticity, or authorization.
+The one checksummed current snapshot is serialized inside
+`ic-stable-structures::Cell`. IC message execution provides atomic stable-memory
+commit and rollback; native backing memory must provide its own transaction
+boundary. A present invalid snapshot fails closed. The checksum detects
+accidental corruption and provides no adversarial tamper resistance,
+authenticity or authorization.
 
 Public durable structs are DTOs. Decoded, deserialized, and diagnostic values
 are untrusted until the relevant recovery, current-format, integrity,
@@ -229,13 +219,12 @@ Serde decoding alone does not grant allocation authority. `StableKey`,
 usable bounds during construction and decoding. Keys remain canonical, slot IDs
 exclude sentinel 255, and ranges remain ordered with usable ends. `SchemaMetadata`
 contains an absent or nonzero schema version, established by construction and
-decoding. `AllocationDeclaration` checks optional printable ASCII labels at
-construction and decoding, including their 256-byte bound.
+decoding. Allocation declarations combine checked keys, slots and schema metadata.
 `MemoryAuthority` checks its printable ASCII owner and valid namespace prefix,
 including on decode. `MemoryAllocationPool` canonicalizes physical exclusions
 and rejects overlapping namespaces; governance is always excluded.
-`DeclarationSnapshot` checks declaration count and unique keys and slots during
-construction and decoding. Retained claims, current namespace grants, physical
+The internal resolved snapshot checks declaration count and unique keys and
+slots; external hosts supply checked logical request snapshots. Retained claims, current namespace grants, physical
 eligibility and application policy still require their validation boundaries
 before influencing authority. Previous owner labels are not durable policy.
 

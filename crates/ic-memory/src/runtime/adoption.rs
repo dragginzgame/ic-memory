@@ -33,12 +33,6 @@ pub enum RuntimeAdoptionError {
     DeclarationMetadataMismatch { stable_key: String },
 }
 
-impl From<super::RuntimeStateError> for RuntimeAdoptionError {
-    fn from(error: super::RuntimeStateError) -> Self {
-        Self::Open(RuntimeOpenError::State(error))
-    }
-}
-
 impl<M: Memory> MemoryRuntime<M> {
     /// Verify every logical request for one authority in
     /// the supplied requirements against this runtime's current commitment.

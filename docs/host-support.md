@@ -32,8 +32,12 @@ when recording release qualification; retain failed runs and their limitations.
 
 ## Prerequisites
 
+Pending 0.40 requires Rust 1.91.0 for the native IC Build metadata dependency.
+The older matrix evidence above retains its original Rust 1.88.0 identity;
+current-source Rust 1.91 native CI acceptance must be recorded separately.
+
 - Rustup with Rust 1.99.0, Clippy, rustfmt and `wasm32-unknown-unknown`; also
-  install the declared MSRV, Rust 1.88.0. Toolchain changes need a demonstrated
+  install the declared MSRV, Rust 1.91.0. Toolchain changes need a demonstrated
   reason and separate qualification.
 - Git, GNU Make, Bash 3.2 or newer, curl, tar with gzip/xz support, Perl,
   `sed`, `awk`, and either `sha256sum` or `shasum` with SHA-256 support.
@@ -291,6 +295,11 @@ recovery reconciles those bytes against the saved intent before restoring or
 retrying. These dependencies are absent from canister graphs. `shasum` remains a setup
 and CI prerequisite through common scripts, rather than a release adapter
 subprocess. Product receipts, release identities and Wasm budgets stay local.
+Cargo metadata discovery uses IC Build's re-export of Cargo's canonical command
+builder and schema, executing through this helper's selected `ic-host-process`.
+This keeps Host limit and error types within their owner when IC Build selects
+a different Host release. The existing locked/offline selection and output
+bounds remain enforced before metadata decoding.
 Host 0.10's single pathname writer takes explicit replacement options. Byte,
 receipt and archive publication retain complete `NamedWriteError` values through
 the release adapter, including producer/cleanup failures and the distinct

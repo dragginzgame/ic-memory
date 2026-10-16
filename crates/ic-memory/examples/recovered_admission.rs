@@ -1,17 +1,17 @@
-//! Allocation-level IcyDB-shaped reconciliation. No control-store read is needed
-//! to complete declarations; real journal/commit safety remains consumer-owned.
+//! Retain an explicitly selected known allocation across a cold bootstrap.
+//! Applications own key meaning and any checks on the retained contents.
 use ic_memory::ic_stable_structures::{Memory, VectorMemory};
 use ic_memory::{
-    AllocationPolicy, AllocationState, BootstrapAdmission, MemoryManagerSlot, MemoryRequest,
-    MemoryRuntime, PolicyIdentity, PolicyIdentityError, RuntimeBootstrapPolicy, SchemaMetadata,
-    SealedDeclarationSnapshot, StableKey,
+    BootstrapAdmission, MemoryManagerSlot, MemoryRequest, MemoryRuntime, PolicyIdentity,
+    PolicyIdentityError, RuntimeBootstrapPolicy, SchemaMetadata, SealedDeclarationSnapshot,
+    StableKey,
 };
 
-const CONTROL: &str = "db.main.control.v1";
-const OLD_JOURNAL: &str = "db.main.old.journal.v1";
+const CURRENT: &str = "component.current.v1";
+const RETAINED: &str = "component.retained.v1";
 
 struct HostPolicy;
-impl AllocationPolicy for HostPolicy {
+impl RuntimeBootstrapPolicy for HostPolicy {
     type Error = &'static str;
     fn validate_key(&self, _: &StableKey) -> Result<(), Self::Error> {
         Ok(())
@@ -19,85 +19,55 @@ impl AllocationPolicy for HostPolicy {
     fn validate_slot(&self, _: &StableKey, _: &MemoryManagerSlot) -> Result<(), Self::Error> {
         Ok(())
     }
-}
-impl RuntimeBootstrapPolicy for HostPolicy {
     fn runtime_bootstrap_identity(&self) -> Result<PolicyIdentity, PolicyIdentityError> {
-        PolicyIdentity::new("example.host-with-db-admission", 1)
+        PolicyIdentity::new("example.known-allocation-retention", 1)
     }
     fn prepare_bootstrap(&self, admission: &mut BootstrapAdmission<'_>) -> Result<(), Self::Error> {
-        prepare_database(admission)
-    }
-}
-
-// A generated library contributes this function to its host's policy. The role
-// grammar here is illustrative, not a claim about IcyDB's integration format.
-fn prepare_database(admission: &mut BootstrapAdmission<'_>) -> Result<(), &'static str> {
-    let mut omitted = Vec::new();
-    for record in admission.recovered_allocations() {
-        let key = record.stable_key.as_str();
-        if key.starts_with("db.")
-            && key.ends_with(".control.v1")
-            && (key != CONTROL || !admission.is_declared(record.stable_key))
-        {
-            return Err(
-                "database control identity replacement requires an explicit consumer decision",
-            );
+        let key = StableKey::parse(RETAINED).unwrap();
+        if !admission.is_declared(&key) {
+            admission
+                .include_historical("component", RETAINED)
+                .map_err(|_| "known allocation retention rejected")?;
         }
-        if key.starts_with("db.main.")
-            && key.ends_with(".journal.v1")
-            && !matches!(record.state, AllocationState::Retired)
-            && !admission.is_declared(record.stable_key)
-        {
-            omitted.push(record.stable_key.clone());
-        }
+        Ok(())
     }
-    for key in omitted {
-        admission
-            .include_historical("db", key.as_str())
-            .map_err(|_| "historical journal selection rejected")?;
-    }
-    Ok(())
 }
 
 fn declarations(keys: &[&str]) -> SealedDeclarationSnapshot {
-    let requests: Vec<_> = keys
-        .iter()
-        .map(|key| MemoryRequest::new("db", key, SchemaMetadata::default()).unwrap())
-        .collect();
-    SealedDeclarationSnapshot::new(requests).unwrap()
+    SealedDeclarationSnapshot::new(
+        keys.iter()
+            .map(|key| MemoryRequest::new("component", key, SchemaMetadata::default()).unwrap())
+            .collect(),
+    )
+    .unwrap()
 }
 
 fn main() {
     let backing = VectorMemory::default();
     let mut runtime = MemoryRuntime::new(backing.clone()).unwrap();
     runtime
-        .bootstrap(&declarations(&[CONTROL, OLD_JOURNAL]), &pool(), &HostPolicy)
+        .bootstrap(&declarations(&[CURRENT, RETAINED]), &pool(), &HostPolicy)
         .unwrap();
-    let journal = runtime.open_memory(OLD_JOURNAL).unwrap();
-    journal.grow(1).unwrap();
-    journal.write(0, b"debt");
-    drop(journal);
+    let retained = runtime.open_memory(RETAINED).unwrap();
+    retained.grow(1).unwrap();
+    retained.write(0, b"kept");
+    let id = runtime.memory_id(RETAINED).unwrap();
+    drop(retained);
     drop(runtime);
 
     let mut runtime = MemoryRuntime::new(backing).unwrap();
-    let current = declarations(&[CONTROL, "db.main.new.journal.v1"]);
-    let committed = runtime.bootstrap(&current, &pool(), &HostPolicy).unwrap();
-    assert_eq!(committed.generation(), 2); // One commit, including discovered journals.
-    let journals: Vec<_> = committed
-        .declarations()
-        .iter()
-        .filter(|d| d.stable_key().as_str().ends_with(".journal.v1"))
-        .map(|d| d.stable_key().clone())
-        .collect();
-    for key in journals {
-        let journal = runtime.open_memory(key.as_str()).unwrap();
-        if journal.size() != 0 {
-            let mut marker = [0; 4];
-            journal.read(0, &mut marker);
-            assert_eq!(&marker, b"debt");
-            // Consumer must refuse retirement while debt or commit markers remain.
-        }
-    }
+    let current = declarations(&[CURRENT, "component.added.v1"]);
+    assert_eq!(
+        runtime
+            .bootstrap(&current, &pool(), &HostPolicy)
+            .unwrap()
+            .generation(),
+        2
+    );
+    assert_eq!(runtime.memory_id(RETAINED).unwrap(), id);
+    let mut marker = [0; 4];
+    runtime.open_memory(RETAINED).unwrap().read(0, &mut marker);
+    assert_eq!(&marker, b"kept");
     assert_eq!(
         runtime
             .bootstrap(&current, &pool(), &HostPolicy)
@@ -109,7 +79,7 @@ fn main() {
 
 fn pool() -> ic_memory::MemoryAllocationPool {
     ic_memory::MemoryAllocationPool::new(
-        vec![ic_memory::MemoryAuthority::new("db", "db.").unwrap()],
+        vec![ic_memory::MemoryAuthority::new("component", "component.").unwrap()],
         vec![],
     )
     .unwrap()

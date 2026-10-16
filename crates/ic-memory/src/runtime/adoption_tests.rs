@@ -3,8 +3,8 @@ use super::{
     RuntimeBootstrapError, RuntimeOpenError,
 };
 use crate::{
-    AllocationPolicy, BootstrapAdmission, MemoryAllocationPool, MemoryAuthority, MemoryManagerSlot,
-    MemoryRequest, PolicyIdentity, PolicyIdentityError, RuntimeBootstrapPolicy, SchemaMetadata,
+    BootstrapAdmission, MemoryAllocationPool, MemoryAuthority, MemoryManagerSlot, MemoryRequest,
+    PolicyIdentity, PolicyIdentityError, RuntimeBootstrapPolicy, SchemaMetadata,
     SealedDeclarationSnapshot, StableKey,
 };
 use ic_stable_structures::VectorMemory;
@@ -12,7 +12,7 @@ use std::{cell::Cell, convert::Infallible};
 const KEY: &str = "db.rows.v1";
 const CONTROL: &str = "db.control.v1";
 struct HostPolicy(Cell<usize>);
-impl AllocationPolicy for HostPolicy {
+impl RuntimeBootstrapPolicy for HostPolicy {
     type Error = Infallible;
     fn validate_key(&self, _: &StableKey) -> Result<(), Self::Error> {
         Ok(())
@@ -20,8 +20,7 @@ impl AllocationPolicy for HostPolicy {
     fn validate_slot(&self, _: &StableKey, _: &MemoryManagerSlot) -> Result<(), Self::Error> {
         Ok(())
     }
-}
-impl RuntimeBootstrapPolicy for HostPolicy {
+
     fn prepare_bootstrap(&self, _: &mut BootstrapAdmission<'_>) -> Result<(), Self::Error> {
         self.0.set(self.0.get() + 1);
         Ok(())
@@ -30,6 +29,7 @@ impl RuntimeBootstrapPolicy for HostPolicy {
         PolicyIdentity::new("tests.adoption.host", 1)
     }
 }
+
 fn pool() -> MemoryAllocationPool {
     MemoryAllocationPool::new(vec![MemoryAuthority::new("db", "db.").unwrap()], vec![]).unwrap()
 }

@@ -1,12 +1,12 @@
 //! Explicit native allocation measurements; not IC instruction benchmarks.
 use crate::{
     AllocationLedger, GenericAllocationPolicy, LedgerCommitError, LedgerCommitStore,
-    LedgerPayloadEnvelope, MemoryManagerConfig, MemoryRuntime, SealedDeclarationSnapshot,
-    SnapshotCommitStore, StableCellLedgerRecord,
+    MemoryManagerConfig, MemoryRuntime, SealedDeclarationSnapshot,
     ic_stable_structures::{
         Memory, Storable, VectorMemory,
         memory_manager::{MemoryId, MemoryManager},
     },
+    stable_cell::EncodedLedgerRecord,
 };
 use std::{
     alloc::{GlobalAlloc, Layout, System},
@@ -108,23 +108,24 @@ fn ledger_encoding_and_validation_allocations() {
         for generations in [1, 1024, u64::MAX] {
             let records = (0..count)
                 .map(|id| {
-                    serde_json::json!({
-                        "stable_key": format!("app.store{id}.v1"),
-                        "slot": { "slot": { "MemoryManagerId": id } },
-                        "state": "Active", "schema": { "schema_version": u32::MAX }
-                    })
+                    crate::AllocationRecord::active(
+                        &crate::AllocationDeclaration::memory_manager_with_schema(
+                            format!("app.store{id}.v1"),
+                            u8::try_from(id).unwrap(),
+                            crate::SchemaMetadata::new(Some(u32::MAX)).unwrap(),
+                        )
+                        .unwrap(),
+                    )
                 })
-                .collect::<Vec<_>>();
-            let ledger = AllocationLedger::new(
-                generations,
-                serde_json::from_value(serde_json::Value::Array(records)).unwrap(),
-            )
-            .unwrap();
+                .collect();
+            let ledger = AllocationLedger::new(generations, records).unwrap();
             let mut store = LedgerCommitStore::default();
             store.commit(&ledger).unwrap();
-            let record = StableCellLedgerRecord::new(store);
+            let record = store;
             measure(&format!("encode_records_{count}"), generations, 10, || {
-                drop(black_box(record.to_bytes()));
+                drop(black_box(
+                    EncodedLedgerRecord::new(&record).unwrap().into_bytes(),
+                ));
             });
             measure(
                 &format!("validate_records_{count}"),
@@ -135,7 +136,7 @@ fn ledger_encoding_and_validation_allocations() {
                 },
             );
             measure(&format!("recover_records_{count}"), generations, 10, || {
-                drop(black_box(record.store().recover().unwrap()));
+                drop(black_box(record.recover().unwrap()));
             });
             measure(&format!("commit_records_{count}"), generations, 10, || {
                 let mut store = LedgerCommitStore::default();
@@ -148,30 +149,21 @@ fn ledger_encoding_and_validation_allocations() {
 // owns a correctly checksummed opaque envelope; text must be checked by logical
 // recovery, not by decoding the enclosing physical DTO.
 fn key_text_store(text_bytes: usize) -> LedgerCommitStore {
-    #[derive(serde::Serialize)]
-    struct Store<'a> {
-        physical: &'a SnapshotCommitStore,
-    }
-
-    let mut dto = serde_json::json!({"current_generation":1,"records":[{"stable_key":"app.rows.v1","slot":{"slot":{"MemoryManagerId":100}},"state":"Active","schema":{"schema_version":null}}]});
+    let declaration = crate::AllocationDeclaration::memory_manager("app.rows.v1", 100).unwrap();
+    let ledger =
+        AllocationLedger::new(1, vec![crate::AllocationRecord::active(&declaration)]).unwrap();
+    let mut dto = serde_json::to_value(&ledger).unwrap();
     dto["records"][0]["stable_key"] =
         serde_json::Value::String(format!("app.{}.v1", "x".repeat(text_bytes - 7)));
     let mut payload = Vec::new();
     ciborium::into_writer(&dto, &mut payload).unwrap();
-    let envelope = LedgerPayloadEnvelope::current(payload)
-        .try_encode()
-        .unwrap();
-    let mut physical = SnapshotCommitStore::default();
-    physical.commit_payload_at_generation(1, envelope).unwrap();
-    let mut record = Vec::new();
-    ciborium::into_writer(
-        &Store {
-            physical: &physical,
-        },
-        &mut record,
-    )
-    .unwrap();
-    ciborium::from_reader(record.as_slice()).unwrap()
+    let mut physical = crate::physical::SnapshotCommitStore::default();
+    physical.commit_payload_at_generation(1, payload).unwrap();
+    let store = crate::test_cbor::Value::Map(vec![(
+        crate::test_cbor::Value::Text("physical".to_string()),
+        crate::test_cbor::to_value(physical).unwrap(),
+    )]);
+    crate::test_cbor::from_slice(&crate::test_cbor::to_vec(&store).unwrap()).unwrap()
 }
 
 #[test]
@@ -190,6 +182,21 @@ fn ledger_text_recovery_allocations() {
             }
         });
     }
+}
+
+#[test]
+fn text_measurement_fixture_changes_only_key_bound() {
+    let valid = key_text_store(128).recover().unwrap();
+    assert_eq!(valid.current_generation(), 1);
+    let record = &valid.ledger().records()[0];
+    assert_eq!(record.stable_key().as_str().len(), 128);
+    assert_eq!(record.slot().id(), 100);
+    assert_eq!(record.state(), crate::AllocationState::Active);
+    assert_eq!(record.schema(), &crate::SchemaMetadata::default());
+    assert!(matches!(
+        key_text_store(129).recover(),
+        Err(LedgerCommitError::Codec(_))
+    ));
 }
 
 #[test]
@@ -280,8 +287,61 @@ fn declaration_resolution_allocations() {
         )
         .unwrap();
         measure(&format!("resolve_{count}"), 0, 10, || {
-            let resolved = black_box(declarations.resolve(&ledger, vec![], &pool).unwrap());
+            let resolved = black_box(
+                declarations
+                    .resolve(&ledger, &ledger.occupied_slots(), vec![], &pool)
+                    .unwrap(),
+            );
             assert_eq!(resolved.declarations().len(), count + 1);
+        });
+        measure(&format!("fresh_bootstrap_{count}"), 0, 10, || {
+            let mut runtime = MemoryRuntime::new_with_config(
+                VectorMemory::default(),
+                MemoryManagerConfig::new(1).unwrap(),
+            )
+            .unwrap();
+            assert_eq!(
+                runtime
+                    .bootstrap(&declarations, &pool, &GenericAllocationPolicy)
+                    .unwrap()
+                    .generation(),
+                1
+            );
+        });
+    }
+}
+
+#[test]
+#[ignore = "explicit matched doctor allocation measurement; release mode and one thread"]
+fn doctor_report_allocations() {
+    println!("phase,generations,iterations,allocations,reallocations,peak_bytes,elapsed_us");
+    let pool = crate::MemoryAllocationPool::new(
+        vec![crate::MemoryAuthority::new("doctor", "app.").unwrap()],
+        vec![],
+    )
+    .unwrap();
+    for count in [0, 1, 64, 245] {
+        let requests = (0..count)
+            .map(|id| {
+                let prefix = format!("app.store{id:03}.");
+                let key = format!("{prefix}{}.v1", "k".repeat(128 - prefix.len() - 3));
+                crate::MemoryRequest::new("doctor", &key, crate::SchemaMetadata::default()).unwrap()
+            })
+            .collect();
+        let declarations = SealedDeclarationSnapshot::new(requests).unwrap();
+        let mut runtime = MemoryRuntime::new_with_config(
+            VectorMemory::default(),
+            MemoryManagerConfig::new(1).unwrap(),
+        )
+        .unwrap();
+        runtime
+            .bootstrap(&declarations, &pool, &GenericAllocationPolicy)
+            .unwrap();
+        measure(&format!("doctor_{count}"), 1, 20, || {
+            let report =
+                black_box(runtime.doctor_report(&declarations, &pool, &GenericAllocationPolicy));
+            assert_eq!(report.ledger.as_ref().unwrap().records.len(), count + 1);
+            assert_eq!(report.validation, crate::DiagnosticCheck::Passed);
         });
     }
 }
@@ -305,7 +365,7 @@ fn steady_state_snapshot_allocations() {
                     format!("app.store{id:03}.v1")
                 };
                 crate::AllocationRecord::reserved(
-                    &crate::AllocationDeclaration::memory_manager_unlabeled_with_schema(
+                    &crate::AllocationDeclaration::memory_manager_with_schema(
                         key,
                         u8::try_from(id).unwrap(),
                         crate::SchemaMetadata::new(Some(u32::MAX)).unwrap(),
@@ -321,27 +381,38 @@ fn steady_state_snapshot_allocations() {
         store
             .commit(&AllocationLedger::new(2, records).unwrap())
             .unwrap();
-        let record = StableCellLedgerRecord::new(store);
+        let record = store;
         let label = format!(
             "snapshot_{count}_{}",
             if long { "maximum" } else { "short" }
         );
-        println!("encoded_bytes,{label},{}", record.to_bytes().len());
+        println!(
+            "encoded_bytes,{label},{}",
+            EncodedLedgerRecord::new(&record).unwrap().len()
+        );
         measure(&format!("encode_{label}"), 2, 10, || {
-            drop(black_box(record.to_bytes()));
+            drop(black_box(
+                EncodedLedgerRecord::new(&record).unwrap().into_bytes(),
+            ));
         });
         let memory = VectorMemory::default();
-        drop(ic_stable_structures::Cell::new(memory.clone(), record));
+        drop(ic_stable_structures::Cell::new(
+            memory.clone(),
+            EncodedLedgerRecord::new(&record).unwrap(),
+        ));
         measure(&format!("reopen_{label}"), 2, 10, || {
-            let decoded = crate::decode_stable_cell_ledger_record_from_memory(&memory).unwrap();
-            drop(black_box(decoded.store().recover().unwrap()));
+            let decoded = crate::decode_stable_cell_commit_store_from_memory(&memory).unwrap();
+            drop(black_box(decoded.recover().unwrap()));
         });
         measure(&format!("reopen_commit_{label}"), 2, 10, || {
-            let mut decoded = crate::decode_stable_cell_ledger_record_from_memory(&memory).unwrap();
-            let mut next = decoded.store().recover().unwrap().into_ledger();
+            let mut decoded = crate::decode_stable_cell_commit_store_from_memory(&memory).unwrap();
+            let mut next = decoded.recover().unwrap().into_ledger();
             next.current_generation += 1;
-            decoded.store_mut().commit_generation(&next).unwrap();
-            drop(ic_stable_structures::Cell::new(memory.clone(), decoded));
+            decoded.commit_generation(&next).unwrap();
+            drop(ic_stable_structures::Cell::new(
+                memory.clone(),
+                EncodedLedgerRecord::new(&decoded).unwrap(),
+            ));
         });
     }
 }
