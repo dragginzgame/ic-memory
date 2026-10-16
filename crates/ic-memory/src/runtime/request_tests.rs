@@ -1,9 +1,8 @@
 use super::*;
-use crate::testing::AllocationRetirement;
 use crate::{
     AllocationDeclaration, AllocationLedger, GenericAllocationPolicy, LedgerCommitStore,
-    MemoryAllocationPool, MemoryAuthority, MemoryManagerIdRange, MemoryManagerSlot, MemoryRequest,
-    SchemaMetadata, SealedDeclarationSnapshot, StableCellLedgerRecord,
+    MemoryAllocationPool, MemoryAuthority, MemoryManagerIdRange, MemoryRequest, SchemaMetadata,
+    SealedDeclarationSnapshot,
 };
 use ic_stable_structures::{
     Cell, Memory, VectorMemory,
@@ -62,7 +61,7 @@ fn retained(backing: &VectorMemory, declarations: &[AllocationDeclaration]) {
     let manager = MemoryManager::init(backing.clone());
     drop(Cell::new(
         manager.get(MemoryId::new(0)),
-        crate::stable_cell::EncodedLedgerRecord::new(&StableCellLedgerRecord::new(store)).unwrap(),
+        crate::stable_cell::EncodedLedgerRecord::new(&store).unwrap(),
     ));
     drop(pending.confirm_persisted());
 }
@@ -181,19 +180,16 @@ fn retained_fixed_claims_and_tombstones_are_never_remapped_or_reused() {
     memory.grow(1);
     memory.write(0, b"retained");
     let mut record =
-        super::super::decode_stable_cell_ledger_record_from_memory(&manager.get(MemoryId::new(0)))
+        super::super::decode_stable_cell_commit_store_from_memory(&manager.get(MemoryId::new(0)))
             .unwrap();
-    let retired = record
-        .store()
-        .recover()
+    let recovered = record.recover().unwrap();
+    let mut rows = recovered.ledger().records().to_vec();
+    rows.iter_mut()
+        .find(|row| row.stable_key().as_str() == "app.retired.v1")
         .unwrap()
-        .ledger()
-        .stage_retirement_generation(
-            &AllocationRetirement::new("app.retired.v1", MemoryManagerSlot::new(10).unwrap())
-                .unwrap(),
-        )
-        .unwrap();
-    record.store_mut().commit_generation(&retired).unwrap();
+        .state = crate::AllocationState::Retired;
+    let retired = crate::AllocationLedger::new(recovered.current_generation() + 1, rows).unwrap();
+    record.commit_generation(&retired).unwrap();
     drop(Cell::new(
         manager.get(MemoryId::new(0)),
         crate::stable_cell::EncodedLedgerRecord::new(&record).unwrap(),

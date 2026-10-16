@@ -1,14 +1,23 @@
 //! Explicit fixture-only ledger and cell setup; callers own codecs, bounds and lifecycle calls.
 
-mod ledger;
-
-pub use ledger::{AllocationReservationError, AllocationRetirement, AllocationRetirementError};
-
 use crate::{
     GenericAllocationPolicy, MemoryAllocationPool, MemoryAuthority, MemoryManagerConfig,
     MemoryRequest, MemoryRuntime, RuntimeMemory, SchemaMetadata, SealedDeclarationSnapshot,
     ic_stable_structures::{Cell, Memory},
 };
+
+/// Construct a passive fixture record from checked declaration fields and a chosen state.
+///
+/// This performs no transition, generation advance, persistence or capability
+/// publication. Compose records with [`crate::AllocationLedger::new`] to check
+/// ledger-wide uniqueness and genesis rules before encoding fixture bytes.
+#[must_use]
+pub fn allocation_record(
+    declaration: &crate::AllocationDeclaration,
+    state: crate::AllocationState,
+) -> crate::AllocationRecord {
+    crate::AllocationRecord::from_declaration(declaration, state)
+}
 
 ///
 /// FixtureCell

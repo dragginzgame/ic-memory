@@ -1,14 +1,11 @@
 use super::{
     MemoryRuntime, RuntimeConstructionError, RuntimeDiagnosticError, RuntimeOpenError,
-    RuntimeStateError,
-    default::{is_default_memory_manager_bootstrapped, with_default_runtime_borrowed},
-    diagnostics::diagnostic_validation_ledger,
-    policy::GenericAllocationPolicy,
+    diagnostics::diagnostic_validation_ledger, policy::GenericAllocationPolicy,
 };
 use crate::{
-    DiagnosticCheck, DiagnosticCode, DiagnosticMemorySize, LedgerCommitError,
-    LedgerPayloadEnvelopeError, MemoryManagerSlot, PolicyIdentity, PolicyIdentityError,
-    RuntimeBootstrapPolicy, SealedDeclarationSnapshot, StableKey,
+    DiagnosticCheck, DiagnosticCode, DiagnosticMemorySize, LedgerCommitError, MemoryManagerSlot,
+    PolicyIdentity, PolicyIdentityError, RuntimeBootstrapPolicy, SealedDeclarationSnapshot,
+    StableKey,
 };
 use ic_stable_structures::{Cell, Memory, VectorMemory};
 use std::convert::Infallible;
@@ -659,10 +656,6 @@ fn doctor_and_diagnostics_report_the_same_runtime_lifecycle() {
         established.policy_identity,
         PolicyIdentity::new("ic-memory.noop-policy", 1).expect("valid identity")
     );
-    assert_eq!(
-        established.declaration_fingerprint,
-        declarations.fingerprint()
-    );
     let doctor_bytes = crate::test_cbor::to_vec(&doctor).expect("doctor diagnostic bytes");
     let decoded_doctor: crate::MemoryRuntimeDoctorReport =
         crate::test_cbor::from_slice(&doctor_bytes).expect("doctor diagnostic round trip");
@@ -685,10 +678,6 @@ fn doctor_and_diagnostics_report_the_same_runtime_lifecycle() {
         mismatched.tested_policy_identity.as_ref().unwrap(),
         &PolicyIdentity::new("runtime-tests.identity-policy", 2).unwrap()
     );
-    assert_eq!(
-        mismatched.tested_declaration_fingerprint,
-        declarations.fingerprint()
-    );
     assert_eq!(mismatched.allocation_pool, pool());
     assert_eq!(
         mismatched.established_bootstrap_binding,
@@ -705,23 +694,24 @@ fn diagnostics_reject_invalid_persisted_slots_before_measuring_sizes() {
         .bootstrap(&declarations, &pool(), &GenericAllocationPolicy)
         .unwrap();
     let record = runtime.ledger_record_from_memory().unwrap();
-    let ledger = record.store().recover().unwrap().into_ledger();
+    let ledger = record.recover().unwrap().into_ledger();
     let mut value = serde_json::to_value(&ledger).unwrap();
     value["records"][0]["slot"] = serde_json::json!(255);
-    let payload = crate::LedgerPayloadEnvelope::current(crate::test_cbor::to_vec(&value).unwrap())
-        .try_encode()
-        .unwrap();
+    let payload = crate::test_cbor::to_vec(&value).unwrap();
     // Keep physical framing/checksums valid so recovery reaches slot validation.
-    let store = serde_json::from_value(serde_json::json!({
-        "physical": {
-            "current": crate::CommittedGenerationBytes::new(ledger.current_generation(), payload),
-        },
-    }))
-    .unwrap();
+    let mut physical = crate::physical::SnapshotCommitStore::default();
+    physical
+        .commit_payload_at_generation(ledger.current_generation(), payload)
+        .unwrap();
+    let value = crate::test_cbor::Value::Map(vec![(
+        crate::test_cbor::Value::Text("physical".into()),
+        crate::test_cbor::to_value(physical).unwrap(),
+    )]);
+    let encoded = crate::test_cbor::to_vec(&value).unwrap();
+    let store: crate::LedgerCommitStore = crate::test_cbor::from_slice(&encoded).unwrap();
     let _cell = Cell::new(
         runtime.memory(crate::MEMORY_MANAGER_LEDGER_ID),
-        crate::stable_cell::EncodedLedgerRecord::new(&crate::StableCellLedgerRecord::new(store))
-            .unwrap(),
+        crate::stable_cell::EncodedLedgerRecord::new(&store).unwrap(),
     );
     let before = backing.borrow().clone();
 
@@ -752,27 +742,11 @@ fn diagnostics_reject_invalid_persisted_slots_before_measuring_sizes() {
 }
 
 #[test]
-fn default_runtime_reentry_is_a_typed_state_error() {
-    with_default_runtime_borrowed(|| {
-        assert_eq!(
-            is_default_memory_manager_bootstrapped().expect_err("re-entry"),
-            RuntimeStateError::ReentrantAccess
-        );
-        assert_eq!(
-            super::committed_allocations().expect_err("re-entry"),
-            RuntimeOpenError::State(RuntimeStateError::ReentrantAccess)
-        );
-        Ok(())
-    })
-    .expect("test borrow");
-}
-
-#[test]
 fn doctor_preserves_distinct_record_decode_causes_without_writes() {
     let declarations = SealedDeclarationSnapshot::new(vec![]).unwrap();
     let mut messages = Vec::new();
     for bytes in [vec![0xff], vec![0xa0]] {
-        let cause = crate::decode_stable_cell_ledger_record(&bytes)
+        let cause = crate::decode_stable_cell_commit_store(&bytes)
             .unwrap_err()
             .to_string();
         let backing = VectorMemory::default();
@@ -809,10 +783,8 @@ fn doctor_uses_genesis_only_for_empty_commit_storage() {
         if initialized {
             let _cell = Cell::new(
                 runtime.memory(crate::MEMORY_MANAGER_LEDGER_ID),
-                crate::stable_cell::EncodedLedgerRecord::new(
-                    &crate::StableCellLedgerRecord::default(),
-                )
-                .unwrap(),
+                crate::stable_cell::EncodedLedgerRecord::new(&crate::LedgerCommitStore::default())
+                    .unwrap(),
             );
         }
         let before = backing.borrow().clone();
@@ -835,7 +807,7 @@ fn doctor_uses_genesis_only_for_empty_commit_storage() {
     // A present invalid physical slot must never be treated as empty storage.
     let mut record = runtime.ledger_record_from_memory().unwrap();
     let genesis = crate::AllocationLedger::new(0, Vec::new()).unwrap();
-    record.store_mut().write_corrupt_ledger(&genesis).unwrap();
+    record.write_corrupt_ledger(&genesis).unwrap();
     let _cell = Cell::new(
         runtime.memory(crate::MEMORY_MANAGER_LEDGER_ID),
         crate::stable_cell::EncodedLedgerRecord::new(&record).unwrap(),
@@ -861,11 +833,8 @@ fn doctor_uses_genesis_only_for_empty_commit_storage() {
 
 #[test]
 fn validation_diagnostic_preserves_unsupported_format_code() {
-    let recovered = Err(LedgerCommitError::PayloadEnvelope(
-        LedgerPayloadEnvelopeError::UnsupportedFormat {
-            marker: *b"ICMN",
-            version: Some(crate::LEDGER_PAYLOAD_FORMAT_VERSION + 1),
-        },
+    let recovered = Err(LedgerCommitError::Recovery(
+        crate::CommitRecoveryError::UnsupportedFormat { marker: u64::MAX },
     ));
 
     let failure = diagnostic_validation_ledger(Some(&recovered))
@@ -934,4 +903,45 @@ fn pool_admission_precedes_application_validation_and_preserves_retry() {
     runtime.bootstrap(&source, &pool(), &policy).unwrap();
     assert_eq!(policy.0.get(), 2); // One external key/slot; governance stays private.
     assert_eq!(runtime.memory_id("runtime_tests.rows.v1"), Ok(120));
+}
+
+#[test]
+fn doctor_binding_agrees_with_warm_bootstrap_for_exact_declarations() {
+    let mut runtime = empty_runtime();
+    let source = declarations();
+    runtime
+        .bootstrap(&source, &pool(), &GenericAllocationPolicy)
+        .unwrap();
+    let before = runtime.growth.backing.borrow().clone();
+    for (owner, key, schema) in [
+        ("runtime_tests", "runtime_tests.rows.v1", None),
+        ("different", "runtime_tests.rows.v1", None),
+        ("runtime_tests", "runtime_tests.changed.v1", None),
+        ("runtime_tests", "runtime_tests.rows.v1", Some(7)),
+    ] {
+        let requests = SealedDeclarationSnapshot::new(vec![
+            crate::MemoryRequest::new(owner, key, crate::SchemaMetadata::new(schema).unwrap())
+                .unwrap(),
+        ])
+        .unwrap();
+        let report = runtime.doctor_report(&requests, &pool(), &GenericAllocationPolicy);
+        let warm = runtime.bootstrap(&requests, &pool(), &GenericAllocationPolicy);
+        if requests == source {
+            assert!(matches!(report.bootstrap_binding, DiagnosticCheck::Passed));
+            warm.unwrap();
+        } else {
+            assert!(matches!(
+                report.bootstrap_binding,
+                DiagnosticCheck::Failed {
+                    code: DiagnosticCode::RuntimeBinding,
+                    ..
+                }
+            ));
+            assert!(matches!(
+                warm,
+                Err(super::RuntimeBootstrapError::DeclarationSnapshotMismatch)
+            ));
+        }
+        assert_eq!(*runtime.growth.backing.borrow(), before);
+    }
 }

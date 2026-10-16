@@ -76,26 +76,6 @@ pub enum RuntimeConstructionError {
 }
 
 ///
-/// RuntimeStateError
-///
-/// Failure to enter or maintain one memory runtime's in-memory lifecycle.
-///
-
-#[non_exhaustive]
-#[derive(Clone, Copy, Debug, Eq, thiserror::Error, PartialEq)]
-pub enum RuntimeStateError {
-    /// This thread's default runtime could not safely claim its backing memory.
-    #[error(transparent)]
-    Construction(#[from] RuntimeConstructionError),
-    /// A default-runtime operation re-entered while that TLS runtime was borrowed.
-    #[error("ic-memory default runtime is already borrowed by an active operation")]
-    ReentrantAccess,
-    /// The thread-local default runtime is being destroyed and cannot be entered.
-    #[error("ic-memory default runtime is unavailable during thread-local destruction")]
-    Unavailable,
-}
-
-///
 /// RuntimeBootstrapError
 ///
 /// Failure to bootstrap one `MemoryRuntime`.
@@ -150,9 +130,6 @@ pub enum RuntimeBootstrapError<P> {
     /// Validated declarations could not be staged.
     #[error(transparent)]
     Staging(#[from] crate::AllocationStageError),
-    /// Runtime lifecycle or default TLS access failed.
-    #[error(transparent)]
-    State(#[from] RuntimeStateError),
 }
 
 ///
@@ -167,9 +144,6 @@ pub enum RuntimeOpenError {
     /// This runtime has not published committed allocations.
     #[error("ic-memory runtime has not completed bootstrap validation")]
     NotBootstrapped,
-    /// Runtime lifecycle or default TLS access failed.
-    #[error(transparent)]
-    State(#[from] RuntimeStateError),
     /// Stable-key grammar failure.
     #[error(transparent)]
     StableKey(#[from] crate::StableKeyError),
@@ -196,12 +170,12 @@ pub enum RuntimeDiagnosticError {
     /// Persisted manager metadata is invalid or unsupported.
     #[error(transparent)]
     Construction(#[from] RuntimeConstructionError),
-    /// No default runtime exists, or this operation requires completed bootstrap.
+    /// This operation requires completed bootstrap.
     #[error("ic-memory runtime has not completed bootstrap validation")]
     NotBootstrapped,
-    /// Runtime lifecycle or default TLS access failed.
-    #[error(transparent)]
-    State(#[from] RuntimeStateError),
+    /// Growth currently holds the shared bucket accounting state.
+    #[error("runtime memory growth is already in progress")]
+    ReentrantAccess,
     /// The recovered allocation ledger failed protected commit validation.
     #[error(transparent)]
     LedgerCommit(#[from] LedgerCommitError),

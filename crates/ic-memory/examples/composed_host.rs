@@ -171,39 +171,35 @@ fn cold_reopens() {
 
 #[cfg(not(target_arch = "wasm32"))]
 fn native_threads() {
-    // Immutable component requests can be shared; the native default runtime
-    // and its backing are thread-local. Every worker bootstraps the host before
-    // library adoption or any thread-local stable-store initializer is touched.
+    // Each worker owns one explicit runtime and injects opened handles into its
+    // components only after the host has committed the complete declaration set.
     let workers: Vec<_> = (0..2)
         .map(|_| {
             std::thread::spawn(|| {
                 let policy = HostPolicy::default();
+                let mut host = MemoryRuntime::new_with_config(
+                    VectorMemory::default(),
+                    MemoryManagerConfig::new(16).unwrap(),
+                )
+                .unwrap();
                 let requirements = database_requirements();
                 assert_eq!(
-                    ic_memory::verify_default_memory_manager_authority(&requirements, "db"),
+                    host.verify_authority(&requirements, "db"),
                     Err(ic_memory::RuntimeAdoptionError::Open(
                         RuntimeOpenError::NotBootstrapped
                     ))
                 );
-                ic_memory::bootstrap_default_memory_manager_with_config(
-                    &snapshot(),
-                    MemoryManagerConfig::new(16).unwrap(),
-                    &pool(),
-                    &policy,
-                )
-                .unwrap();
-                ic_memory::verify_default_memory_manager_authority(&requirements, "db").unwrap();
-                let rows = ic_memory::open_default_memory_manager_memory(ROWS).unwrap();
+                host.bootstrap(&snapshot(), &pool(), &policy).unwrap();
+                host.verify_authority(&requirements, "db").unwrap();
+                let rows = host.open_memory(ROWS).unwrap();
                 rows.grow(1).unwrap();
                 rows.write(0, b"rows");
                 let mut retained = [0; 4];
                 rows.read(0, &mut retained);
                 assert_eq!(&retained, b"rows");
-                assert_eq!(ic_memory::default_memory_manager_memory_id(ROWS), Ok(11));
+                assert_eq!(host.memory_id(ROWS), Ok(11));
                 assert_eq!(
-                    ic_memory::default_memory_manager_memory_allocation_summary()
-                        .unwrap()
-                        .bucket_size_pages,
+                    host.memory_allocation_summary().unwrap().bucket_size_pages,
                     16
                 );
                 assert_eq!(policy.preparations.get(), 1);

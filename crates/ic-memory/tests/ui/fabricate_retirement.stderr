@@ -1,7 +1,0 @@
-error[E0451]: fields `stable_key` and `slot` of struct `AllocationRetirement` are private
- --> tests/ui/fabricate_retirement.rs:6:46
-  |
-6 |     let _retirement = AllocationRetirement { stable_key, slot };
-  |                                              ^^^^^^^^^^  ^^^^ private field
-  |                                              |
-  |                                              private field

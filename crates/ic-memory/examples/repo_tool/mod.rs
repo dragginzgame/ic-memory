@@ -5,6 +5,9 @@
 //! before dispatch; it never resolves a replacement lockfile.
 
 use ic_build::cargo::{
+    environment::{
+        configuration_directories, is_build_variable, is_compiler_override, observe_configurations,
+    },
     lock_projection::{WorkspaceVersionProjection, verify_workspace_version_projection},
     observation::schema::{Metadata, MetadataCommand},
 };
@@ -161,7 +164,11 @@ trait Execute {
     fn cargo_target(&self, root: &Path) -> Result<PathBuf>;
 
     fn write_bytes(&self, path: &Path, bytes: &[u8]) -> Result<()> {
-        Ok(ic_host_fs::durable::write_bytes(path, bytes)?)
+        Ok(ic_host_fs::durable::write_bytes(
+            path,
+            REPLACE_FILE_OPTIONS,
+            bytes,
+        )?)
     }
 
     fn write_json(&self, path: &Path, value: &impl Serialize) -> Result<()> {
@@ -687,29 +694,10 @@ impl<E: Execute> Repository<E> {
             // The receipts identify the declared toolchains. Cargo compiler
             // replacements or wrappers would execute outside those identities.
             require(
-                !matches!(
-                    name,
-                    "RUSTC"
-                        | "RUSTC_WRAPPER"
-                        | "RUSTC_WORKSPACE_WRAPPER"
-                        | "RUSTDOC"
-                        | "CARGO_BUILD_RUSTC"
-                        | "CARGO_BUILD_RUSTC_WRAPPER"
-                        | "CARGO_BUILD_RUSTC_WORKSPACE_WRAPPER"
-                        | "CARGO_BUILD_RUSTDOC"
-                ),
+                !is_compiler_override(name),
                 &format!("unset {name} before release qualification; use the declared toolchains"),
             )?;
-            if matches!(
-                name,
-                "RUSTFLAGS"
-                    | "RUSTDOCFLAGS"
-                    | "CARGO_ENCODED_RUSTFLAGS"
-                    | "CARGO_ENCODED_RUSTDOCFLAGS"
-            ) || name.starts_with("CARGO_BUILD_")
-                || name.starts_with("CARGO_PROFILE_")
-                || name.starts_with("CARGO_TARGET_") && name != "CARGO_TARGET_DIR"
-            {
+            if is_build_variable(name) {
                 configuration.insert(
                     format!("env:{name}"),
                     value
@@ -718,46 +706,33 @@ impl<E: Execute> Repository<E> {
                 );
             }
         }
-        // Cargo reads configuration from checkout ancestors and Cargo home.
-        // Record digests rather than file contents, which may include secrets.
-        let cargo_home = env::var_os("CARGO_HOME")
-            .map(PathBuf::from)
-            .or_else(|| env::var_os("HOME").map(|home| PathBuf::from(home).join(".cargo")))
-            .ok_or("set CARGO_HOME or HOME")?;
-        let directories = self
-            .root
-            .ancestors()
-            .map(|path| path.join(".cargo"))
-            .chain(std::iter::once(cargo_home));
-        for directory in directories {
-            for name in ["config", "config.toml"] {
-                let path = directory.join(name);
-                if path.exists() {
-                    let value: toml::Value =
-                        toml::from_str(&fs::read_to_string(&path)?).map_err(|_| {
-                            format!("invalid TOML Cargo configuration: {}", path.display())
-                        })?;
-                    for field in [
-                        "rustc",
-                        "rustc-wrapper",
-                        "rustc-workspace-wrapper",
-                        "rustdoc",
-                    ] {
-                        require(
-                            value
-                                .get("build")
-                                .and_then(|build| build.get(field))
-                                .is_none(),
-                            &format!(
-                                "remove build.{field} from {} before release qualification; use the declared toolchains",
-                                path.display()
-                            ),
-                        )?;
-                    }
-                    configuration
-                        .insert(format!("config:{}", path.display()), Self::sha256(&path)?);
-                }
+        let cargo_home = env::var_os("CARGO_HOME");
+        let home = env::var_os("HOME");
+        require(
+            cargo_home.is_some() || home.is_some(),
+            "set CARGO_HOME or HOME",
+        )?;
+        // Keep conservative custody of both root names, even when Cargo shadows
+        // one. Build owns discovery, include traversal and same-read raw hashes.
+        let roots: Vec<_> =
+            configuration_directories(&self.root, cargo_home.as_deref(), home.as_deref())?
+                .iter()
+                .flat_map(|directory| [directory.join("config"), directory.join("config.toml")])
+                .filter(|path| path.exists())
+                .collect();
+        for file in observe_configurations(&roots)? {
+            if let Some(field) = file.compiler_overrides.first() {
+                return Err(format!(
+                    "remove build.{field} from {} before release qualification; use the declared toolchains",
+                    file.path.display()
+                ).into());
             }
+            // Contents may contain secrets; receipts retain only lookup labels
+            // and the hash of the exact bytes parsed by the observer.
+            configuration.insert(
+                format!("config:{}", file.path.display()),
+                Sha256Digest::from_bytes(file.sha256).to_string(),
+            );
         }
         Ok(configuration)
     }

@@ -14,7 +14,7 @@ map. See the [0.34 pool qualification](allocation-pool-qualification.md).
 and schema metadata. Components supply complete request lists; the host combines
 them with `SealedDeclarationSnapshot::new(requests)`, which takes ownership,
 checks the count, rejects duplicate keys and canonicalizes the snapshot.
-Default bootstrap helpers accept that explicit snapshot along with the pool
+`MemoryRuntime::bootstrap` accepts that explicit snapshot along with the pool
 and policy. There are no constructor hooks or global declaration registration.
 
 The host supplies `MemoryAllocationPool::new(namespace_grants, exclusions)`.
@@ -26,7 +26,7 @@ initial ledger-cell writes. Diagnostics perform the same read-only check.
 
 The runtime recovers the ledger at ID 0, runs host admission, resolves requests,
 validates the completed snapshot, stages and persists one generation, then
-publishes committed authority. The default runtime delegates to this flow.
+publishes committed authority. The host owns this runtime instance.
 
 New requests are sorted by key and take the lowest unoccupied pool ID. Known
 keys preserve their committed IDs. All historical states occupy slots, including
@@ -39,10 +39,9 @@ stored in the ledger or enforced. The host can replace a label while preserving
 the key and its ID. Labels are not caller authentication or linked-code isolation.
 
 A library adopts a bootstrapped runtime through `verify_authority`, then
-`memory_id` or `open_memory(key)`. Default equivalents are
-`verify_default_memory_manager_authority`, `default_memory_manager_memory_id`
-and `open_default_memory_manager_memory(key)`. These do not bootstrap, replace
-policy, inspect persisted ownership or construct an absent default runtime.
+`memory_id` or `open_memory(key)`. The host passes the runtime reference or
+opened handles to components. These operations do not bootstrap, replace policy
+or inspect persisted ownership.
 Verification checks required keys, current owners and schema metadata without
 certifying application schema semantics or replaying admission.
 
@@ -66,15 +65,13 @@ retired, duplicate, foreign-namespace and physically excluded claims. Ignoring
 an admission error does not make the attempt succeed.
 
 ```rust,no_run
-ic_memory::ic_memory_declaration!(authority = "db", key = "db.current.v1");
-ic_memory::ic_memory_declaration!(authority = "db", key = "db.removed_journal.v1");
-fn reconcile() -> Result<(), Box<dyn std::error::Error>> {
-    let pool = ic_memory::MemoryAllocationPool::new(
-        vec![ic_memory::MemoryAuthority::new("db", "db.")?], vec![],
-    )?;
-    ic_memory::bootstrap_default_memory_manager(&pool)?;
-    let journal = ic_memory::open_default_memory_manager_memory("db.removed_journal.v1")?;
-    // Consumer validates journal debt and pending effects before retirement.
+fn reconcile<M: ic_memory::ic_stable_structures::Memory + Clone>(
+    runtime: &ic_memory::MemoryRuntime<M>,
+) -> Result<(), Box<dyn std::error::Error>> {
+    // The host includes this key in its complete snapshot or admission hook
+    // before committing bootstrap, then injects the runtime into this component.
+    let journal = runtime.open_memory("db.removed_journal.v1")?;
+    // The consumer validates journal debt and pending effects before retirement.
     drop(journal);
     Ok(())
 }
@@ -98,11 +95,11 @@ schema trail. A checked `u64` commit counter binds proofs to commits.
 
 | Resource | Current ceiling | Earliest enforcement |
 | --- | ---: | --- |
-| Stable-cell ledger value | 135,168 bytes (128 KiB + 4 KiB) | Header check before payload allocation/read; direct record decode before CBOR |
-| Logical ledger CBOR | 65,536 bytes (64 KiB) | Envelope decode before payload copy/CBOR; bounded writer before append or commit mutation |
+| Stable-cell ledger value | 69,632 bytes (64 KiB + 4 KiB) | Header check before payload allocation/read; direct record decode before CBOR |
+| Logical ledger CBOR | 65,536 bytes (64 KiB) | Protected payload bounds before logical CBOR; bounded writer before commit mutation |
 | CBOR container depth | 32 nested edges | Allocation-free syntax walk before serde |
 | Advertised CBOR text length | 256 bytes and remaining input | Syntax walk before serde allocation; keys also obey their 128-byte grammar |
-| Opaque commit payload | 65,560 bytes (64 KiB + 24-byte envelope) | Syntax walk before serde; writer checks the same limit |
+| Opaque commit payload | 65,536 bytes (64 KiB) | Syntax walk before serde; writer checks the same limit |
 | Advertised array/map entries | Remaining input bounds | Syntax walk before serde allocation hints |
 | External key requests | 254 | Snapshot sealing before copying/canonicalizing inputs |
 | Host namespace grants / physical exclusions | 254 / 255 | Pool construction and checked decoding |
@@ -112,11 +109,11 @@ schema trail. A checked `u64` commit counter binds proofs to commits.
 The syntax walk rejects indefinite containers, oversized text, excessive nesting,
 truncation and trailing bytes without allocating a temporary tree. Direct
 caller-selected serde decoders remain outside the maintained recovery contract;
-DTOs are not capabilities. Typed envelope, codec and integrity failures reject
+DTOs are not capabilities. Typed physical, codec and integrity failures reject
 without replacing existing storage with genesis.
 
 The outer ceiling permits one maximum payload and record metadata. The current
-`ICMN` format marker and version 1 identify the current ownership layout; earlier
+`ICMDIRCT` physical format marker identify the current ownership layout; earlier
 ledger layouts are unsupported. Before deploying this hard cut to retained
 installations, follow [the explicit data disposition requirements](current-ledger.md).
 No automatic clearing, fallback reader or migration engine is provided.
@@ -127,7 +124,7 @@ entry for staging. The maximum key/schema/record set round-trips through the
 current writer and reader. Excess counts, overflow and corruption reject before
 commit mutation.
 
-Matching warm bootstrap is idempotent. Recreating a runtime, reserving or retiring
+Matching warm bootstrap is idempotent. Cold bootstrap or a committed production transition
 advances the commit counter, including unchanged declarations. The counter can
 change CBOR integer width by at most eight bytes; no event is appended. Repeated
 schema changes replace the latest metadata. Recovery and serialization work depend
@@ -137,8 +134,7 @@ never wraps. Ownership and tombstones are never dropped to make room.
 Assumptions: backing `Memory` obeys its read/grow/write contract, the runtime is
 the sole manager owner, and IC messages roll back stable-memory writes on traps.
 The Cell is not a crash-atomic file protocol on arbitrary native backing memory;
-arbitrary partially persisted writes fail closed. Existing dual-slot corruption
-and interrupted-commit tests remain in the suite.
+arbitrary partially persisted writes fail closed. Current-snapshot corruption and interrupted-write tests remain in the suite.
 
 ## Historical 0.14–0.15 qualification and costs
 

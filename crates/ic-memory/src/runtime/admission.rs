@@ -1,6 +1,6 @@
 use crate::{
-    AllocationDeclaration, AllocationLedger, AllocationRecord, AllocationState, MemoryRequest,
-    SchemaMetadata, SealedDeclarationSnapshot, StableKey,
+    AllocationDeclaration, AllocationLedger, AllocationRecord, AllocationState,
+    SealedDeclarationSnapshot, StableKey,
 };
 
 ///
@@ -109,28 +109,33 @@ impl<'a> BootstrapAdmission<'a> {
     }
 
     fn select(&mut self, authority: &str, stable_key: &str) -> Result<(), BootstrapAdmissionError> {
-        // Constructor bounds names before they can enter selection diagnostics.
-        let request = MemoryRequest::new(authority, stable_key, SchemaMetadata::default())?;
-        let key = request.stable_key();
-        if self.is_declared(key) {
-            return Err(BootstrapAdmissionError::Duplicate(key.clone()));
+        // Request validation bounds names before selection diagnostics, without
+        // creating an owner string or schema that admission would discard.
+        let key = crate::requests::checked_request_key(authority, stable_key)?;
+        if self.is_declared(&key) {
+            return Err(BootstrapAdmissionError::Duplicate(key));
         }
         if self.declarations.requests().len() + self.selected.len() >= 254 {
             return Err(BootstrapAdmissionError::TooManyDeclarations);
         }
-        let record = self
+        let Some(record) = self
             .ledger
             .records()
             .iter()
-            .find(|r| r.stable_key() == key)
-            .ok_or_else(|| BootstrapAdmissionError::Unknown(key.clone()))?;
+            .find(|r| r.stable_key() == &key)
+        else {
+            return Err(BootstrapAdmissionError::Unknown(key));
+        };
         if matches!(record.state(), AllocationState::Retired) {
-            return Err(BootstrapAdmissionError::Retired(key.clone()));
+            return Err(BootstrapAdmissionError::Retired(key));
         }
-        self.pool.validate_authority(key, authority)?;
+        self.pool.validate_authority(&key, authority)?;
         self.pool.validate_id(record.slot().id())?;
-        self.selected
-            .push(request.into_declaration(record.slot().clone(), record.schema().clone()));
+        self.selected.push(AllocationDeclaration {
+            stable_key: key,
+            slot: record.slot().clone(),
+            schema: record.schema().clone(),
+        });
         Ok(())
     }
 

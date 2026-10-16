@@ -8,7 +8,6 @@ mod allocations;
 mod backing;
 pub mod bootstrap;
 mod config;
-mod default;
 mod diagnostics;
 mod error;
 mod layout;
@@ -38,28 +37,19 @@ pub use allocations::{
 };
 pub use backing::RuntimeMemory;
 pub use config::MemoryManagerConfig;
-pub use default::{
-    bootstrap_default_memory_manager, bootstrap_default_memory_manager_with_config,
-    bootstrap_default_memory_manager_with_policy, committed_allocations,
-    default_memory_manager_commit_recovery_diagnostic, default_memory_manager_diagnostic_export,
-    default_memory_manager_doctor_report, default_memory_manager_doctor_report_with_policy,
-    default_memory_manager_memory_allocation_summary, default_memory_manager_memory_allocations,
-    default_memory_manager_memory_id, is_default_memory_manager_bootstrapped,
-    open_default_memory_manager_memory, verify_default_memory_manager_authority,
-};
 pub use error::{
     MemoryResolutionError, RuntimeBootstrapError, RuntimeConstructionError, RuntimeDiagnosticError,
-    RuntimeGrowError, RuntimeOpenError, RuntimeStateError,
+    RuntimeGrowError, RuntimeOpenError,
 };
 pub use layout::MemoryManagerLayoutError;
 pub use policy::GenericAllocationPolicy;
 
 use crate::{
-    CommittedAllocations, PolicyIdentity, RuntimeBootstrapPolicy, STABLE_CELL_VALUE_OFFSET,
-    StableCellLedgerError, StableCellLedgerRecord,
+    CommittedAllocations, LedgerCommitStore, PolicyIdentity, RuntimeBootstrapPolicy,
+    STABLE_CELL_VALUE_OFFSET, StableCellLedgerError,
     requests::SealedDeclarationSnapshot,
     slot::MEMORY_MANAGER_LEDGER_ID,
-    stable_cell::{EncodedLedgerRecord, decode_stable_cell_ledger_record_from_memory},
+    stable_cell::{EncodedLedgerRecord, decode_stable_cell_commit_store_from_memory},
 };
 use ic_stable_structures::{
     Cell, Memory,
@@ -263,26 +253,22 @@ impl<M: Memory> MemoryRuntime<M> {
         policy_identity: PolicyIdentity,
     ) -> Result<(), RuntimeBootstrapError<P::Error>> {
         let memory = self.memory(MEMORY_MANAGER_LEDGER_ID);
-        let mut record = decode_stable_cell_ledger_record_from_memory(&memory)?;
-        let recovered = record.store().recover_or_genesis()?;
+        let mut record = decode_stable_cell_commit_store_from_memory(&memory)?;
+        let recovered = record.recover_or_genesis()?;
         let occupied = recovered.ledger().occupied_slots();
         self.validate_pool_custody(&occupied, pool)?;
         if memory.size() == 0 {
             // Empty memory decodes to an uninitialized record. Preserve fresh
             // cell acquisition before admission without persisting genesis.
-            write_ledger_cell(memory.clone(), &StableCellLedgerRecord::default())?;
+            write_ledger_cell(memory.clone(), &LedgerCommitStore::default())?;
         }
         let mut admission = BootstrapAdmission::new(recovered.ledger(), declarations, pool);
         let preparation = policy.prepare_bootstrap(&mut admission);
         let historical = admission.complete()?;
         preparation.map_err(RuntimeBootstrapError::AdmissionPolicy)?;
         let resolved = declarations.resolve(recovered.ledger(), &occupied, historical, pool)?;
-        let commit = crate::runtime::bootstrap::prepare_commit(
-            record.store_mut(),
-            recovered,
-            resolved,
-            policy,
-        )?;
+        let commit =
+            crate::runtime::bootstrap::prepare_commit(&mut record, recovered, resolved, policy)?;
         write_ledger_cell(memory, &record)?;
         let committed = commit.confirm_persisted();
         self.lifecycle = RuntimeLifecycle::Bootstrapped {
@@ -341,13 +327,13 @@ impl<M: Memory> MemoryRuntime<M> {
         self.memory_manager.get(MemoryId::new(id)).size()
     }
 
-    fn ledger_record_from_memory(&self) -> Result<StableCellLedgerRecord, StableCellLedgerError> {
+    fn ledger_record_from_memory(&self) -> Result<LedgerCommitStore, StableCellLedgerError> {
         // Decoding only reads; the manager handle retains backing lifetime
         // without carrying the growth owner needed by writable runtime handles.
         let memory = self
             .memory_manager
             .get(MemoryId::new(MEMORY_MANAGER_LEDGER_ID));
-        decode_stable_cell_ledger_record_from_memory(&memory)
+        decode_stable_cell_commit_store_from_memory(&memory)
     }
 }
 
@@ -376,7 +362,7 @@ impl RuntimeBootstrapBinding {
 
 fn write_ledger_cell<M: Memory, P>(
     memory: RuntimeMemory<M>,
-    record: &StableCellLedgerRecord,
+    record: &LedgerCommitStore,
 ) -> Result<(), RuntimeBootstrapError<P>> {
     let encoded = EncodedLedgerRecord::new(record).map_err(|value_size| {
         RuntimeBootstrapError::StableCellLedgerWriteTooLarge { value_size }

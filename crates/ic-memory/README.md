@@ -206,17 +206,21 @@ fn initialize_stable_storage() -> Result<(), Box<dyn std::error::Error>> {
         vec![],
     )?;
     let declarations = ic_memory::SealedDeclarationSnapshot::new(component_requests()?)?;
-    ic_memory::bootstrap_default_memory_manager(&declarations, &pool)?;
-    let users = ic_memory::open_default_memory_manager_memory(USERS_KEY)?;
+    let mut runtime = ic_memory::MemoryRuntime::new(
+        ic_memory::ic_stable_structures::DefaultMemoryImpl::default(),
+    )?;
+    runtime.bootstrap(&declarations, &pool, &ic_memory::GenericAllocationPolicy)?;
+    let users = runtime.open_memory(USERS_KEY)?;
     drop(users);
     Ok(())
 }
 ```
 
-Call this host bootstrap from initialization and post-upgrade before deferred
-stable collections open. Hosts needing admission or custom bucket geometry use
-the policy or configuration bootstrap helpers with the same explicit snapshot
-and pool. Request factories only construct metadata; they never open stores.
+The application retains this runtime across calls, bootstraps it during
+initialization and post-upgrade, and injects opened handles into components.
+Use `MemoryRuntime::new_with_config` for custom bucket geometry and pass the
+host policy to `bootstrap`. The library owns no singleton or thread-local
+runtime. Request factories only construct metadata; they never open stores.
 
 Known keys retain their committed IDs. New requests are sorted by key and take
 the lowest unclaimed ID in the common pool. Current, omitted, reserved and
@@ -239,12 +243,14 @@ requirements were included without rerunning bootstrap or replacing the host's
 policy:
 
 ```rust
-fn adopt_host() -> Result<(), Box<dyn std::error::Error>> {
+fn adopt_host<M: ic_memory::ic_stable_structures::Memory + Clone>(
+    runtime: &ic_memory::MemoryRuntime<M>,
+) -> Result<(), Box<dyn std::error::Error>> {
     let requests = vec![ic_memory::MemoryRequest::new(
         "library_name", "library_name.rows.v1", ic_memory::SchemaMetadata::default(),
     )?];
     let requirements = ic_memory::SealedDeclarationSnapshot::new(requests)?;
-    ic_memory::verify_default_memory_manager_authority(
+    runtime.verify_authority(
         &requirements,
         "library_name",
     )?;
@@ -257,7 +263,7 @@ historical IDs fail before application stores open. Populated IDs without a
 ledger record must be explicitly excluded by the host; bootstrap refuses to
 infer custody from stored bytes.
 
-The default runtime reserves IDs `0..=9` and keys under `ic_memory.*` for its
+The runtime reserves IDs `0..=9` and keys under `ic_memory.*` for its
 own governance records. ID `0` contains the allocation ledger. Application
 code may use IDs through `254`; ID `255` is the upstream unallocated sentinel
 and can never be declared.
@@ -322,10 +328,11 @@ common pool has space, and the complete layout passes admission and validation.
 
 ## Operations and advanced integration
 
-The current durable ledger uses checked numeric slot encoding (`ICMEMLED` /
-`ICMN` / version 1). Earlier ledger images are incompatible. Before deploying on
-retained data, follow the [explicit disposition requirements](https://github.com/dragginzgame/ic-memory/blob/main/docs/current-ledger.md#hard-cut-and-retained-installations);
-there is no automatic ledger reset or earlier-format reader.
+The current durable ledger uses checked numeric slots and a single `ICMDIRCT`
+checksummed snapshot containing direct ledger CBOR. The 0.44.0 format cut retires
+earlier images: use fresh/reset memory. Incompatible bytes reject without
+initializing genesis or clearing memory. See the
+[current ledger contract](../../docs/current-ledger.md).
 
 For fixture-only byte cells, opt in to `test-support` and construct
 `testing::FixtureCell` with explicit backing memory, owner, namespace, key and

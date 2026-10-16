@@ -1196,6 +1196,77 @@ fn compiler_configuration_overrides_refuse_preparation() {
 }
 
 #[test]
+fn included_compiler_configuration_refuses_preparation() {
+    let fixture = Fixture::new();
+    let directory = fixture.repo.root.join(".cargo");
+    fs::create_dir(&directory).unwrap();
+    fs::write(directory.join("config.toml"), "include = 'compiler.toml'\n").unwrap();
+    fs::write(
+        directory.join("compiler.toml"),
+        "[build]\nrustc-wrapper = 'outside-receipt-compiler'\n",
+    )
+    .unwrap();
+    assert!(fixture.prepare().is_err());
+    fixture.assert_original();
+    assert!(
+        !fixture
+            .repo
+            .exec
+            .state
+            .borrow()
+            .calls
+            .iter()
+            .any(|call| { call[0] == "make" || call.get(2).is_some_and(|arg| arg == "update") })
+    );
+}
+
+#[test]
+fn included_and_shadowed_configuration_changes_invalidate_release_evidence() {
+    let fixture = Fixture::new();
+    let directory = fixture.repo.root.join(".cargo");
+    fs::create_dir(&directory).unwrap();
+    let files = [
+        (directory.join("config"), "include = 'shared.toml'\n"),
+        (directory.join("config.toml"), "[build]\njobs = 1\n"),
+        (directory.join("shared.toml"), "[build]\njobs = 2\n"),
+    ];
+    for (path, bytes) in &files {
+        fs::write(path, bytes).unwrap();
+    }
+    fixture.release();
+    let observed = fixture.repo.configuration().unwrap();
+    for (path, bytes) in &files {
+        assert_eq!(
+            observed[&format!("config:{}", path.display())],
+            Sha256Digest::compute(bytes.as_bytes()).to_string()
+        );
+        // Even a comment-only change must invalidate existing raw-byte custody.
+        fs::write(path, format!("{bytes}# changed\n")).unwrap();
+        let calls = fixture.repo.exec.state.borrow().calls.len();
+        assert!(
+            fixture
+                .repo
+                .push_check(&fixture.selection, "release")
+                .is_err()
+        );
+        assert!(fixture.repo.publish(true).is_err());
+        assert!(
+            !fixture.repo.exec.state.borrow().calls[calls..]
+                .iter()
+                .any(|call| {
+                    call.get(1).is_some_and(|arg| arg == "push")
+                        || call.get(2).is_some_and(|arg| arg == "publish")
+                })
+        );
+        fs::write(path, bytes).unwrap();
+        fixture
+            .repo
+            .verify_evidence(&fixture.selection, "release", false, true)
+            .unwrap();
+    }
+}
+
+#[test]
 fn inherited_compiler_configuration_refuses_preparation() {
     let fixture = Fixture::new();
     let directory = fixture.repo.root.join(".cargo");

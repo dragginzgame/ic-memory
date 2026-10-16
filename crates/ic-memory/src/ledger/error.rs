@@ -1,7 +1,4 @@
-use crate::{
-    key::StableKey, ledger::LedgerPayloadEnvelopeError, physical::CommitRecoveryError,
-    slot::MemoryManagerSlot,
-};
+use crate::{key::StableKey, physical::CommitRecoveryError, slot::MemoryManagerSlot};
 
 ///
 /// LedgerIntegrityError
@@ -39,9 +36,6 @@ pub enum LedgerCommitError {
     /// Protected physical commit recovery failed.
     #[error(transparent)]
     Recovery(CommitRecoveryError),
-    /// Logical ledger payload envelope could not be decoded.
-    #[error(transparent)]
-    PayloadEnvelope(LedgerPayloadEnvelopeError),
     /// Physical slot generation and decoded logical ledger generation disagree.
     #[error(
         "physical generation {physical_generation} does not match logical ledger generation {logical_generation}"
@@ -74,42 +68,4 @@ pub enum AllocationStageError {
     GenerationOverflow { generation: u64 },
     #[error(transparent)]
     Integrity(#[from] LedgerIntegrityError),
-    /// Validated declarations were produced against a different ledger generation.
-    #[error(
-        "validated allocations were produced at generation {validated_generation}, but ledger is at generation {ledger_generation}"
-    )]
-    StaleValidatedAllocations {
-        /// Generation carried by the validated allocation capability.
-        validated_generation: u64,
-        /// Current ledger generation.
-        ledger_generation: u64,
-    },
-    /// Stable key was historically bound to a different slot.
-    #[error("stable key '{stable_key}' was historically bound to a different allocation slot")]
-    StableKeySlotConflict {
-        /// Stable key being declared.
-        stable_key: StableKey,
-        /// Historical slot for the stable key.
-        historical_slot: MemoryManagerSlot,
-        /// Slot claimed by the declaration.
-        declared_slot: MemoryManagerSlot,
-    },
-    /// Slot was historically bound to a different stable key.
-    #[error("allocation slot '{slot:?}' was historically bound to stable key '{historical_key}'")]
-    SlotStableKeyConflict {
-        /// Slot being declared.
-        slot: MemoryManagerSlot,
-        /// Historical stable key for the slot.
-        historical_key: StableKey,
-        /// Stable key claimed by the declaration.
-        declared_key: StableKey,
-    },
-    /// Current declaration attempted to revive a retired allocation.
-    #[error("stable key '{stable_key}' was explicitly retired and cannot be redeclared")]
-    RetiredAllocation {
-        /// Retired stable key.
-        stable_key: StableKey,
-        /// Retired allocation slot.
-        slot: MemoryManagerSlot,
-    },
 }

@@ -2,12 +2,10 @@ use super::{MemoryRuntime, RuntimeDiagnosticError, RuntimeLifecycle};
 use crate::{
     DiagnosticCheck, DiagnosticCode, DiagnosticExport, DiagnosticFailure, DiagnosticMemorySize,
     DiagnosticRuntimeBinding, DiagnosticStableCell, DiagnosticStableCellStatus, LedgerCommitError,
-    LedgerPayloadEnvelopeError, MemoryRuntimeDoctorReport, PolicyIdentity, RecoveredLedger,
-    RuntimeBootstrapPolicy, StableCellLedgerRecord,
-    physical::CommitSnapshotDiagnostic,
-    requests::{SealedDeclarationFingerprint, SealedDeclarationSnapshot},
-    slot::MEMORY_MANAGER_LEDGER_ID,
-    stable_cell::decode_stable_cell_ledger_record_from_memory,
+    LedgerCommitStore, MemoryRuntimeDoctorReport, PolicyIdentity, RecoveredLedger,
+    RuntimeBootstrapPolicy, physical::CommitSnapshotDiagnostic,
+    requests::SealedDeclarationSnapshot, slot::MEMORY_MANAGER_LEDGER_ID,
+    stable_cell::decode_stable_cell_commit_store_from_memory,
 };
 use ic_stable_structures::{Memory, memory_manager::MemoryId};
 use std::{borrow::Cow, fmt::Display};
@@ -18,10 +16,8 @@ impl<M: Memory> MemoryRuntime<M> {
         if !self.is_bootstrapped() {
             return Err(RuntimeDiagnosticError::NotBootstrapped);
         }
-        let (recovered, commit_recovery) = self
-            .ledger_record_from_memory()?
-            .store()
-            .recover_with_diagnostic();
+        let (recovered, commit_recovery) =
+            self.ledger_record_from_memory()?.recover_with_diagnostic();
         let recovered = recovered?;
         Ok(self.recovered_diagnostic_export(recovered, commit_recovery))
     }
@@ -34,7 +30,7 @@ impl<M: Memory> MemoryRuntime<M> {
         &self,
     ) -> Result<CommitSnapshotDiagnostic, RuntimeDiagnosticError> {
         let record = self.ledger_record_from_memory()?;
-        Ok(record.store().physical().diagnostic())
+        Ok(record.physical().diagnostic())
     }
 
     /// Build preflight and lifecycle diagnostics for this runtime.
@@ -58,7 +54,7 @@ impl<M: Memory> MemoryRuntime<M> {
         // physical snapshot before observing memory or invoking custom policy.
         let recovery = stable_cell
             .record
-            .map(|record| record.store().recover_with_diagnostic());
+            .map(|record| record.recover_with_diagnostic());
         // Keep the original observation boundary before policy callbacks, without
         // copying the recovered keys/records merely to retain those observations.
         let mut observed_pages = [0; crate::constants::MAX_ALLOCATIONS];
@@ -70,13 +66,12 @@ impl<M: Memory> MemoryRuntime<M> {
         let tested_policy_identity = policy
             .runtime_bootstrap_identity()
             .map_err(|err| DiagnosticFailure::new(DiagnosticCode::PolicyIdentity, err.to_string()));
-        let tested_declaration_fingerprint = declarations.fingerprint();
         let established_bootstrap_binding = self.established_bootstrap_binding();
         let bootstrap_binding = diagnostic_bootstrap_binding(
             &tested_policy_identity,
-            tested_declaration_fingerprint,
+            declarations,
             pool,
-            established_bootstrap_binding.as_ref(),
+            &self.lifecycle,
         );
         let validation = match &tested_policy_identity {
             Ok(_) => diagnostic_validation(
@@ -106,7 +101,6 @@ impl<M: Memory> MemoryRuntime<M> {
         MemoryRuntimeDoctorReport {
             bootstrapped: self.is_bootstrapped(),
             tested_policy_identity,
-            tested_declaration_fingerprint,
             established_bootstrap_binding,
             bootstrap_binding,
             ledger_anchor: crate::slot::LEDGER_SLOT,
@@ -140,7 +134,6 @@ impl<M: Memory> MemoryRuntime<M> {
             RuntimeLifecycle::Unbootstrapped => None,
             RuntimeLifecycle::Bootstrapped { binding, .. } => Some(DiagnosticRuntimeBinding::new(
                 binding.policy_identity.clone(),
-                binding.source.fingerprint(),
                 binding.pool.clone(),
             )),
         }
@@ -151,7 +144,7 @@ impl<M: Memory> MemoryRuntime<M> {
             .memory_manager
             .get(MemoryId::new(MEMORY_MANAGER_LEDGER_ID));
         let memory_size = DiagnosticMemorySize::from_wasm_pages(memory.size());
-        match decode_stable_cell_ledger_record_from_memory(&memory) {
+        match decode_stable_cell_commit_store_from_memory(&memory) {
             Ok(record) => StableCellDiagnostic {
                 diagnostic: DiagnosticStableCell::new(
                     if memory_size.wasm_pages == 0 {
@@ -181,7 +174,7 @@ impl<M: Memory> MemoryRuntime<M> {
 
 struct StableCellDiagnostic {
     diagnostic: DiagnosticStableCell,
-    record: Option<StableCellLedgerRecord>,
+    record: Option<LedgerCommitStore>,
 }
 
 fn diagnostic_validation<M: Memory, P: RuntimeBootstrapPolicy>(
@@ -216,9 +209,9 @@ where
 
 fn diagnostic_bootstrap_binding(
     tested_policy_identity: &Result<PolicyIdentity, DiagnosticFailure>,
-    tested_declaration_fingerprint: SealedDeclarationFingerprint,
+    declarations: &SealedDeclarationSnapshot,
     pool: &crate::MemoryAllocationPool,
-    established: Option<&DiagnosticRuntimeBinding>,
+    lifecycle: &RuntimeLifecycle,
 ) -> DiagnosticCheck {
     let tested_policy_identity = match tested_policy_identity {
         Ok(identity) => identity,
@@ -226,22 +219,19 @@ fn diagnostic_bootstrap_binding(
             return DiagnosticCheck::not_run(failure.code, failure.message.clone());
         }
     };
-    let Some(established) = established else {
+    let RuntimeLifecycle::Bootstrapped { binding, .. } = lifecycle else {
         return DiagnosticCheck::not_run(
             DiagnosticCode::RuntimeBinding,
             "runtime has not completed bootstrap",
         );
     };
-    if &established.policy_identity == tested_policy_identity
-        && established.declaration_fingerprint == tested_declaration_fingerprint
-        && &established.allocation_pool == pool
-    {
-        return DiagnosticCheck::passed();
+    match binding.validate::<std::convert::Infallible>(declarations, pool, tested_policy_identity) {
+        Ok(()) => DiagnosticCheck::passed(),
+        Err(_) => DiagnosticCheck::failed(
+            DiagnosticCode::RuntimeBinding,
+            "tested policy/declaration/pool binding differs from established runtime binding",
+        ),
     }
-    DiagnosticCheck::failed(
-        DiagnosticCode::RuntimeBinding,
-        "tested policy/declaration/pool binding differs from established runtime binding",
-    )
 }
 
 pub(super) fn diagnostic_validation_ledger(
@@ -256,9 +246,7 @@ pub(super) fn diagnostic_validation_ledger(
         }
         let code = if matches!(
             err,
-            LedgerCommitError::PayloadEnvelope(
-                LedgerPayloadEnvelopeError::UnsupportedFormat { .. }
-            )
+            LedgerCommitError::Recovery(crate::CommitRecoveryError::UnsupportedFormat { .. })
         ) {
             DiagnosticCode::UnsupportedFormat
         } else {

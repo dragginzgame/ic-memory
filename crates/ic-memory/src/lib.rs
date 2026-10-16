@@ -44,7 +44,7 @@
 //!
 //! Bounded physical attribution is available through
 //! [`MemoryRuntime::memory_allocations`] and
-//! [`default_memory_manager_memory_allocations`]. It reports actual persisted
+//! [`MemoryRuntime::memory_allocations`]. It reports actual persisted
 //! buckets and explicit residuals without decoding retained ownership. Virtual
 //! extent is not payload occupancy. Opens return [`RuntimeMemory`]; explicit
 //! [`MemoryManagerConfig`] selects fresh-state buckets or checks a persisted
@@ -155,34 +155,20 @@ pub use diagnostics::{
     MemoryRuntimeDoctorReport,
 };
 pub use key::{StableKey, StableKeyError};
-pub(crate) use ledger::LedgerCommitStore;
-#[cfg(test)]
-pub(crate) use ledger::LedgerPayloadEnvelope;
+pub use ledger::LedgerCommitStore;
 pub use ledger::{
-    AllocationLedger, AllocationRecord, AllocationStageError, AllocationState,
-    LEDGER_PAYLOAD_FORMAT_VERSION, LedgerCommitError, LedgerIntegrityError,
-    LedgerPayloadEnvelopeError, RecoveredLedger,
+    AllocationLedger, AllocationRecord, AllocationStageError, AllocationState, LedgerCommitError,
+    LedgerIntegrityError, RecoveredLedger,
 };
-#[cfg(test)]
-pub(crate) use physical::CommittedGenerationBytes;
 pub use physical::{CommitRecoveryError, CommitSnapshotDiagnostic};
 pub use policy::{PolicyIdentity, PolicyIdentityError, RuntimeBootstrapPolicy};
-pub use requests::{
-    MemoryDeclarationError, MemoryRequest, SealedDeclarationFingerprint, SealedDeclarationSnapshot,
-};
+pub use requests::{MemoryDeclarationError, MemoryRequest, SealedDeclarationSnapshot};
 pub use runtime::{
     AllocationBinding, BootstrapAdmission, BootstrapAdmissionError, GenericAllocationPolicy,
     MemoryAllocation, MemoryAllocationSummary, MemoryAllocations, MemoryBindingSummary,
     MemoryManagerConfig, MemoryManagerLayoutError, MemoryResolutionError, MemoryRuntime,
     RuntimeAdoptionError, RuntimeBootstrapError, RuntimeConstructionError, RuntimeDiagnosticError,
-    RuntimeGrowError, RuntimeMemory, RuntimeOpenError, RuntimeStateError,
-    bootstrap_default_memory_manager, bootstrap_default_memory_manager_with_config,
-    bootstrap_default_memory_manager_with_policy, committed_allocations,
-    default_memory_manager_commit_recovery_diagnostic, default_memory_manager_diagnostic_export,
-    default_memory_manager_doctor_report, default_memory_manager_doctor_report_with_policy,
-    default_memory_manager_memory_allocation_summary, default_memory_manager_memory_allocations,
-    default_memory_manager_memory_id, is_default_memory_manager_bootstrapped,
-    open_default_memory_manager_memory, verify_default_memory_manager_authority,
+    RuntimeGrowError, RuntimeMemory, RuntimeOpenError,
 };
 pub use schema::{SchemaMetadata, SchemaMetadataError};
 pub use slot::{
@@ -194,13 +180,11 @@ pub use slot::{
 };
 pub use stable_cell::{
     STABLE_CELL_HEADER_SIZE, STABLE_CELL_LAYOUT_VERSION, STABLE_CELL_MAGIC,
-    STABLE_CELL_VALUE_OFFSET, StableCellLedgerError, StableCellLedgerRecord,
-    StableCellPayloadError, decode_stable_cell_ledger_record,
-    decode_stable_cell_ledger_record_from_memory, decode_stable_cell_payload,
+    STABLE_CELL_VALUE_OFFSET, StableCellLedgerError, StableCellPayloadError,
+    decode_stable_cell_commit_store, decode_stable_cell_commit_store_from_memory,
+    decode_stable_cell_payload,
 };
 pub use validation::AllocationValidationError;
-#[cfg(test)]
-pub(crate) use validation::validate_allocations;
 
 #[cfg(test)]
 mod allocation_measurements_tests;

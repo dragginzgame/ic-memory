@@ -1,10 +1,9 @@
 use super::RuntimeBootstrapError;
 use crate::{
-    capability::{CommittedAllocations, ValidatedAllocations},
-    declaration::DeclarationSnapshot,
-    ledger::{LedgerCommitStore, stage_validated_generation},
+    capability::CommittedAllocations,
+    declaration::{AllocationDeclaration, DeclarationSnapshot},
+    ledger::{LedgerCommitStore, stage_generation},
     policy::RuntimeBootstrapPolicy,
-    validation::validate_allocations,
 };
 
 /// Validate and stage one commit; the runtime persists before confirmation.
@@ -17,12 +16,11 @@ pub fn prepare_commit<P>(
 where
     P: RuntimeBootstrapPolicy,
 {
-    let validated = validate_allocations(&prior, snapshot, policy)?;
-    let staged = stage_validated_generation(prior.into_ledger(), &validated)?;
+    let (staged, declarations) = stage_generation(prior, snapshot, policy)?;
     store.commit_generation(&staged)?;
 
     Ok(PendingBootstrapCommit {
-        validated,
+        declarations,
         generation: staged.current_generation(),
     })
 }
@@ -44,18 +42,18 @@ pub struct PendingBootstrapCommit {
     /// Generation accepted by the protected commit, awaiting stable persistence.
     generation: u64,
     /// Validated allocation declarations awaiting persistence confirmation.
-    validated: ValidatedAllocations,
+    declarations: Vec<AllocationDeclaration>,
 }
 
 impl PendingBootstrapCommit {
     /// Confirm that the owning integration durably persisted this commit.
     ///
     /// Calling this method before the stable-memory write succeeds violates the
-    /// allocation protocol. The default runtime performs its stable-cell write
+    /// allocation protocol. The owning runtime performs its stable-cell write
     /// before confirmation.
     #[must_use]
     pub fn confirm_persisted(self) -> CommittedAllocations {
-        self.validated.confirm_persisted(self.generation)
+        CommittedAllocations::from_persisted(self.declarations, self.generation)
     }
 }
 
@@ -89,10 +87,6 @@ mod tests {
         ) -> Result<crate::PolicyIdentity, crate::PolicyIdentityError> {
             crate::PolicyIdentity::new("validation-test", 1)
         }
-    }
-
-    fn ledger() -> AllocationLedger {
-        AllocationLedger::empty_genesis()
     }
 
     fn declaration() -> AllocationDeclaration {
@@ -129,9 +123,14 @@ mod tests {
     #[test]
     fn reservation_policy_alone_does_not_activate_reserved_allocation() {
         let mut store = LedgerCommitStore::default();
-        let reserved = ledger()
-            .stage_reservation_generation(&[declaration()])
-            .unwrap();
+        let reserved = crate::AllocationLedger::new(
+            1,
+            vec![crate::testing::allocation_record(
+                &declaration(),
+                crate::AllocationState::Reserved,
+            )],
+        )
+        .unwrap();
         store.commit(&reserved).unwrap();
         let before = store.clone();
         let recovered = store.recover().unwrap();
@@ -154,5 +153,61 @@ mod tests {
             store.recover().unwrap().ledger().records()[0].state(),
             crate::AllocationState::Reserved
         );
+    }
+
+    #[test]
+    fn later_policy_failure_discards_local_staging_before_protected_commit() {
+        let mut store = LedgerCommitStore::default();
+        let prior = store.recover_or_genesis().unwrap();
+        // The governance key sorts before this application key, so staging
+        // mutates local state before the application policy rejects its slot.
+        let snapshot = DeclarationSnapshot::canonicalize(vec![
+            AllocationDeclaration::memory_manager(
+                crate::IC_MEMORY_LEDGER_STABLE_KEY,
+                crate::MEMORY_MANAGER_LEDGER_ID,
+            )
+            .unwrap(),
+            AllocationDeclaration::memory_manager("zoo.rows.v1", 100).unwrap(),
+        ])
+        .unwrap();
+        let before = store.clone();
+        assert!(matches!(
+            prepare_commit(&mut store, prior, snapshot, &RejectActivePolicy),
+            Err(RuntimeBootstrapError::Validation(
+                AllocationValidationError::Policy("active slot rejected")
+            ))
+        ));
+        assert_eq!(store, before);
+    }
+
+    #[test]
+    fn staging_generation_overflow_preserves_protected_store() {
+        let mut store = LedgerCommitStore::default();
+        let prior = crate::RecoveredLedger::from_trusted_ledger(
+            AllocationLedger::new(u64::MAX, Vec::new()).unwrap(),
+        );
+        let snapshot = DeclarationSnapshot::canonicalize(vec![declaration()]).unwrap();
+        // Policy rejection wins even when the successor counter is exhausted.
+        assert!(matches!(
+            prepare_commit(
+                &mut store,
+                prior.clone(),
+                DeclarationSnapshot::canonicalize(vec![declaration()]).unwrap(),
+                &RejectActivePolicy
+            ),
+            Err(RuntimeBootstrapError::Validation(
+                AllocationValidationError::Policy("active slot rejected")
+            ))
+        ));
+        let before = store.clone();
+        assert!(matches!(
+            prepare_commit(&mut store, prior, snapshot, &GenericAllocationPolicy),
+            Err(RuntimeBootstrapError::Staging(
+                crate::AllocationStageError::GenerationOverflow {
+                    generation: u64::MAX
+                }
+            ))
+        ));
+        assert_eq!(store, before);
     }
 }

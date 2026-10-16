@@ -13,7 +13,7 @@ applications should start with the README.
 - [Runtime ownership](#runtime-ownership)
 - [Policy authority](#policy-authority)
 - [Explicit component declarations](#explicit-component-declarations)
-- [Default runtime diagnostics](#default-runtime-diagnostics)
+- [Runtime diagnostics](#runtime-diagnostics)
 - [Explicit `MemoryRuntime<M>`](#explicit-memoryruntimem)
 - [Recovery and persistence](#recovery-and-persistence)
 - [Stable key rules](#stable-key-rules)
@@ -34,24 +34,23 @@ The native IC ledger anchor is:
 ```text
 MemoryManager ID 0
   -> ic-stable-structures::Cell value bytes
-  -> StableCellLedgerRecord (fallibly decoded DTO)
-  -> LedgerCommitStore
+  -> LedgerCommitStore (fallibly decoded DTO)
   -> one checksummed current snapshot
   -> current-format allocation ledger
   -> RecoveredLedger
-  -> ValidatedAllocations
+  -> one owned validation/staging attempt
   -> PendingBootstrapCommit
   -> CommittedAllocations
 ```
 
 The logical payload uses the built-in `ic-memory` CBOR ledger format. Callers do
-not provide a custom codec. `StableCellLedgerRecord` does not implement
+not provide a custom codec. `LedgerCommitStore` does not implement
 `Storable`: the runtime owns bounded publication bytes and allocation persistence,
 while the fallible decode helpers support read-only inspection.
 
-The default runtime keeps this internal ledger allocation in its ownership records,
+The runtime keeps this internal ledger allocation in its ownership records,
 but it removes `ic_memory.*` governance keys from the committed allocations it
-publishes for application opens. Public default-runtime open helpers reject
+publishes for application opens. `MemoryRuntime::open_memory` rejects
 those reserved keys.
 
 A framework supplies sealed key requests and one host allocation pool
@@ -91,32 +90,18 @@ The host composes component requests into one immutable
 registry collects declarations. Each runtime performs its own recovery, policy
 evaluation, persistence and capability publication on its backing memory.
 
-Exactly one owner should bootstrap a given ledger store. Canic can own a
-`MemoryRuntime`, IcyDB can own one, or the application can use the default TLS
-runtime. Framework integrations should store and pass the explicit runtime
-object alongside the backing memory they own.
+Exactly one host owns and bootstraps a `MemoryRuntime` for a given backing
+memory. That host retains the instance and passes runtime references or opened
+`RuntimeMemory` handles to components. Canic and application code own their
+canister/thread storage; the Memory library has no singleton, implicit
+construction, cached construction failure or TLS lifecycle.
 
-The intended public API is exported from `ic_memory::...` at the crate root.
-Implementation modules such as the runtime, ledger, requests, and validation
-modules are private. Frameworks should call root exports such as
-`bootstrap_default_memory_manager_with_policy(...)`,
-`default_memory_manager_doctor_report(&snapshot, &pool)`, and
-`open_default_memory_manager_memory(...)`.
+The public API is exported from `ic_memory::...` at the crate root. Use
+`MemoryRuntime::bootstrap`, `MemoryRuntime::doctor_report` and
+`MemoryRuntime::open_memory`. Implementation modules remain private.
 
-If multiple layers need separate allocation domains, they should use distinct
-backing memories and runtime objects with an explicit bootstrap owner for each
-domain.
-
-The default convenience layer lazily constructs one runtime per thread. Its TLS
-storage distinguishes an absent runtime, a successfully constructed runtime,
-and a cached construction failure. Bootstrap can construct the runtime;
-observations and memory opens never construct an absent runtime or choose its
-bucket configuration. A construction failure remains cached for that thread.
-Native threads get independent default memory instances and therefore
-independent runtime lifecycle and authority. IC Wasm execution is single-threaded,
-so that TLS runtime naturally has canister-instance lifetime. Default entry
-points use fallible TLS borrowing and return a typed reentrancy error instead of
-panicking or consulting another runtime.
+Separate allocation domains require distinct backing memories and runtime
+objects, with an explicit bootstrap owner for each domain.
 
 Bootstrap is once per runtime object, not once per process. A second call on the
 same successfully bootstrapped runtime is idempotent and does not advance the
@@ -188,7 +173,7 @@ borrow the resulting capability. There is no second resolved-row map or
 alternative component input. Governance is validated internally before
 application capability publication.
 
-## Default Runtime Diagnostics
+## Runtime Diagnostics
 
 `MemoryRuntime::doctor_report(&snapshot, &pool, &policy)` reports stable-cell
 status, protected recovery, recovered ledger, live sizes, source requests and
@@ -196,15 +181,10 @@ the tested pool. Read-only validation checks custody, namespace ownership,
 placement and custom allocation policy. It never executes preparation, predicts
 its completed historical selections or certifies consumer admission.
 
-`default_memory_manager_doctor_report(&snapshot, &pool)` observes an existing
-default runtime; the custom variant takes `(&snapshot, &pool, &policy)`. An absent
-runtime returns `NotBootstrapped` without initializing storage. Only bootstrap creates
-the default runtime and selects its geometry. For prebootstrap inspection,
-construct an owned runtime with explicit backing and configuration.
-
-Reports compare the tested policy identity, snapshot fingerprint and pool with
-the successful bootstrap binding. The fingerprint is non-cryptographic transient
-diagnostic metadata, not durable authority. Typed diagnostic outcomes include
+For prebootstrap inspection, construct an owned runtime with explicit backing
+and configuration. Reports compare exact canonical requests, pool and policy
+identity with the successful bootstrap binding. They do not use a fingerprint.
+Typed diagnostic outcomes include
 stable codes and messages. Invalid persisted records fail recovery and are not
 exported as valid ledgers. Physical allocation reports do not decode ownership;
 `pool_eligible` describes policy membership, not free space or historical custody.
@@ -230,13 +210,12 @@ Construction accepts empty memory or the supported manager layout. Foreign or
 unsupported nonempty backing is rejected without writes. Fresh construction
 reserves the metadata page before writing a header; growth refusal returns a
 typed error and leaves backing retryable. Geometry mismatches reject before
-admission or persistence. The default runtime caches construction failures per
-native thread.
+admission or persistence. The host handles construction errors explicitly.
 
 The runtime owns its manager and committed capability. Opens consult only that
 runtime's capability; they cannot accept another runtime's authority. Capability
 publication follows successful persistence. One bootstrap owner is required for
-each concrete backing memory, including each native default-runtime thread.
+each concrete backing memory.
 
 ## Recovery and Persistence
 
@@ -253,8 +232,8 @@ publish committed authority, then open stable-memory handles
 ```
 
 There is no public manual commit writer or persistence-confirmation API. Use an
-owned runtime for explicit backing and configuration, or the default runtime
-helpers with the complete request snapshot and checked pool.
+owned runtime with explicit backing, configuration, complete request snapshot
+and checked pool.
 
 Maintained recovery paths enforce byte, collection and nesting limits before the
 relevant allocations and decoding. See the
@@ -351,7 +330,7 @@ For the checked `MemoryManagerSlot` allocation identity:
 - IDs `0..=9` are reserved for `ic-memory` governance.
 - ID `0` is assigned to the allocation ledger.
 - Stable keys under `ic_memory.*` are reserved for `ic-memory` governance and
-  cannot be opened through the public default runtime.
+  cannot be opened through the public runtime.
 
 ## What It Does Not Do
 

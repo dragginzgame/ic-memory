@@ -12,7 +12,7 @@ use serde::{Deserialize, Serialize};
 /// domain. Omitted and retired identities retain their slots; no per-upgrade or
 /// schema audit trail is stored.
 ///
-/// The counter binds validation proofs to physical commits. Decoded DTOs remain
+/// The counter binds logical generations to physical commits. Decoded DTOs remain
 /// untrusted until integrity validation and protected recovery succeed.
 ///
 
@@ -106,7 +106,10 @@ impl RecoveredLedger {
 }
 
 impl AllocationRecord {
-    fn from_declaration(declaration: &AllocationDeclaration, state: AllocationState) -> Self {
+    pub(crate) fn from_declaration(
+        declaration: &AllocationDeclaration,
+        state: AllocationState,
+    ) -> Self {
         Self {
             stable_key: declaration.stable_key.clone(),
             slot: declaration.slot.clone(),
@@ -119,7 +122,7 @@ impl AllocationRecord {
         Self::from_declaration(declaration, AllocationState::Active)
     }
 
-    #[cfg(any(test, feature = "test-support"))]
+    #[cfg(test)]
     pub(crate) fn reserved(declaration: &AllocationDeclaration) -> Self {
         Self::from_declaration(declaration, AllocationState::Reserved)
     }

@@ -1,66 +1,6 @@
 use crate::{declaration::AllocationDeclaration, key::StableKey, slot::MemoryManagerSlot};
 use std::sync::Arc;
 
-///
-/// ValidatedAllocations
-///
-/// Pre-commit allocation declarations accepted by policy and historical ledger
-/// validation.
-///
-/// This value is produced by [`crate::validate_allocations`] and may be staged
-/// into the next ledger generation. It cannot open storage. Only a
-/// [`CommittedAllocations`] capability confirmed after persistence can do that.
-///
-/// This is an in-memory capability, not a serde DTO. It has no public
-/// constructor and should only be produced by validation or bootstrap paths.
-/// Its declarations have valid schema metadata and at most 255 unique keys and
-/// slots. These facts are established before the proof is constructed.
-/// The base generation has passed bounded ownership validation.
-///
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct ValidatedAllocations {
-    /// Recovered generation against which these declarations were validated.
-    base_generation: u64,
-    /// Validated declarations.
-    declarations: Vec<AllocationDeclaration>,
-}
-
-impl ValidatedAllocations {
-    pub(crate) const fn new(
-        base_generation: u64,
-        declarations: Vec<AllocationDeclaration>,
-    ) -> Self {
-        Self {
-            base_generation,
-            declarations,
-        }
-    }
-
-    /// Return the recovered generation used as the validation base.
-    #[must_use]
-    pub const fn base_generation(&self) -> u64 {
-        self.base_generation
-    }
-
-    /// Borrow the validated declarations.
-    #[must_use]
-    pub fn declarations(&self) -> &[AllocationDeclaration] {
-        &self.declarations
-    }
-
-    pub(crate) fn confirm_persisted(mut self, generation: u64) -> CommittedAllocations {
-        // Governance remains in the persisted ledger, never in application-open
-        // authority. Filter the owned declarations before sharing the capability.
-        self.declarations
-            .retain(|declaration| !crate::is_ic_memory_stable_key(declaration.stable_key.as_str()));
-        CommittedAllocations {
-            declarations: Arc::new(self.declarations),
-            generation,
-        }
-    }
-}
-
 // Typed capability callers and the runtime's validated borrowed input share
 // one lookup. Comparing text needs no temporary owned StableKey or second index.
 pub fn declaration_for_key<'a>(
@@ -95,6 +35,19 @@ pub struct CommittedAllocations {
 }
 
 impl CommittedAllocations {
+    pub(crate) fn from_persisted(
+        mut declarations: Vec<AllocationDeclaration>,
+        generation: u64,
+    ) -> Self {
+        // Governance remains durable ownership, never application-open authority.
+        declarations
+            .retain(|declaration| !crate::is_ic_memory_stable_key(declaration.stable_key.as_str()));
+        Self {
+            declarations: Arc::new(declarations),
+            generation,
+        }
+    }
+
     /// Return the persisted ledger generation that grants this capability.
     #[must_use]
     pub const fn generation(&self) -> u64 {
@@ -120,18 +73,13 @@ mod tests {
 
     #[test]
     fn persistence_confirmation_publishes_shared_application_authority() {
-        let validated = ValidatedAllocations::new(
-            1,
-            vec![
-                AllocationDeclaration::memory_manager(crate::IC_MEMORY_LEDGER_STABLE_KEY, 0)
-                    .unwrap(),
-                AllocationDeclaration::memory_manager("app.rows.v1", 100).unwrap(),
-            ],
-        );
-        let committed = validated.clone().confirm_persisted(2);
+        let declarations = vec![
+            AllocationDeclaration::memory_manager(crate::IC_MEMORY_LEDGER_STABLE_KEY, 0).unwrap(),
+            AllocationDeclaration::memory_manager("app.rows.v1", 100).unwrap(),
+        ];
+        let committed = CommittedAllocations::from_persisted(declarations, 2);
         let shared = committed.clone();
 
-        assert_eq!(validated.declarations().len(), 2);
         assert_eq!(committed.declarations().len(), 1);
         assert_eq!(shared, committed);
         assert!(std::ptr::eq(

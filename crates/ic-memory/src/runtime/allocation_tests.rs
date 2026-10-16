@@ -14,38 +14,38 @@ use metered::Metered;
 fn conservation(report: &super::MemoryAllocations) {
     assert_eq!(report.memories.len(), 255);
     assert_eq!(
-        report.summary.physical_extent.bytes,
-        report.summary.manager_metadata_bytes
-            + report.summary.allocated_bucket_bytes
-            + report.summary.unmanaged_bytes
+        report.summary.physical_extent.bytes(),
+        crate::MemoryAllocationSummary::MANAGER_METADATA_BYTES
+            + report.summary.allocated_bucket_bytes()
+            + report.summary.unmanaged_bytes()
     );
     assert_eq!(
-        report.summary.allocated_bucket_bytes,
+        report.summary.allocated_bucket_bytes(),
         report
             .memories
             .iter()
-            .map(|row| row.allocated_bytes)
+            .map(|row| row.allocated_bytes(report.summary.bucket_size_pages))
             .sum::<u64>()
     );
     assert_eq!(
-        report.summary.allocated_bucket_bytes,
-        report.summary.known_binding_bytes + report.summary.unknown_binding_bytes
+        report.summary.allocated_bucket_bytes(),
+        report.summary.known_binding_bytes() + report.summary.unknown_binding_bytes()
     );
     assert_eq!(
-        report.summary.allocated_bucket_bytes,
-        report.summary.virtual_extent.bytes + report.summary.bucket_slack_bytes
+        report.summary.allocated_bucket_bytes(),
+        report.summary.virtual_extent.bytes() + report.summary.bucket_slack_bytes()
     );
     assert_eq!(
-        report.summary.manager_metadata_bytes,
-        report.summary.manager_header_bytes
-            + report.summary.manager_bucket_table_bytes
-            + report.summary.manager_padding_bytes
+        crate::MemoryAllocationSummary::MANAGER_METADATA_BYTES,
+        crate::MemoryAllocationSummary::MANAGER_HEADER_BYTES
+            + crate::MemoryAllocationSummary::MANAGER_BUCKET_TABLE_BYTES
+            + crate::MemoryAllocationSummary::MANAGER_PADDING_BYTES
     );
     for (id, row) in (0..255).zip(&report.memories) {
         assert_eq!(row.memory_manager_id, id);
         assert_eq!(
-            row.allocated_bytes,
-            row.virtual_extent.bytes + row.bucket_slack_bytes
+            row.allocated_bytes(report.summary.bucket_size_pages),
+            row.virtual_extent.bytes() + row.bucket_slack_bytes(report.summary.bucket_size_pages)
         );
     }
 }
@@ -60,7 +60,7 @@ fn summary_matches_report(runtime: &MemoryRuntime<Metered>, memory: &Metered) {
     assert_eq!(memory.counts().writes, 0);
     assert_eq!(memory.counts().grows, 0);
     assert_eq!(*memory.bytes.borrow(), before);
-    assert_eq!(summary.memories_measured, 255);
+    assert_eq!(crate::MemoryAllocationSummary::MEMORIES_MEASURED, 255);
     // Compare every shared numeric field; independently project the detailed
     // rows into provenance partitions, including zero-sized and unknown IDs.
     assert_eq!(summary, report.summary);
@@ -71,8 +71,8 @@ fn summary_matches_report(runtime: &MemoryRuntime<Metered>, memory: &Metered) {
             AllocationBinding::Ledger => 1,
             AllocationBinding::Unknown => 2,
         };
-        groups[index].allocated_bytes += row.allocated_bytes;
-        groups[index].bucket_slack_bytes += row.bucket_slack_bytes;
+        groups[index].allocated_buckets += row.allocated_buckets;
+        groups[index].virtual_extent.wasm_pages += row.virtual_extent.wasm_pages;
     }
     assert_eq!(
         [
@@ -113,8 +113,18 @@ fn numeric_summary_matches_detailed_accounting_before_and_after_bootstrap_and_re
     summary_matches_report(&runtime, &memory);
     let summary = runtime.memory_allocation_summary().unwrap();
     assert_eq!(summary.current_generation, None);
-    assert_eq!(summary.current_binding.allocated_bytes, 0);
-    assert!(summary.unknown_binding.allocated_bytes > 0);
+    assert_eq!(
+        summary
+            .current_binding
+            .allocated_bytes(summary.bucket_size_pages),
+        0
+    );
+    assert!(
+        summary
+            .unknown_binding
+            .allocated_bytes(summary.bucket_size_pages)
+            > 0
+    );
 }
 
 #[test]
@@ -207,8 +217,8 @@ fn bounded_conservation_bindings_and_no_effects() {
     conservation(&report);
     assert_eq!(report.memories[120].allocated_buckets, 2);
     assert_eq!(report.memories[121].binding, AllocationBinding::Unknown);
-    assert_eq!(report.summary.unknown_binding_bytes, 128 * 65_536);
-    assert_eq!(report.summary.unmanaged_bytes, 3 * 65_536);
+    assert_eq!(report.summary.unknown_binding_bytes(), 128 * 65_536);
+    assert_eq!(report.summary.unmanaged_bytes(), 3 * 65_536);
     assert!(matches!(
         report.memories[usize::from(MEMORY_MANAGER_LEDGER_ID)].binding,
         AllocationBinding::Ledger
@@ -350,22 +360,6 @@ fn diagnostic_revalidates_foreign_unsupported_and_stale_metadata() {
 }
 
 #[test]
-fn default_attribution_does_not_initialize_tls() {
-    std::thread::spawn(|| {
-        assert!(matches!(
-            super::default_memory_manager_memory_allocations(),
-            Err(RuntimeDiagnosticError::NotBootstrapped)
-        ));
-        assert!(matches!(
-            super::default_memory_manager_memory_allocations(),
-            Err(RuntimeDiagnosticError::NotBootstrapped)
-        ));
-    })
-    .join()
-    .unwrap();
-}
-
-#[test]
 fn explicit_configuration_validates_before_effects_and_replays() {
     let declarations = super::tests::declarations();
     let memory = Metered::default();
@@ -449,55 +443,6 @@ fn explicit_configuration_validates_before_effects_and_replays() {
 }
 
 #[test]
-fn default_configuration_is_bound_before_repeated_bootstrap() {
-    super::tests::declarations();
-    std::thread::spawn(|| {
-        let config = super::MemoryManagerConfig::new(16).unwrap();
-        let committed = super::bootstrap_default_memory_manager_with_config(
-            &super::tests::declarations(),
-            config,
-            &super::tests::pool(),
-            &GenericAllocationPolicy,
-        )
-        .unwrap();
-        let before = super::default_memory_manager_memory_allocations().unwrap();
-        assert_eq!(before.summary.bucket_size_pages, 16);
-        assert!(
-            super::bootstrap_default_memory_manager_with_config(
-                &super::tests::declarations(),
-                super::MemoryManagerConfig::default(),
-                &super::tests::pool(),
-                &GenericAllocationPolicy
-            )
-            .is_err()
-        );
-        let replay = super::bootstrap_default_memory_manager_with_config(
-            &super::tests::declarations(),
-            config,
-            &super::tests::pool(),
-            &GenericAllocationPolicy,
-        )
-        .unwrap();
-        assert_eq!(replay.generation(), committed.generation());
-        assert_eq!(
-            super::default_memory_manager_memory_allocations().unwrap(),
-            before
-        );
-        assert_eq!(
-            super::bootstrap_default_memory_manager(
-                &super::tests::declarations(),
-                &super::tests::pool()
-            )
-            .unwrap()
-            .generation(),
-            committed.generation()
-        );
-    })
-    .join()
-    .unwrap();
-}
-
-#[test]
 fn finite_bucket_table_capacity_and_overflow_are_checked() {
     // Model address capacity without allocating GiBs of host RAM. No payload
     // access is performed in this metadata-only exhaustion fixture.
@@ -555,8 +500,8 @@ fn finite_bucket_table_capacity_and_overflow_are_checked() {
         );
         let full = runtime.memory_allocations().unwrap();
         conservation(&full);
-        assert_eq!(full.summary.remaining_buckets, 0);
-        assert_eq!(full.summary.maximum_bucket_bytes, pages * 65_536);
+        assert_eq!(full.summary.remaining_buckets(), 0);
+        assert_eq!(full.summary.maximum_bucket_bytes(), pages * 65_536);
         assert_eq!(
             runtime.memory(121).grow(1),
             Err(super::RuntimeGrowError::BucketExhausted {

@@ -1,8 +1,8 @@
 use crate::hash::{FNV_OFFSET, fnv64};
 use serde::{Deserialize, Serialize};
 
-// ICMESNAP identifies the incompatible single-snapshot physical contract.
-const COMMIT_MARKER: u64 = 0x4943_4D45_534E_4150;
+// ICMDIRCT identifies the direct-CBOR single-snapshot physical contract.
+const COMMIT_MARKER: u64 = 0x4943_4D44_4952_4354;
 
 ///
 /// CommittedGenerationBytes
@@ -12,9 +12,10 @@ const COMMIT_MARKER: u64 = 0x4943_4D45_534E_4150;
 /// This private DTO is the current physical snapshot representation. Its
 /// recovered bytes are untrusted until marker/checksum validation and ledger
 /// decoding/integrity validation have both succeeded.
-/// Binary serde formats encode the payload as a bounded byte string; human-readable
-/// formats retain an array of bytes. Direct serde decoding is a DTO operation:
-/// maintained durable readers additionally preflight CBOR before allocation.
+/// The payload encodes as a bounded CBOR byte string. Diagnostic JSON output
+/// is permitted, but JSON arrays are not a snapshot input format. Direct serde
+/// decoding is a DTO operation; maintained durable readers additionally
+/// preflight CBOR before allocation.
 ///
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -31,11 +32,10 @@ pub struct CommittedGenerationBytes {
     pub(crate) payload: Vec<u8>,
 }
 
-// The binary representation belongs to the persisted codec. Human-readable DTOs
-// continue to round-trip byte arrays without accepting arrays in durable CBOR.
+// The persisted codec admits opaque byte strings; fixtures use this same shape.
 mod opaque_payload {
     use crate::constants::MAX_COMMITTED_PAYLOAD_BYTES;
-    use serde::{Deserializer, Serialize, Serializer, de::Visitor};
+    use serde::{Deserializer, Serializer, de::Visitor};
 
     pub fn serialize<S: Serializer>(bytes: &[u8], serializer: S) -> Result<S::Ok, S::Error> {
         if bytes.len() > MAX_COMMITTED_PAYLOAD_BYTES {
@@ -43,11 +43,7 @@ mod opaque_payload {
                 "ledger byte string exceeds payload bound",
             ));
         }
-        if serializer.is_human_readable() {
-            bytes.serialize(serializer)
-        } else {
-            serializer.serialize_bytes(bytes)
-        }
+        serializer.serialize_bytes(bytes)
     }
 
     pub fn deserialize<'de, D: Deserializer<'de>>(deserializer: D) -> Result<Vec<u8>, D::Error> {
@@ -72,11 +68,6 @@ mod opaque_payload {
                 }
                 Ok(bytes)
             }
-        }
-        if deserializer.is_human_readable() {
-            return crate::cbor::deserialize_bounded_vec::<D, u8, MAX_COMMITTED_PAYLOAD_BYTES>(
-                deserializer,
-            );
         }
         deserializer.deserialize_byte_buf(Bytes)
     }
@@ -164,6 +155,11 @@ impl SnapshotCommitStore {
         let current = self
             .current()
             .ok_or(CommitRecoveryError::NoValidGeneration)?;
+        if current.commit_marker != COMMIT_MARKER {
+            return Err(CommitRecoveryError::UnsupportedFormat {
+                marker: current.commit_marker,
+            });
+        }
         if !current.validates() {
             return Err(CommitRecoveryError::InvalidSnapshot {
                 generation: current.generation(),
@@ -283,6 +279,9 @@ pub enum CommitRecoveryError {
     /// The current snapshot is explicitly absent.
     #[error("no committed ledger generation is present")]
     NoValidGeneration,
+    /// The snapshot marker does not identify the current direct-CBOR format.
+    #[error("unsupported physical ledger format marker {marker:#x}")]
+    UnsupportedFormat { marker: u64 },
     /// A present snapshot failed marker/checksum validation.
     #[error("current ledger snapshot validation failed at generation {generation}")]
     InvalidSnapshot {
@@ -400,8 +399,14 @@ mod tests {
                 _ => current.generation ^= 1,
             }
             let generation = current.generation();
+            let expected = if field == "marker" {
+                CommitRecoveryError::UnsupportedFormat {
+                    marker: current.commit_marker,
+                }
+            } else {
+                CommitRecoveryError::InvalidSnapshot { generation }
+            };
             let before = store.clone();
-            let expected = CommitRecoveryError::InvalidSnapshot { generation };
             assert_eq!(store.authoritative(), Err(expected));
             assert_eq!(
                 store.diagnostic(),
@@ -450,7 +455,7 @@ mod tests {
     }
 
     #[test]
-    fn payload_uses_binary_bytes_and_human_readable_arrays() {
+    fn payload_uses_bounded_binary_bytes() {
         let record = CommittedGenerationBytes::new(7, vec![0, 24, 255]);
         let bytes = crate::test_cbor::to_vec(&record).unwrap();
         let value: ciborium::Value = crate::cbor::from_slice_exact(&bytes).unwrap();
@@ -464,12 +469,6 @@ mod tests {
         assert_eq!(*payload, ciborium::Value::Bytes(vec![0, 24, 255]));
         assert_eq!(
             crate::cbor::from_slice_exact::<CommittedGenerationBytes>(&bytes).unwrap(),
-            record
-        );
-        let json = serde_json::to_value(&record).unwrap();
-        assert_eq!(json["payload"], serde_json::json!([0, 24, 255]));
-        assert_eq!(
-            serde_json::from_value::<CommittedGenerationBytes>(json).unwrap(),
             record
         );
     }

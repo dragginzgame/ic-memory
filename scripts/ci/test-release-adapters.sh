@@ -442,7 +442,8 @@ else
 fi
 STUB
 chmod +x bin/cargo bin/yq
-export FIXTURE_REAL_CARGO="$(command -v cargo)" FIXTURE_TOML_YQ="$ROOT/.tools/host/bin/yq"
+FIXTURE_REAL_CARGO="$(command -v cargo)"
+export FIXTURE_REAL_CARGO FIXTURE_TOML_YQ="$ROOT/.tools/host/bin/yq"
 export PATH="$PWD/bin:$PATH" YQ="$PWD/bin/yq" BOOTSTRAP_TARGET="$PWD/custom target"
 unset CARGO_NET_OFFLINE
 export CALLER_OFFLINE=unset

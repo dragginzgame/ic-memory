@@ -1,5 +1,34 @@
 # Changelog
 
+## [0.44.0]
+
+- **Breaking runtime API:** remove the default singleton facade. Hosts own one
+  explicit runtime and inject references or opened handles into components.
+- **Breaking report API/JSON:** store primary pages, bucket counts and geometry;
+  derive byte totals through accessors and expose fixed facts as constants.
+- Keep durable snapshot input to bounded CBOR byte strings; diagnostic JSON is
+  output only. Current CBOR bytes remain unchanged by this codec cleanup.
+
+- **Breaking storage:** store direct ledger CBOR in the checksummed snapshot,
+  removing the nested envelope. Earlier images are retired; use fresh/reset
+  memory. Incompatible bytes reject without automatic clearing.
+- **Breaking errors:** historical claim failures have one validation owner;
+  remove the obsolete stale-proof and claim-conflict staging error variants.
+  Bootstrap validates and stages each claim once before protected commitment.
+- **Breaking diagnostics/fixtures:** compare exact runtime bindings without
+  declaration fingerprints; replace fixture transition staging with checked
+  record construction. Store the commit DTO directly as the Cell value.
+- Keep recovered-admission examples generic; database roles and journal rules
+  belong to IcyDB's integration tests.
+- Avoid temporary request ownership during historical admission and reuse the
+  built-in allocation policy in native measurements.
+- Use IC Build's Cargo configuration observer, including included-file hashes
+  and compiler refusal ([#110 — Adopt canonical Build Cargo environment observation after publication](https://github.com/dragginzgame/ic-memory/issues/110)).
+- Preserve Cargo lookup failures in the release-adapter fixture and fix its
+  ShellCheck rejection ([#117 — Fix release-adapter Cargo discovery failing ShellCheck SC2155](https://github.com/dragginzgame/ic-memory/issues/117)).
+
+[Detailed notes](docs/changelog/0.44.md)
+
 ## [0.43.0] - 2026-10-16
 
 - **Breaking API:** implement allocation checks directly on `RuntimeBootstrapPolicy`;

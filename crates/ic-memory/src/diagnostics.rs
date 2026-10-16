@@ -3,7 +3,6 @@ use crate::{
     ledger::{AllocationLedger, AllocationRecord},
     physical::CommitSnapshotDiagnostic,
     policy::PolicyIdentity,
-    requests::SealedDeclarationFingerprint,
     slot::MemoryManagerSlot,
 };
 use serde::{Deserialize, Serialize};
@@ -38,8 +37,6 @@ pub struct DiagnosticExport {
 pub struct DiagnosticRuntimeBinding {
     /// Bounded semantic identity of the bootstrap policy.
     pub policy_identity: PolicyIdentity,
-    /// Deterministic fingerprint of the sealed declaration snapshot.
-    pub declaration_fingerprint: SealedDeclarationFingerprint,
     /// Exact host namespace grants and physical exclusions bound at bootstrap.
     pub allocation_pool: crate::MemoryAllocationPool,
 }
@@ -49,12 +46,10 @@ impl DiagnosticRuntimeBinding {
     #[must_use]
     pub const fn new(
         policy_identity: PolicyIdentity,
-        declaration_fingerprint: SealedDeclarationFingerprint,
         allocation_pool: crate::MemoryAllocationPool,
     ) -> Self {
         Self {
             policy_identity,
-            declaration_fingerprint,
             allocation_pool,
         }
     }
@@ -78,8 +73,6 @@ pub struct MemoryRuntimeDoctorReport {
     pub bootstrapped: bool,
     /// Policy identity supplied for this diagnostic evaluation.
     pub tested_policy_identity: Result<PolicyIdentity, DiagnosticFailure>,
-    /// Sealed declaration fingerprint supplied for this diagnostic evaluation.
-    pub tested_declaration_fingerprint: SealedDeclarationFingerprint,
     /// Binding published by this runtime's successful bootstrap, when present.
     #[serde(deserialize_with = "crate::cbor::deserialize_present_option")]
     pub established_bootstrap_binding: Option<DiagnosticRuntimeBinding>,
@@ -331,23 +324,24 @@ pub struct DiagnosticRecord {
 /// Live size reported by a backing stable memory.
 ///
 
-#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct DiagnosticMemorySize {
     /// WebAssembly pages reported by the memory.
     pub wasm_pages: u64,
-    /// Bytes represented by the page count.
-    pub bytes: u64,
 }
 
 impl DiagnosticMemorySize {
     /// Build a size from a WebAssembly page count.
     #[must_use]
     pub const fn from_wasm_pages(wasm_pages: u64) -> Self {
-        Self {
-            wasm_pages,
-            bytes: wasm_pages.saturating_mul(WASM_PAGE_SIZE_BYTES),
-        }
+        Self { wasm_pages }
+    }
+
+    /// Bytes represented by the page count, saturating on an unrepresentable size.
+    #[must_use]
+    pub const fn bytes(self) -> u64 {
+        self.wasm_pages.saturating_mul(WASM_PAGE_SIZE_BYTES)
     }
 }
 
@@ -513,15 +507,12 @@ mod tests {
 
         assert_eq!(
             export.records[0].memory_size,
-            Some(DiagnosticMemorySize {
-                wasm_pages: 2,
-                bytes: 131_072,
-            })
+            Some(DiagnosticMemorySize { wasm_pages: 2 })
         );
         let wire = serde_json::to_value(&export).expect("diagnostic JSON");
         assert_eq!(
             wire["records"][0]["memory_size"],
-            serde_json::json!({"wasm_pages": 2, "bytes": 131_072})
+            serde_json::json!({"wasm_pages": 2})
         );
     }
 

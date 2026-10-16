@@ -77,7 +77,6 @@ fn request_permutations_are_canonical_and_duplicate_keys_reject() {
     let reversed: Vec<_> = requests.iter().rev().cloned().collect();
     let second = SealedDeclarationSnapshot::new(reversed).unwrap();
     assert_eq!(first, second);
-    assert_eq!(first.fingerprint(), second.fingerprint());
     let mut conflict = requests;
     conflict
         .push(MemoryRequest::new("foreign", "app.rows0.v1", SchemaMetadata::default()).unwrap());
@@ -88,38 +87,25 @@ fn request_permutations_are_canonical_and_duplicate_keys_reject() {
 }
 
 #[test]
-fn snapshot_fingerprint_covers_linked_declaration_authority() {
+fn snapshot_equality_covers_linked_declaration_authority() {
     let make = |owner, key, schema| {
         SealedDeclarationSnapshot::new(vec![
             MemoryRequest::new(owner, key, SchemaMetadata::new(schema).unwrap()).unwrap(),
         ])
         .unwrap()
     };
-    // Recorded with the released fingerprint algorithm. Diagnostic identity
-    // stays stable when requests are sealed, cloned or fingerprinted repeatedly.
-    for (owner, key, schema, expected) in [
-        ("app", "app.rows.v1", None, 11_877_994_364_274_457_493),
-        ("foreign", "app.rows.v1", None, 8_767_457_181_142_944_212),
-        ("app", "app.rows.v1", Some(7), 11_877_940_488_204_675_154),
-        ("app", "app.other.v1", None, 1_357_161_675_400_400_111),
+    let snapshot = make("app", "app.rows.v1", None);
+    let shared = snapshot.clone();
+    assert_eq!(snapshot, shared);
+    assert!(snapshot.shares_storage_with(&shared));
+    for different in [
+        make("foreign", "app.rows.v1", None),
+        make("app", "app.rows.v1", Some(7)),
+        make("app", "app.other.v1", None),
+        SealedDeclarationSnapshot::new(vec![]).unwrap(),
     ] {
-        let snapshot = make(owner, key, schema);
-        let before = snapshot.clone();
-        for _ in 0..2 {
-            let fingerprint = snapshot.fingerprint();
-            assert_eq!(fingerprint.algorithm_version(), 1);
-            assert_eq!(fingerprint.value(), expected);
-            assert_eq!(snapshot, before);
-            assert!(snapshot.shares_storage_with(&before));
-        }
+        assert_ne!(snapshot, different);
     }
-    assert_eq!(
-        SealedDeclarationSnapshot::new(vec![])
-            .unwrap()
-            .fingerprint()
-            .value(),
-        5_309_612_660_413_667_354,
-    );
 }
 
 #[test]

@@ -1,5 +1,4 @@
 use crate::{
-    capability::ValidatedAllocations,
     declaration::DeclarationSnapshot,
     key::StableKey,
     ledger::{AllocationLedger, ClaimConflict, RecoveredLedger, validate_declaration_claim},
@@ -51,27 +50,6 @@ pub enum AllocationValidationError<P> {
     },
 }
 
-/// Validate a committed ledger and current declarations before opening.
-///
-/// This produces a pre-commit [`ValidatedAllocations`] value: the historical
-/// ledger must pass current-format and committed-integrity checks before current
-/// declarations are checked against framework policy and ledger history. The
-/// result can be staged, but it cannot open storage. Open authority is granted
-/// only by [`crate::CommittedAllocations`] after persistence confirmation.
-pub fn validate_allocations<P: RuntimeBootstrapPolicy>(
-    recovered: &RecoveredLedger,
-    snapshot: DeclarationSnapshot,
-    policy: &P,
-) -> Result<ValidatedAllocations, AllocationValidationError<P::Error>> {
-    check_allocations(recovered, &snapshot, policy)?;
-    let declarations = snapshot.into_declarations();
-
-    Ok(ValidatedAllocations::new(
-        recovered.current_generation(),
-        declarations,
-    ))
-}
-
 // Doctor needs the same checks as bootstrap, but does not consume declarations
 // or mint a capability. Keep check ordering and error ownership in one place.
 pub fn check_allocations<P: RuntimeBootstrapPolicy>(
@@ -79,32 +57,29 @@ pub fn check_allocations<P: RuntimeBootstrapPolicy>(
     snapshot: &DeclarationSnapshot,
     policy: &P,
 ) -> Result<(), AllocationValidationError<P::Error>> {
-    let ledger = recovered.ledger();
-
     for declaration in snapshot.declarations() {
-        // The internal ledger declaration stays outside application callbacks.
-        // Historical ownership checks still apply to it below.
-        if declaration.stable_key.as_str() != crate::IC_MEMORY_LEDGER_STABLE_KEY {
-            policy
-                .validate_key(&declaration.stable_key)
-                .map_err(AllocationValidationError::Policy)?;
-            policy
-                .validate_slot(&declaration.stable_key, &declaration.slot)
-                .map_err(AllocationValidationError::Policy)?;
-        }
-
-        validate_declaration_history(ledger, declaration)?;
+        check_declaration(recovered.ledger(), declaration, policy)?;
     }
 
     Ok(())
 }
 
-fn validate_declaration_history<P>(
+pub fn check_declaration<P: RuntimeBootstrapPolicy>(
     ledger: &AllocationLedger,
     declaration: &crate::declaration::AllocationDeclaration,
-) -> Result<(), AllocationValidationError<P>> {
+    policy: &P,
+) -> Result<crate::ledger::ClaimOutcome, AllocationValidationError<P::Error>> {
+    // Keep callback and history error precedence identical in doctor and staging.
+    // Governance is checked against history without invoking application policy.
+    if declaration.stable_key.as_str() != crate::IC_MEMORY_LEDGER_STABLE_KEY {
+        policy
+            .validate_key(&declaration.stable_key)
+            .map_err(AllocationValidationError::Policy)?;
+        policy
+            .validate_slot(&declaration.stable_key, &declaration.slot)
+            .map_err(AllocationValidationError::Policy)?;
+    }
     validate_declaration_claim(ledger, declaration)
-        .map(|_| ())
         .map_err(|conflict| map_validation_claim_conflict(declaration, conflict))
 }
 
@@ -200,14 +175,12 @@ mod tests {
         let snapshot = DeclarationSnapshot::canonicalize(vec![declaration("app.users.v1", 100)])
             .expect("snapshot");
 
-        let validated = validate_allocations(
+        check_allocations(
             &recovered(vec![active_record("app.users.v1", 100)]),
-            snapshot,
+            &snapshot,
             &TestPolicy,
         )
         .expect("validated");
-
-        assert_eq!(validated.base_generation(), 7);
     }
 
     #[test]
@@ -215,12 +188,12 @@ mod tests {
         let snapshot = DeclarationSnapshot::canonicalize(vec![declaration("app.users.v1", 100)])
             .expect("snapshot");
 
-        validate_allocations(
+        check_allocations(
             &recovered(vec![
                 active_record("app.users.v1", 100),
                 active_record("app.orders.v1", 101),
             ]),
-            snapshot,
+            &snapshot,
             &TestPolicy,
         )
         .expect("omitted records are preserved, not retired");
@@ -231,9 +204,9 @@ mod tests {
         let snapshot = DeclarationSnapshot::canonicalize(vec![declaration("app.users.v1", 101)])
             .expect("snapshot");
 
-        let err = validate_allocations(
+        let err = check_allocations(
             &recovered(vec![active_record("app.users.v1", 100)]),
-            snapshot,
+            &snapshot,
             &TestPolicy,
         )
         .expect_err("conflict");
@@ -249,9 +222,9 @@ mod tests {
         let snapshot = DeclarationSnapshot::canonicalize(vec![declaration("app.orders.v1", 100)])
             .expect("snapshot");
 
-        let err = validate_allocations(
+        let err = check_allocations(
             &recovered(vec![active_record("app.users.v1", 100)]),
-            snapshot,
+            &snapshot,
             &TestPolicy,
         )
         .expect_err("conflict");
@@ -269,7 +242,7 @@ mod tests {
         let snapshot = DeclarationSnapshot::canonicalize(vec![declaration("app.users.v1", 100)])
             .expect("snapshot");
 
-        let err = validate_allocations(&recovered(vec![record]), snapshot, &TestPolicy)
+        let err = check_allocations(&recovered(vec![record]), &snapshot, &TestPolicy)
             .expect_err("retired");
 
         assert!(matches!(
@@ -283,7 +256,7 @@ mod tests {
         let snapshot = DeclarationSnapshot::canonicalize(vec![declaration("bad.users.v1", 100)])
             .expect("snapshot");
 
-        let err = validate_allocations(&recovered(Vec::new()), snapshot, &TestPolicy)
+        let err = check_allocations(&recovered(Vec::new()), &snapshot, &TestPolicy)
             .expect_err("policy failure");
 
         assert_eq!(err, AllocationValidationError::Policy("bad key"));
@@ -299,10 +272,8 @@ mod tests {
                 .collect(),
         )
         .unwrap();
-        let validated = validate_allocations(&recovered, snapshot, &TestPolicy).unwrap();
-        let staged =
-            crate::ledger::stage_validated_generation(recovered.ledger().clone(), &validated)
-                .unwrap();
+        let (staged, _) =
+            crate::ledger::stage_generation(recovered, snapshot, &TestPolicy).unwrap();
         assert_eq!(staged.records().len(), 255);
 
         let committed = store.commit(&staged).unwrap();
