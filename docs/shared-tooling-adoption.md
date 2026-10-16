@@ -18,6 +18,25 @@ its activation scope. The former live-policy exception is retired; future policy
 changes require reviewed snapshot adoption.
 These instructions are the repository's local overlay.
 
+## Stable-memory governance policy
+
+The maintainer approved requiring checked `ic-memory` handles for production
+stable stores. The local [agent instructions](../AGENTS.md#stable-memory-governance)
+record that boundary alongside the [allocation safety contract](../SAFETY.md).
+The common rule is proposed in
+[PR #251 — Require IC Memory governance for production stable stores](https://github.com/dragginzgame/shared-tooling/pull/251),
+from Shared Tooling commit `851073f`, based on committed `main` revision
+`472f7ab7a749f8931ee9559d3026e266d4f12af2`. This is a local policy decision;
+Memory's recorded shared snapshot has not adopted that contribution.
+
+The maintainer owns the separate `ic-storage` integration change. Its generic
+`Memory` substrate currently accepts `RuntimeMemory` without enforcing it;
+production integration must require checked handles. Collection choice alone
+does not establish allocation safety. This policy changes no store format,
+dependency selection or consumer qualification evidence.
+
+## Recorded snapshot adoption
+
 The current Shared 0.15.0 export retains the earlier payload closure and adds four
 required companions over 0.12.4: Cargo publication, Rust toolchain and CI
 change-selection guides, plus canonical release version/date admission. The runner and increment

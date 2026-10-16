@@ -91,7 +91,7 @@ impl<'a> BootstrapAdmission<'a> {
     }
 
     /// Include a known, nonretired key under an explicit current host namespace grant.
-    /// Retains its slot and latest schema metadata. Final current policy and all
+    /// Retains its slot. Final current policy and all
     /// ordinary collision/retirement checks still run after preparation.
     pub fn include_historical(
         &mut self,
@@ -110,7 +110,7 @@ impl<'a> BootstrapAdmission<'a> {
 
     fn select(&mut self, authority: &str, stable_key: &str) -> Result<(), BootstrapAdmissionError> {
         // Request validation bounds names before selection diagnostics, without
-        // creating an owner string or schema that admission would discard.
+        // creating an owner string that admission would discard.
         let key = crate::requests::checked_request_key(authority, stable_key)?;
         if self.is_declared(&key) {
             return Err(BootstrapAdmissionError::Duplicate(key));
@@ -134,7 +134,6 @@ impl<'a> BootstrapAdmission<'a> {
         self.selected.push(AllocationDeclaration {
             stable_key: key,
             slot: record.slot().clone(),
-            schema: record.schema().clone(),
         });
         Ok(())
     }

@@ -16,12 +16,13 @@ contains exactly one current fixture set and one current decoder path.
 Slots encode their numeric ID directly. Construction and decoding both reject
 sentinel ID 255. The 0.41.0 hard cut replaces the former nested representation.
 
-The current `ICMDIRCT` physical snapshot contains the logical ledger directly as
+The current `ICMSNAP1` physical snapshot contains the logical ledger directly as
 a bounded definite-length CBOR byte string. Its marker, counter, payload length
 and bytes are checksum-bound. There is no additional logical envelope header.
-Logical ledgers contain a counter and current ownership records only.
+Logical ledgers contain a counter and key/slot/state records only; store schema
+metadata is application-owned.
 
-Earlier images are retired by the maintainer-authorized 0.44.0 format cut.
+Earlier images are retired by the maintainer-authorized 0.45.0 schema-free cut.
 Fresh/reset memory is required; incompatible bytes fail without automatic
 clearing. See [the current ledger contract](../../../../docs/current-ledger.md).
 There is one current fixture set and no earlier-format reader.
@@ -36,9 +37,8 @@ Fixture groups:
   refuses it without initializing or publishing allocations.
 - `memory_manager_slot.cbor.hex`: checked `MemoryManagerSlot` bytes.
 
-The 0.44.0 physical cut retains one required `current` snapshot field and changes
-its marker to `ICMDIRCT`, its payload to direct logical CBOR, and its resulting
-lengths/checksums. The Cell value is the commit store itself, without another
-record wrapper. Numeric checked slots remain unchanged. Manager and Cell
+The 0.45.0 cut retains one required `current` snapshot field, uses the distinct
+`ICMSNAP1` marker, removes stored schema fields and regenerates payloads/checksums.
+The Cell value is the commit store itself, without another record wrapper. Numeric checked slots remain unchanged. Manager and Cell
 layouts retain the pinned substrate contract. No previous payload or automatic
 reset path is retained.

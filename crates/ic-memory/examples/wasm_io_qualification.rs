@@ -38,18 +38,9 @@ mod canister {
 
     fn declarations() -> ic_memory::SealedDeclarationSnapshot {
         ic_memory::SealedDeclarationSnapshot::new(vec![
-            ic_memory::MemoryRequest::new(
-                "io_qualification",
-                "io_qualification.neighbor.v1",
-                ic_memory::SchemaMetadata::default(),
-            )
-            .unwrap(),
-            ic_memory::MemoryRequest::new(
-                "io_qualification",
-                "io_qualification.rows.v1",
-                ic_memory::SchemaMetadata::default(),
-            )
-            .unwrap(),
+            ic_memory::MemoryRequest::new("io_qualification", "io_qualification.neighbor.v1")
+                .unwrap(),
+            ic_memory::MemoryRequest::new("io_qualification", "io_qualification.rows.v1").unwrap(),
         ])
         .unwrap()
     }

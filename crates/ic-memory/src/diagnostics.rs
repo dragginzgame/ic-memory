@@ -3,26 +3,24 @@ use crate::{
     ledger::{AllocationLedger, AllocationRecord},
     physical::CommitSnapshotDiagnostic,
     policy::PolicyIdentity,
-    slot::MemoryManagerSlot,
 };
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 
 ///
 /// DiagnosticExport
 ///
 /// Read-only machine-readable allocation ledger export.
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-#[serde(deny_unknown_fields)]
+///
+/// Reports support serialization only; applications own any diagnostic input
+/// protocol. This type is never used for durable ledger recovery.
+///
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 pub struct DiagnosticExport {
     /// Current committed generation.
     pub current_generation: u64,
-    /// Checked ledger anchor slot.
-    pub ledger_anchor: MemoryManagerSlot,
     /// Allocation records.
     pub records: Vec<DiagnosticRecord>,
-    /// Optional protected commit recovery diagnostic.
-    #[serde(deserialize_with = "crate::cbor::deserialize_present_option")]
-    pub commit_recovery: Option<CommitSnapshotDiagnostic>,
 }
 
 ///
@@ -32,8 +30,7 @@ pub struct DiagnosticExport {
 /// to one successful memory-runtime bootstrap.
 ///
 
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-#[serde(deny_unknown_fields)]
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 pub struct DiagnosticRuntimeBinding {
     /// Bounded semantic identity of the bootstrap policy.
     pub policy_identity: PolicyIdentity,
@@ -64,30 +61,25 @@ impl DiagnosticRuntimeBinding {
 /// This report is intended for operator-facing diagnostics. Recoverable
 /// runtime problems, such as corrupt stable-cell bytes or commit recovery
 /// failure, are represented as fields instead of aborting report construction.
+/// Reports support serialization only; applications own diagnostic input protocols.
 ///
 
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-#[serde(deny_unknown_fields)]
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 pub struct MemoryRuntimeDoctorReport {
     /// Whether this runtime has completed bootstrap validation.
     pub bootstrapped: bool,
     /// Policy identity supplied for this diagnostic evaluation.
     pub tested_policy_identity: Result<PolicyIdentity, DiagnosticFailure>,
     /// Binding published by this runtime's successful bootstrap, when present.
-    #[serde(deserialize_with = "crate::cbor::deserialize_present_option")]
     pub established_bootstrap_binding: Option<DiagnosticRuntimeBinding>,
     /// Whether the tested identity and declarations match the established
     /// bootstrap binding.
     pub bootstrap_binding: DiagnosticCheck,
-    /// Checked ledger anchor slot used by this runtime.
-    pub ledger_anchor: MemoryManagerSlot,
     /// Stable-cell ledger storage status.
     pub stable_cell: DiagnosticStableCell,
     /// Protected commit recovery status when a ledger record was readable.
-    #[serde(deserialize_with = "crate::cbor::deserialize_present_option")]
     pub commit_recovery: Option<CommitSnapshotDiagnostic>,
     /// Recovered allocation ledger export when protected recovery succeeded.
-    #[serde(deserialize_with = "crate::cbor::deserialize_present_option")]
     pub ledger: Option<DiagnosticExport>,
     /// Key-only requirements contributed by linked components.
     pub requests: Vec<crate::MemoryRequest>,
@@ -103,7 +95,7 @@ pub struct MemoryRuntimeDoctorReport {
 /// Stable machine-readable category for an operator diagnostic failure.
 ///
 
-#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
 pub enum DiagnosticCode {
     /// Stable-cell storage could not be decoded.
     #[serde(rename = "stable_cell")]
@@ -131,8 +123,7 @@ pub enum DiagnosticCode {
 /// Machine-readable diagnostic code paired with an operator-facing message.
 ///
 
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-#[serde(deny_unknown_fields)]
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 pub struct DiagnosticFailure {
     /// Stable diagnostic category.
     pub code: DiagnosticCode,
@@ -157,8 +148,7 @@ impl DiagnosticFailure {
 /// Read-only diagnostic view of the stable-cell ledger storage envelope.
 ///
 
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-#[serde(deny_unknown_fields)]
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 pub struct DiagnosticStableCell {
     /// Stable-cell status.
     pub status: DiagnosticStableCellStatus,
@@ -186,8 +176,7 @@ impl DiagnosticStableCell {
 /// Stable-cell ledger storage status.
 ///
 
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-#[serde(deny_unknown_fields)]
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 pub enum DiagnosticStableCellStatus {
     /// The ledger memory is empty and can be initialized.
     Empty,
@@ -207,8 +196,7 @@ pub enum DiagnosticStableCellStatus {
 /// Read-only diagnostic status for a preflight check.
 ///
 
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-#[serde(deny_unknown_fields)]
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 pub enum DiagnosticCheck {
     /// The check could not run because prerequisite state was unavailable.
     NotRun {
@@ -257,46 +245,32 @@ impl DiagnosticCheck {
 impl DiagnosticExport {
     /// Build a read-only diagnostic export from an allocation ledger.
     ///
-    /// Records start unmeasured and without commit recovery observations. The
-    /// exporter can fill those public fields from its own backing and recovery
-    /// evidence; this DTO constructor neither recovers nor measures memory.
+    /// Records start unmeasured. The exporter can fill their size fields from
+    /// its backing-memory observations; this DTO constructor neither recovers
+    /// nor measures memory. Physical recovery status belongs to the doctor report.
     #[must_use]
-    pub fn from_ledger(ledger: &AllocationLedger, ledger_anchor: MemoryManagerSlot) -> Self {
-        Self::from_records(
-            ledger.current_generation,
-            ledger_anchor,
-            ledger.records.iter().cloned(),
-        )
+    pub fn from_ledger(ledger: &AllocationLedger) -> Self {
+        Self::from_records(ledger.current_generation, ledger.records.iter().cloned())
     }
 
     // Normal exports consume their decoded records. Borrowed exports copy
     // records directly into the same projection without an intermediate ledger.
-    pub(crate) fn from_owned_ledger(
-        ledger: AllocationLedger,
-        ledger_anchor: MemoryManagerSlot,
-    ) -> Self {
-        Self::from_records(
-            ledger.current_generation,
-            ledger_anchor,
-            ledger.records.into_iter(),
-        )
+    pub(crate) fn from_owned_ledger(ledger: AllocationLedger) -> Self {
+        Self::from_records(ledger.current_generation, ledger.records.into_iter())
     }
 
     fn from_records(
         current_generation: u64,
-        ledger_anchor: MemoryManagerSlot,
         records: impl Iterator<Item = AllocationRecord>,
     ) -> Self {
         Self {
             current_generation,
-            ledger_anchor,
             records: records
                 .map(|allocation| DiagnosticRecord {
                     allocation,
                     memory_size: None,
                 })
                 .collect(),
-            commit_recovery: None,
         }
     }
 }
@@ -305,8 +279,7 @@ impl DiagnosticExport {
 /// DiagnosticRecord
 ///
 /// Read-only diagnostic allocation record.
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-#[serde(deny_unknown_fields)]
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 pub struct DiagnosticRecord {
     /// Allocation record.
     pub allocation: AllocationRecord,
@@ -324,8 +297,7 @@ pub struct DiagnosticRecord {
 /// Live size reported by a backing stable memory.
 ///
 
-#[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
-#[serde(deny_unknown_fields)]
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Serialize)]
 pub struct DiagnosticMemorySize {
     /// WebAssembly pages reported by the memory.
     pub wasm_pages: u64,
@@ -348,17 +320,13 @@ impl DiagnosticMemorySize {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::AllocationDeclaration;
-    use crate::{
-        ledger::AllocationRecord, physical::CommitSnapshotDiagnostic, schema::SchemaMetadata,
-    };
+    use crate::{AllocationDeclaration, MemoryManagerSlot, ledger::AllocationRecord};
 
     #[test]
     fn diagnostic_export_copies_ledger_records() {
         let declaration = AllocationDeclaration::new(
             "app.users.v1",
             MemoryManagerSlot::new(100).expect("usable slot"),
-            SchemaMetadata::default(),
         )
         .expect("declaration");
         let ledger = AllocationLedger {
@@ -366,58 +334,26 @@ mod tests {
             records: vec![AllocationRecord::active(&declaration)],
         };
 
-        let export =
-            DiagnosticExport::from_ledger(&ledger, MemoryManagerSlot::new(0).expect("usable slot"));
+        let export = DiagnosticExport::from_ledger(&ledger);
 
         assert_eq!(export.current_generation, 3);
         assert_eq!(export.records.len(), 1);
         assert_eq!(export.records[0].memory_size, None);
 
-        assert_eq!(
-            export.ledger_anchor,
-            MemoryManagerSlot::new(0).expect("usable slot")
-        );
-        assert_eq!(export.commit_recovery, None);
-
-        assert_eq!(
-            export,
-            DiagnosticExport::from_owned_ledger(ledger, export.ledger_anchor.clone())
-        );
+        assert_eq!(export, DiagnosticExport::from_owned_ledger(ledger));
         let wire = serde_json::to_value(&export).expect("diagnostic JSON");
+
         assert_eq!(
-            wire["records"][0]["allocation"]["schema"],
-            serde_json::json!({"schema_version": null})
+            wire,
+            serde_json::json!({
+                "current_generation": 3,
+                "records": [{"allocation": {"stable_key": "app.users.v1", "slot": 100, "state": "Active"}}]
+            })
         );
-
-        let decoded: DiagnosticExport = serde_json::from_value(wire).expect("current JSON shape");
-        assert_eq!(decoded, export);
     }
 
     #[test]
-    fn diagnostic_export_rejects_unknown_top_level_fields() {
-        use crate::test_cbor::Value;
-
-        let export = DiagnosticExport {
-            current_generation: 0,
-            ledger_anchor: MemoryManagerSlot::new(0).expect("usable slot"),
-            records: Vec::new(),
-            commit_recovery: None,
-        };
-        let Value::Map(mut map) = crate::test_cbor::to_value(export).expect("diagnostic value")
-        else {
-            panic!("diagnostic export encodes as a map");
-        };
-        map.push((Value::Text("future_field".to_string()), Value::Bool(true)));
-        let bytes = crate::test_cbor::to_vec(&Value::Map(map)).expect("diagnostic bytes");
-
-        let err = crate::test_cbor::from_slice::<DiagnosticExport>(&bytes)
-            .expect_err("unknown diagnostic field must fail closed");
-
-        assert!(err.to_string().contains("future_field"));
-    }
-
-    #[test]
-    fn diagnostic_outcome_states_round_trip() {
+    fn diagnostic_outcome_states_serialize() {
         let stable_cell = DiagnosticStableCell::new(
             DiagnosticStableCellStatus::Corrupt {
                 failure: DiagnosticFailure::new(
@@ -433,22 +369,29 @@ mod tests {
             "duplicate declaration",
         );
 
-        for value in [DiagnosticCheck::passed(), check] {
-            let bytes = crate::test_cbor::to_vec(&value).expect("check bytes");
-            let decoded: DiagnosticCheck =
-                crate::test_cbor::from_slice(&bytes).expect("check round trip");
-            assert_eq!(decoded, value);
-        }
-
-        let bytes = crate::test_cbor::to_vec(&stable_cell).expect("stable-cell diagnostic bytes");
-        let decoded: DiagnosticStableCell =
-            crate::test_cbor::from_slice(&bytes).expect("stable-cell round trip");
-        assert_eq!(decoded, stable_cell);
-
-        let bytes = crate::test_cbor::to_vec(&allocation_pool).expect("pool diagnostic bytes");
-        let decoded: crate::MemoryAllocationPool =
-            crate::test_cbor::from_slice(&bytes).expect("pool round trip");
-        assert_eq!(decoded, allocation_pool);
+        assert_eq!(
+            serde_json::to_value(DiagnosticCheck::passed()).unwrap(),
+            "Passed"
+        );
+        assert_eq!(
+            serde_json::to_value(check).unwrap(),
+            serde_json::json!({
+                "Failed": {"code": "allocation_validation", "message": "duplicate declaration"}
+            })
+        );
+        assert_eq!(
+            serde_json::to_value(stable_cell).unwrap(),
+            serde_json::json!({
+                "status": {"Corrupt": {"failure": {"code": "stable_cell", "message": "bad stable-cell record"}}},
+                "memory_size": {"wasm_pages": 1}
+            })
+        );
+        assert_eq!(
+            serde_json::to_value(allocation_pool).unwrap(),
+            serde_json::json!({
+                "authorities": [], "excluded_ids": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+            })
+        );
     }
 
     #[test]
@@ -474,26 +417,10 @@ mod tests {
     }
 
     #[test]
-    fn diagnostic_export_can_include_commit_recovery_state() {
-        let ledger = AllocationLedger {
-            current_generation: 3,
-            records: Vec::new(),
-        };
-        let commit_recovery = CommitSnapshotDiagnostic::Valid { generation: 3 };
-
-        let mut export =
-            DiagnosticExport::from_ledger(&ledger, MemoryManagerSlot::new(0).expect("usable slot"));
-        export.commit_recovery = Some(commit_recovery);
-
-        assert_eq!(export.commit_recovery, Some(commit_recovery));
-    }
-
-    #[test]
     fn diagnostic_export_can_include_memory_sizes() {
         let declaration = AllocationDeclaration::new(
             "app.users.v1",
             MemoryManagerSlot::new(100).expect("usable slot"),
-            SchemaMetadata::default(),
         )
         .expect("declaration");
         let ledger = AllocationLedger {
@@ -501,8 +428,7 @@ mod tests {
             records: vec![AllocationRecord::active(&declaration)],
         };
 
-        let mut export =
-            DiagnosticExport::from_ledger(&ledger, MemoryManagerSlot::new(0).expect("usable slot"));
+        let mut export = DiagnosticExport::from_ledger(&ledger);
         export.records[0].memory_size = Some(DiagnosticMemorySize::from_wasm_pages(2));
 
         assert_eq!(
@@ -513,24 +439,6 @@ mod tests {
         assert_eq!(
             wire["records"][0]["memory_size"],
             serde_json::json!({"wasm_pages": 2})
-        );
-    }
-
-    #[test]
-    fn diagnostic_export_can_report_recovery_failure() {
-        let ledger = AllocationLedger {
-            current_generation: 0,
-            records: Vec::new(),
-        };
-        let commit_recovery = CommitSnapshotDiagnostic::Empty;
-
-        let mut export =
-            DiagnosticExport::from_ledger(&ledger, MemoryManagerSlot::new(0).expect("usable slot"));
-        export.commit_recovery = Some(commit_recovery);
-
-        assert_eq!(
-            export.commit_recovery.expect("commit recovery"),
-            CommitSnapshotDiagnostic::Empty
         );
     }
 }

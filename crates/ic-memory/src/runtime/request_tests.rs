@@ -1,8 +1,7 @@
 use super::*;
 use crate::{
     AllocationDeclaration, AllocationLedger, GenericAllocationPolicy, LedgerCommitStore,
-    MemoryAllocationPool, MemoryAuthority, MemoryManagerIdRange, MemoryRequest, SchemaMetadata,
-    SealedDeclarationSnapshot,
+    MemoryAllocationPool, MemoryAuthority, MemoryRequest, SealedDeclarationSnapshot,
 };
 use ic_stable_structures::{
     Cell, Memory, VectorMemory,
@@ -12,7 +11,7 @@ use ic_stable_structures::{
 pub(super) fn snapshot(keys: &[&str], owner: &str) -> SealedDeclarationSnapshot {
     SealedDeclarationSnapshot::new(
         keys.iter()
-            .map(|key| MemoryRequest::new(owner, key, SchemaMetadata::default()).unwrap())
+            .map(|key| MemoryRequest::new(owner, key).unwrap())
             .collect::<Vec<_>>(),
     )
     .unwrap()
@@ -22,7 +21,7 @@ pub(super) fn pool() -> MemoryAllocationPool {
     MemoryAllocationPool::new(vec![MemoryAuthority::new("app", "app.").unwrap()], vec![]).unwrap()
 }
 
-fn composed_pool(exclusions: Vec<MemoryManagerIdRange>) -> MemoryAllocationPool {
+fn composed_pool(exclusions: Vec<u8>) -> MemoryAllocationPool {
     MemoryAllocationPool::new(
         vec![
             MemoryAuthority::new("canic-core", "canic.").unwrap(),
@@ -37,7 +36,7 @@ fn composed_pool(exclusions: Vec<MemoryManagerIdRange>) -> MemoryAllocationPool 
 fn composed(keys: &[(&str, &str)]) -> SealedDeclarationSnapshot {
     SealedDeclarationSnapshot::new(
         keys.iter()
-            .map(|(owner, key)| MemoryRequest::new(*owner, key, SchemaMetadata::default()).unwrap())
+            .map(|(owner, key)| MemoryRequest::new(*owner, key).unwrap())
             .collect::<Vec<_>>(),
     )
     .unwrap()
@@ -51,19 +50,18 @@ fn retained(backing: &VectorMemory, declarations: &[AllocationDeclaration]) {
         .commit(&AllocationLedger::new(0, vec![]).unwrap())
         .unwrap();
     let recovered = store.recover().unwrap();
-    let pending = crate::runtime::bootstrap::prepare_commit(
-        &mut store,
+    let (next, _) = crate::ledger::stage_generation(
         recovered,
-        crate::declaration::DeclarationSnapshot::canonicalize(declarations.to_vec()).unwrap(),
+        crate::requests::DeclarationSnapshot::for_test(declarations.to_vec()),
         &GenericAllocationPolicy,
     )
     .unwrap();
+    store.commit_generation(&next).unwrap();
     let manager = MemoryManager::init(backing.clone());
     drop(Cell::new(
         manager.get(MemoryId::new(0)),
         crate::stable_cell::EncodedLedgerRecord::new(&store).unwrap(),
     ));
-    drop(pending.confirm_persisted());
 }
 
 #[test]
@@ -135,7 +133,7 @@ fn deterministic_requests_preserve_history_and_explicit_inspection() {
 fn common_pool_supplies_available_space_across_all_owners() {
     // Host exclusions deliberately leave three slots. Each owner can consume
     // any free slot; no component has a numeric quota or private partition.
-    let pool = composed_pool(vec![MemoryManagerIdRange::new(13, 254).unwrap()]);
+    let pool = composed_pool((13..=254).collect());
     let declarations = composed(&[
         ("canic-core", "canic.a.v1"),
         ("canic-core", "canic.b.v1"),
@@ -245,11 +243,8 @@ fn foreign_namespace_and_excluded_historical_claims_fail_before_commit() {
         ))
     ));
     assert_eq!(*backing.borrow(), before);
-    let excluded = MemoryAllocationPool::new(
-        pool().authorities().to_vec(),
-        vec![MemoryManagerIdRange::new(100, 100).unwrap()],
-    )
-    .unwrap();
+    let excluded =
+        MemoryAllocationPool::new(pool().authorities().to_vec(), (100..=100).collect()).unwrap();
     assert!(matches!(
         host.bootstrap(
             &snapshot(&["app.rows.v1"], "app"),
@@ -288,11 +283,8 @@ fn unmanaged_physical_custody_requires_explicit_host_exclusion() {
         ))
     ));
     assert_eq!(*backing.borrow(), before);
-    let excluded = MemoryAllocationPool::new(
-        pool().authorities().to_vec(),
-        vec![MemoryManagerIdRange::new(30, 30).unwrap()],
-    )
-    .unwrap();
+    let excluded =
+        MemoryAllocationPool::new(pool().authorities().to_vec(), (30..=30).collect()).unwrap();
     host.bootstrap(&requests, &excluded, &GenericAllocationPolicy)
         .unwrap();
     assert_eq!(host.memory_id("app.rows.v1"), Ok(10));

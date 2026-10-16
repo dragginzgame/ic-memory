@@ -8,12 +8,7 @@ const AUTHORITY: &str = "explicit_runtime";
 
 fn snapshot() -> ic_memory::SealedDeclarationSnapshot {
     ic_memory::SealedDeclarationSnapshot::new(vec![
-        ic_memory::MemoryRequest::new(
-            AUTHORITY,
-            "explicit_runtime.rows.v1",
-            ic_memory::SchemaMetadata::default(),
-        )
-        .unwrap(),
+        ic_memory::MemoryRequest::new(AUTHORITY, "explicit_runtime.rows.v1").unwrap(),
     ])
     .unwrap()
 }
@@ -23,11 +18,7 @@ struct AllowAll;
 impl RuntimeBootstrapPolicy for AllowAll {
     type Error = core::convert::Infallible;
 
-    fn validate_key(&self, _key: &StableKey) -> Result<(), Self::Error> {
-        Ok(())
-    }
-
-    fn validate_slot(
+    fn validate_allocation(
         &self,
         _key: &StableKey,
         _slot: &MemoryManagerSlot,

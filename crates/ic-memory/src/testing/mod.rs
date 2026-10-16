@@ -2,7 +2,7 @@
 
 use crate::{
     GenericAllocationPolicy, MemoryAllocationPool, MemoryAuthority, MemoryManagerConfig,
-    MemoryRequest, MemoryRuntime, RuntimeMemory, SchemaMetadata, SealedDeclarationSnapshot,
+    MemoryRequest, MemoryRuntime, RuntimeMemory, SealedDeclarationSnapshot,
     ic_stable_structures::{Cell, Memory},
 };
 
@@ -32,19 +32,59 @@ pub fn allocation_record(
 /// Fresh memory has an empty cell. Restored callers must reject empty/invalid
 /// bytes where their journal contract requires retained state. Callers own
 /// serialization, byte/work budgets and same-release recovery checks.
+/// [`Self::create_bounded`] and [`Self::open_bounded`] enforce explicit fresh or
+/// retained admission plus a caller-selected byte ceiling before payload loading.
+/// [`Self::try_new`] is the fallible trusted-image constructor.
 ///
 
 pub struct FixtureCell<M: Memory> {
     cell: Cell<Vec<u8>, RuntimeMemory<M>>,
+    maximum: usize,
+}
+
+///
+/// FixtureCellError
+///
+/// Typed admission failure for an explicitly requested fixture byte cell.
+/// Runtime sources remain available; payload refusal does not reset cell bytes.
+///
+
+#[derive(Debug, thiserror::Error)]
+#[non_exhaustive]
+pub enum FixtureCellError {
+    /// Invalid request or declaration snapshot.
+    #[error(transparent)]
+    Declaration(#[from] crate::MemoryDeclarationError),
+    /// Invalid namespace grant or allocation pool.
+    #[error(transparent)]
+    AllocationPool(#[from] crate::MemoryAllocationPoolError),
+    /// Backing layout or bucket configuration was refused.
+    #[error(transparent)]
+    Construction(#[from] crate::RuntimeConstructionError),
+    /// Runtime bootstrap or protected ledger recovery failed.
+    #[error(transparent)]
+    Bootstrap(Box<crate::RuntimeBootstrapError<std::convert::Infallible>>),
+    /// The committed key cannot be opened.
+    #[error(transparent)]
+    Open(#[from] crate::RuntimeOpenError),
+    /// Missing, malformed or oversized retained Cell metadata.
+    #[error(transparent)]
+    Payload(#[from] crate::StableCellPayloadError),
+    /// Fresh-cell creation cannot replace an occupied allocation.
+    #[error("fixture allocation is already occupied")]
+    Occupied,
+    /// Candidate bytes exceed the selected write ceiling.
+    #[error("fixture value length {size} exceeds byte limit {maximum}")]
+    ValueTooLarge { size: usize, maximum: usize },
 }
 
 impl<M: Memory> FixtureCell<M> {
-    /// Bootstrap one caller-selected fixture key and open its existing byte cell.
+    /// Bootstrap a trusted fixture key and open its existing byte cell.
+    /// This constructor is unbounded; use [`Self::open_bounded`] for untrusted images.
     ///
     /// # Panics
-    /// Panics on invalid fixture declarations/grants, incompatible persisted
-    /// configuration, failed runtime bootstrap/open or invalid Cell metadata.
-    /// It never substitutes fresh backing memory after such a failure.
+    /// Panics on the setup refusals and substrate failures in [`Self::try_new`].
+    /// It never substitutes fresh backing memory after a failure.
     pub fn new(
         memory: M,
         owner: &str,
@@ -52,24 +92,109 @@ impl<M: Memory> FixtureCell<M> {
         stable_key: &str,
         config: MemoryManagerConfig,
     ) -> Self {
-        let request = MemoryRequest::new(owner, stable_key, SchemaMetadata::default())
-            .expect("fixture memory request");
-        let pool = MemoryAllocationPool::new(
-            vec![MemoryAuthority::new(owner, namespace).expect("fixture namespace grant")],
-            vec![],
-        )
-        .expect("fixture allocation pool");
-        let declarations =
-            SealedDeclarationSnapshot::new(vec![request]).expect("fixture declarations");
-        let mut runtime = MemoryRuntime::new_with_config(memory, config).expect("fixture runtime");
+        Self::try_new(memory, owner, namespace, stable_key, config).expect("fixture cell setup")
+    }
+
+    /// Fallibly bootstrap and open a trusted fixture byte cell.
+    ///
+    /// Nonempty Cell headers are admitted before initialization; fresh allocations
+    /// receive an empty cell. Payload allocation is unbounded, so callers must
+    /// supply trusted images and enforce their own decode/write ceilings.
+    /// Bootstrap may advance ledger metadata before a later Cell refusal.
+    ///
+    /// # Panics
+    /// Backing IO and Cell publication retain their substrate panic behavior.
+    pub fn try_new(
+        memory: M,
+        owner: &str,
+        namespace: &str,
+        stable_key: &str,
+        config: MemoryManagerConfig,
+    ) -> Result<Self, FixtureCellError> {
+        let memory = Self::open_memory(memory, owner, namespace, stable_key, config)?;
+        if memory.size() > 0 {
+            crate::stable_cell::stable_cell_payload_length(&memory, usize::MAX)?;
+        }
+        Ok(Self::from_admitted_memory(memory, usize::MAX))
+    }
+
+    /// Create a bounded empty cell, refusing any previously occupied allocation.
+    ///
+    /// Bootstrap may update ledger metadata before occupied-cell refusal; existing
+    /// cell bytes are never cleared. Callers own payload codecs and initialization.
+    ///
+    /// # Panics
+    /// Backing IO and initial Cell publication can panic.
+    pub fn create_bounded(
+        memory: M,
+        owner: &str,
+        namespace: &str,
+        stable_key: &str,
+        config: MemoryManagerConfig,
+        maximum: usize,
+    ) -> Result<Self, FixtureCellError> {
+        let memory = Self::open_memory(memory, owner, namespace, stable_key, config)?;
+        if memory.size() > 0 {
+            return Err(FixtureCellError::Occupied);
+        }
+        Ok(Self::from_admitted_memory(memory, maximum))
+    }
+
+    /// Open retained state, checking its header, capacity and byte ceiling first.
+    ///
+    /// Refuses missing backing without initializing it. The selected Cell must
+    /// already exist; its payload is not allocated or read until header admission
+    /// succeeds. Bootstrap may advance ledger metadata before later Cell refusal.
+    /// Callers still validate payload identity, codec and lifecycle invariants.
+    ///
+    /// # Panics
+    /// Backing IO and Cell loading retain their substrate panic behavior.
+    pub fn open_bounded(
+        memory: M,
+        owner: &str,
+        namespace: &str,
+        stable_key: &str,
+        config: MemoryManagerConfig,
+        maximum: usize,
+    ) -> Result<Self, FixtureCellError> {
+        if memory.size() == 0 {
+            return Err(crate::StableCellPayloadError::NotStableCell.into());
+        }
+        let memory = Self::open_memory(memory, owner, namespace, stable_key, config)?;
+        crate::stable_cell::stable_cell_payload_length(&memory, maximum)?;
+        Ok(Self::from_admitted_memory(memory, maximum))
+    }
+
+    fn open_memory(
+        memory: M,
+        owner: &str,
+        namespace: &str,
+        stable_key: &str,
+        config: MemoryManagerConfig,
+    ) -> Result<RuntimeMemory<M>, FixtureCellError> {
+        let request = MemoryRequest::new(owner, stable_key)?;
+        let pool =
+            MemoryAllocationPool::new(vec![MemoryAuthority::new(owner, namespace)?], vec![])?;
+        let declarations = SealedDeclarationSnapshot::new(vec![request])?;
+        let mut runtime = MemoryRuntime::new_with_config(memory, config)?;
         runtime
             .bootstrap(&declarations, &pool, &GenericAllocationPolicy)
-            .expect("fixture bootstrap");
-        let memory = runtime
-            .open_memory(stable_key)
-            .expect("fixture memory grant");
-        let cell = Cell::init(memory, Vec::new());
-        Self { cell }
+            .map_err(|error| FixtureCellError::Bootstrap(Box::new(error)))?;
+        Ok(runtime.open_memory(stable_key)?)
+    }
+
+    fn from_admitted_memory(memory: RuntimeMemory<M>, maximum: usize) -> Self {
+        Self {
+            cell: Cell::init(memory, Vec::new()),
+            maximum,
+        }
+    }
+
+    /// Transfer the admitted grant for caller-owned raw inspection.
+    /// This consumes the fixture without another bootstrap, reset or cleanup.
+    #[must_use]
+    pub fn into_memory(self) -> RuntimeMemory<M> {
+        self.cell.into_memory()
     }
 
     /// Borrow the original cell bytes without decoding, defaulting or copying them.
@@ -78,9 +203,27 @@ impl<M: Memory> FixtureCell<M> {
         self.cell.get()
     }
 
-    /// Persist caller-encoded bytes; the caller must enforce its journal budget first.
-    pub fn set(&mut self, bytes: Vec<u8>) {
+    /// Persist caller-encoded bytes after checking the selected byte ceiling.
+    ///
+    /// # Panics
+    /// Cell persistence and backing IO can panic after successful length admission.
+    pub fn try_set(&mut self, bytes: Vec<u8>) -> Result<(), FixtureCellError> {
+        if bytes.len() > self.maximum {
+            return Err(FixtureCellError::ValueTooLarge {
+                size: bytes.len(),
+                maximum: self.maximum,
+            });
+        }
         self.cell.set(bytes);
+        Ok(())
+    }
+
+    /// Persist caller-encoded bytes, preserving the fixture's panic convention.
+    ///
+    /// # Panics
+    /// Panics if bytes exceed the selected ceiling or Cell persistence fails.
+    pub fn set(&mut self, bytes: Vec<u8>) {
+        self.try_set(bytes).expect("fixture cell write");
     }
 }
 

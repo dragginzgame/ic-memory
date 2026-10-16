@@ -6,7 +6,6 @@ mod adoption;
 mod adoption_tests;
 mod allocations;
 mod backing;
-pub mod bootstrap;
 mod config;
 mod diagnostics;
 mod error;
@@ -266,11 +265,14 @@ impl<M: Memory> MemoryRuntime<M> {
         let preparation = policy.prepare_bootstrap(&mut admission);
         let historical = admission.complete()?;
         preparation.map_err(RuntimeBootstrapError::AdmissionPolicy)?;
-        let resolved = declarations.resolve(recovered.ledger(), &occupied, historical, pool)?;
-        let commit =
-            crate::runtime::bootstrap::prepare_commit(&mut record, recovered, resolved, policy)?;
+        let resolved = declarations.resolve(&recovered, &occupied, historical, pool)?;
+        let (generation, resolved) = {
+            let (staged, resolved) = crate::ledger::stage_generation(recovered, resolved, policy)?;
+            record.commit_generation(&staged)?;
+            (staged.current_generation(), resolved)
+        };
         write_ledger_cell(memory, &record)?;
-        let committed = commit.confirm_persisted();
+        let committed = CommittedAllocations::from_persisted(resolved, generation);
         self.lifecycle = RuntimeLifecycle::Bootstrapped {
             committed_allocations: committed,
             binding: RuntimeBootstrapBinding {

@@ -1,4 +1,4 @@
-use ic_memory::{MemoryAuthority, SchemaMetadata};
+use ic_memory::{MemoryAuthority};
 
 fn main() {
     let _authority = MemoryAuthority {
@@ -6,7 +6,4 @@ fn main() {
         key_prefix: "app.".to_string(),
     };
 
-    let _schema = SchemaMetadata {
-        schema_version: None,
-    };
 }

@@ -44,7 +44,7 @@
 //!
 //! Bounded physical attribution is available through
 //! [`MemoryRuntime::memory_allocations`] and
-//! [`MemoryRuntime::memory_allocations`]. It reports actual persisted
+//! [`MemoryRuntime::memory_allocation_summary`]. It reports actual persisted
 //! buckets and explicit residuals without decoding retained ownership. Virtual
 //! extent is not payload occupancy. Opens return [`RuntimeMemory`]; explicit
 //! [`MemoryManagerConfig`] selects fresh-state buckets or checks a persisted
@@ -88,7 +88,6 @@ mod physical;
 mod policy;
 mod requests;
 mod runtime;
-mod schema;
 mod slot;
 mod sort;
 mod stable_cell;
@@ -170,13 +169,11 @@ pub use runtime::{
     RuntimeAdoptionError, RuntimeBootstrapError, RuntimeConstructionError, RuntimeDiagnosticError,
     RuntimeGrowError, RuntimeMemory, RuntimeOpenError,
 };
-pub use schema::{SchemaMetadata, SchemaMetadataError};
 pub use slot::{
     IC_MEMORY_AUTHORITY_OWNER, IC_MEMORY_LEDGER_STABLE_KEY, IC_MEMORY_STABLE_KEY_PREFIX,
     MEMORY_MANAGER_GOVERNANCE_MAX_ID, MEMORY_MANAGER_INVALID_ID, MEMORY_MANAGER_LEDGER_ID,
-    MEMORY_MANAGER_MAX_ID, MEMORY_MANAGER_MIN_ID, MemoryManagerIdRange, MemoryManagerRangeError,
-    MemoryManagerSlot, MemoryManagerSlotError, is_ic_memory_stable_key,
-    memory_manager_governance_range, validate_memory_manager_id,
+    MEMORY_MANAGER_MAX_ID, MEMORY_MANAGER_MIN_ID, MemoryManagerSlot, MemoryManagerSlotError,
+    is_ic_memory_stable_key, validate_memory_manager_id,
 };
 pub use stable_cell::{
     STABLE_CELL_HEADER_SIZE, STABLE_CELL_LAYOUT_VERSION, STABLE_CELL_MAGIC,

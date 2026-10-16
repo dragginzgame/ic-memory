@@ -1,0 +1,9 @@
+error[E0451]: fields `authority` and `key_prefix` of struct `MemoryAuthority` are private
+ --> tests/ui/fabricate_authority.rs:5:9
+  |
+4 |     let _authority = MemoryAuthority {
+  |                      --------------- in this type
+5 |         authority: "app".to_string(),
+  |         ^^^^^^^^^ private field
+6 |         key_prefix: "app.".to_string(),
+  |         ^^^^^^^^^^ private field

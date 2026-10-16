@@ -7,6 +7,264 @@ These are local Linux source, behavior and footprint observations; they do not
 establish publication or retained-installation qualification. The
 [current contract](current-ledger.md) owns consumer API and deployment requirements.
 
+## Deferred IC Wire review (2026-10-16)
+
+Keep Memory's bounded Serde collection decoder local for now. The inspected
+IC Wire checkout describes an unpublished investigation and sets `publish = false`;
+its overlapping sequence visitor alone does not justify a new dependency.
+Revisit consolidation when a published, stable, codec-independent Serde boundary
+has demonstrated use beyond its originating investigation. Compare rejection
+before excess-element decoding, allocation counts, Memory's staging-capacity hint
+and matched Wasm size before proposing adoption. Keep Memory's CBOR preflight,
+numeric limits and ledger semantics local. This records a deferred review;
+it selects no dependency, changes no codec and adds no release gate or schedule.
+
+## 0.45.0 resolved construction and report ownership
+
+This batch compares the incoming working tree saved at
+`target/qualification/cleanup0450d/before/`, based on released
+`f4630f7dbe90c2c92f5029479f8420c1a1076a89`, with three additional cuts.
+Both maintained lockfiles/manifests, toolchain, catalogs, current stored fixtures
+and snapshot remain byte-unchanged. The package still declares 0.44.0;
+the public error/report cuts extend the pending 0.45.0 minor.
+
+Fixture setup removes its repeated authority verification after successful
+bootstrap of that exact request/grant. Logical exports carry generation and
+records; the fixed ledger-ID constant replaces anchor fields and the doctor
+retains physical recovery status, including after logical recovery failure.
+The explicit physical diagnostic method remains available independently.
+
+Resolution now owns production construction of its canonical output and accepts
+recovered ledger evidence. Sealing and historical admission retain key uniqueness,
+selection bounds, disjointness and poisoning; the free-ID iterator retains unique
+placement. Canonical sorting remains, without a second general snapshot validator.
+Persisted integrity, host grants, policy callbacks, historical claim checks and
+persistence-before-authority remain independent. Synthetic staging construction
+is confined to unit fixtures. No new stored format or reset is introduced.
+
+Matched Rust 1.99 raw `wasm-size` builds use the same selected lockfile/profile
+and `wasm32-unknown-unknown`, without Binaryen:
+
+| Probe | Before bytes | After bytes | Delta |
+| --- | ---: | ---: | ---: |
+| Core | 158,922 | 158,478 | -444 |
+| Diagnostics | 185,234 | 183,959 | -1,275 |
+| Admission | 162,823 | 162,334 | -489 |
+| Runtime integration | 162,992 | 162,479 | -513 |
+| IO fixture | 173,939 | 173,256 | -683 |
+
+All 86 existing native measurement rows retain allocation/reallocation counts
+and peak heap. Native timing is not an IC instruction or cycle measurement.
+Focused runtime, ledger, fixture-cell, request, validation, constructor, report
+and public integration/UI tests pass. A full-pool cold-recovery regression
+combines direct and selected historical requests across all 245 application IDs,
+preserves every mapping and refuses exhaustion without changing committed bytes.
+Strict all-target `test-support` Clippy, actual Rust 1.91 all-target checking,
+Wasm checking, warning-denied Rustdoc and two-workspace formatting pass.
+Full release validation, installed-runtime and native macOS qualification were
+not repeated. Sources, commands, failed attempts and comparisons remain under
+`target/qualification/cleanup0450d/`.
+
+A small Canic response-projection patch is prepared against its committed
+Memory 0.44 integration at `47d35215a2ba2246da355d46e588296fd80760fb`.
+Its 15 focused Memory projection tests and formatting pass with that selected
+published graph; strict Core Clippy fails at two unchanged Auth record reexports.
+The patch uses the fixed ID constant and the checked generation of a successful
+logical export, preserving Canic's Candid response without another ledger read.
+Remote Canic main still selects Memory 0.35, so no PR carrying unrelated unpublished
+integration commits was opened. Full Memory 0.45 adoption and installation remain
+owned by [Canic #573 — Adopt Memory numeric slot and label API hard cut](https://github.com/dragginzgame/canic/issues/573).
+The normal sibling checkout remains unchanged.
+
+## 0.45.0 output-only reports and immutable-storage experiment
+
+This follow-on starts from the incoming working tree saved at
+`target/qualification/cleanup0450c/before/`, still based on released
+`f4630f7dbe90c2c92f5029479f8420c1a1076a89`. Report-only types no longer implement
+`Deserialize`; their serialized fields remain unchanged. Ledger, slot, host
+configuration and policy-identity decoding remain selected. This introduces no
+additional stored-format change. Both maintained lockfiles, catalogs, versions
+and tools remain unchanged by this follow-on.
+
+The proposed `Arc<[T]>` replacement for both immutable `Arc<Vec<T>>` snapshots
+was measured and rejected. Raw Rust 1.99 `wasm-size` probes increased by 401 to
+569 bytes; changing only committed capabilities still added 297 to 317 bytes.
+For tightly sized native request vectors, shared slices saved 24 retained bytes
+but raised sealing peak heap by up to 12,168 bytes at 254 requests. Overallocated
+input vectors retained substantially less memory after conversion, but that
+benefit does not justify the measured Wasm and transient-heap cost for the
+selected small, bounded snapshots. Both production representations are retained.
+The native sealing experiment covers empty, single, 64- and 254-request
+snapshots with tight and excess input capacity. Its harness is retained only
+with experiment evidence, rather than adding maintained code for a rejected change.
+
+Final raw Wasm sizes equal the incoming baseline for all five probes: core
+158,922; diagnostics 185,234; admission 162,823; runtime integration 162,992;
+IO fixture 173,939 bytes. All 86 existing matched native workload rows retain
+their allocation/reallocation counts and peak heap. These are Linux native heap
+and raw-Wasm observations, not IC instruction, cycle or application-binary results.
+Focused diagnostic tests, six existing native measurement tests plus the sealing
+experiment, strict
+all-target `test-support` Clippy, actual Rust 1.91 all-target checking, Wasm
+checking, warning-denied Rustdoc and the two-workspace formatter pass. Full
+release validation and installed-runtime qualification were not repeated for
+this report-only cut. Sources, failed attempts and comparisons are retained at
+`target/qualification/cleanup0450c/`.
+
+The retention extraction already exists in
+[Host PR #104 — Digest-verified durable artifact copying](https://github.com/dragginzgame/ic-host-tooling/pull/104).
+It is refreshed against released Host 0.23.1 without a second retention/cache
+abstraction. Caller-selected names, destination reuse, independent retained-file
+rehash and execution-boundary rechecks stay with Memory. The published consumer
+adoption remains owned by
+[#92 — Adopt published Host verified copying](https://github.com/dragginzgame/ic-memory/issues/92).
+Host PR commit `f8fdea23b15c6806de1527881a7eadf75083b66c` passes 79 focused
+durable-filesystem tests, strict filesystem Clippy, Rustdoc, Rust 1.88 checks
+and formatting on Linux. The prospective consumer patch passes all 57 helper
+tests and strict Clippy in a disposable copy selecting those Host sources.
+Its path-patched graph is rehearsal evidence only. The patch and failed setup
+attempts remain with this batch's evidence; native hosted acceptance,
+publication and registry adoption are separate requirements.
+
+## 0.45.0 flat snapshot and single policy callback
+
+This follow-on compares the incoming dirty tree saved at
+`target/qualification/cleanup0450b/before/`, based on released
+`f4630f7dbe90c2c92f5029479f8420c1a1076a89`, with the additional wrapper and policy
+cuts. It excludes the earlier pending 0.45 work and deferred IC Wire note.
+Both maintained manifests/lockfiles, package versions, tool catalogs, toolchain
+and vendored snapshot remain unchanged. The package still declares 0.44.0;
+0.45.0 remains the pending breaking release.
+
+The stored commit now owns its required `current` snapshot directly. Physical
+marker/checksum admission, exact successors, logical integrity and counter
+binding retain their checks. `ICMSNAP1` identifies the incompatible enclosing
+shape. The approved fresh/reset disposition applies to the pending cut, including
+unpublished preceding fixture bytes; no older reader or real reset is included.
+One allocation-policy callback replaces the paired key/slot callbacks, retaining
+host grants before policy, historical checks after policy and governance bypass.
+Recovered admission remains separate; doctor and warm binding do not replay it.
+
+Matched Rust 1.99 raw `wasm-size` builds use the same root lockfile/profile and
+`wasm32-unknown-unknown`, without Binaryen for this comparison:
+
+| Probe | Before bytes | After bytes | Delta |
+| --- | ---: | ---: | ---: |
+| Core | 160,944 | 158,922 | -2,022 |
+| Diagnostics | 187,091 | 185,234 | -1,857 |
+| Admission | 164,853 | 162,823 | -2,030 |
+| Runtime integration | 164,910 | 162,992 | -1,918 |
+| Installed IO fixture | 175,849 | 173,939 | -1,910 |
+
+All 86 matched native measurement rows retain allocation/reallocation counts.
+Each measured snapshot encodes ten fewer bytes. Peak measured heap falls by ten
+bytes for empty doctor and 0/1-record snapshot reopening; other measured peaks
+are unchanged. Native timing is not an IC instruction or cycle measurement.
+
+Installed qualification at `target/qualification/runtime/attempt.NJY2aA/` passes
+original, `-O3`, `-Os` and `-Oz` artifacts with unchanged Testkit 0.25.4, PocketIC
+client 16.0.0 and server 16.1.0. Each variant passes 12 invalid-IO traps with
+neighbor/prior-write preservation, failed-upgrade/geometry-conflict rollback and
+clean retry advancing exactly one generation. A separate measurement of the
+saved incoming original Wasm uses the identical qualifier and prepared tools;
+all nine original-artifact 1,000-IO instruction rows are unchanged. This is
+fresh/current-format and same-format upgrade evidence, not earlier-image or
+application-installation acceptance.
+
+Focused checks pass 187 library tests, 12 native integration/compile-fail harness
+tests, 57 release-helper tests, four doctests and six native measurement tests.
+Strict all-target `test-support` Clippy, actual Rust 1.91 native all-target and
+Wasm checks, warning-denied Rustdoc, formatting and four Wasm budgets pass.
+Full release validation, clean-source packaging and native macOS acceptance have
+not run. Commands, saved sources, failed attempts and comparisons are retained
+at `target/qualification/cleanup0450b/`.
+
+A bounded, read-only Cell inspection proposal was prepared against
+upstream stable-structures `b5d1650463f477affb3d358e86b1113953fc9937`. Seven Cell
+tests pass on Rust 1.85/1.99, four Cell doctests pass and warning-denied Wasm
+library documentation passes. Native documentation fails at unchanged links to
+Wasm-only types; upstream Rust 1.84 and book tools are unavailable locally.
+The maintainer decided to retain Cell header admission in Memory. The prototype
+is retained as experiment evidence only; no upstream PR was opened or fork
+adopted. The local guard and exact 0.7.2 dependency remain selected. This is an
+API fit decision, not a demonstrated Cell corruption defect.
+
+Consumers must combine their former key and slot checks into the new callback
+and preserve any application-specific error ordering. Coordinated publication,
+API adoption and application-owned installation/data decisions remain with
+[Canic #573 — Adopt Memory slot and allocation API cuts](https://github.com/dragginzgame/canic/issues/573)
+and [IcyDB #355 — Generate explicit component memory requests](https://github.com/dragginzgame/icydb/issues/355).
+Their normal sibling checkouts are unchanged.
+
+## 0.45.0 schema-free ledger and fixed pool qualification
+
+This task compares the incoming dirty tree saved at
+`target/qualification/cleanup0450/before/`, based on released
+`f4630f7dbe90c2c92f5029479f8420c1a1076a89` (0.44.0), with this additional cleanup.
+The incoming bounded fixture-cell work is preserved and excluded from this task's
+change totals. Both maintained manifests/lockfiles, package versions, toolchains,
+tool catalogs and vendored snapshot are byte-unchanged by this task. The package
+still declares 0.44.0; 0.45.0 is the next breaking release, not a publication claim.
+
+The runtime stages, protects and persists in one owned flow, drops the staged
+ledger before Cell encoding, and constructs open authority only after persistence
+succeeds. Pool exclusions use one fixed mask and project sorted numeric IDs;
+hosts own range presentation. Durable allocation records contain key, slot and
+state, while applications retain schema admission. The distinct `ICMCLAIM` marker
+identifies the incompatible format. The maintainer approved retiring earlier
+images in favor of fresh/reset memory and running installed qualification.
+No deployed canister, real stable memory or backup was reset; no compatibility
+reader, converter or automatic clearing is included.
+
+Matched raw Wasm uses Rust 1.99.0, the same selected root lockfile and `wasm-size`
+profile, targeting `wasm32-unknown-unknown` without Binaryen for this comparison:
+
+| Probe | Before bytes | After bytes | Delta |
+| --- | ---: | ---: | ---: |
+| Core | 164,547 | 160,944 | -3,603 |
+| Diagnostics | 192,276 | 187,091 | -5,185 |
+| Admission | 168,641 | 164,853 | -3,788 |
+| Runtime integration | 169,270 | 164,910 | -4,360 |
+| Installed IO fixture | 179,192 | 175,849 | -3,343 |
+
+The matched release-mode native measurement has 86 workload rows. Every row's
+allocation/reallocation counts and peak measured heap either stay unchanged or
+fall. Fresh bootstrap removes one allocation at 1, 32 and 245 external requests;
+the 245-request peak falls from 189,319 to 183,415 bytes. Doctor removes two
+allocations per invocation. The 255-record short-key snapshot falls from 19,981
+to 12,841 encoded bytes, with reopen peak heap falling from 52,749 to 32,449 bytes.
+These are System allocation requests on the measured thread, excluding existing
+inputs/backing; every operation releases its measured allocations. They are not
+RSS, Wasm linear-memory use, stable-page savings or IC instruction/cycle deltas.
+
+Focused checks pass 187 library tests, 12 native integration/compile-fail harness
+tests, 57 release-helper tests, four doctests and six explicit native measurement
+tests. Strict all-target `test-support` Clippy, actual Rust 1.91 native all-target
+and Wasm checks, warning-denied Rustdoc, formatting and all four Wasm budgets pass.
+Current fixtures preserve their keys, numeric IDs, lifecycle states and counters
+through regeneration with the current types/encoder. Exhaustive mask membership,
+canonical projection, malformed/corrupt data, ownership, failure ordering and
+retry checks retain their focused coverage.
+
+Installed evidence at `target/qualification/runtime/attempt.bbPhwm/` passes
+original, `-O3`, `-Os` and `-Oz` artifacts with unchanged Testkit 0.25.4, PocketIC
+client 16.0.0 and server 16.1.0. Each artifact passes 12 invalid-IO traps with
+neighbor/prior-write preservation, post-persistence upgrade and geometry-conflict
+rollback, and clean retry advancing exactly one generation. The original
+artifact matches the measured input. This qualifies fresh/current-format startup
+and same-format upgrades, not earlier-image upgrades or consumer installations.
+There is no matched installed baseline for an IC instruction comparison here.
+
+Commands, saved sources, failed attempts and comparisons remain under
+`target/qualification/cleanup0450/`. Full release validation, clean-source
+packaging and native macOS acceptance were not run. A source-only Canic range
+projection patch is prepared against the observed file hash; it is not a clean
+upstream contribution or qualified adoption. The published minor, complete API
+adoption and application-owned data/install checks remain with
+[Canic #573 — Adopt Memory slot and allocation API cuts](https://github.com/dragginzgame/canic/issues/573)
+and [IcyDB #355 — Generate explicit component memory requests](https://github.com/dragginzgame/icydb/issues/355).
+Neither normal sibling checkout was edited.
+
 ## 0.44.0 direct-CBOR and single-pass staging qualification
 
 This local working-tree batch starts from `dd0f77564215d8e1891dbfb8ccddeae3b6b8eebd`

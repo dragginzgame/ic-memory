@@ -22,8 +22,7 @@ pub fn declaration_for_key<'a>(
 /// constructible. [`crate::MemoryRuntime`] publishes it only after its
 /// stable-cell write succeeds; callers cannot manually confirm persistence.
 ///
-/// Its immutable declarations have validated keys, slots and diagnostic
-/// metadata, with unique keys and slots. Consumers may rely on those invariants
+/// Its immutable declarations have validated keys, slots, with unique keys and slots. Consumers may rely on those invariants
 /// without rebuilding uniqueness sets. The capability does not validate live
 /// store bytes, application schemas, journals or lifecycle readiness.
 ///

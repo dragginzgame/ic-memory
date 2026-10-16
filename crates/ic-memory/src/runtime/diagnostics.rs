@@ -16,10 +16,8 @@ impl<M: Memory> MemoryRuntime<M> {
         if !self.is_bootstrapped() {
             return Err(RuntimeDiagnosticError::NotBootstrapped);
         }
-        let (recovered, commit_recovery) =
-            self.ledger_record_from_memory()?.recover_with_diagnostic();
-        let recovered = recovered?;
-        Ok(self.recovered_diagnostic_export(recovered, commit_recovery))
+        let recovered = self.ledger_record_from_memory()?.recover()?;
+        Ok(self.recovered_diagnostic_export(recovered))
     }
 
     /// Diagnose protected commit recovery from this runtime's ledger memory.
@@ -30,7 +28,7 @@ impl<M: Memory> MemoryRuntime<M> {
         &self,
     ) -> Result<CommitSnapshotDiagnostic, RuntimeDiagnosticError> {
         let record = self.ledger_record_from_memory()?;
-        Ok(record.physical().diagnostic())
+        Ok(record.diagnostic())
     }
 
     /// Build preflight and lifecycle diagnostics for this runtime.
@@ -84,13 +82,9 @@ impl<M: Memory> MemoryRuntime<M> {
             Err(failure) => DiagnosticCheck::not_run(failure.code, failure.message.clone()),
         };
         let commit_recovery = recovery.as_ref().map(|(_, diagnostic)| *diagnostic);
-        let ledger = recovery.and_then(|(recovered, diagnostic)| {
+        let ledger = recovery.and_then(|(recovered, _)| {
             recovered.ok().map(|recovered| {
-                let mut export = DiagnosticExport::from_owned_ledger(
-                    recovered.into_ledger(),
-                    crate::slot::LEDGER_SLOT,
-                );
-                export.commit_recovery = Some(diagnostic);
+                let mut export = DiagnosticExport::from_owned_ledger(recovered.into_ledger());
                 for (record, pages) in export.records.iter_mut().zip(&observed_pages) {
                     record.memory_size = Some(DiagnosticMemorySize::from_wasm_pages(*pages));
                 }
@@ -103,7 +97,6 @@ impl<M: Memory> MemoryRuntime<M> {
             tested_policy_identity,
             established_bootstrap_binding,
             bootstrap_binding,
-            ledger_anchor: crate::slot::LEDGER_SLOT,
             stable_cell: stable_cell.diagnostic,
             commit_recovery,
             ledger,
@@ -113,14 +106,8 @@ impl<M: Memory> MemoryRuntime<M> {
         }
     }
 
-    fn recovered_diagnostic_export(
-        &self,
-        recovered: RecoveredLedger,
-        commit_recovery: CommitSnapshotDiagnostic,
-    ) -> DiagnosticExport {
-        let mut export =
-            DiagnosticExport::from_owned_ledger(recovered.into_ledger(), crate::slot::LEDGER_SLOT);
-        export.commit_recovery = Some(commit_recovery);
+    fn recovered_diagnostic_export(&self, recovered: RecoveredLedger) -> DiagnosticExport {
+        let mut export = DiagnosticExport::from_owned_ledger(recovered.into_ledger());
         for record in &mut export.records {
             record.memory_size = Some(DiagnosticMemorySize::from_wasm_pages(
                 self.memory_size_pages(record.allocation.slot().id()),
@@ -195,7 +182,7 @@ where
     if let Err(error) = runtime.validate_pool_custody(&occupied, pool) {
         return DiagnosticCheck::failed(DiagnosticCode::AllocationValidation, error.to_string());
     }
-    let resolved = match declarations.resolve(recovered.ledger(), &occupied, Vec::new(), pool) {
+    let resolved = match declarations.resolve(&recovered, &occupied, Vec::new(), pool) {
         Ok(resolved) => resolved,
         Err(err) => {
             return DiagnosticCheck::failed(DiagnosticCode::AllocationValidation, err.to_string());

@@ -10,8 +10,7 @@ map. See the [0.34 pool qualification](allocation-pool-qualification.md).
 
 ## Placement and host adoption
 
-`MemoryRequest::new(authority, key, schema)` checks key grammar, owner metadata
-and schema metadata. Components supply complete request lists; the host combines
+`MemoryRequest::new(authority, key)` checks key grammar and owner metadata. Components supply complete request lists; the host combines
 them with `SealedDeclarationSnapshot::new(requests)`, which takes ownership,
 checks the count, rejects duplicate keys and canonicalizes the snapshot.
 `MemoryRuntime::bootstrap` accepts that explicit snapshot along with the pool
@@ -42,7 +41,7 @@ A library adopts a bootstrapped runtime through `verify_authority`, then
 `memory_id` or `open_memory(key)`. The host passes the runtime reference or
 opened handles to components. These operations do not bootstrap, replace policy
 or inspect persisted ownership.
-Verification checks required keys, current owners and schema metadata without
+Verification checks required keys and current owners without
 certifying application schema semantics or replaying admission.
 
 Exhaustion, invalid grants, excluded historical IDs, retirement and corruption
@@ -90,7 +89,7 @@ admitted only by a new runtime; existing handles are not dynamically revoked.
 
 The current ledger is bounded by the usable memory-ID domain, not the number
 of upgrades. It contains one retained ownership record per identity, its current
-lifecycle state, and latest schema metadata. There is no generation trail or
+lifecycle state. There is no generation trail or
 schema trail. A checked `u64` commit counter binds proofs to commits.
 
 | Resource | Current ceiling | Earliest enforcement |
@@ -113,21 +112,20 @@ DTOs are not capabilities. Typed physical, codec and integrity failures reject
 without replacing existing storage with genesis.
 
 The outer ceiling permits one maximum payload and record metadata. The current
-`ICMDIRCT` physical format marker identify the current ownership layout; earlier
+`ICMSNAP1` physical format marker identify the current ownership layout; earlier
 ledger layouts are unsupported. Before deploying this hard cut to retained
 installations, follow [the explicit data disposition requirements](current-ledger.md).
 No automatic clearing, fallback reader or migration engine is provided.
 
 The bounded writer performs one canonical CBOR pass. Admitted definite collection
 lengths reserve their vectors; nonempty collections below 255 retain one spare
-entry for staging. The maximum key/schema/record set round-trips through the
+entry for staging. The maximum key/record set round-trips through the
 current writer and reader. Excess counts, overflow and corruption reject before
 commit mutation.
 
 Matching warm bootstrap is idempotent. Cold bootstrap or a committed production transition
 advances the commit counter, including unchanged declarations. The counter can
-change CBOR integer width by at most eight bytes; no event is appended. Repeated
-schema changes replace the latest metadata. Recovery and serialization work depend
+change CBOR integer width by at most eight bytes; no event is appended. Application schema changes remain with the storage owner. Recovery and serialization work depend
 on retained record count, not upgrade count. Counter overflow is explicit and
 never wraps. Ownership and tombstones are never dropped to make room.
 

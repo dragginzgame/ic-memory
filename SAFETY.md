@@ -31,9 +31,8 @@ authorization, or endpoint safety.
 - A reservation is policy/diagnostic staging only until it is declared as an
   active allocation. Refreshing a matching reservation is allowed; reserving an
   already active or retired allocation is rejected.
-- Schema metadata attached to declarations, reservations, and current committed schema
-  metadata contains only absent or nonzero versions, checked at construction
-  and decoding. This metadata does not validate application schemas.
+- Schema admission, supported versions and data semantics belong to each storage
+  owner. Allocation metadata does not carry a second schema-version authority.
 
 ## Runtime IO Bounds
 
@@ -55,8 +54,7 @@ authorization, or endpoint safety.
 - Durable generation counters must never silently saturate or wrap.
 - Physical commit generation must equal logical ledger generation.
 - Counter zero is empty genesis. Nonzero counters need no audit record.
-- A ledger retains at most 255 ownership records and the latest schema metadata
-  per record. Omitting or retiring an identity never frees its slot.
+- A ledger retains at most 255 ownership records. Omitting or retiring an identity never frees its slot.
 
 ## Physical / Logical Binding
 
@@ -196,7 +194,7 @@ authority.
 - A retired slot cannot be claimed by a different stable key.
 - Retirement requires the stable key and slot to match the historical allocation
   record.
-- Retirement retains the stable key, slot and latest schema metadata. No
+- Retirement retains the stable key and slot. No
   per-retirement event or generation history is required.
 - Tombstones are preserved for rollback safety, diagnostics, and historical ABI
   integrity.
@@ -215,13 +213,11 @@ are untrusted until the relevant recovery, current-format, integrity,
 validation, or commit path has accepted them.
 
 Serde decoding alone does not grant allocation authority. `StableKey`,
-`MemoryManagerSlot` and `MemoryManagerIdRange` enforce their identity syntax and
-usable bounds during construction and decoding. Keys remain canonical, slot IDs
-exclude sentinel 255, and ranges remain ordered with usable ends. `SchemaMetadata`
-contains an absent or nonzero schema version, established by construction and
-decoding. Allocation declarations combine checked keys, slots and schema metadata.
+`MemoryManagerSlot` enforce their identity syntax and usable bounds during
+construction and decoding. Keys remain canonical and slot IDs exclude sentinel
+255. Allocation declarations combine checked keys and slots.
 `MemoryAuthority` checks its printable ASCII owner and valid namespace prefix,
-including on decode. `MemoryAllocationPool` canonicalizes physical exclusions
+including on decode. `MemoryAllocationPool` canonicalizes checked exclusion IDs into one fixed mask
 and rejects overlapping namespaces; governance is always excluded.
 The internal resolved snapshot checks declaration count and unique keys and
 slots; external hosts supply checked logical request snapshots. Retained claims, current namespace grants, physical

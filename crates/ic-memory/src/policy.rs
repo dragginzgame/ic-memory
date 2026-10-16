@@ -138,9 +138,9 @@ fn validate_policy_identity_name(name: &str) -> Result<(), PolicyIdentityError> 
 ///
 /// Host policy for recovered admission, allocation checks and runtime identity.
 ///
-/// The runtime admits host grants and pool eligibility before calling key and
-/// slot checks, in that order, for each external declaration. Governance stays
-/// private; historical ownership checks still apply to every declaration.
+/// The runtime admits host grants and pool eligibility before calling the
+/// allocation check for each external declaration. Governance stays private;
+/// historical ownership checks still apply to every declaration.
 ///
 /// [`crate::MemoryRuntime`] binds its successful bootstrap to this identity.
 /// Repeated bootstrap is idempotent only when the caller supplies the same
@@ -154,12 +154,14 @@ pub trait RuntimeBootstrapPolicy {
     /// Policy error type.
     type Error;
 
-    /// Validate a stable key against framework naming rules.
-    fn validate_key(&self, key: &StableKey) -> Result<(), Self::Error>;
-
-    /// Validate a stable-key to allocation-slot claim.
-    /// The slot already contains a usable ID; policy checks ownership and scope.
-    fn validate_slot(&self, key: &StableKey, slot: &MemoryManagerSlot) -> Result<(), Self::Error>;
+    /// Validate one resolved stable-key and allocation-slot claim.
+    /// The runtime checks host grants and pool eligibility before this callback;
+    /// historical ownership checks follow it. Governance bypasses this callback.
+    fn validate_allocation(
+        &self,
+        key: &StableKey,
+        slot: &MemoryManagerSlot,
+    ) -> Result<(), Self::Error>;
 
     /// Admit recovered identity and complete declarations before resolution.
     ///

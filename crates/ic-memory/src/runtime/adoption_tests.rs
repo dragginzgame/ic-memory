@@ -4,8 +4,8 @@ use super::{
 };
 use crate::{
     BootstrapAdmission, MemoryAllocationPool, MemoryAuthority, MemoryManagerSlot, MemoryRequest,
-    PolicyIdentity, PolicyIdentityError, RuntimeBootstrapPolicy, SchemaMetadata,
-    SealedDeclarationSnapshot, StableKey,
+    PolicyIdentity, PolicyIdentityError, RuntimeBootstrapPolicy, SealedDeclarationSnapshot,
+    StableKey,
 };
 use ic_stable_structures::VectorMemory;
 use std::{cell::Cell, convert::Infallible};
@@ -14,10 +14,11 @@ const CONTROL: &str = "db.control.v1";
 struct HostPolicy(Cell<usize>);
 impl RuntimeBootstrapPolicy for HostPolicy {
     type Error = Infallible;
-    fn validate_key(&self, _: &StableKey) -> Result<(), Self::Error> {
-        Ok(())
-    }
-    fn validate_slot(&self, _: &StableKey, _: &MemoryManagerSlot) -> Result<(), Self::Error> {
+    fn validate_allocation(
+        &self,
+        _key: &StableKey,
+        _slot: &MemoryManagerSlot,
+    ) -> Result<(), Self::Error> {
         Ok(())
     }
 
@@ -33,11 +34,8 @@ impl RuntimeBootstrapPolicy for HostPolicy {
 fn pool() -> MemoryAllocationPool {
     MemoryAllocationPool::new(vec![MemoryAuthority::new("db", "db.").unwrap()], vec![]).unwrap()
 }
-fn requirements(authority: &str, key: &str, schema: Option<u32>) -> SealedDeclarationSnapshot {
-    SealedDeclarationSnapshot::new(vec![
-        MemoryRequest::new(authority, key, SchemaMetadata::new(schema).unwrap()).unwrap(),
-    ])
-    .unwrap()
+fn requirements(authority: &str, key: &str) -> SealedDeclarationSnapshot {
+    SealedDeclarationSnapshot::new(vec![MemoryRequest::new(authority, key).unwrap()]).unwrap()
 }
 fn source() -> SealedDeclarationSnapshot {
     super::request_tests::snapshot(&[KEY, CONTROL], "db")
@@ -92,13 +90,12 @@ fn adoption_checks_logical_requirements_without_replaying_host() {
     let before = backing.borrow().clone();
     let report = host.memory_allocations().unwrap();
     for _ in 0..2 {
-        host.verify_authority(&requirements("db", KEY, None), "db")
+        host.verify_authority(&requirements("db", KEY), "db")
             .unwrap();
         assert_eq!(host.memory_id(KEY), Ok(11));
     }
     let mut requests = source().requests().to_vec();
-    requests
-        .push(MemoryRequest::new("other", "other.missing.v1", SchemaMetadata::default()).unwrap());
+    requests.push(MemoryRequest::new("other", "other.missing.v1").unwrap());
     host.verify_authority(
         &SealedDeclarationSnapshot::new(requests.clone()).unwrap(),
         "db",
@@ -112,11 +109,8 @@ fn adoption_checks_logical_requirements_without_replaying_host() {
         host.bootstrap(&source(), &pool(), &GenericAllocationPolicy),
         Err(RuntimeBootstrapError::PolicyIdentityMismatch { .. })
     ));
-    let replaced = MemoryAllocationPool::new(
-        pool().authorities().to_vec(),
-        vec![crate::MemoryManagerIdRange::new(200, 200).unwrap()],
-    )
-    .unwrap();
+    let replaced =
+        MemoryAllocationPool::new(pool().authorities().to_vec(), (200..=200).collect()).unwrap();
     assert!(matches!(
         host.bootstrap(&source(), &replaced, &policy),
         Err(RuntimeBootstrapError::AllocationPoolMismatch)
@@ -134,23 +128,19 @@ fn adoption_checks_logical_requirements_without_replaying_host() {
 }
 
 #[test]
-fn adoption_rejects_missing_keys_wrong_authorities_and_metadata() {
+fn adoption_rejects_missing_keys_and_wrong_authorities() {
     let mut host = MemoryRuntime::new(VectorMemory::default()).unwrap();
     host.bootstrap(&source(), &pool(), &GenericAllocationPolicy)
         .unwrap();
     assert!(matches!(
-        host.verify_authority(&requirements("foreign", KEY, None), "foreign"),
+        host.verify_authority(&requirements("foreign", KEY), "foreign"),
         Err(RuntimeAdoptionError::AuthorityMismatch { .. })
     ));
     assert!(matches!(
-        host.verify_authority(&requirements("db", "db.missing.v1", None), "db"),
+        host.verify_authority(&requirements("db", "db.missing.v1"), "db"),
         Err(RuntimeAdoptionError::Open(
             RuntimeOpenError::StableKeyNotCommitted(_)
         ))
-    ));
-    assert!(matches!(
-        host.verify_authority(&requirements("db", KEY, Some(4)), "db"),
-        Err(RuntimeAdoptionError::DeclarationMetadataMismatch { .. })
     ));
     assert!(matches!(
         host.verify_authority(&source(), "missing"),

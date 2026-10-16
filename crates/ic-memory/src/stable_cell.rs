@@ -66,6 +66,18 @@ pub enum StableCellLedgerError {
 pub fn decode_stable_cell_payload<M: Memory>(
     memory: &M,
 ) -> Result<Vec<u8>, StableCellPayloadError> {
+    let value_len = stable_cell_payload_length(memory, crate::constants::MAX_LEDGER_RECORD_BYTES)?;
+    let mut bytes = vec![0; value_len];
+    memory.read(STABLE_CELL_VALUE_OFFSET, &mut bytes);
+    Ok(bytes)
+}
+
+// Admit only the header; caller-selected fixture ceilings do not change the
+// ledger reader's bound, and no payload is allocated or read here.
+pub fn stable_cell_payload_length<M: Memory>(
+    memory: &M,
+    maximum: usize,
+) -> Result<usize, StableCellPayloadError> {
     if memory.size() == 0 {
         return Err(StableCellPayloadError::NotStableCell);
     }
@@ -90,18 +102,15 @@ pub fn decode_stable_cell_payload<M: Memory>(
             available_bytes: payload_capacity,
         });
     }
-    if value_len > crate::constants::MAX_LEDGER_RECORD_BYTES as u64 {
+    if value_len > maximum as u64 {
         return Err(StableCellPayloadError::TooLarge { value_len });
     }
     #[expect(
         clippy::cast_possible_truncation,
-        reason = "the admitted recovery ceiling is representable as usize"
+        reason = "the admitted caller ceiling is representable as usize"
     )]
     let value_len = value_len as usize;
-
-    let mut bytes = vec![0; value_len];
-    memory.read(STABLE_CELL_VALUE_OFFSET, &mut bytes);
-    Ok(bytes)
+    Ok(value_len)
 }
 
 /// Decode a `LedgerCommitStore` from stable-cell value bytes.
@@ -150,8 +159,7 @@ impl EncodedLedgerRecord {
     pub(crate) fn new(record: &LedgerCommitStore) -> Result<Self, usize> {
         // Payload lengths plus small DTO-sized slack are only a capacity hint,
         // not a second CBOR layout calculation. The writer owns the exact bound.
-        let physical = record.physical();
-        let capacity = physical
+        let capacity = record
             .current()
             .map_or(0, |slot| slot.payload().len())
             .saturating_add(std::mem::size_of::<LedgerCommitStore>().saturating_mul(2))
@@ -338,10 +346,7 @@ mod tests {
 
     #[test]
     fn stable_cell_ledger_record_requires_an_explicit_current_snapshot() {
-        let bytes = crate::test_cbor::to_vec(&serde_json::json!({
-            "physical": {}
-        }))
-        .unwrap();
+        let bytes = crate::test_cbor::to_vec(&serde_json::json!({})).unwrap();
         let err = decode_stable_cell_commit_store(&bytes)
             .expect_err("missing current snapshot must not initialize");
         assert!(err.to_string().contains("current"));
@@ -441,6 +446,19 @@ mod tests {
                     value_len: u64::from(value_len),
                     available_bytes: WASM_PAGE_SIZE_BYTES - STABLE_CELL_VALUE_OFFSET,
                 })
+            );
+        }
+        // The same header-only boundary admits a fixture's selected ceiling.
+        for value_len in [16_385, u32::MAX] {
+            let memory = HeaderOnly {
+                value_len,
+                pages: 65_537,
+            };
+            assert_eq!(
+                stable_cell_payload_length(&memory, 16_384),
+                Err(StableCellPayloadError::TooLarge {
+                    value_len: u64::from(value_len)
+                }),
             );
         }
     }

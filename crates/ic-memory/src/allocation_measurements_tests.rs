@@ -109,10 +109,9 @@ fn ledger_encoding_and_validation_allocations() {
             let records = (0..count)
                 .map(|id| {
                     crate::AllocationRecord::active(
-                        &crate::AllocationDeclaration::memory_manager_with_schema(
+                        &crate::AllocationDeclaration::memory_manager(
                             format!("app.store{id}.v1"),
                             u8::try_from(id).unwrap(),
-                            crate::SchemaMetadata::new(Some(u32::MAX)).unwrap(),
                         )
                         .unwrap(),
                     )
@@ -157,13 +156,9 @@ fn key_text_store(text_bytes: usize) -> LedgerCommitStore {
         serde_json::Value::String(format!("app.{}.v1", "x".repeat(text_bytes - 7)));
     let mut payload = Vec::new();
     ciborium::into_writer(&dto, &mut payload).unwrap();
-    let mut physical = crate::physical::SnapshotCommitStore::default();
+    let mut physical = crate::LedgerCommitStore::default();
     physical.commit_payload_at_generation(1, payload).unwrap();
-    let store = crate::test_cbor::Value::Map(vec![(
-        crate::test_cbor::Value::Text("physical".to_string()),
-        crate::test_cbor::to_value(physical).unwrap(),
-    )]);
-    crate::test_cbor::from_slice(&crate::test_cbor::to_vec(&store).unwrap()).unwrap()
+    physical
 }
 
 #[test]
@@ -192,7 +187,6 @@ fn text_measurement_fixture_changes_only_key_bound() {
     assert_eq!(record.stable_key().as_str().len(), 128);
     assert_eq!(record.slot().id(), 100);
     assert_eq!(record.state(), crate::AllocationState::Active);
-    assert_eq!(record.schema(), &crate::SchemaMetadata::default());
     assert!(matches!(
         key_text_store(129).recover(),
         Err(LedgerCommitError::Codec(_))
@@ -253,31 +247,19 @@ fn allocation_diagnostics_allocations() {
 fn pool() -> crate::MemoryAllocationPool {
     // The populated measurement deliberately owns two fixed unmanaged IDs.
     // Admit that physical custody explicitly before runtime bootstrap.
-    crate::MemoryAllocationPool::new(
-        vec![],
-        vec![
-            crate::MemoryManagerIdRange::new(100, 100).unwrap(),
-            crate::MemoryManagerIdRange::new(254, 254).unwrap(),
-        ],
-    )
-    .unwrap()
+    crate::MemoryAllocationPool::new(vec![], (100..=100).chain(254..=254).collect()).unwrap()
 }
 
 #[test]
 #[ignore = "explicit matched declaration resolution allocation measurement, run in release mode with one test thread"]
 fn declaration_resolution_allocations() {
     println!("phase,generations,iterations,allocations,reallocations,peak_bytes,elapsed_us");
-    let ledger = AllocationLedger::empty_genesis();
+    let ledger = crate::RecoveredLedger::from_trusted_ledger(AllocationLedger::empty_genesis());
     for count in [1, 32, 245] {
         let owner = "a".repeat(256);
         let requests = (0..count)
             .map(|id| {
-                crate::MemoryRequest::new(
-                    owner.clone(),
-                    &format!("app.store{id:03}.v1"),
-                    crate::SchemaMetadata::default(),
-                )
-                .unwrap()
+                crate::MemoryRequest::new(owner.clone(), &format!("app.store{id:03}.v1")).unwrap()
             })
             .collect();
         let declarations = SealedDeclarationSnapshot::new(requests).unwrap();
@@ -289,7 +271,7 @@ fn declaration_resolution_allocations() {
         measure(&format!("resolve_{count}"), 0, 10, || {
             let resolved = black_box(
                 declarations
-                    .resolve(&ledger, &ledger.occupied_slots(), vec![], &pool)
+                    .resolve(&ledger, &ledger.ledger().occupied_slots(), vec![], &pool)
                     .unwrap(),
             );
             assert_eq!(resolved.declarations().len(), count + 1);
@@ -325,7 +307,7 @@ fn doctor_report_allocations() {
             .map(|id| {
                 let prefix = format!("app.store{id:03}.");
                 let key = format!("{prefix}{}.v1", "k".repeat(128 - prefix.len() - 3));
-                crate::MemoryRequest::new("doctor", &key, crate::SchemaMetadata::default()).unwrap()
+                crate::MemoryRequest::new("doctor", &key).unwrap()
             })
             .collect();
         let declarations = SealedDeclarationSnapshot::new(requests).unwrap();
@@ -365,12 +347,8 @@ fn steady_state_snapshot_allocations() {
                     format!("app.store{id:03}.v1")
                 };
                 crate::AllocationRecord::reserved(
-                    &crate::AllocationDeclaration::memory_manager_with_schema(
-                        key,
-                        u8::try_from(id).unwrap(),
-                        crate::SchemaMetadata::new(Some(u32::MAX)).unwrap(),
-                    )
-                    .unwrap(),
+                    &crate::AllocationDeclaration::memory_manager(key, u8::try_from(id).unwrap())
+                        .unwrap(),
                 )
             })
             .collect::<Vec<_>>();

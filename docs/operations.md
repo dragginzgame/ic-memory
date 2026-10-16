@@ -9,6 +9,11 @@ choose a `MemoryManager` bucket size, or diagnose a bootstrap failure. Start
 with the [README](../crates/ic-memory/README.md) if you first need the purpose and basic setup of
 `ic-memory`.
 
+Diagnostic reports support serialization only. Applications own any JSON/CBOR
+report-ingestion protocol; reports are not an input to ledger recovery or
+runtime admission. Checked host configuration and durable ledger types retain
+their separate decoding contracts.
+
 ## What the reports measure
 
 `ic-memory` can report how stable memory is divided among `MemoryManager` IDs
@@ -78,7 +83,7 @@ from their bytes.
 
 ## Ledger size and upgrade count
 
-The ledger keeps current ownership and latest schema metadata, with at most 255
+The ledger keeps current ownership, with at most 255
 records. Repeated upgrades add no audit entries. One checksummed current snapshot
 remains for recovery. Recovery checks its physical and logical counters agree;
 the recovered counter also binds stale-proof checks. Logical metadata is
@@ -152,6 +157,11 @@ needed. It returns `CommitSnapshotDiagnostic` directly: `Empty`,
 `Valid { generation }` or `Invalid { generation }`. Only the valid case carries
 a checked physical generation; it does not certify logical ledger recovery.
 `runtime.diagnostic_export()` additionally requires a completed bootstrap.
+It returns the recovered generation and allocation records with observed sizes;
+physical or logical recovery failure returns an error instead of an export.
+The doctor report owns physical recovery status, including observations from a
+failed logical recovery. Use `MEMORY_MANAGER_LEDGER_ID` for the fixed ledger
+anchor; applications own its labels and response presentation.
 
 ## Read and write bounds
 

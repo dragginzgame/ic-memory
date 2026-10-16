@@ -119,8 +119,8 @@ is **validation before open**: a diagnostic report or an uncommitted validation
 result cannot grant access to a store. The runtime publishes permission only
 after the allocation ledger has been recovered, checked, and durably updated.
 
-The ledger stores one current record per allocated identity and the latest schema
-metadata. It keeps no per-upgrade or schema-change history. Omitted and retired
+The ledger stores one current ownership record per allocated identity. Store
+schema versions and schema admission belong to the application. Omitted and retired
 identities retain their IDs to prevent accidental reuse. A commit counter and one
 checksummed current snapshot support stale-proof checks and corruption detection.
 
@@ -196,8 +196,7 @@ const USERS_KEY: &str = "example_app.users.v1";
 
 fn component_requests() -> Result<Vec<ic_memory::MemoryRequest>, ic_memory::MemoryDeclarationError> {
     Ok(vec![ic_memory::MemoryRequest::new(
-        MEMORY_AUTHORITY, USERS_KEY, ic_memory::SchemaMetadata::default(),
-    )?])
+        MEMORY_AUTHORITY, USERS_KEY)?])
 }
 
 fn initialize_stable_storage() -> Result<(), Box<dyn std::error::Error>> {
@@ -247,8 +246,7 @@ fn adopt_host<M: ic_memory::ic_stable_structures::Memory + Clone>(
     runtime: &ic_memory::MemoryRuntime<M>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let requests = vec![ic_memory::MemoryRequest::new(
-        "library_name", "library_name.rows.v1", ic_memory::SchemaMetadata::default(),
-    )?];
+        "library_name", "library_name.rows.v1")?];
     let requirements = ic_memory::SealedDeclarationSnapshot::new(requests)?;
     runtime.verify_authority(
         &requirements,
@@ -286,8 +284,7 @@ StableKey::parse("icydb.test_db.users.data.v1").expect("database key");
 ```
 
 Changing a key creates a new allocation identity. If the durable store is still
-the same store, keep its key and change its optional diagnostic schema metadata
-instead.
+the same store, keep its key and apply schema changes through the storage owner.
 
 ## Frequently asked questions
 
@@ -328,7 +325,7 @@ common pool has space, and the complete layout passes admission and validation.
 
 ## Operations and advanced integration
 
-The current durable ledger uses checked numeric slots and a single `ICMDIRCT`
+The current durable ledger uses checked numeric slots and a single `ICMSNAP1`
 checksummed snapshot containing direct ledger CBOR. The 0.44.0 format cut retires
 earlier images: use fresh/reset memory. Incompatible bytes reject without
 initializing genesis or clearing memory. See the
@@ -336,10 +333,17 @@ initializing genesis or clearing memory. See the
 
 For fixture-only byte cells, opt in to `test-support` and construct
 `testing::FixtureCell` with explicit backing memory, owner, namespace, key and
-`MemoryManagerConfig`. The helper retains its runtime and uses the ordinary Cell
-format. It does not install lifecycle handlers or bootstrap the global default
-manager. Keep codecs, byte/work limits and restored-state validation in the host;
-fresh empty bytes must never substitute for a required retained journal.
+`MemoryManagerConfig`. The Cell handle retains its backing; the temporary
+bootstrap runtime is dropped. No lifecycle handler or singleton is installed.
+Use `try_new` for typed setup refusal of trusted images, or `create_bounded` /
+`open_bounded` for explicit fresh/retained admission with an enforced byte limit.
+Retained headers are checked before payload loading; malformed cells are refused
+without initialization. `try_set` refuses oversized writes before mutation;
+`into_memory` transfers the admitted handle for caller-owned raw inspection.
+Existing `new` and `set` retain their panic convention. Callers keep codecs,
+work budgets and restored-state/lifecycle validation; fresh empty bytes must
+never substitute for a required retained journal. Bootstrap may update ledger
+metadata before a later Cell refusal, and backing IO can still panic.
 
 - [Operations and diagnostics](https://github.com/dragginzgame/ic-memory/blob/main/docs/operations.md)
   explains memory attribution, bucket configuration, and runtime reports.

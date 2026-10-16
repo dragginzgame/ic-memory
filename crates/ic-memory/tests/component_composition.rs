@@ -6,18 +6,8 @@ const MACRO_AUTHORITY: &str = "runtime_macros";
 
 fn snapshot() -> ic_memory::SealedDeclarationSnapshot {
     ic_memory::SealedDeclarationSnapshot::new(vec![
-        ic_memory::MemoryRequest::new(
-            MACRO_AUTHORITY,
-            "macro.logical.rows.v1",
-            ic_memory::SchemaMetadata::default(),
-        )
-        .unwrap(),
-        ic_memory::MemoryRequest::new(
-            MACRO_AUTHORITY,
-            "macro.integration.users.v1",
-            ic_memory::SchemaMetadata::default(),
-        )
-        .unwrap(),
+        ic_memory::MemoryRequest::new(MACRO_AUTHORITY, "macro.logical.rows.v1").unwrap(),
+        ic_memory::MemoryRequest::new(MACRO_AUTHORITY, "macro.integration.users.v1").unwrap(),
     ])
     .unwrap()
 }

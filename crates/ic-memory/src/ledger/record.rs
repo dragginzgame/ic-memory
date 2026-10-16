@@ -1,16 +1,13 @@
 use super::LedgerIntegrityError;
-use crate::{
-    declaration::AllocationDeclaration, key::StableKey, schema::SchemaMetadata,
-    slot::MemoryManagerSlot,
-};
+use crate::{declaration::AllocationDeclaration, key::StableKey, slot::MemoryManagerSlot};
 use serde::{Deserialize, Serialize};
 
 ///
 /// AllocationLedger
 ///
-/// Durable ownership and current metadata, bounded by the usable memory-ID
+/// Durable ownership, bounded by the usable memory-ID
 /// domain. Omitted and retired identities retain their slots; no per-upgrade or
-/// schema audit trail is stored.
+/// application schema state is stored.
 ///
 /// The counter binds logical generations to physical commits. Decoded DTOs remain
 /// untrusted until integrity validation and protected recovery succeed.
@@ -27,7 +24,7 @@ pub struct AllocationLedger {
 ///
 /// AllocationRecord
 ///
-/// Durable ownership, lifecycle state and latest schema metadata for one stable
+/// Durable ownership and lifecycle state for one stable
 /// key. Retaining this record prevents slot reuse after omission or retirement.
 /// It is metadata, not a live memory handle or an upgrade audit log.
 ///
@@ -38,7 +35,6 @@ pub struct AllocationRecord {
     pub(crate) stable_key: StableKey,
     pub(crate) slot: MemoryManagerSlot,
     pub(crate) state: AllocationState,
-    pub(crate) schema: SchemaMetadata,
 }
 
 ///
@@ -114,7 +110,6 @@ impl AllocationRecord {
             stable_key: declaration.stable_key.clone(),
             slot: declaration.slot.clone(),
             state,
-            schema: declaration.schema.clone(),
         }
     }
 
@@ -143,12 +138,6 @@ impl AllocationRecord {
     #[must_use]
     pub const fn state(&self) -> AllocationState {
         self.state
-    }
-
-    /// Borrow the latest declared schema metadata; no schema history is kept.
-    #[must_use]
-    pub const fn schema(&self) -> &SchemaMetadata {
-        &self.schema
     }
 }
 

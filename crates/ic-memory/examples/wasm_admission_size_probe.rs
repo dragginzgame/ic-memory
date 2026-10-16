@@ -12,10 +12,11 @@ const AUTHORITY: &str = "wasm_core_size_probe";
 struct HostPolicy;
 impl RuntimeBootstrapPolicy for HostPolicy {
     type Error = &'static str;
-    fn validate_key(&self, _: &StableKey) -> Result<(), Self::Error> {
-        Ok(())
-    }
-    fn validate_slot(&self, _: &StableKey, _: &MemoryManagerSlot) -> Result<(), Self::Error> {
+    fn validate_allocation(
+        &self,
+        _key: &StableKey,
+        _slot: &MemoryManagerSlot,
+    ) -> Result<(), Self::Error> {
         Ok(())
     }
 
@@ -99,10 +100,6 @@ fn pool() -> ic_memory::MemoryAllocationPool {
 
 fn probe_declarations()
 -> Result<ic_memory::SealedDeclarationSnapshot, ic_memory::MemoryDeclarationError> {
-    let request = ic_memory::MemoryRequest::new(
-        AUTHORITY,
-        "wasm_core_size_probe.rows.v1",
-        ic_memory::SchemaMetadata::default(),
-    )?;
+    let request = ic_memory::MemoryRequest::new(AUTHORITY, "wasm_core_size_probe.rows.v1")?;
     ic_memory::SealedDeclarationSnapshot::new(vec![request])
 }

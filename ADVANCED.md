@@ -39,7 +39,7 @@ MemoryManager ID 0
   -> current-format allocation ledger
   -> RecoveredLedger
   -> one owned validation/staging attempt
-  -> PendingBootstrapCommit
+  -> persisted stable Cell
   -> CommittedAllocations
 ```
 
@@ -142,8 +142,7 @@ it is not durable upgrade history.
 
 Consumers contribute preparation through the host's single `prepare_bootstrap`
 hook. Warm consumers verify their requirements with `verify_authority` and then
-open committed keys. Verification checks keys, current owner labels and schema
-metadata without rerunning admission or choosing geometry. See the
+open committed keys. Verification checks keys and current owner labels without rerunning admission or choosing geometry. See the
 [composed-host example](crates/ic-memory/examples/composed_host.rs) and
 [admission contract](docs/recovered-admission.md).
 
@@ -155,9 +154,7 @@ keys as their stores. The host combines the selected lists before bootstrap:
 ```rust,no_run
 # fn main() -> Result<(), Box<dyn std::error::Error>> {
 let requests = vec![ic_memory::MemoryRequest::new(
-    "icydb.test_db", "icydb.test_db.orders.data.v1",
-    ic_memory::SchemaMetadata::default(),
-)?];
+    "icydb.test_db", "icydb.test_db.orders.data.v1")?];
 let snapshot = ic_memory::SealedDeclarationSnapshot::new(requests)?;
 # Ok(())
 # }
@@ -168,7 +165,7 @@ never registers a declaration, invokes a constructor hook or selects a numeric
 ID. All selected component requirements must be present before opening storage.
 
 `snapshot.requests()` exposes canonical source requests. Resolution feeds the
-checked declaration snapshot to commitment; current placement/schema projections
+checked declaration snapshot to commitment; current placement projections
 borrow the resulting capability. There is no second resolved-row map or
 alternative component input. Governance is validated internally before
 application capability publication.
@@ -193,10 +190,10 @@ exported as valid ledgers. Physical allocation reports do not decode ownership;
 
 ```rust,no_run
 use ic_memory::{MemoryAllocationPool, MemoryAuthority, MemoryRequest,
-    MemoryRuntime, SchemaMetadata, SealedDeclarationSnapshot, GenericAllocationPolicy,
+    MemoryRuntime, SealedDeclarationSnapshot, GenericAllocationPolicy,
     ic_stable_structures::VectorMemory};
 let source = SealedDeclarationSnapshot::new(vec![
-    MemoryRequest::new("app", "app.users.v1", SchemaMetadata::default())?,
+    MemoryRequest::new("app", "app.users.v1")?,
 ])?;
 let pool = MemoryAllocationPool::new(vec![MemoryAuthority::new("app", "app.")?], vec![])?;
 let mut runtime = MemoryRuntime::new(VectorMemory::default())?;
@@ -251,7 +248,7 @@ unknown current-format fields are rejected rather than silently accepted.
 
 `AllocationLedger::new(counter, records)` checks count, unique ownership and
 empty-genesis rules. It returns a passive DTO, not a persistence owner. Inspect
-`AllocationLedger::records()` and `AllocationRecord::schema()` for current state.
+`AllocationLedger::records()` and each record's key, slot and state for current ownership.
 See the [current ledger contract](docs/current-ledger.md) for retained-data rules.
 
 Internal pre-commit validation state cannot open storage. `CommittedAllocations`
@@ -296,7 +293,7 @@ Canic and IcyDB examples:
   stores, such as `icydb.test_db.users.data.v1`.
 
 Changing a key creates a new logical allocation identity. If the durable store
-is the same, keep the stable key and update schema metadata instead.
+is the same, keep the stable key and apply schema changes through its storage owner.
 
 ## Host Allocation Pool
 
@@ -304,11 +301,11 @@ Only the host declares physical exclusions. This reserves IDs 200..=210 for an
 unmanaged client while both components share every other eligible ID:
 
 ```rust
-use ic_memory::{MemoryAllocationPool, MemoryAuthority, MemoryManagerIdRange};
+use ic_memory::{MemoryAllocationPool, MemoryAuthority};
 let pool = MemoryAllocationPool::new(
     vec![MemoryAuthority::new("framework", "framework.").unwrap(),
          MemoryAuthority::new("db", "db.").unwrap()],
-    vec![MemoryManagerIdRange::new(200, 210).unwrap()],
+    (200..=210).collect(),
 ).unwrap();
 assert!(pool.contains(10));
 assert!(!pool.contains(0));

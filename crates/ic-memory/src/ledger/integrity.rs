@@ -12,7 +12,7 @@ impl AllocationLedger {
     }
 
     /// Validate count, unique ownership and empty genesis before recovery or commit.
-    /// Checked field types already enforce key, slot and schema invariants.
+    /// Checked field types already enforce key and slot invariants.
     pub fn validate_integrity(&self) -> Result<(), LedgerIntegrityError> {
         self.validate_bounds()?;
         let duplicate_keys = crate::key::duplicate_key_positions(

@@ -18,15 +18,16 @@ pub(super) struct AdmissionPolicy {
 
 impl RuntimeBootstrapPolicy for AdmissionPolicy {
     type Error = &'static str;
-    fn validate_key(&self, key: &StableKey) -> Result<(), Self::Error> {
+    fn validate_allocation(
+        &self,
+        key: &StableKey,
+        _slot: &MemoryManagerSlot,
+    ) -> Result<(), Self::Error> {
         if self.deny_journals && key.as_str().ends_with(".journal.v1") {
             Err("revoked")
         } else {
             Ok(())
         }
-    }
-    fn validate_slot(&self, _: &StableKey, _: &MemoryManagerSlot) -> Result<(), Self::Error> {
-        Ok(())
     }
 
     fn runtime_bootstrap_identity(&self) -> Result<PolicyIdentity, crate::PolicyIdentityError> {
@@ -65,6 +66,56 @@ impl RuntimeBootstrapPolicy for AdmissionPolicy {
 
 const CONTROL: &str = "app.main.control.v1";
 const JOURNAL: &str = "app.old.journal.v1";
+
+#[test]
+fn full_pool_resolution_combines_current_and_selected_history_without_reassignment() {
+    let keys: Vec<_> = (0..245)
+        .map(|i| format!("app.store{i:03}.journal.v1"))
+        .collect();
+    let backing = VectorMemory::default();
+    let reversed: Vec<_> = keys.iter().rev().map(String::as_str).collect();
+    let mut runtime = MemoryRuntime::new(backing.clone()).unwrap();
+    runtime
+        .bootstrap(
+            &snapshot(&reversed, "app"),
+            &pool(),
+            &GenericAllocationPolicy,
+        )
+        .unwrap();
+    drop(runtime);
+
+    // Alternate direct requirements with historical completion across the entire
+    // application pool. Both paths must retain the same recovered placement.
+    let current: Vec<_> = keys.iter().step_by(2).map(String::as_str).collect();
+    let policy = AdmissionPolicy {
+        discover: true,
+        ..Default::default()
+    };
+    let mut runtime = MemoryRuntime::new(backing.clone()).unwrap();
+    let committed = runtime
+        .bootstrap(&snapshot(&current, "app"), &pool(), &policy)
+        .unwrap();
+    assert_eq!(committed.generation(), 2);
+    assert_eq!(committed.declarations().len(), 245);
+    for (index, key) in keys.iter().enumerate() {
+        assert_eq!(
+            runtime.memory_id(key),
+            Ok(u8::try_from(index + 10).unwrap())
+        );
+    }
+    drop(runtime);
+
+    let before = backing.borrow().clone();
+    let mut runtime = MemoryRuntime::new(backing.clone()).unwrap();
+    assert!(matches!(
+        runtime.bootstrap(&snapshot(&["app.new.v1"], "app"), &pool(), &policy),
+        Err(RuntimeBootstrapError::Resolution(
+            super::MemoryResolutionError::Exhausted { .. }
+        ))
+    ));
+    assert_eq!(*backing.borrow(), before);
+    assert!(!runtime.is_bootstrapped());
+}
 
 #[test]
 fn declared_membership_covers_original_inputs_and_retains_poisoned_selections() {
@@ -213,8 +264,7 @@ fn historical_request_validation_precedes_selection_and_poisons_the_attempt() {
         ));
         assert_eq!(
             *declaration_error,
-            crate::MemoryRequest::new(authority, key, crate::SchemaMetadata::default())
-                .unwrap_err()
+            crate::MemoryRequest::new(authority, key).unwrap_err()
         );
         assert_eq!(
             admission.include_historical("app", JOURNAL).unwrap_err(),
@@ -313,11 +363,9 @@ fn current_policy_revoked_grants_and_retirement_still_reject() {
         Err(RuntimeBootstrapError::Admission(AdmissionError::Pool(_)))
     ));
     assert_eq!(*backing.borrow(), before);
-    let excluded = crate::MemoryAllocationPool::new(
-        pool().authorities().to_vec(),
-        vec![crate::MemoryManagerIdRange::new(11, 11).unwrap()],
-    )
-    .unwrap();
+    let excluded =
+        crate::MemoryAllocationPool::new(pool().authorities().to_vec(), (11..=11).collect())
+            .unwrap();
     assert!(matches!(
         runtime.bootstrap(&snapshot(&[CONTROL], "app"), &excluded, &policy),
         Err(RuntimeBootstrapError::Admission(AdmissionError::Pool(_)))
@@ -351,11 +399,9 @@ fn corruption_precedes_admission_and_exhaustion_follows_it_without_commit() {
     let backing = seeded();
     let mut runtime = MemoryRuntime::new(backing.clone()).unwrap();
     let current = snapshot(&["app.new.v1"], "app");
-    let bounded_pool = crate::MemoryAllocationPool::new(
-        pool().authorities().to_vec(),
-        vec![crate::MemoryManagerIdRange::new(12, 254).unwrap()],
-    )
-    .unwrap();
+    let bounded_pool =
+        crate::MemoryAllocationPool::new(pool().authorities().to_vec(), (12..=254).collect())
+            .unwrap();
     let policy = AdmissionPolicy {
         selections: vec![("app", JOURNAL)],
         ..Default::default()
@@ -465,7 +511,6 @@ fn fresh_rejection_can_acquire_root_but_cannot_commit_genesis() {
         runtime
             .ledger_record_from_memory()
             .unwrap()
-            .physical()
             .current()
             .is_none()
     );
@@ -508,12 +553,7 @@ fn completion_bound_and_reservation_activation_preserve_evidence() {
     let recovered = record.recover().unwrap();
     let mut rows = recovered.ledger().records().to_vec();
     rows.push(crate::testing::allocation_record(
-        &crate::AllocationDeclaration::memory_manager_with_schema(
-            "app.reserved.journal.v1",
-            12,
-            crate::SchemaMetadata::new(Some(5)).unwrap(),
-        )
-        .unwrap(),
+        &crate::AllocationDeclaration::memory_manager("app.reserved.journal.v1", 12).unwrap(),
         crate::AllocationState::Reserved,
     ));
     let reserved = crate::AllocationLedger::new(recovered.current_generation() + 1, rows).unwrap();
@@ -537,10 +577,6 @@ fn completion_bound_and_reservation_activation_preserve_evidence() {
         .iter()
         .find(|d| d.stable_key().as_str() == "app.reserved.journal.v1")
         .unwrap();
-    assert_eq!(
-        declaration.schema(),
-        &crate::SchemaMetadata::new(Some(5)).unwrap()
-    );
     assert_eq!(declaration.slot().id(), 12);
     assert!(
         committed

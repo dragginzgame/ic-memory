@@ -12,12 +12,7 @@ use std::convert::Infallible;
 
 pub(super) fn declarations() -> SealedDeclarationSnapshot {
     SealedDeclarationSnapshot::new(vec![
-        crate::MemoryRequest::new(
-            "runtime_tests",
-            "runtime_tests.rows.v1",
-            crate::SchemaMetadata::default(),
-        )
-        .unwrap(),
+        crate::MemoryRequest::new("runtime_tests", "runtime_tests.rows.v1").unwrap(),
     ])
     .expect("checked declarations")
 }
@@ -35,20 +30,16 @@ fn doctor_keeps_memory_observations_before_policy_callbacks() {
     impl RuntimeBootstrapPolicy for GrowingPolicy<'_> {
         type Error = Infallible;
 
-        fn validate_key(&self, _key: &StableKey) -> Result<(), Self::Error> {
+        fn validate_allocation(
+            &self,
+            _key: &StableKey,
+            _slot: &MemoryManagerSlot,
+        ) -> Result<(), Self::Error> {
             self.0
                 .open_memory("runtime_tests.rows.v1")
                 .unwrap()
                 .grow(1)
                 .unwrap();
-            Ok(())
-        }
-
-        fn validate_slot(
-            &self,
-            _key: &StableKey,
-            _slot: &MemoryManagerSlot,
-        ) -> Result<(), Self::Error> {
             Ok(())
         }
 
@@ -106,16 +97,12 @@ struct CountingPolicy(std::cell::Cell<usize>);
 impl RuntimeBootstrapPolicy for CountingPolicy {
     type Error = Infallible;
 
-    fn validate_key(&self, key: &StableKey) -> Result<(), Self::Error> {
+    fn validate_allocation(
+        &self,
+        key: &StableKey,
+        _slot: &MemoryManagerSlot,
+    ) -> Result<(), Self::Error> {
         assert_ne!(key.as_str(), crate::IC_MEMORY_LEDGER_STABLE_KEY);
-        assert_eq!(self.0.get() % 2, 0);
-        self.0.set(self.0.get() + 1);
-        Ok(())
-    }
-
-    fn validate_slot(&self, key: &StableKey, _slot: &MemoryManagerSlot) -> Result<(), Self::Error> {
-        assert_ne!(key.as_str(), crate::IC_MEMORY_LEDGER_STABLE_KEY);
-        assert_eq!(self.0.get() % 2, 1);
         self.0.set(self.0.get() + 1);
         Ok(())
     }
@@ -152,11 +139,7 @@ impl IdentityPolicy {
 impl RuntimeBootstrapPolicy for IdentityPolicy {
     type Error = Infallible;
 
-    fn validate_key(&self, _key: &StableKey) -> Result<(), Self::Error> {
-        Ok(())
-    }
-
-    fn validate_slot(
+    fn validate_allocation(
         &self,
         _key: &StableKey,
         _slot: &MemoryManagerSlot,
@@ -258,7 +241,7 @@ fn separate_runtimes_have_independent_bootstrap_authority_and_memory() {
     runtime_a
         .bootstrap(&declarations, &pool(), &policy)
         .expect("runtime A bootstrap");
-    assert_eq!(policy.0.get(), 2);
+    assert_eq!(policy.0.get(), 1);
     assert!(runtime_a.is_bootstrapped());
     assert!(!runtime_b.is_bootstrapped());
     assert_eq!(
@@ -275,7 +258,7 @@ fn separate_runtimes_have_independent_bootstrap_authority_and_memory() {
     runtime_b
         .bootstrap(&declarations, &pool(), &policy)
         .expect("runtime B bootstrap");
-    assert_eq!(policy.0.get(), 4);
+    assert_eq!(policy.0.get(), 2);
     let memory_b = runtime_b
         .open_memory("runtime_tests.rows.v1")
         .expect("runtime B memory");
@@ -459,12 +442,8 @@ fn repeated_bootstrap_is_bound_to_declarations_and_policy_identity() {
     ));
 
     let alternate_declarations = SealedDeclarationSnapshot::new(vec![
-        crate::MemoryRequest::new(
-            "alternate_runtime_tests",
-            "alternate_runtime_tests.rows.v1",
-            crate::SchemaMetadata::default(),
-        )
-        .unwrap(),
+        crate::MemoryRequest::new("alternate_runtime_tests", "alternate_runtime_tests.rows.v1")
+            .unwrap(),
     ])
     .unwrap();
     let declaration_error = runtime
@@ -542,16 +521,12 @@ struct RejectPolicy;
 impl RuntimeBootstrapPolicy for RejectPolicy {
     type Error = &'static str;
 
-    fn validate_key(&self, _key: &StableKey) -> Result<(), Self::Error> {
-        Err("rejected")
-    }
-
-    fn validate_slot(
+    fn validate_allocation(
         &self,
         _key: &StableKey,
         _slot: &MemoryManagerSlot,
     ) -> Result<(), Self::Error> {
-        Ok(())
+        Err("rejected")
     }
 
     fn runtime_bootstrap_identity(&self) -> Result<PolicyIdentity, PolicyIdentityError> {
@@ -629,8 +604,10 @@ fn doctor_and_diagnostics_report_the_same_runtime_lifecycle() {
     let export = runtime.diagnostic_export().expect("diagnostic export");
     assert!(doctor.bootstrapped);
     assert_eq!(doctor.ledger.as_ref().expect("doctor ledger"), &export);
-    assert!(doctor.commit_recovery.is_some());
-    assert_eq!(doctor.commit_recovery, export.commit_recovery);
+    assert_eq!(
+        doctor.commit_recovery,
+        Some(crate::CommitSnapshotDiagnostic::Valid { generation: 1 })
+    );
     assert_eq!(
         export
             .records
@@ -656,10 +633,17 @@ fn doctor_and_diagnostics_report_the_same_runtime_lifecycle() {
         established.policy_identity,
         PolicyIdentity::new("ic-memory.noop-policy", 1).expect("valid identity")
     );
-    let doctor_bytes = crate::test_cbor::to_vec(&doctor).expect("doctor diagnostic bytes");
-    let decoded_doctor: crate::MemoryRuntimeDoctorReport =
-        crate::test_cbor::from_slice(&doctor_bytes).expect("doctor diagnostic round trip");
-    assert_eq!(decoded_doctor, doctor);
+    let doctor_json = serde_json::to_value(&doctor).expect("doctor diagnostic JSON");
+    assert_eq!(doctor_json["bootstrapped"], true);
+    assert_eq!(doctor_json["bootstrap_binding"], "Passed");
+    assert_eq!(
+        doctor_json["commit_recovery"],
+        serde_json::json!({"Valid": {"generation": 1}})
+    );
+    assert_eq!(
+        doctor_json["ledger"],
+        serde_json::to_value(&export).unwrap()
+    );
 
     let mismatched = runtime.doctor_report(
         &declarations,
@@ -699,16 +683,11 @@ fn diagnostics_reject_invalid_persisted_slots_before_measuring_sizes() {
     value["records"][0]["slot"] = serde_json::json!(255);
     let payload = crate::test_cbor::to_vec(&value).unwrap();
     // Keep physical framing/checksums valid so recovery reaches slot validation.
-    let mut physical = crate::physical::SnapshotCommitStore::default();
+    let mut physical = crate::LedgerCommitStore::default();
     physical
         .commit_payload_at_generation(ledger.current_generation(), payload)
         .unwrap();
-    let value = crate::test_cbor::Value::Map(vec![(
-        crate::test_cbor::Value::Text("physical".into()),
-        crate::test_cbor::to_value(physical).unwrap(),
-    )]);
-    let encoded = crate::test_cbor::to_vec(&value).unwrap();
-    let store: crate::LedgerCommitStore = crate::test_cbor::from_slice(&encoded).unwrap();
+    let store = physical;
     let _cell = Cell::new(
         runtime.memory(crate::MEMORY_MANAGER_LEDGER_ID),
         crate::stable_cell::EncodedLedgerRecord::new(&store).unwrap(),
@@ -846,10 +825,7 @@ fn validation_diagnostic_preserves_unsupported_format_code() {
 pub(super) fn pool() -> crate::MemoryAllocationPool {
     crate::MemoryAllocationPool::new(
         vec![crate::MemoryAuthority::new("runtime_tests", "runtime_tests.").unwrap()],
-        vec![
-            crate::MemoryManagerIdRange::new(10, 119).unwrap(),
-            crate::MemoryManagerIdRange::new(121, 254).unwrap(),
-        ],
+        (10..=119).chain(121..=254).collect(),
     )
     .unwrap()
 }
@@ -865,19 +841,12 @@ fn pool_admission_precedes_application_validation_and_preserves_retry() {
     drop(original);
     let before = backing.borrow().clone();
     let foreign = SealedDeclarationSnapshot::new(vec![
-        crate::MemoryRequest::new(
-            "foreign",
-            "runtime_tests.rows.v1",
-            crate::SchemaMetadata::default(),
-        )
-        .unwrap(),
+        crate::MemoryRequest::new("foreign", "runtime_tests.rows.v1").unwrap(),
     ])
     .unwrap();
-    let excluded = crate::MemoryAllocationPool::new(
-        pool().authorities().to_vec(),
-        vec![crate::MemoryManagerIdRange::new(10, 254).unwrap()],
-    )
-    .unwrap();
+    let excluded =
+        crate::MemoryAllocationPool::new(pool().authorities().to_vec(), (10..=254).collect())
+            .unwrap();
     let policy = CountingPolicy(std::cell::Cell::new(0));
     let mut runtime = MemoryRuntime::new(backing.clone()).unwrap();
     for (requests, host_pool) in [(&foreign, pool()), (&source, excluded)] {
@@ -901,7 +870,7 @@ fn pool_admission_precedes_application_validation_and_preserves_retry() {
         assert!(!runtime.is_bootstrapped());
     }
     runtime.bootstrap(&source, &pool(), &policy).unwrap();
-    assert_eq!(policy.0.get(), 2); // One external key/slot; governance stays private.
+    assert_eq!(policy.0.get(), 1); // One external allocation; governance stays private.
     assert_eq!(runtime.memory_id("runtime_tests.rows.v1"), Ok(120));
 }
 
@@ -913,17 +882,14 @@ fn doctor_binding_agrees_with_warm_bootstrap_for_exact_declarations() {
         .bootstrap(&source, &pool(), &GenericAllocationPolicy)
         .unwrap();
     let before = runtime.growth.backing.borrow().clone();
-    for (owner, key, schema) in [
-        ("runtime_tests", "runtime_tests.rows.v1", None),
-        ("different", "runtime_tests.rows.v1", None),
-        ("runtime_tests", "runtime_tests.changed.v1", None),
-        ("runtime_tests", "runtime_tests.rows.v1", Some(7)),
+    for (owner, key) in [
+        ("runtime_tests", "runtime_tests.rows.v1"),
+        ("different", "runtime_tests.rows.v1"),
+        ("runtime_tests", "runtime_tests.changed.v1"),
     ] {
-        let requests = SealedDeclarationSnapshot::new(vec![
-            crate::MemoryRequest::new(owner, key, crate::SchemaMetadata::new(schema).unwrap())
-                .unwrap(),
-        ])
-        .unwrap();
+        let requests =
+            SealedDeclarationSnapshot::new(vec![crate::MemoryRequest::new(owner, key).unwrap()])
+                .unwrap();
         let report = runtime.doctor_report(&requests, &pool(), &GenericAllocationPolicy);
         let warm = runtime.bootstrap(&requests, &pool(), &GenericAllocationPolicy);
         if requests == source {

@@ -1,8 +1,8 @@
 use crate::hash::{FNV_OFFSET, fnv64};
 use serde::{Deserialize, Serialize};
 
-// ICMDIRCT identifies the direct-CBOR single-snapshot physical contract.
-const COMMIT_MARKER: u64 = 0x4943_4D44_4952_4354;
+// ICMSNAP1 identifies the flat current-snapshot direct-CBOR contract.
+const COMMIT_MARKER: u64 = 0x4943_4D53_4E41_5031;
 
 ///
 /// CommittedGenerationBytes
@@ -127,31 +127,14 @@ impl CommittedGenerationBytes {
     }
 }
 
-///
-/// SnapshotCommitStore
-///
-/// One checksummed current ledger snapshot. The enclosing stable Cell is
-/// published synchronously before allocation authority. IC message execution
-/// owns atomic stable-memory commit and rollback; native backends must supply
-/// their own transaction boundary. Corrupt current bytes never initialize or
-/// accept another generation.
-///
-
-#[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
-#[serde(deny_unknown_fields)]
-pub struct SnapshotCommitStore {
-    #[serde(deserialize_with = "crate::cbor::deserialize_present_option")]
-    pub(crate) current: Option<CommittedGenerationBytes>,
-}
-
-impl SnapshotCommitStore {
+impl crate::ledger::LedgerCommitStore {
     /// Borrow untrusted bytes only for encoding and capacity planning.
-    pub const fn current(&self) -> Option<&CommittedGenerationBytes> {
+    pub(crate) const fn current(&self) -> Option<&CommittedGenerationBytes> {
         self.current.as_ref()
     }
 
     /// Recover the current snapshot only after marker and checksum validation.
-    pub fn authoritative(&self) -> Result<&CommittedGenerationBytes, CommitRecoveryError> {
+    pub(crate) fn authoritative(&self) -> Result<&CommittedGenerationBytes, CommitRecoveryError> {
         let current = self
             .current()
             .ok_or(CommitRecoveryError::NoValidGeneration)?;
@@ -188,13 +171,13 @@ impl SnapshotCommitStore {
     }
 
     /// Report the same checked current record without decoding logical ownership.
-    pub fn diagnostic(&self) -> CommitSnapshotDiagnostic {
+    pub(crate) fn diagnostic(&self) -> CommitSnapshotDiagnostic {
         self.authoritative_with_diagnostic().1
     }
 
     /// Replace the current snapshot after checking its successor and byte bound.
     /// The owner must persist the enclosing record before publishing authority.
-    pub fn commit_payload_at_generation(
+    pub(crate) fn commit_payload_at_generation(
         &mut self,
         generation: u64,
         payload: Vec<u8>,
@@ -230,7 +213,7 @@ impl SnapshotCommitStore {
     }
 
     #[cfg(test)]
-    pub fn write_corrupt_snapshot(&mut self, generation: u64, payload: Vec<u8>) {
+    pub(crate) fn write_corrupt_snapshot(&mut self, generation: u64, payload: Vec<u8>) {
         let mut corrupt = CommittedGenerationBytes::new(generation, payload);
         corrupt.checksum ^= 1;
         self.current = Some(corrupt);
@@ -243,7 +226,7 @@ impl SnapshotCommitStore {
 /// Read-only marker/checksum status of the one current snapshot.
 ///
 
-#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
 pub enum CommitSnapshotDiagnostic {
     /// No current snapshot has been committed.
     Empty,
@@ -322,7 +305,7 @@ mod tests {
     fn rejected_successors_and_oversized_payloads_preserve_current_and_allow_retry() {
         let limit = crate::constants::MAX_COMMITTED_PAYLOAD_BYTES;
         for populated in [false, true] {
-            let mut store = SnapshotCommitStore::default();
+            let mut store = crate::LedgerCommitStore::default();
             if populated {
                 store.commit_payload_at_generation(7, vec![1]).unwrap();
             }
@@ -352,7 +335,7 @@ mod tests {
             assert_eq!(store.authoritative().unwrap().generation(), generation);
             let bytes = crate::test_cbor::to_vec(&store).unwrap();
             assert_eq!(
-                crate::cbor::from_slice_exact::<SnapshotCommitStore>(&bytes).unwrap(),
+                crate::cbor::from_slice_exact::<crate::LedgerCommitStore>(&bytes).unwrap(),
                 store
             );
         }
@@ -360,7 +343,7 @@ mod tests {
 
     #[test]
     fn commits_replace_the_snapshot_and_diagnostics_share_recovery() {
-        let mut store = SnapshotCommitStore::default();
+        let mut store = crate::LedgerCommitStore::default();
         assert_eq!(store.diagnostic(), CommitSnapshotDiagnostic::Empty);
         for generation in 0..4 {
             let payload = vec![u8::try_from(generation).unwrap(); 4];
@@ -373,10 +356,9 @@ mod tests {
             assert_eq!(record.checksum(), generation_checksum(record));
             let diagnostic = store.diagnostic();
             assert_eq!(diagnostic, CommitSnapshotDiagnostic::Valid { generation });
-            let bytes = crate::test_cbor::to_vec(&diagnostic).unwrap();
             assert_eq!(
-                crate::test_cbor::from_slice::<CommitSnapshotDiagnostic>(&bytes).unwrap(),
-                diagnostic
+                serde_json::to_value(diagnostic).unwrap(),
+                serde_json::json!({"Valid": {"generation": generation}})
             );
         }
     }
@@ -384,7 +366,7 @@ mod tests {
     #[test]
     fn corrupt_current_fails_recovery_and_commit_without_mutation() {
         for field in ["checksum", "marker", "payload", "generation"] {
-            let mut store = SnapshotCommitStore::default();
+            let mut store = crate::LedgerCommitStore::default();
             store
                 .commit_payload_at_generation(7, vec![1, 2, 3])
                 .unwrap();
@@ -422,7 +404,7 @@ mod tests {
 
     #[test]
     fn physical_generation_overflow_preserves_current() {
-        let mut store = SnapshotCommitStore::default();
+        let mut store = crate::LedgerCommitStore::default();
         store
             .commit_payload_at_generation(u64::MAX, vec![1])
             .unwrap();
@@ -438,13 +420,13 @@ mod tests {
 
     #[test]
     fn maximum_payload_writer_reader_agree() {
-        let mut store = SnapshotCommitStore::default();
+        let mut store = crate::LedgerCommitStore::default();
         store
             .commit_payload_at_generation(0, vec![0; crate::constants::MAX_COMMITTED_PAYLOAD_BYTES])
             .unwrap();
         let bytes = crate::test_cbor::to_vec(&store).unwrap();
         assert!(bytes.len() <= crate::constants::MAX_LEDGER_RECORD_BYTES);
-        let decoded: SnapshotCommitStore = crate::cbor::from_slice_exact(&bytes).unwrap();
+        let decoded: crate::LedgerCommitStore = crate::cbor::from_slice_exact(&bytes).unwrap();
         assert_eq!(decoded, store);
         assert!(decoded.authoritative().is_ok());
         let oversized = CommittedGenerationBytes::new(

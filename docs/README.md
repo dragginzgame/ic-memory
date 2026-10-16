@@ -22,7 +22,7 @@ distinguish current integration guidance from historical engineering evidence.
 
 ## Current focused guides
 
-- [Current ownership ledger](current-ledger.md) explains the 0.27.0 hard cut,
+- [Current ownership ledger](current-ledger.md) explains the current format,
   retained ownership, bounded metadata and deployment requirements.
 
 - [Operations and diagnostics](operations.md) explains allocation reports,

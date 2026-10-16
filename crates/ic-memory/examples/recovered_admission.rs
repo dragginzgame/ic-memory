@@ -3,8 +3,7 @@
 use ic_memory::ic_stable_structures::{Memory, VectorMemory};
 use ic_memory::{
     BootstrapAdmission, MemoryManagerSlot, MemoryRequest, MemoryRuntime, PolicyIdentity,
-    PolicyIdentityError, RuntimeBootstrapPolicy, SchemaMetadata, SealedDeclarationSnapshot,
-    StableKey,
+    PolicyIdentityError, RuntimeBootstrapPolicy, SealedDeclarationSnapshot, StableKey,
 };
 
 const CURRENT: &str = "component.current.v1";
@@ -13,10 +12,11 @@ const RETAINED: &str = "component.retained.v1";
 struct HostPolicy;
 impl RuntimeBootstrapPolicy for HostPolicy {
     type Error = &'static str;
-    fn validate_key(&self, _: &StableKey) -> Result<(), Self::Error> {
-        Ok(())
-    }
-    fn validate_slot(&self, _: &StableKey, _: &MemoryManagerSlot) -> Result<(), Self::Error> {
+    fn validate_allocation(
+        &self,
+        _key: &StableKey,
+        _slot: &MemoryManagerSlot,
+    ) -> Result<(), Self::Error> {
         Ok(())
     }
     fn runtime_bootstrap_identity(&self) -> Result<PolicyIdentity, PolicyIdentityError> {
@@ -36,7 +36,7 @@ impl RuntimeBootstrapPolicy for HostPolicy {
 fn declarations(keys: &[&str]) -> SealedDeclarationSnapshot {
     SealedDeclarationSnapshot::new(
         keys.iter()
-            .map(|key| MemoryRequest::new("component", key, SchemaMetadata::default()).unwrap())
+            .map(|key| MemoryRequest::new("component", key).unwrap())
             .collect(),
     )
     .unwrap()

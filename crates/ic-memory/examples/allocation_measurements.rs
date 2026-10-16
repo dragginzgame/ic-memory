@@ -40,12 +40,7 @@ fn record(
 fn main() {
     let requests = (100..140)
         .map(|id| {
-            ic_memory::MemoryRequest::new(
-                "fixture",
-                &format!("fixture.store{id}.v1"),
-                ic_memory::SchemaMetadata::default(),
-            )
-            .unwrap()
+            ic_memory::MemoryRequest::new("fixture", &format!("fixture.store{id}.v1")).unwrap()
         })
         .collect();
     let declarations = ic_memory::SealedDeclarationSnapshot::new(requests).unwrap();

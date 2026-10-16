@@ -1,15 +1,14 @@
 use ic_memory::{
     AllocationDeclaration, MemoryAllocationPool, MemoryAllocationPoolError, MemoryAuthority,
-    MemoryDeclarationError, MemoryRequest, PolicyIdentity, PolicyIdentityError, SchemaMetadata,
+    MemoryDeclarationError, MemoryRequest, PolicyIdentity, PolicyIdentityError,
 };
 
 #[test]
-fn declarations_round_trip_checked_key_slot_and_schema() {
+fn declarations_round_trip_checked_key_and_slot() {
     let declaration = AllocationDeclaration::memory_manager("app.rows.v1", 100).unwrap();
     let json = serde_json::json!({
         "stable_key": "app.rows.v1",
         "slot": 100,
-        "schema": { "schema_version": null },
     });
     assert_eq!(serde_json::to_value(&declaration).unwrap(), json);
     assert_eq!(
@@ -17,8 +16,7 @@ fn declarations_round_trip_checked_key_slot_and_schema() {
         declaration
     );
     // Pin the current DTO bytes independently of decode.
-    let expected =
-        b"\xa3\x6astable_key\x6bapp.rows.v1\x64slot\x18\x64\x66schema\xa1\x6eschema_version\xf6";
+    let expected = b"\xa2\x6astable_key\x6bapp.rows.v1\x64slot\x18\x64";
     let mut bytes = Vec::new();
     ciborium::into_writer(&declaration, &mut bytes).unwrap();
     assert_eq!(bytes, expected);
@@ -36,7 +34,7 @@ fn diagnostic_metadata_accepts_printable_ascii_through_the_byte_limit() {
         "x".repeat(256),
     ] {
         PolicyIdentity::new(value.as_str(), 1).unwrap();
-        MemoryRequest::new(value.as_str(), "app.rows.v1", SchemaMetadata::default()).unwrap();
+        MemoryRequest::new(value.as_str(), "app.rows.v1").unwrap();
         let grant = MemoryAuthority::new(value.as_str(), "app.").unwrap();
         let json = serde_json::json!({"authority":value,"key_prefix":"app."});
         assert_eq!(serde_json::to_value(&grant).unwrap(), json);
@@ -85,8 +83,7 @@ fn diagnostic_metadata_preserves_field_errors_and_rejection_order() {
     for (value, policy, reason) in cases {
         assert_eq!(PolicyIdentity::new(value.as_str(), 1).unwrap_err(), policy);
         assert_eq!(
-            MemoryRequest::new(value.as_str(), "app.rows.v1", SchemaMetadata::default())
-                .unwrap_err(),
+            MemoryRequest::new(value.as_str(), "app.rows.v1").unwrap_err(),
             MemoryDeclarationError::InvalidAuthority { reason }
         );
         assert_eq!(
@@ -111,7 +108,7 @@ fn authority_decode_rejects_invalid_metadata_before_pool_assembly() {
         assert!(ciborium::from_reader::<MemoryAuthority, _>(bytes.as_slice()).is_err());
         assert!(
             serde_json::from_value::<MemoryAllocationPool>(
-                serde_json::json!({"authorities":[grant],"excluded_ranges":[]})
+                serde_json::json!({"authorities":[grant],"excluded_ids":[]})
             )
             .is_err()
         );

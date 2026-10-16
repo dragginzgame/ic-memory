@@ -21,6 +21,18 @@ Follow the [workspace layout rules](rules/rust-workspaces.md).
 Product contracts and numeric limits remain owned by this crate. Host support
 and prerequisites are declared in [docs/host-support.md](docs/host-support.md).
 
+## Stable-memory governance
+
+Production storage integrations must obtain handles from `ic-memory` after
+successful admission and durable allocation commitment. Applications and
+components must not independently assign memory IDs, construct memory managers
+or access unmanaged stable memory. Host backing setup and this crate's internal
+manager/ledger implementation remain their explicit infrastructure boundary.
+Generic storage engines and upstream collections preserve this guarantee only
+when their production integrations use checked runtime handles. See the
+[shared policy note](docs/shared-tooling-adoption.md#stable-memory-governance-policy)
+for the upstream contribution and the separate `ic-storage` integration boundary.
+
 ## Development and qualification commands
 
 - Before editing or compiling, check for active Cargo, rustc and rustdoc builds.

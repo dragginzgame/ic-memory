@@ -17,11 +17,11 @@ The existing policy identity covers preparation semantics/configuration too.
 There is no additional bootstrap entrypoint or separately published capability.
 
 The hook receives `BootstrapAdmission`: the original sealed declarations and
-an iterator over validated recovered key/slot/state/latest-schema metadata.
+an iterator over validated recovered key/slot/state metadata.
 The iterator exposes at most 255 current ownership records; the ledger stores
 no generation or schema audit trail. It offers no memory handles, raw manager, ledger DTO or mutation API.
 `include_historical(authority, key)` selects only a known nonretired allocation
-under an explicit current host grant. It retains the recovered slot and schema.
+under an explicit current host grant. It retains the recovered slot.
 Unknown/retired selections reject instead of entering ordinary new placement.
 Selections cannot add grants, remove original declarations or change host policy.
 Duplicate and oversized completion sets reject. Selection errors remain latched
@@ -93,7 +93,7 @@ over a consumer's generic return error. Consumer-only rejections use
 resolution, validation, staging and persistence errors still apply.
 
 Known reserved keys may activate through the existing reservation contract.
-Selected keys preserve the latest diagnostic schema metadata and durable slot.
+Selected keys preserve their durable slot and ownership state.
 Selection does not establish application schema support. Governance keys cannot
 be selected externally. Unselected records continue to own their slots and gains
 no new capability. Current grants authorize selections; metadata does not claim
@@ -150,7 +150,7 @@ and commit exactly one new generation. They reject unknown, duplicate, foreign,
 revoked and retired selections, consumer key-set/owner replacement, excessive
 completion, corruption, exhausted placement and failed backing growth. Rejection
 leaves existing memory unchanged and publishes no capability. Retry succeeds
-against the unchanged evidence; reserved selection preserves schema metadata.
+against the unchanged evidence; reserved selection preserves the claimed key and slot.
 Explicit-runtime tests verify preparation and matching warm bootstrap without
 replaying admission; injected component handles remain usable after the host
 runtime object is dropped. A compile-fail test demonstrates
@@ -159,7 +159,7 @@ remain applicable; arbitrary partially written native backing is not made
 crash-atomic by this hook.
 
 Recovered metadata has at most 255 records; iteration borrows key/slot/state and
-latest-schema references without copying records. At most 254 external
+state references without copying records. At most 254 external
 requests, including the original set, can be completed. Membership uses the sealed
 canonical source request vector; only earlier selections need a
 scan. Selection also scans bounded recovered records and checks current grants.

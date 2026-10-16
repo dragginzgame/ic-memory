@@ -1,6 +1,5 @@
 use crate::{
-    declaration::{AllocationDeclaration, DeclarationSnapshot},
-    schema::SchemaMetadata,
+    declaration::AllocationDeclaration,
     slot::{
         IC_MEMORY_AUTHORITY_OWNER, IC_MEMORY_LEDGER_STABLE_KEY, MEMORY_MANAGER_LEDGER_ID,
         is_ic_memory_stable_key,
@@ -21,7 +20,6 @@ use std::sync::Arc;
 pub struct MemoryRequest {
     authority: String,
     stable_key: crate::StableKey,
-    schema: SchemaMetadata,
 }
 
 impl<'de> Deserialize<'de> for MemoryRequest {
@@ -32,7 +30,6 @@ impl<'de> Deserialize<'de> for MemoryRequest {
         struct Request {
             authority: String,
             stable_key: crate::StableKey,
-            schema: SchemaMetadata,
         }
         let request = Request::deserialize(deserializer)?;
         validate_external_authority(&request.authority).map_err(D::Error::custom)?;
@@ -40,7 +37,6 @@ impl<'de> Deserialize<'de> for MemoryRequest {
         Ok(Self {
             authority: request.authority,
             stable_key: request.stable_key,
-            schema: request.schema,
         })
     }
 }
@@ -50,14 +46,12 @@ impl MemoryRequest {
     pub fn new(
         authority: impl Into<String>,
         stable_key: &str,
-        schema: SchemaMetadata,
     ) -> Result<Self, MemoryDeclarationError> {
         let authority = authority.into();
         let stable_key = checked_request_key(&authority, stable_key)?;
         Ok(Self {
             authority,
             stable_key,
-            schema,
         })
     }
 
@@ -65,12 +59,6 @@ impl MemoryRequest {
     #[must_use]
     pub const fn stable_key(&self) -> &crate::StableKey {
         &self.stable_key
-    }
-
-    /// Borrow the requested diagnostic schema metadata.
-    #[must_use]
-    pub const fn schema(&self) -> &SchemaMetadata {
-        &self.schema
     }
 
     /// Borrow the declaring authority.
@@ -132,6 +120,36 @@ pub struct SealedDeclarationSnapshot {
     inner: Arc<Vec<MemoryRequest>>,
 }
 
+///
+/// DeclarationSnapshot
+///
+/// Internal canonical output of resolution, without open authority.
+/// Sealing, recovered-ledger admission and the resolver establish its bounds
+/// and unique keys/slots. Only this module constructs production snapshots.
+///
+
+#[derive(Debug, Eq, PartialEq)]
+pub struct DeclarationSnapshot {
+    declarations: Vec<AllocationDeclaration>,
+}
+
+impl DeclarationSnapshot {
+    pub(crate) fn declarations(&self) -> &[AllocationDeclaration] {
+        &self.declarations
+    }
+
+    pub(crate) fn into_declarations(self) -> Vec<AllocationDeclaration> {
+        self.declarations
+    }
+
+    // Explicit synthetic staging inputs remain confined to unit fixtures.
+    #[cfg(test)]
+    pub(crate) fn for_test(mut declarations: Vec<AllocationDeclaration>) -> Self {
+        crate::sort::sort_unstable_by(&mut declarations, |a, b| a.stable_key.cmp(&b.stable_key));
+        Self { declarations }
+    }
+}
+
 impl SealedDeclarationSnapshot {
     /// Take ownership of the host's complete requests, checking the bound and
     /// rejecting duplicate keys before sharing their canonical contents.
@@ -160,11 +178,12 @@ impl SealedDeclarationSnapshot {
 
     pub(crate) fn resolve(
         &self,
-        ledger: &crate::AllocationLedger,
+        recovered: &crate::RecoveredLedger,
         occupied: &[bool; crate::constants::MAX_ALLOCATIONS],
         historical: Vec<AllocationDeclaration>,
         pool: &crate::MemoryAllocationPool,
     ) -> Result<DeclarationSnapshot, crate::MemoryResolutionError> {
+        let ledger = recovered.ledger();
         if self.requests().len() + historical.len() > 254 {
             return Err(MemoryDeclarationError::TooManyDeclarations.into());
         }
@@ -195,20 +214,15 @@ impl SealedDeclarationSnapshot {
                     })?
             };
             let slot = crate::MemoryManagerSlot::new(id).expect("usable id");
-            // Request construction checked authority/key/schema, and recovery
-            // checked historical schemas. The final declaration needs only
-            // key/schema: do not copy the already-checked authority string.
+            // Resolution retains checked allocation identity without copying the owner.
             declarations.push(AllocationDeclaration {
                 stable_key: request.stable_key.clone(),
                 slot,
-                schema: request.schema.clone(),
             });
         }
         declarations.extend(historical);
-        Ok(
-            DeclarationSnapshot::canonicalize(declarations)
-                .map_err(MemoryDeclarationError::from)?,
-        )
+        crate::sort::sort_unstable_by(&mut declarations, |a, b| a.stable_key.cmp(&b.stable_key));
+        Ok(DeclarationSnapshot { declarations })
     }
 
     #[cfg(test)]

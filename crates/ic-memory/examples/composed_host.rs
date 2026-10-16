@@ -4,7 +4,7 @@ use ic_memory::ic_stable_structures::{Memory, VectorMemory};
 use ic_memory::{
     BootstrapAdmission, MemoryManagerConfig, MemoryManagerSlot, MemoryRequest, MemoryRuntime,
     PolicyIdentity, PolicyIdentityError, RuntimeBootstrapError, RuntimeBootstrapPolicy,
-    RuntimeOpenError, SchemaMetadata, SealedDeclarationSnapshot, StableKey,
+    RuntimeOpenError, SealedDeclarationSnapshot, StableKey,
 };
 use std::cell::Cell;
 
@@ -15,13 +15,13 @@ const ROWS: &str = "db.main.rows.v1";
 fn database_requests() -> Vec<MemoryRequest> {
     [CONTROL, ROWS]
         .into_iter()
-        .map(|key| MemoryRequest::new("db", key, SchemaMetadata::default()).unwrap())
+        .map(|key| MemoryRequest::new("db", key).unwrap())
         .collect()
 }
 
 fn snapshot() -> SealedDeclarationSnapshot {
     let mut requests = database_requests();
-    requests.push(MemoryRequest::new("host", HOST, SchemaMetadata::default()).unwrap());
+    requests.push(MemoryRequest::new("host", HOST).unwrap());
     SealedDeclarationSnapshot::new(requests).unwrap()
 }
 
@@ -40,11 +40,11 @@ struct HostPolicy {
 impl RuntimeBootstrapPolicy for HostPolicy {
     type Error = ConsumerRejection;
 
-    fn validate_key(&self, _: &StableKey) -> Result<(), Self::Error> {
-        Ok(())
-    }
-
-    fn validate_slot(&self, _: &StableKey, _: &MemoryManagerSlot) -> Result<(), Self::Error> {
+    fn validate_allocation(
+        &self,
+        _key: &StableKey,
+        _slot: &MemoryManagerSlot,
+    ) -> Result<(), Self::Error> {
         Ok(())
     }
 
@@ -104,9 +104,8 @@ fn cold_reopens() {
         // A disallowed control replacement fails before commitment. A subsequent
         // cold attempt still sees the prior IDs and data under the same geometry.
         let changed = SealedDeclarationSnapshot::new(vec![
-            MemoryRequest::new("db", "db.replacement.control.v1", SchemaMetadata::default())
-                .unwrap(),
-            MemoryRequest::new("db", ROWS, SchemaMetadata::default()).unwrap(),
+            MemoryRequest::new("db", "db.replacement.control.v1").unwrap(),
+            MemoryRequest::new("db", ROWS).unwrap(),
         ])
         .unwrap();
         {

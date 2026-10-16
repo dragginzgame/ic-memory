@@ -1,4 +1,4 @@
-use crate::{MemoryManagerIdRange, StableKey, text::validate_diagnostic_text};
+use crate::{StableKey, text::validate_diagnostic_text};
 use serde::{Deserialize, Deserializer, Serialize, de::Error as _};
 
 ///
@@ -84,18 +84,16 @@ impl<'de> Deserialize<'de> for MemoryAuthority {
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 pub struct MemoryAllocationPool {
     authorities: Vec<MemoryAuthority>,
-    excluded_ranges: Vec<MemoryManagerIdRange>,
+    #[serde(rename = "excluded_ids", serialize_with = "serialize_excluded_ids")]
+    excluded: [u64; 4],
 }
 
 impl MemoryAllocationPool {
     /// Canonicalize host grants and physical exclusions before bootstrap.
-    ///
-    /// # Panics
-    ///
-    /// Panics only if an internal bounded-ID canonicalization invariant is broken.
+
     pub fn new(
         mut authorities: Vec<MemoryAuthority>,
-        exclusions: Vec<MemoryManagerIdRange>,
+        exclusions: Vec<u8>,
     ) -> Result<Self, MemoryAllocationPoolError> {
         if authorities.len() > 254 || exclusions.len() > 255 {
             return Err(MemoryAllocationPoolError::TooManyEntries);
@@ -109,38 +107,17 @@ impl MemoryAllocationPool {
                 });
             }
         }
-        let mut excluded = [false; 255];
-        for range in exclusions
+        let mut excluded = [0; 4];
+        for id in exclusions
             .into_iter()
-            .chain(std::iter::once(crate::memory_manager_governance_range()))
+            .chain(0..=crate::MEMORY_MANAGER_GOVERNANCE_MAX_ID)
         {
-            for id in range.start()..=range.end() {
-                excluded[usize::from(id)] = true;
-            }
-        }
-        let mut excluded_ranges = Vec::new();
-        let mut id = 0;
-        while id < 255 {
-            if !excluded[id] {
-                id += 1;
-                continue;
-            }
-            let start = id;
-            while id + 1 < 255 && excluded[id + 1] {
-                id += 1;
-            }
-            excluded_ranges.push(
-                MemoryManagerIdRange::new(
-                    u8::try_from(start).expect("usable start"),
-                    u8::try_from(id).expect("usable end"),
-                )
-                .expect("ordered usable range"),
-            );
-            id += 1;
+            crate::validate_memory_manager_id(id)?;
+            excluded[usize::from(id / 64)] |= 1 << (id % 64);
         }
         Ok(Self {
             authorities,
-            excluded_ranges,
+            excluded,
         })
     }
 
@@ -150,17 +127,15 @@ impl MemoryAllocationPool {
         &self.authorities
     }
 
-    /// Physical exclusions including the permanent governance reservation.
-    #[must_use]
-    pub fn excluded_ranges(&self) -> &[MemoryManagerIdRange] {
-        &self.excluded_ranges
+    /// Excluded usable IDs, including governance, in ascending order.
+    pub fn excluded_ids(&self) -> impl Iterator<Item = u8> + '_ {
+        (0..crate::MEMORY_MANAGER_INVALID_ID).filter(|id| is_excluded(&self.excluded, *id))
     }
 
     /// Whether an ID belongs to the shared application pool.
     #[must_use]
     pub fn contains(&self, id: u8) -> bool {
-        id != crate::MEMORY_MANAGER_INVALID_ID
-            && !self.excluded_ranges.iter().any(|range| range.contains(id))
+        id != crate::MEMORY_MANAGER_INVALID_ID && !is_excluded(&self.excluded, id)
     }
 
     /// Validate current key ownership independently of numeric placement.
@@ -209,11 +184,29 @@ impl<'de> Deserialize<'de> for MemoryAllocationPool {
         #[serde(deny_unknown_fields)]
         struct Pool {
             authorities: Vec<MemoryAuthority>,
-            excluded_ranges: Vec<MemoryManagerIdRange>,
+            #[serde(deserialize_with = "crate::cbor::deserialize_records")]
+            excluded_ids: Vec<u8>,
         }
         let pool = Pool::deserialize(deserializer)?;
-        Self::new(pool.authorities, pool.excluded_ranges).map_err(D::Error::custom)
+        Self::new(pool.authorities, pool.excluded_ids).map_err(D::Error::custom)
     }
+}
+
+fn is_excluded(excluded: &[u64; 4], id: u8) -> bool {
+    excluded[usize::from(id / 64)] & (1 << (id % 64)) != 0
+}
+
+fn serialize_excluded_ids<S: serde::Serializer>(
+    excluded: &[u64; 4],
+    serializer: S,
+) -> Result<S::Ok, S::Error> {
+    use serde::ser::SerializeSeq as _;
+    let count = excluded.iter().map(|word| word.count_ones() as usize).sum();
+    let mut seq = serializer.serialize_seq(Some(count))?;
+    for id in (0..crate::MEMORY_MANAGER_INVALID_ID).filter(|id| is_excluded(excluded, *id)) {
+        seq.serialize_element(&id)?;
+    }
+    seq.end()
 }
 
 ///
@@ -288,20 +281,13 @@ mod tests {
         let grant = |owner, prefix| MemoryAuthority::new(owner, prefix).unwrap();
         let pool = MemoryAllocationPool::new(
             vec![grant("db", "db."), grant("app", "app.")],
-            vec![
-                MemoryManagerIdRange::new(20, 25).unwrap(),
-                MemoryManagerIdRange::new(23, 30).unwrap(),
-                MemoryManagerIdRange::new(31, 31).unwrap(),
-            ],
+            (20..=25).chain(23..=30).chain(31..=31).collect(),
         )
         .unwrap();
         assert_eq!(pool.authorities()[0].authority(), "app");
         assert_eq!(
-            pool.excluded_ranges(),
-            &[
-                MemoryManagerIdRange::new(0, 9).unwrap(),
-                MemoryManagerIdRange::new(20, 31).unwrap()
-            ]
+            pool.excluded_ids().collect::<Vec<_>>(),
+            (0..=9).chain(20..=31).collect::<Vec<_>>()
         );
         for id in [0, 9, 20, 31, 255] {
             assert!(!pool.contains(id));
@@ -328,7 +314,7 @@ mod tests {
         let pool: MemoryAllocationPool = serde_json::from_str(
             r#"{
             "authorities":[{"authority":"app","key_prefix":"app."}],
-            "excluded_ranges":[{"start":10,"end":10}]
+            "excluded_ids":[10]
         }"#,
         )
         .unwrap();
@@ -336,10 +322,10 @@ mod tests {
         assert!(!pool.contains(10));
         assert!(pool.contains(11));
         for json in [
-            r#"{"authorities":[{"authority":"ic-memory","key_prefix":"app."}],"excluded_ranges":[]}"#,
-            r#"{"authorities":[{"authority":"app","key_prefix":"ic_memory."}],"excluded_ranges":[]}"#,
-            r#"{"authorities":[],"excluded_ranges":[{"start":254,"end":255}]}"#,
-            r#"{"authorities":[],"excluded_ranges":[],"unknown":true}"#,
+            r#"{"authorities":[{"authority":"ic-memory","key_prefix":"app."}],"excluded_ids":[]}"#,
+            r#"{"authorities":[{"authority":"app","key_prefix":"ic_memory."}],"excluded_ids":[]}"#,
+            r#"{"authorities":[],"excluded_ids":[255]}"#,
+            r#"{"authorities":[],"excluded_ids":[],"unknown":true}"#,
         ] {
             assert!(serde_json::from_str::<MemoryAllocationPool>(json).is_err());
         }
@@ -347,6 +333,52 @@ mod tests {
             serde_json::from_str::<MemoryAllocationPool>(&serde_json::to_string(&pool).unwrap())
                 .unwrap(),
             pool
+        );
+    }
+    #[test]
+    fn exclusion_membership_and_wire_projection_cover_every_usable_id() {
+        for ids in [
+            vec![0, 9, 10, 63, 64, 127, 128, 191, 192, 254],
+            (10..=254).step_by(2).collect(),
+            (0..=254).collect(),
+        ] {
+            let pool = MemoryAllocationPool::new(vec![], ids.clone()).unwrap();
+            let reversed =
+                MemoryAllocationPool::new(vec![], ids.iter().rev().copied().collect()).unwrap();
+            assert_eq!(pool, reversed);
+            for id in 0..=u8::MAX {
+                assert_eq!(
+                    pool.contains(id),
+                    id > crate::MEMORY_MANAGER_GOVERNANCE_MAX_ID
+                        && id != u8::MAX
+                        && !ids.contains(&id)
+                );
+            }
+            let projected: Vec<_> = (0..255).filter(|id| !pool.contains(*id)).collect();
+            assert_eq!(pool.excluded_ids().collect::<Vec<_>>(), projected);
+            let json = serde_json::to_value(&pool).unwrap();
+            assert_eq!(json["excluded_ids"], serde_json::json!(projected));
+            assert_eq!(
+                serde_json::from_value::<MemoryAllocationPool>(json).unwrap(),
+                pool
+            );
+            let bytes = crate::test_cbor::to_vec(&pool).unwrap();
+            assert_eq!(
+                crate::cbor::from_slice_exact::<MemoryAllocationPool>(&bytes).unwrap(),
+                pool
+            );
+        }
+        assert!(matches!(
+            MemoryAllocationPool::new(vec![], vec![255]),
+            Err(MemoryAllocationPoolError::Slot(_))
+        ));
+        assert!(matches!(
+            MemoryAllocationPool::new(vec![], vec![10; 256]),
+            Err(MemoryAllocationPoolError::TooManyEntries)
+        ));
+        assert_eq!(
+            MemoryAllocationPool::new(vec![], vec![63, 64, 63]).unwrap(),
+            MemoryAllocationPool::new(vec![], vec![64, 63]).unwrap()
         );
     }
 }

@@ -1,4 +1,3 @@
-use super::id_range::MemoryManagerIdRange;
 use serde::{Deserialize, Serialize};
 
 ///
@@ -48,11 +47,6 @@ impl TryFrom<u8> for MemoryManagerSlot {
     }
 }
 
-pub const LEDGER_SLOT: MemoryManagerSlot = match MemoryManagerSlot::new(MEMORY_MANAGER_LEDGER_ID) {
-    Ok(slot) => slot,
-    Err(_) => panic!("the ledger ID must be usable"),
-};
-
 /// First usable `MemoryManager` virtual memory ID.
 pub const MEMORY_MANAGER_MIN_ID: u8 = 0;
 
@@ -81,17 +75,6 @@ pub const MEMORY_MANAGER_GOVERNANCE_MAX_ID: u8 = 9;
 #[must_use]
 pub fn is_ic_memory_stable_key(stable_key: &str) -> bool {
     stable_key.starts_with(IC_MEMORY_STABLE_KEY_PREFIX)
-}
-
-/// MemoryManager range reserved for `ic-memory` governance in the current substrate.
-#[must_use]
-pub const fn memory_manager_governance_range() -> MemoryManagerIdRange {
-    const RANGE: MemoryManagerIdRange =
-        match MemoryManagerIdRange::new(MEMORY_MANAGER_MIN_ID, MEMORY_MANAGER_GOVERNANCE_MAX_ID) {
-            Ok(range) => range,
-            Err(_) => panic!("the governance range must be usable"),
-        };
-    RANGE
 }
 
 ///

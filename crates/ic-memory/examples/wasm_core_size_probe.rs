@@ -62,10 +62,6 @@ fn pool() -> ic_memory::MemoryAllocationPool {
 
 fn probe_declarations()
 -> Result<ic_memory::SealedDeclarationSnapshot, ic_memory::MemoryDeclarationError> {
-    let request = ic_memory::MemoryRequest::new(
-        AUTHORITY,
-        "wasm_core_size_probe.rows.v1",
-        ic_memory::SchemaMetadata::default(),
-    )?;
+    let request = ic_memory::MemoryRequest::new(AUTHORITY, "wasm_core_size_probe.rows.v1")?;
     ic_memory::SealedDeclarationSnapshot::new(vec![request])
 }

@@ -19,11 +19,7 @@ pub struct GenericAllocationPolicy;
 impl RuntimeBootstrapPolicy for GenericAllocationPolicy {
     type Error = Infallible;
 
-    fn validate_key(&self, _key: &StableKey) -> Result<(), Self::Error> {
-        Ok(())
-    }
-
-    fn validate_slot(
+    fn validate_allocation(
         &self,
         _key: &StableKey,
         _slot: &MemoryManagerSlot,

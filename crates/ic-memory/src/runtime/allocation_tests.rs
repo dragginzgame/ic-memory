@@ -132,14 +132,7 @@ fn full_external_id_domain_preserves_bounded_read_only_attribution() {
     let ids = (crate::MEMORY_MANAGER_GOVERNANCE_MAX_ID + 1)..crate::MEMORY_MANAGER_INVALID_ID;
     let declarations: Vec<_> = ids
         .clone()
-        .map(|id| {
-            crate::MemoryRequest::new(
-                "app",
-                &format!("app.slot{id:03}.v1"),
-                crate::SchemaMetadata::default(),
-            )
-            .unwrap()
-        })
+        .map(|id| crate::MemoryRequest::new("app", &format!("app.slot{id:03}.v1")).unwrap())
         .collect();
     let snapshot = crate::SealedDeclarationSnapshot::new(declarations).unwrap();
     let memory = Metered::default();

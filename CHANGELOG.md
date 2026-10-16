@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.45.0]
+
+- **Breaking API/JSON:** replace pool exclusion ranges with checked numeric IDs
+  and one fixed mask; hosts own range presentation.
+- **Breaking API/storage:** remove allocator schema metadata. Applications own
+  schema admission; earlier images are retired for the `ICMSNAP1` format, with
+  fresh/reset memory required and no automatic clearing.
+- Flatten the protected snapshot and simplify runtime commitment while retaining
+  persistence before open authority.
+- **Breaking policy API:** use one allocation-validation callback per external
+  declaration; recovered admission remains separate.
+- **Breaking diagnostic API/JSON:** reports support serialization only. Logical
+  exports contain generation and records; doctor owns physical recovery status,
+  and the ledger-ID constant replaces repeated anchor fields.
+- Remove redundant fixture authority verification and resolved-declaration
+  validation; sealing, admission and durable integrity checks retain their roles.
+- Add typed, bounded fixture-cell admission
+  ([#104 — Share explicit fixture byte-cell construction](https://github.com/dragginzgame/ic-memory/issues/104)).
+
+[Detailed notes](docs/changelog/0.45.md)
+
 ## [0.44.0] - 2026-10-16
 
 - **Breaking runtime API:** remove the default singleton facade. Hosts own one

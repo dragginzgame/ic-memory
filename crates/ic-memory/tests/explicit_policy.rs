@@ -7,12 +7,7 @@ const POLICY_IDENTITY: &str = "default-custom-policy";
 
 fn snapshot() -> ic_memory::SealedDeclarationSnapshot {
     ic_memory::SealedDeclarationSnapshot::new(vec![
-        ic_memory::MemoryRequest::new(
-            AUTHORITY,
-            "default_custom_policy.rows.v1",
-            ic_memory::SchemaMetadata::default(),
-        )
-        .unwrap(),
+        ic_memory::MemoryRequest::new(AUTHORITY, "default_custom_policy.rows.v1").unwrap(),
     ])
     .unwrap()
 }
@@ -22,11 +17,7 @@ struct CustomPolicy;
 impl RuntimeBootstrapPolicy for CustomPolicy {
     type Error = core::convert::Infallible;
 
-    fn validate_key(&self, _key: &StableKey) -> Result<(), Self::Error> {
-        Ok(())
-    }
-
-    fn validate_slot(
+    fn validate_allocation(
         &self,
         _key: &StableKey,
         _slot: &MemoryManagerSlot,

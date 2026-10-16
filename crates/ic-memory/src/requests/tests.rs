@@ -4,7 +4,7 @@ use super::*;
 fn resolution_fills_free_slots_around_interleaved_retained_requests() {
     let pool = crate::MemoryAllocationPool::new(
         vec![crate::MemoryAuthority::new("app", "app.").unwrap()],
-        vec![crate::MemoryManagerIdRange::new(12, 13).unwrap()],
+        (12..=13).collect(),
     )
     .unwrap();
     // Retained keys occur both before and after new keys in canonical order.
@@ -21,15 +21,16 @@ fn resolution_fills_free_slots_around_interleaved_retained_requests() {
             .collect(),
     )
     .unwrap();
+    let ledger = crate::RecoveredLedger::from_trusted_ledger(ledger);
     let requests = SealedDeclarationSnapshot::new(
         ["app.e.v1", "app.c.v1", "app.b.v1", "app.a.v1", "app.d.v1"]
             .into_iter()
-            .map(|key| MemoryRequest::new("app", key, SchemaMetadata::default()).unwrap())
+            .map(|key| MemoryRequest::new("app", key).unwrap())
             .collect(),
     )
     .unwrap();
     let resolved = requests
-        .resolve(&ledger, &ledger.occupied_slots(), vec![], &pool)
+        .resolve(&ledger, &ledger.ledger().occupied_slots(), vec![], &pool)
         .unwrap();
     let external: Vec<_> = resolved
         .declarations()
@@ -52,11 +53,7 @@ fn resolution_fills_free_slots_around_interleaved_retained_requests() {
 #[test]
 fn external_requests_reject_internal_authority_identity() {
     assert!(matches!(
-        MemoryRequest::new(
-            IC_MEMORY_AUTHORITY_OWNER,
-            "app.rows.v1",
-            SchemaMetadata::default()
-        ),
+        MemoryRequest::new(IC_MEMORY_AUTHORITY_OWNER, "app.rows.v1"),
         Err(MemoryDeclarationError::ReservedAuthority { .. })
     ));
 }
@@ -64,22 +61,14 @@ fn external_requests_reject_internal_authority_identity() {
 #[test]
 fn request_permutations_are_canonical_and_duplicate_keys_reject() {
     let requests: Vec<_> = (0..245)
-        .map(|i| {
-            MemoryRequest::new(
-                "app",
-                &format!("app.rows{i}.v1"),
-                SchemaMetadata::new(Some(i + 1)).unwrap(),
-            )
-            .unwrap()
-        })
+        .map(|i| MemoryRequest::new("app", &format!("app.rows{i}.v1")).unwrap())
         .collect();
     let first = SealedDeclarationSnapshot::new(requests.clone()).unwrap();
     let reversed: Vec<_> = requests.iter().rev().cloned().collect();
     let second = SealedDeclarationSnapshot::new(reversed).unwrap();
     assert_eq!(first, second);
     let mut conflict = requests;
-    conflict
-        .push(MemoryRequest::new("foreign", "app.rows0.v1", SchemaMetadata::default()).unwrap());
+    conflict.push(MemoryRequest::new("foreign", "app.rows0.v1").unwrap());
     assert!(matches!(
         SealedDeclarationSnapshot::new(conflict),
         Err(MemoryDeclarationError::DuplicateRequest { .. })
@@ -88,20 +77,16 @@ fn request_permutations_are_canonical_and_duplicate_keys_reject() {
 
 #[test]
 fn snapshot_equality_covers_linked_declaration_authority() {
-    let make = |owner, key, schema| {
-        SealedDeclarationSnapshot::new(vec![
-            MemoryRequest::new(owner, key, SchemaMetadata::new(schema).unwrap()).unwrap(),
-        ])
-        .unwrap()
+    let make = |owner, key| {
+        SealedDeclarationSnapshot::new(vec![MemoryRequest::new(owner, key).unwrap()]).unwrap()
     };
-    let snapshot = make("app", "app.rows.v1", None);
+    let snapshot = make("app", "app.rows.v1");
     let shared = snapshot.clone();
     assert_eq!(snapshot, shared);
     assert!(snapshot.shares_storage_with(&shared));
     for different in [
-        make("foreign", "app.rows.v1", None),
-        make("app", "app.rows.v1", Some(7)),
-        make("app", "app.other.v1", None),
+        make("foreign", "app.rows.v1"),
+        make("app", "app.other.v1"),
         SealedDeclarationSnapshot::new(vec![]).unwrap(),
     ] {
         assert_ne!(snapshot, different);
@@ -111,7 +96,7 @@ fn snapshot_equality_covers_linked_declaration_authority() {
 #[test]
 fn external_requests_reject_internal_stable_key_namespace() {
     assert!(matches!(
-        MemoryRequest::new("external", "ic_memory.spoof.v1", SchemaMetadata::default()),
+        MemoryRequest::new("external", "ic_memory.spoof.v1"),
         Err(MemoryDeclarationError::ReservedStableKey { .. })
     ));
 }
@@ -119,14 +104,7 @@ fn external_requests_reject_internal_stable_key_namespace() {
 #[test]
 fn oversized_composition_rejects_before_snapshot_publication() {
     let requests = (0..255)
-        .map(|i| {
-            MemoryRequest::new(
-                "app",
-                &format!("app.store{i}.v1"),
-                SchemaMetadata::default(),
-            )
-            .unwrap()
-        })
+        .map(|i| MemoryRequest::new("app", &format!("app.store{i}.v1")).unwrap())
         .collect();
     assert_eq!(
         SealedDeclarationSnapshot::new(requests),
@@ -136,13 +114,12 @@ fn oversized_composition_rejects_before_snapshot_publication() {
 
 #[test]
 fn decoded_requests_preserve_checked_fields_and_enforce_request_admission() {
-    let request =
-        MemoryRequest::new("app", "app.rows.v1", SchemaMetadata::new(Some(7)).unwrap()).unwrap();
+    let request = MemoryRequest::new("app", "app.rows.v1").unwrap();
     let json = serde_json::to_value(&request).unwrap();
     assert_eq!(
         json,
         serde_json::json!({
-            "authority": "app", "stable_key": "app.rows.v1", "schema": {"schema_version":7}
+            "authority": "app", "stable_key": "app.rows.v1"
         })
     );
     assert_eq!(
@@ -160,7 +137,6 @@ fn decoded_requests_preserve_checked_fields_and_enforce_request_admission() {
         ("authority", serde_json::json!("app\n")),
         ("stable_key", serde_json::json!("ic_memory.rows.v1")),
         ("stable_key", serde_json::json!("App.rows.v1")),
-        ("schema", serde_json::json!({"schema_version":0})),
         ("extra", serde_json::json!(true)),
     ] {
         let mut invalid = json.clone();
@@ -171,7 +147,7 @@ fn decoded_requests_preserve_checked_fields_and_enforce_request_admission() {
     }
     // The raw constructor retains authority-before-key error precedence.
     assert!(matches!(
-        MemoryRequest::new("", "BAD", SchemaMetadata::default()),
+        MemoryRequest::new("", "BAD"),
         Err(MemoryDeclarationError::InvalidAuthority { .. })
     ));
 }

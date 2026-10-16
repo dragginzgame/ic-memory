@@ -1,95 +1,83 @@
 # Current ownership ledger
 
-The ledger retains what is needed to prevent stores from opening one another's
-memory: each stable key, permanently claimed ID, current lifecycle state and
-latest diagnostic schema metadata. It has at most 255 records, including the
-runtime's governance allocation. Omitted identities retain their records;
-retirement tombstones the identity and ID permanently. Changing a memory ID is
-rejected rather than interpreted as a migration.
+The ledger retains each permanent stable key, claimed numeric ID and current
+reserved/active/retired state. It holds at most 255 records, including governance.
+Omitted and retired identities retain their records and slots. Store schema
+versions, migrations and schema admission belong to each storage owner, such as
+IcyDB's schema subsystem; Memory carries no parallel schema metadata.
 
-No per-bootstrap event, schema history, first/last observation, retirement time,
-commit timestamp or linked-code fingerprint is stored. These did not contribute
-to ownership validation. The single `current_generation` counter still advances
-on cold bootstrap, reservation and retirement. It binds validation to a commit
-and enforces exact successors; it is not an upgrade log. Matching warm bootstrap
-continues to return its established capability without writing.
+One checked `current_generation` counter binds logical ownership to physical
+commitment and advances on cold bootstrap. Matching warm bootstrap returns the
+established capability without another write or admission replay. There is no
+per-bootstrap event, timestamp, ownership-label history or upgrade log.
 
-`AllocationLedger::records()` exposes retained records. `AllocationRecord::schema()`
-returns latest metadata. `AllocationState::Retired` has no event payload.
-`AllocationLedger::new(counter, records)` validates the one current shape;
-protected recovery still establishes the physical/logical binding before any
-open authority. Bootstrap and staging functions no longer take timestamps, and
-resolved numeric declarations remain internal to the runtime. Hosts supply
-`SealedDeclarationSnapshot` logical requests. Warm bootstrap and doctor compare
-the exact canonical requests, allocation pool and policy identity through one
-binding checker. No declaration fingerprint or diagnostic hash protocol remains.
+`AllocationLedger::new(counter, records)` checks count, unique key/ID ownership
+and empty-genesis rules. Decoded ledgers and `LedgerCommitStore` are passive DTOs.
+The stable Cell contains the commit store directly. Its required `current` field
+holds the snapshot without an intermediate physical-store object.
+`decode_stable_cell_commit_store` and its memory reader admit bounded current
+bytes; protected recovery still establishes integrity and counter binding.
 
-The stable Cell value encodes `LedgerCommitStore` directly. Fallible
-`decode_stable_cell_commit_store` and
-`decode_stable_cell_commit_store_from_memory` return passive DTO state;
-protected recovery remains internal to runtime bootstrap. The bounded
-publication-byte type is separate from decoded state. There is no additional
-Cell record DTO or serialized `store` wrapper.
+Bootstrap owns one recovered ledger through validation and staging. It protects
+the staged commit, persists the owning Cell, then constructs committed allocation
+authority. There is no intermediate persistence-confirmation token or public
+manual commit path. Any failure before persistence publishes no new authority.
 
-Bootstrap validates and stages against one owned recovered ledger, applying each
-checked claim once. No detached validation proof can be rebound to another
-same-generation ledger. Doctor shares the per-declaration checks without staging;
-protected commitment and persistence still precede allocation authority.
+Logical ownership is direct bounded CBOR, limited to 64 KiB. The enclosing
+protected record is limited to 64 KiB + 4 KiB. The one `current` snapshot uses
+`ICMSNAP1`; marker, counter, payload length and bytes are checksum-bound. Opaque
+payloads are byte strings, and JSON is diagnostic output rather than an alternate
+snapshot input. No additional logical envelope is stored.
 
-There is one bounded codec and integrity validator. Logical CBOR is limited to
-64 KiB; the protected byte string contains that logical CBOR directly. The
-enclosing protected record is limited to 64 KiB + 4 KiB. Recovery and serialization scale with record
-count, not the number of upgrades. Stable allocation remains page/bucket rounded.
+Recovery checks the marker/checksum, bounded logical CBOR, ownership integrity
+and physical/logical counter binding. Present invalid or incompatible state
+cannot initialize genesis or fall back to another generation. Publication checks
+exact successors. IC message execution owns stable-write rollback; arbitrary
+native backing needs its own transaction boundary.
 
-One checksummed current snapshot is retained. The physical `current` field and
-`ICMDIRCT` marker identify the enclosing snapshot. Missing, corrupt or
-incompatible current bytes never silently initialize a ledger. Recovery checks
-the marker, checksum, bounded logical CBOR, ownership integrity and
-physical/logical generation binding. A commit replaces the current record only after validating
-its predecessor and exact successor. No previous payload or rollback history is
-stored. The runtime persists the owning Cell before publishing allocation authority.
-IC message rollback owns atomic stable writes; arbitrary native backends must
-provide their own transaction boundary.
+Physical diagnostics remain `CommitSnapshotDiagnostic::{Empty, Valid, Invalid}`.
+Only `Valid` carries a checksum-checked generation, and logical ledger recovery
+remains a separate boundary. Diagnostics do not grant allocation authority.
 
-`CommitSnapshotDiagnostic::{Empty, Valid, Invalid}` reports the physical snapshot
-directly. `Valid` carries the checksum-checked physical generation; `Invalid`
-carries an untrusted observed generation. Logical decoding remains a separate
-boundary. An invalid diagnostic never authorizes fallback or a reset.
+## Host configuration and component adoption
 
-Current measurements and rejection/upgrade checks are recorded in
-[current qualification](current-ledger-qualification.md#0440-exact-binding-and-flattened-cell-qualification).
+Components contribute `MemoryRequest::new(authority, key)` and use the host's
+committed runtime. Warm binding and adoption check keys, current owner grants,
+policy identity and the canonical allocation pool. They do not check application
+schemas or reinterpret stored collection bytes. The policy has one
+`validate_allocation(key, slot)` callback for each external declaration; recovered
+admission remains separate and is never replayed by doctor or warm bootstrap.
+
+`MemoryAllocationPool::new(grants, excluded_ids)` accepts usable numeric IDs,
+checks the domain, includes governance 0..=9, and stores one immutable mask.
+`excluded_ids()` projects canonical ascending IDs; serialized pools contain
+`excluded_ids`, not ranges. Equivalent orderings and duplicates have the same
+binding. Canic or another host owns range grouping for presentation/configuration.
+This pool policy is not durable ownership and changes no retained key/ID mapping.
 
 ## Hard cut and retained installations
 
-The maintainer authorized the 0.44.0 direct-CBOR hard cut and retirement of old
-stable-memory images: fresh/reset memory is acceptable for this delivery.
-The `ICMDIRCT` marker replaces the earlier physical identity; the nested logical
-header, Cell record wrapper, format-version constant and envelope error API are removed. Unknown
-markers return `CommitRecoveryError::UnsupportedFormat` before logical decoding.
-This approval changes the supported source/fixture contract; no deployed
-canister, real stable memory or backup is reset by this code change.
+The maintainer approved retirement of earlier ledger images for the schema-free
+0.45 cut: fresh/reset memory is acceptable. `ICMSNAP1` replaces `ICMDIRCT` for the
+incompatible record shape. Incompatible enclosing shapes fail during record
+decoding; otherwise an unsupported marker rejects with
+`CommitRecoveryError::UnsupportedFormat`. Numeric slots and the pinned upstream
+manager/Cell layout remain unchanged. There is one current reader and fixture
+set; no old-format decoder, converter or automatic reset is included.
 
-The manager/Cell layout and numeric slot encoding are unchanged. There is one
-current CBOR decoder, no automatic reset, earlier-layout reader or migration engine.
-Opaque payloads accept bounded byte strings; JSON output is diagnostic only and
-its numeric arrays are not an alternate durable input format.
-Current examples and fixtures use only the direct-CBOR contract. Consumers must
-rebuild and select the new minor release together; historical qualification and
-earlier images do not establish compatibility with this format.
+This approval changes source/fixture support. It resets no deployed canister,
+real stable memory or backup. Consumers must rebuild on the new minor, adopt the
+key-only request and numeric exclusion APIs, and retain their own schema checks.
+Each application owns its retained-data disposition and installation qualification.
 
-Before installing on a canister with an earlier ledger, the maintainer must
-identify the retained installation and choose its explicit data disposition.
-A fresh install has no earlier ledger. A whole-canister reinstall/reset discards
-application data too and requires its owner's authorization and backup/recovery
-plan. Preserving existing application data requires a separately reviewed,
-application-owned transition that carries every retained key/ID/tombstone into
-current state and preserves application lifecycle obligations. The generic import
-boundary accepts checked current DTOs only; this release implements no converter.
-Keep the earlier binary and recovery evidence until that transition is qualified.
+Before installing over earlier bytes, identify the installation and its explicit
+disposition. A whole-canister reinstall also discards application data and needs
+its owner's authorization. Preserving retained data requires a separately
+reviewed application transition carrying every key/ID/tombstone and lifecycle
+obligation into the current contract. Never clear only ID 0 while leaving
+collection bytes behind. Keep earlier binaries and recovery evidence until the
+application's disposition is qualified.
 
-Do not erase ID 0 or initialize genesis over an incompatible ledger: that would
-forget ownership while leaving collection bytes behind. An unsupported-format
-or bounded-decoding error is the expected safe result until the installation's
-disposition is resolved. Large earlier records can exceed the new outer ceiling
-before their inner format is inspected. No retained installation or downstream
-deployment has been qualified as part of this local change.
+See [current qualification](current-ledger-qualification.md) for source-bound
+measurements and installed checks. Earlier-format results do not establish
+compatibility with this cut.

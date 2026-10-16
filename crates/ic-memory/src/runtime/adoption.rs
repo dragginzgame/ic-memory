@@ -1,5 +1,5 @@
 use super::{MemoryRuntime, RuntimeLifecycle, RuntimeOpenError};
-use crate::{SchemaMetadata, SealedDeclarationSnapshot, StableKey};
+use crate::{SealedDeclarationSnapshot, StableKey};
 use ic_stable_structures::Memory;
 
 ///
@@ -28,16 +28,13 @@ pub enum RuntimeAdoptionError {
         committed_authority: String,
         requested_authority: String,
     },
-    /// Declared diagnostic schema differs from the commitment.
-    #[error("declaration metadata for stable key '{stable_key}' differs from the commitment")]
-    DeclarationMetadataMismatch { stable_key: String },
 }
 
 impl<M: Memory> MemoryRuntime<M> {
     /// Verify every logical request for one authority in
     /// the supplied requirements against this runtime's current commitment.
     ///
-    /// Requests must match key, authority and diagnostic schema while
+    /// Requests must match key and authority while
     /// retaining the host's assigned ID. Other authorities and additional
     /// committed keys are ignored. An authority with no requirements rejects.
     /// Grants and application schema semantics are not revalidated. Success
@@ -63,7 +60,6 @@ impl<M: Memory> MemoryRuntime<M> {
                     &binding.pool,
                     authority,
                     request.stable_key(),
-                    request.schema(),
                 )?;
             }
         }
@@ -81,11 +77,9 @@ fn verify_requirement(
     pool: &crate::MemoryAllocationPool,
     authority: &str,
     key: &StableKey,
-    schema: &SchemaMetadata,
 ) -> Result<(), RuntimeAdoptionError> {
-    let declaration =
-        crate::capability::declaration_for_key(committed.declarations(), key.as_str())
-            .ok_or_else(|| RuntimeOpenError::StableKeyNotCommitted(key.to_string()))?;
+    crate::capability::declaration_for_key(committed.declarations(), key.as_str())
+        .ok_or_else(|| RuntimeOpenError::StableKeyNotCommitted(key.to_string()))?;
     let admitted_authority = pool
         .authority_for_key(key)
         .expect("committed key has an admitted owner");
@@ -94,11 +88,6 @@ fn verify_requirement(
             stable_key: key.to_string(),
             committed_authority: admitted_authority.to_string(),
             requested_authority: authority.to_string(),
-        });
-    }
-    if schema != declaration.schema() {
-        return Err(RuntimeAdoptionError::DeclarationMetadataMismatch {
-            stable_key: key.to_string(),
         });
     }
     Ok(())

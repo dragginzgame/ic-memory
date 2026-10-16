@@ -2,10 +2,10 @@
 use ic_memory::ic_stable_structures::{Memory, VectorMemory};
 use ic_memory::{
     GenericAllocationPolicy, MemoryAllocationPool, MemoryAuthority, MemoryRequest, MemoryRuntime,
-    SchemaMetadata, SealedDeclarationSnapshot,
+    SealedDeclarationSnapshot,
 };
 fn request(owner: &str, key: &str) -> MemoryRequest {
-    MemoryRequest::new(owner, key, SchemaMetadata::default()).unwrap()
+    MemoryRequest::new(owner, key).unwrap()
 }
 fn main() {
     // The final host owns one pool. Owners receive namespaces, not numeric ranges.
