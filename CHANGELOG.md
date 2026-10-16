@@ -1,6 +1,6 @@
 # Changelog
 
-## [0.44.0]
+## [0.44.0] - 2026-10-16
 
 - **Breaking runtime API:** remove the default singleton facade. Hosts own one
   explicit runtime and inject references or opened handles into components.
