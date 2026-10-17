@@ -63,10 +63,8 @@ mod tests {
             Err("active slot rejected")
         }
 
-        fn runtime_bootstrap_identity(
-            &self,
-        ) -> Result<crate::PolicyIdentity, crate::PolicyIdentityError> {
-            crate::PolicyIdentity::new("validation-test", 1)
+        fn runtime_bootstrap_identity(&self) -> crate::PolicyIdentity {
+            crate::PolicyIdentity::new(*b"validation-test.................")
         }
     }
 

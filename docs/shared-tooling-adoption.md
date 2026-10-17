@@ -29,11 +29,14 @@ from Shared Tooling commit `851073f`, based on committed `main` revision
 `472f7ab7a749f8931ee9559d3026e266d4f12af2`. This is a local policy decision;
 Memory's recorded shared snapshot has not adopted that contribution.
 
-The maintainer owns the separate `ic-storage` integration change. Its generic
-`Memory` substrate currently accepts `RuntimeMemory` without enforcing it;
-production integration must require checked handles. Collection choice alone
-does not establish allocation safety. This policy changes no store format,
-dependency selection or consumer qualification evidence.
+IC Storage 0.3 exposes governed collection wrappers consuming `RuntimeMemory`;
+its generic engine remains private. Memory's pending 0.46 cut adds exclusive
+live leases and removes the blanket substrate re-export. Published consumer
+adoption and qualification remain under
+[Storage #1 — Adopt Memory 0.46 exclusive leases and root backing exports](https://github.com/dragginzgame/ic-storage/issues/1).
+The host still owns exclusive backing custody; generic aliases cannot be
+detected. Memory does not depend on Storage. This boundary changes no store
+format or dependency selection and does not establish consumer qualification.
 
 ## Recorded snapshot adoption
 

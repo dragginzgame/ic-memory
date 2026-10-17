@@ -117,8 +117,8 @@ fn backing_reentry_cannot_assign_buckets_during_an_outer_reservation() {
     let runtime =
         MemoryRuntime::new_with_config(Rc::clone(&backing), MemoryManagerConfig::new(1).unwrap())
             .unwrap();
-    *backing.nested.borrow_mut() = Some(runtime.memory(121));
-    assert_eq!(runtime.memory(120).grow(1), Ok(0));
+    *backing.nested.borrow_mut() = Some(runtime.memory(121).unwrap());
+    assert_eq!(runtime.memory(120).unwrap().grow(1), Ok(0));
     assert_eq!(
         backing.result.get(),
         Some(Err(RuntimeGrowError::ReentrantAccess))
@@ -127,7 +127,7 @@ fn backing_reentry_cannot_assign_buckets_during_an_outer_reservation() {
         backing.zero_result.get(),
         Some(Err(RuntimeGrowError::ReentrantAccess))
     );
-    assert_eq!(runtime.memory(121).size(), 0);
+    assert_eq!(backing.nested.borrow().as_ref().unwrap().size(), 0);
     assert_eq!(
         runtime
             .memory_allocations()
@@ -150,12 +150,16 @@ fn refused_application_growth_preserves_bytes_extents_and_retry() {
             MemoryManagerConfig::new(bucket).unwrap(),
         )
         .unwrap();
-        let rows = runtime.memory(120);
+        let rows = runtime.memory(120).unwrap();
         let before = backing.bytes.borrow().clone();
         let reads_before = backing.reads.get();
         backing.refuse.set(true);
         let writes = backing.writes.get();
         let grows = backing.grows.get();
+        assert!(matches!(
+            runtime.memory(120),
+            Err(super::RuntimeOpenError::AlreadyOpen { id: 120 })
+        ));
         assert_eq!(rows.grow(0), Ok(0));
         assert_eq!(Memory::grow(&rows, 0), 0);
         assert_eq!(backing.reads.get(), reads_before);
@@ -189,9 +193,8 @@ fn refused_application_growth_preserves_bytes_extents_and_retry() {
         let before = backing.bytes.borrow().clone();
         let report = runtime.memory_allocations().unwrap();
         backing.refuse.set(true);
-        let clone = rows.clone();
         assert_eq!(
-            clone.grow(u64::from(bucket)),
+            rows.grow(u64::from(bucket)),
             Err(RuntimeGrowError::BackingRefused {
                 additional_pages: u64::from(bucket),
             })
@@ -211,26 +214,27 @@ fn refused_application_growth_preserves_bytes_extents_and_retry() {
         rows.read(0, &mut bytes);
         assert_eq!(&bytes, b"retained");
         drop(rows);
-        assert_eq!(clone.grow(0), Ok(u64::from(bucket) + 1));
+        let reopened = runtime.memory(120).unwrap();
+        assert_eq!(reopened.grow(0), Ok(u64::from(bucket) + 1));
         assert_eq!(backing.writes.get(), writes);
         assert_eq!(backing.grows.get(), grows);
     }
 }
 
 #[test]
-fn interleaved_clones_reopen_and_detached_handles_share_growth_accounting() {
+fn interleaved_leases_reopen_and_detached_handles_share_growth_accounting() {
     let backing = RefusableMemory::default();
     let runtime =
         MemoryRuntime::new_with_config(backing.clone(), MemoryManagerConfig::new(8).unwrap())
             .unwrap();
-    let a = runtime.memory(120);
-    let b = runtime.memory(121);
+    let a = runtime.memory(120).unwrap();
+    let b = runtime.memory(121).unwrap();
     let reads = backing.reads.get();
     assert_eq!(a.grow(9), Ok(0));
     assert_eq!(b.grow(1), Ok(0));
-    let clone = a.clone();
     drop(a);
-    assert_eq!(clone.grow(8), Ok(9));
+    let reopened = runtime.memory(120).unwrap();
+    assert_eq!(reopened.grow(8), Ok(9));
     // Capacity admission reads no persisted metadata, even at bucket boundaries.
     assert_eq!(backing.reads.get(), reads);
     assert_eq!(
@@ -242,15 +246,15 @@ fn interleaved_clones_reopen_and_detached_handles_share_growth_accounting() {
         4
     );
     assert_eq!(
-        clone.grow(u64::MAX),
+        reopened.grow(u64::MAX),
         Err(RuntimeGrowError::ArithmeticOverflow)
     );
-    assert_eq!(clone.size(), 17);
-    drop(clone);
+    assert_eq!(reopened.size(), 17);
+    drop(reopened);
     drop(b);
     drop(runtime);
     let runtime = MemoryRuntime::new(backing.clone()).unwrap();
-    assert_eq!(runtime.memory(122).grow(1), Ok(0));
+    assert_eq!(runtime.memory(122).unwrap().grow(1), Ok(0));
     assert_eq!(
         runtime
             .memory_allocations()
@@ -259,7 +263,7 @@ fn interleaved_clones_reopen_and_detached_handles_share_growth_accounting() {
             .allocated_buckets,
         5
     );
-    let detached = runtime.memory(120);
+    let detached = runtime.memory(120).unwrap();
     drop(runtime);
     let writes = backing.writes.get();
     let grows = backing.grows.get();

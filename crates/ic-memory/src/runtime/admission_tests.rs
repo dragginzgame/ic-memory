@@ -30,8 +30,8 @@ impl RuntimeBootstrapPolicy for AdmissionPolicy {
         }
     }
 
-    fn runtime_bootstrap_identity(&self) -> Result<PolicyIdentity, crate::PolicyIdentityError> {
-        PolicyIdentity::new("test.admission", 1)
+    fn runtime_bootstrap_identity(&self) -> PolicyIdentity {
+        PolicyIdentity::new(*b"test.admission..................")
     }
     fn prepare_bootstrap(&self, admission: &mut BootstrapAdmission<'_>) -> Result<(), Self::Error> {
         self.calls.set(self.calls.get() + 1);
@@ -381,7 +381,7 @@ fn current_policy_revoked_grants_and_retirement_still_reject() {
     let retired = crate::AllocationLedger::new(recovered.current_generation() + 1, rows).unwrap();
     record.commit_generation(&retired).unwrap();
     let _cell = Cell::new(
-        runtime.memory(MEMORY_MANAGER_LEDGER_ID),
+        runtime.memory(MEMORY_MANAGER_LEDGER_ID).unwrap(),
         EncodedLedgerRecord::new(&record).unwrap(),
     );
     drop(runtime);
@@ -415,7 +415,10 @@ fn corruption_precedes_admission_and_exhaustion_follows_it_without_commit() {
     ));
     assert_eq!(policy.calls.get(), 1);
     assert_eq!(*backing.borrow(), before);
-    runtime.memory(0).write(STABLE_CELL_VALUE_OFFSET, &[0xff]);
+    runtime
+        .memory(0)
+        .unwrap()
+        .write(STABLE_CELL_VALUE_OFFSET, &[0xff]);
     let before = backing.borrow().clone();
     for reopen in [false, true] {
         if reopen {
@@ -506,7 +509,7 @@ fn fresh_rejection_can_acquire_root_but_cannot_commit_genesis() {
     assert!(!runtime.is_bootstrapped());
     // A fresh rejection still initializes a readable cell, without committing
     // genesis. Retrying the rejection must leave that initialized root unchanged.
-    assert_eq!(runtime.memory(MEMORY_MANAGER_LEDGER_ID).size(), 1);
+    assert_eq!(runtime.memory(MEMORY_MANAGER_LEDGER_ID).unwrap().size(), 1);
     assert!(
         runtime
             .ledger_record_from_memory()
@@ -559,7 +562,7 @@ fn completion_bound_and_reservation_activation_preserve_evidence() {
     let reserved = crate::AllocationLedger::new(recovered.current_generation() + 1, rows).unwrap();
     record.commit_generation(&reserved).unwrap();
     let _cell = Cell::new(
-        runtime.memory(MEMORY_MANAGER_LEDGER_ID),
+        runtime.memory(MEMORY_MANAGER_LEDGER_ID).unwrap(),
         EncodedLedgerRecord::new(&record).unwrap(),
     );
     drop(runtime);

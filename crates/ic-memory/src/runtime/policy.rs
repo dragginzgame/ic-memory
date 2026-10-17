@@ -1,6 +1,4 @@
-use crate::{
-    MemoryManagerSlot, PolicyIdentity, PolicyIdentityError, RuntimeBootstrapPolicy, StableKey,
-};
+use crate::{MemoryManagerSlot, PolicyIdentity, RuntimeBootstrapPolicy, StableKey};
 use std::convert::Infallible;
 
 ///
@@ -27,7 +25,7 @@ impl RuntimeBootstrapPolicy for GenericAllocationPolicy {
         Ok(())
     }
 
-    fn runtime_bootstrap_identity(&self) -> Result<PolicyIdentity, PolicyIdentityError> {
-        PolicyIdentity::new("ic-memory.noop-policy", 1)
+    fn runtime_bootstrap_identity(&self) -> PolicyIdentity {
+        PolicyIdentity::new(*b"ic-memory.noop-policy...........")
     }
 }

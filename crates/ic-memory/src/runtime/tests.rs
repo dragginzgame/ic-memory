@@ -4,8 +4,7 @@ use super::{
 };
 use crate::{
     DiagnosticCheck, DiagnosticCode, DiagnosticMemorySize, LedgerCommitError, MemoryManagerSlot,
-    PolicyIdentity, PolicyIdentityError, RuntimeBootstrapPolicy, SealedDeclarationSnapshot,
-    StableKey,
+    PolicyIdentity, RuntimeBootstrapPolicy, SealedDeclarationSnapshot, StableKey,
 };
 use ic_stable_structures::{Cell, Memory, VectorMemory};
 use std::convert::Infallible;
@@ -43,13 +42,13 @@ fn doctor_keeps_memory_observations_before_policy_callbacks() {
             Ok(())
         }
 
-        fn runtime_bootstrap_identity(&self) -> Result<PolicyIdentity, PolicyIdentityError> {
+        fn runtime_bootstrap_identity(&self) -> PolicyIdentity {
             self.0
                 .open_memory("runtime_tests.rows.v1")
                 .unwrap()
                 .grow(1)
                 .unwrap();
-            PolicyIdentity::new("runtime-tests.growing-doctor", 1)
+            PolicyIdentity::new(*b"runtime-tests.growing-doctor....")
         }
     }
 
@@ -63,8 +62,12 @@ fn doctor_keeps_memory_observations_before_policy_callbacks() {
         .unwrap();
     let memory = runtime.open_memory("runtime_tests.rows.v1").unwrap();
     memory.grow(1).unwrap();
+    drop(memory);
     let report = runtime.doctor_report(&declarations(), &pool(), &GrowingPolicy(&runtime));
-    assert_eq!(memory.size(), 3);
+    assert_eq!(
+        runtime.open_memory("runtime_tests.rows.v1").unwrap().size(),
+        3
+    );
     assert_eq!(report.validation, DiagnosticCheck::Passed);
     let record = report
         .ledger
@@ -107,32 +110,16 @@ impl RuntimeBootstrapPolicy for CountingPolicy {
         Ok(())
     }
 
-    fn runtime_bootstrap_identity(&self) -> Result<PolicyIdentity, PolicyIdentityError> {
-        PolicyIdentity::new("runtime-tests.counting-policy", 1)
+    fn runtime_bootstrap_identity(&self) -> PolicyIdentity {
+        PolicyIdentity::new(*b"runtime-tests.counting-policy...")
     }
 }
 
-struct IdentityPolicy {
-    name: &'static str,
-    version: u32,
-    configuration_digest: Option<[u8; 32]>,
-}
+struct IdentityPolicy(PolicyIdentity);
 
 impl IdentityPolicy {
-    const fn new(name: &'static str, version: u32) -> Self {
-        Self {
-            name,
-            version,
-            configuration_digest: None,
-        }
-    }
-
-    const fn configured(name: &'static str, version: u32, configuration_digest: [u8; 32]) -> Self {
-        Self {
-            name,
-            version,
-            configuration_digest: Some(configuration_digest),
-        }
+    const fn new(bytes: [u8; 32]) -> Self {
+        Self(PolicyIdentity::new(bytes))
     }
 }
 
@@ -147,12 +134,8 @@ impl RuntimeBootstrapPolicy for IdentityPolicy {
         Ok(())
     }
 
-    fn runtime_bootstrap_identity(&self) -> Result<PolicyIdentity, PolicyIdentityError> {
-        let identity = PolicyIdentity::new(self.name, self.version)?;
-        Ok(match self.configuration_digest {
-            Some(digest) => identity.with_configuration_digest(digest),
-            None => identity,
-        })
+    fn runtime_bootstrap_identity(&self) -> PolicyIdentity {
+        self.0
     }
 }
 
@@ -412,29 +395,17 @@ fn repeated_bootstrap_is_bound_to_declarations_and_policy_identity() {
     let mut runtime = empty_runtime();
 
     let generation = runtime
-        .bootstrap(
-            &declarations,
-            &pool(),
-            &IdentityPolicy::new("runtime-tests.identity-policy", 1),
-        )
+        .bootstrap(&declarations, &pool(), &IdentityPolicy::new([1; 32]))
         .expect("first bootstrap")
         .generation();
     let repeated_generation = runtime
-        .bootstrap(
-            &declarations,
-            &pool(),
-            &IdentityPolicy::new("runtime-tests.identity-policy", 1),
-        )
+        .bootstrap(&declarations, &pool(), &IdentityPolicy::new([1; 32]))
         .expect("same semantic policy identity")
         .generation();
     assert_eq!(repeated_generation, generation);
 
     let policy_error = runtime
-        .bootstrap(
-            &declarations,
-            &pool(),
-            &IdentityPolicy::new("runtime-tests.identity-policy", 2),
-        )
+        .bootstrap(&declarations, &pool(), &IdentityPolicy::new([2; 32]))
         .expect_err("changed policy identity");
     assert!(matches!(
         policy_error,
@@ -450,7 +421,7 @@ fn repeated_bootstrap_is_bound_to_declarations_and_policy_identity() {
         .bootstrap(
             &alternate_declarations,
             &pool(),
-            &IdentityPolicy::new("runtime-tests.identity-policy", 1),
+            &IdentityPolicy::new([1; 32]),
         )
         .expect_err("changed declaration snapshot");
     assert!(matches!(
@@ -467,53 +438,38 @@ fn repeated_bootstrap_is_bound_to_declarations_and_policy_identity() {
 }
 
 #[test]
-fn policy_identity_validation_and_configuration_digest_are_runtime_bound() {
+fn policy_token_changes_are_runtime_bound() {
     let declarations = declarations();
-    let mut empty_identity_runtime = empty_runtime();
-    let empty_identity_error = empty_identity_runtime
-        .bootstrap(&declarations, &pool(), &IdentityPolicy::new("", 1))
-        .expect_err("empty policy identity");
-    assert!(matches!(
-        empty_identity_error,
-        super::RuntimeBootstrapError::PolicyIdentity(PolicyIdentityError::EmptyName)
-    ));
-    assert!(!empty_identity_runtime.is_bootstrapped());
-    let invalid_identity_doctor =
-        empty_identity_runtime.doctor_report(&declarations, &pool(), &IdentityPolicy::new("", 1));
-    assert!(matches!(
-        invalid_identity_doctor.tested_policy_identity,
-        Err(crate::DiagnosticFailure {
-            code: DiagnosticCode::PolicyIdentity,
-            ..
-        })
-    ));
-    assert!(matches!(
-        invalid_identity_doctor.validation,
-        DiagnosticCheck::NotRun {
-            code: DiagnosticCode::PolicyIdentity,
-            ..
-        }
-    ));
-
-    let mut configured_runtime = empty_runtime();
-    configured_runtime
-        .bootstrap(
-            &declarations,
-            &pool(),
-            &IdentityPolicy::configured("runtime-tests.configured-policy", 1, [1; 32]),
-        )
-        .expect("configured policy bootstrap");
-    let digest_mismatch = configured_runtime
-        .bootstrap(
-            &declarations,
-            &pool(),
-            &IdentityPolicy::configured("runtime-tests.configured-policy", 1, [2; 32]),
-        )
-        .expect_err("configuration digest is part of identity");
-    assert!(matches!(
-        digest_mismatch,
-        super::RuntimeBootstrapError::PolicyIdentityMismatch { .. }
-    ));
+    let mut runtime = empty_runtime();
+    let committed = runtime
+        .bootstrap(&declarations, &pool(), &IdentityPolicy::new([0; 32]))
+        .unwrap()
+        .clone();
+    let before = runtime.ledger_record_from_memory().unwrap();
+    for index in 0..32 {
+        let mut changed = [0; 32];
+        changed[index] = 1;
+        assert!(matches!(
+            runtime.bootstrap(&declarations, &pool(), &IdentityPolicy::new(changed)),
+            Err(super::RuntimeBootstrapError::PolicyIdentityMismatch { .. })
+        ));
+        let doctor = runtime.doctor_report(&declarations, &pool(), &IdentityPolicy::new(changed));
+        assert_eq!(doctor.tested_policy_identity.as_bytes(), &changed);
+        assert!(matches!(
+            doctor.bootstrap_binding,
+            DiagnosticCheck::Failed {
+                code: DiagnosticCode::RuntimeBinding,
+                ..
+            }
+        ));
+    }
+    assert_eq!(runtime.ledger_record_from_memory().unwrap(), before);
+    assert_eq!(
+        runtime
+            .bootstrap(&declarations, &pool(), &IdentityPolicy::new([0; 32]))
+            .unwrap(),
+        &committed
+    );
 }
 
 struct RejectPolicy;
@@ -529,8 +485,8 @@ impl RuntimeBootstrapPolicy for RejectPolicy {
         Err("rejected")
     }
 
-    fn runtime_bootstrap_identity(&self) -> Result<PolicyIdentity, PolicyIdentityError> {
-        PolicyIdentity::new("runtime-tests.reject-policy", 1)
+    fn runtime_bootstrap_identity(&self) -> PolicyIdentity {
+        PolicyIdentity::new(*b"runtime-tests.reject-policy.....")
     }
 }
 
@@ -619,11 +575,8 @@ fn doctor_and_diagnostics_report_the_same_runtime_lifecycle() {
     );
     assert!(matches!(&doctor.bootstrap_binding, DiagnosticCheck::Passed));
     assert_eq!(
-        doctor
-            .tested_policy_identity
-            .as_ref()
-            .expect("valid tested identity"),
-        &PolicyIdentity::new("ic-memory.noop-policy", 1).expect("valid identity")
+        doctor.tested_policy_identity,
+        PolicyIdentity::new(*b"ic-memory.noop-policy...........")
     );
     let established = doctor
         .established_bootstrap_binding
@@ -631,10 +584,18 @@ fn doctor_and_diagnostics_report_the_same_runtime_lifecycle() {
         .expect("established runtime binding");
     assert_eq!(
         established.policy_identity,
-        PolicyIdentity::new("ic-memory.noop-policy", 1).expect("valid identity")
+        PolicyIdentity::new(*b"ic-memory.noop-policy...........")
     );
     let doctor_json = serde_json::to_value(&doctor).expect("doctor diagnostic JSON");
     assert_eq!(doctor_json["bootstrapped"], true);
+    assert_eq!(
+        doctor_json["tested_policy_identity"],
+        serde_json::json!(doctor.tested_policy_identity.as_bytes())
+    );
+    assert_eq!(
+        doctor_json["established_bootstrap_binding"]["policy_identity"],
+        doctor_json["tested_policy_identity"]
+    );
     assert_eq!(doctor_json["bootstrap_binding"], "Passed");
     assert_eq!(
         doctor_json["commit_recovery"],
@@ -645,11 +606,7 @@ fn doctor_and_diagnostics_report_the_same_runtime_lifecycle() {
         serde_json::to_value(&export).unwrap()
     );
 
-    let mismatched = runtime.doctor_report(
-        &declarations,
-        &pool(),
-        &IdentityPolicy::new("runtime-tests.identity-policy", 2),
-    );
+    let mismatched = runtime.doctor_report(&declarations, &pool(), &IdentityPolicy::new([2; 32]));
     assert!(matches!(
         mismatched.bootstrap_binding,
         DiagnosticCheck::Failed {
@@ -659,8 +616,8 @@ fn doctor_and_diagnostics_report_the_same_runtime_lifecycle() {
     ));
     assert!(matches!(mismatched.validation, DiagnosticCheck::Passed));
     assert_eq!(
-        mismatched.tested_policy_identity.as_ref().unwrap(),
-        &PolicyIdentity::new("runtime-tests.identity-policy", 2).unwrap()
+        mismatched.tested_policy_identity,
+        PolicyIdentity::new([2; 32])
     );
     assert_eq!(mismatched.allocation_pool, pool());
     assert_eq!(
@@ -689,7 +646,7 @@ fn diagnostics_reject_invalid_persisted_slots_before_measuring_sizes() {
         .unwrap();
     let store = physical;
     let _cell = Cell::new(
-        runtime.memory(crate::MEMORY_MANAGER_LEDGER_ID),
+        runtime.memory(crate::MEMORY_MANAGER_LEDGER_ID).unwrap(),
         crate::stable_cell::EncodedLedgerRecord::new(&store).unwrap(),
     );
     let before = backing.borrow().clone();
@@ -730,7 +687,7 @@ fn doctor_preserves_distinct_record_decode_causes_without_writes() {
             .to_string();
         let backing = VectorMemory::default();
         let runtime = MemoryRuntime::new(backing.clone()).unwrap();
-        let memory = runtime.memory(crate::MEMORY_MANAGER_LEDGER_ID);
+        let memory = runtime.memory(crate::MEMORY_MANAGER_LEDGER_ID).unwrap();
         memory.grow(1).unwrap();
         memory.write(0, crate::STABLE_CELL_MAGIC);
         memory.write(3, &[crate::STABLE_CELL_LAYOUT_VERSION]);
@@ -761,7 +718,7 @@ fn doctor_uses_genesis_only_for_empty_commit_storage() {
     for initialized in [false, true] {
         if initialized {
             let _cell = Cell::new(
-                runtime.memory(crate::MEMORY_MANAGER_LEDGER_ID),
+                runtime.memory(crate::MEMORY_MANAGER_LEDGER_ID).unwrap(),
                 crate::stable_cell::EncodedLedgerRecord::new(&crate::LedgerCommitStore::default())
                     .unwrap(),
             );
@@ -788,7 +745,7 @@ fn doctor_uses_genesis_only_for_empty_commit_storage() {
     let genesis = crate::AllocationLedger::new(0, Vec::new()).unwrap();
     record.write_corrupt_ledger(&genesis).unwrap();
     let _cell = Cell::new(
-        runtime.memory(crate::MEMORY_MANAGER_LEDGER_ID),
+        runtime.memory(crate::MEMORY_MANAGER_LEDGER_ID).unwrap(),
         crate::stable_cell::EncodedLedgerRecord::new(&record).unwrap(),
     );
     let before = backing.borrow().clone();

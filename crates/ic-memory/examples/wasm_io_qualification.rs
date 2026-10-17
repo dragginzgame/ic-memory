@@ -13,7 +13,7 @@ mod host;
 mod canister {
     use super::host::RUNTIME;
     use super::pool;
-    use ic_memory::{GenericAllocationPolicy, MemoryManagerConfig, ic_stable_structures::Memory};
+    use ic_memory::{GenericAllocationPolicy, Memory, MemoryManagerConfig};
 
     fn with_runtime<T>(operation: impl FnOnce(&super::host::Runtime) -> T) -> T {
         RUNTIME.with(|slot| operation(slot.borrow().as_ref().expect("initialized fixture runtime")))
@@ -21,10 +21,8 @@ mod canister {
 
     fn open_memory(
         key: &str,
-    ) -> Result<
-        ic_memory::RuntimeMemory<ic_memory::ic_stable_structures::DefaultMemoryImpl>,
-        ic_memory::RuntimeOpenError,
-    > {
+    ) -> Result<ic_memory::RuntimeMemory<ic_memory::DefaultMemoryImpl>, ic_memory::RuntimeOpenError>
+    {
         with_runtime(|runtime| runtime.open_memory(key))
     }
 
@@ -75,7 +73,7 @@ mod canister {
     fn bootstrap(mode: u8) {
         let pages = if mode == 2 { 16 } else { 8 };
         let mut runtime = super::host::Runtime::new_with_config(
-            ic_memory::ic_stable_structures::DefaultMemoryImpl::default(),
+            ic_memory::DefaultMemoryImpl::default(),
             MemoryManagerConfig::new(pages).unwrap(),
         )
         .unwrap();
@@ -113,6 +111,10 @@ mod canister {
         assert_eq!(memory_id(ROWS).unwrap(), 11);
         let rows = open_memory(ROWS).unwrap();
         let neighbor = open_memory(NEIGHBOR).unwrap();
+        assert!(matches!(
+            open_memory(ROWS),
+            Err(ic_memory::RuntimeOpenError::AlreadyOpen { id: 11 })
+        ));
         let mut markers = [0; 2];
         rows.read(0, &mut markers[..1]);
         neighbor.read(8 * PAGE - 1, &mut markers[1..]);

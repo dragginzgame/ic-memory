@@ -1,4 +1,4 @@
-use ic_memory::{RuntimeMemory, ic_stable_structures::{Memory, VectorMemory}};
+use ic_memory::{RuntimeMemory, Memory, VectorMemory};
 
 fn grow(memory: &RuntimeMemory<VectorMemory>) {
     let _ = Memory::size(memory);

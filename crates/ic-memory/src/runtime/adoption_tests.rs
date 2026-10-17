@@ -4,8 +4,7 @@ use super::{
 };
 use crate::{
     BootstrapAdmission, MemoryAllocationPool, MemoryAuthority, MemoryManagerSlot, MemoryRequest,
-    PolicyIdentity, PolicyIdentityError, RuntimeBootstrapPolicy, SealedDeclarationSnapshot,
-    StableKey,
+    PolicyIdentity, RuntimeBootstrapPolicy, SealedDeclarationSnapshot, StableKey,
 };
 use ic_stable_structures::VectorMemory;
 use std::{cell::Cell, convert::Infallible};
@@ -26,8 +25,8 @@ impl RuntimeBootstrapPolicy for HostPolicy {
         self.0.set(self.0.get() + 1);
         Ok(())
     }
-    fn runtime_bootstrap_identity(&self) -> Result<PolicyIdentity, PolicyIdentityError> {
-        PolicyIdentity::new("tests.adoption.host", 1)
+    fn runtime_bootstrap_identity(&self) -> PolicyIdentity {
+        PolicyIdentity::new(*b"tests.adoption.host.............")
     }
 }
 

@@ -1003,7 +1003,7 @@ impl<E: Execute> Repository<E> {
 
     fn verify(&self, selection: &ReleaseSelection) -> Result<()> {
         self.run("bash", &["scripts/ci/check-make-execution.sh"])?;
-        self.configuration()?;
+        let configuration = self.configuration()?;
         self.check_selection(selection)?;
         self.clean()?;
         require(
@@ -1022,7 +1022,7 @@ impl<E: Execute> Repository<E> {
             selection: selection.clone(),
             lock,
             identities: self.identities()?,
-            configuration: self.configuration()?,
+            configuration,
             command: self.validation_command()?,
         };
         self.run_command(&evidence.command)?;

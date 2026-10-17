@@ -1,6 +1,6 @@
 use ic_memory::{
     AllocationDeclaration, MemoryAllocationPool, MemoryAllocationPoolError, MemoryAuthority,
-    MemoryDeclarationError, MemoryRequest, PolicyIdentity, PolicyIdentityError,
+    MemoryDeclarationError, MemoryRequest,
 };
 
 #[test]
@@ -33,7 +33,6 @@ fn diagnostic_metadata_accepts_printable_ascii_through_the_byte_limit() {
         (b' '..=b'~').map(char::from).collect(),
         "x".repeat(256),
     ] {
-        PolicyIdentity::new(value.as_str(), 1).unwrap();
         MemoryRequest::new(value.as_str(), "app.rows.v1").unwrap();
         let grant = MemoryAuthority::new(value.as_str(), "app.").unwrap();
         let json = serde_json::json!({"authority":value,"key_prefix":"app."});
@@ -54,34 +53,23 @@ fn diagnostic_metadata_accepts_printable_ascii_through_the_byte_limit() {
 #[test]
 fn diagnostic_metadata_preserves_field_errors_and_rejection_order() {
     let cases = [
-        (
-            String::new(),
-            PolicyIdentityError::EmptyName,
-            "must not be empty",
-        ),
+        (String::new(), "must not be empty"),
         (
             // Length rejection precedes control-character rejection.
             format!("{}\0", "x".repeat(256)),
-            PolicyIdentityError::NameTooLong {
-                length: 257,
-                maximum: 256,
-            },
             "must be at most 256 bytes",
         ),
         (
             // ASCII rejection precedes control-character rejection.
             "é\0".to_string(),
-            PolicyIdentityError::NonAsciiName,
             "must be ASCII",
         ),
         (
             "printable\u{7f}".to_string(),
-            PolicyIdentityError::ControlCharacterName,
             "must not contain ASCII control characters",
         ),
     ];
-    for (value, policy, reason) in cases {
-        assert_eq!(PolicyIdentity::new(value.as_str(), 1).unwrap_err(), policy);
+    for (value, reason) in cases {
         assert_eq!(
             MemoryRequest::new(value.as_str(), "app.rows.v1").unwrap_err(),
             MemoryDeclarationError::InvalidAuthority { reason }

@@ -100,12 +100,13 @@ fn numeric_summary_matches_detailed_accounting_before_and_after_bootstrap_and_re
         )
         .unwrap();
     runtime.open_memory("app.rows.v1").unwrap().grow(9).unwrap();
-    runtime.memory(121).grow(1).unwrap();
+    runtime.memory(121).unwrap().grow(1).unwrap();
     memory.grow(3);
     summary_matches_report(&runtime, &memory);
     // Summaries remain history-independent even with a corrupt ledger length.
     runtime
         .memory(MEMORY_MANAGER_LEDGER_ID)
+        .unwrap()
         .write(4, &u32::MAX.to_le_bytes());
     summary_matches_report(&runtime, &memory);
     drop(runtime);
@@ -201,7 +202,7 @@ fn bounded_conservation_bindings_and_no_effects() {
     ));
     assert_eq!(rows.grow(129), Ok(0));
     // Test-only unmanaged backing tail and an ID with no current declaration.
-    assert_eq!(runtime.memory(121).grow(1), Ok(0));
+    assert_eq!(runtime.memory(121).unwrap().grow(1), Ok(0));
     memory.grow(3);
     let before = memory.bytes.borrow().clone();
     let generation = runtime.committed_allocations().unwrap().generation();
@@ -252,6 +253,7 @@ fn diagnostics_never_read_even_a_corrupt_unbounded_ledger() {
     // Advertise a huge stable-cell value; bounded attribution must not decode it.
     runtime
         .memory(MEMORY_MANAGER_LEDGER_ID)
+        .unwrap()
         .write(4, &u32::MAX.to_le_bytes());
     memory.reset();
     conservation(&runtime.memory_allocations().unwrap());
@@ -283,6 +285,7 @@ fn bucket_boundaries_and_same_release_reopen() {
         let mut bytes = [0; 3];
         runtime
             .memory(120)
+            .unwrap()
             .read(u64::from(bucket) * 65_536 - 1, &mut bytes);
         assert_eq!(bytes, [1, 2, 3]);
         assert_eq!(memory.counts().writes, 0);
@@ -486,9 +489,9 @@ fn finite_bucket_table_capacity_and_overflow_are_checked() {
         )
         .unwrap();
         let pages = 32_768 * u64::from(bucket);
-        assert_eq!(runtime.memory(120).grow(pages), Ok(0));
+        assert_eq!(runtime.memory(120).unwrap().grow(pages), Ok(0));
         assert_eq!(
-            Memory::grow(&runtime.memory(120), 0),
+            Memory::grow(&runtime.memory(120).unwrap(), 0),
             i64::try_from(pages).unwrap()
         );
         let full = runtime.memory_allocations().unwrap();
@@ -496,7 +499,7 @@ fn finite_bucket_table_capacity_and_overflow_are_checked() {
         assert_eq!(full.summary.remaining_buckets(), 0);
         assert_eq!(full.summary.maximum_bucket_bytes(), pages * 65_536);
         assert_eq!(
-            runtime.memory(121).grow(1),
+            runtime.memory(121).unwrap().grow(1),
             Err(super::RuntimeGrowError::BucketExhausted {
                 required_buckets: 32_769,
                 capacity: 32_768,

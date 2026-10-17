@@ -1,5 +1,27 @@
 # Changelog
 
+## [0.46.0]
+
+- **Breaking ownership API:** allocation handles are non-cloneable leases.
+  A second live open returns a typed refusal; drop the owning collection before
+  reopening. Hosts must retain one runtime's exclusive backing custody until
+  that runtime and all its leases are gone
+  ([#118 — Enforce exclusive allocation leases and narrow substrate exports](https://github.com/dragginzgame/ic-memory/issues/118)).
+- **Breaking exports:** use root `Memory`, `DefaultMemoryImpl` and `VectorMemory`
+  for host setup. Raw collections/managers are no longer re-exported; production
+  collection integrations belong behind IC Storage's governed facade.
+- **Breaking policy API/JSON:** supply an infallible 32-byte policy token.
+  Hosts own names, versions and token derivation; doctor reports return the
+  tested token directly.
+- **Breaking ledger API:** raw ledger DTOs/readers and passive export construction
+  move under `test-support`; recovered authority remains private. Production
+  callers use runtime recovery and diagnostic methods.
+- Stored formats and mappings remain unchanged; no reset or conversion is needed.
+- Reuse the admitted Cargo configuration in release-validation receipts while
+  retaining the check for configuration changes after validation.
+
+[Detailed notes](docs/changelog/0.46.md)
+
 ## [0.45.0] - 2026-10-16
 
 - **Breaking API/JSON:** replace pool exclusion ranges with checked numeric IDs

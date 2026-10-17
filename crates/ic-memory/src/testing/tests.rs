@@ -1,5 +1,5 @@
 use super::*;
-use crate::ic_stable_structures::VectorMemory;
+use crate::VectorMemory;
 
 #[test]
 fn cell_keeps_existing_runtime_bytes_and_bucket_configuration() {

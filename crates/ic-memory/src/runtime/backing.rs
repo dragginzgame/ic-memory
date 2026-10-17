@@ -1,5 +1,8 @@
 use ic_stable_structures::{Memory, memory_manager::VirtualMemory};
-use std::{cell::RefCell, rc::Rc};
+use std::{
+    cell::{Cell, RefCell},
+    rc::Rc,
+};
 
 // Backing, immutable geometry and one live bucket count for the sole manager,
 // shared by the runtime and all handles, including the ledger. The count is
@@ -8,14 +11,19 @@ pub(super) struct GrowthState<M: Memory> {
     pub backing: Rc<M>,
     pub bucket_size_pages: u16,
     pub allocated_buckets: RefCell<u16>,
+    pub open_slots: [Cell<u64>; 4],
 }
 
 ///
 /// RuntimeMemory
 ///
-/// Cloneable virtual memory opened through a runtime's committed authority.
+/// Exclusive virtual memory leased through a runtime's committed authority.
 /// Implements [`Memory`] for stable structures without exposing the backing
-/// memory or an alternate manager. Cloning does not require `M: Clone`.
+/// memory or an alternate manager. The lease cannot be cloned; dropping it
+/// permits another open of the same allocation. Moving it into a collection
+/// transfers the lease until that collection releases the memory.
+/// The handle can outlive its runtime. Hosts must not construct another runtime
+/// or access aliased backing while any runtime or lease for that backing lives.
 /// IO checks the virtual extent before upstream bucket translation. Empty IO
 /// is valid at the end of memory, but not beyond it. Reads preserve the upstream
 /// optimized support for uninitialized destinations through `Memory::read_unsafe`.
@@ -29,14 +37,13 @@ pub(super) struct GrowthState<M: Memory> {
 pub struct RuntimeMemory<M: Memory> {
     pub(super) memory: VirtualMemory<Rc<M>>,
     pub(super) growth: Rc<GrowthState<M>>,
+    pub(super) id: u8,
 }
 
-impl<M: Memory> Clone for RuntimeMemory<M> {
-    fn clone(&self) -> Self {
-        Self {
-            memory: self.memory.clone(),
-            growth: Rc::clone(&self.growth),
-        }
+impl<M: Memory> Drop for RuntimeMemory<M> {
+    fn drop(&mut self) {
+        let word = &self.growth.open_slots[usize::from(self.id / 64)];
+        word.set(word.get() & !(1_u64 << (self.id % 64)));
     }
 }
 

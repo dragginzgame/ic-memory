@@ -20,10 +20,10 @@ categories = ["wasm", "data-structures"]
 
 [workspace.dependencies]
 ciborium = "0.2.2"
-ic-build = { version = "0.11", default-features = false }
-ic-host-artifacts = { version = "0.23", default-features = false }
-ic-host-fs = { version = "0.23", default-features = false }
-ic-host-process = { version = "0.23", default-features = false }
+ic-build = { version = "0.12", default-features = false }
+ic-host-artifacts = { version = "0.24", default-features = false }
+ic-host-fs = { version = "0.24", default-features = false }
+ic-host-process = { version = "0.24", default-features = false }
 # Qualified manager/Cell layout boundary; see AGENTS.md#dependency-exceptions.
 ic-stable-structures = "=0.7.2"
 serde = { version = "1.0", default-features = false, features = [

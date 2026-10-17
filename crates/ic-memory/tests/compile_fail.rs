@@ -5,6 +5,6 @@ fn capability_and_dto_boundaries_are_compile_time_enforced() {
     tests.compile_fail("tests/ui/fabricate_authority.rs");
     tests.compile_fail("tests/ui/fabricate_memory_manager_slot.rs");
     tests.compile_fail("tests/ui/fabricate_committed_allocations.rs");
-    tests.compile_fail("tests/ui/fabricate_recovered_ledger.rs");
     tests.compile_fail("tests/ui/sentinel_runtime_growth.rs");
+    tests.compile_fail("tests/ui/clone_allocation_lease.rs");
 }

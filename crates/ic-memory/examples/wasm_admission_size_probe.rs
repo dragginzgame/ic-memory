@@ -3,8 +3,7 @@ mod host;
 use host::RUNTIME;
 
 use ic_memory::{
-    BootstrapAdmission, MemoryManagerSlot, PolicyIdentity, PolicyIdentityError,
-    RuntimeBootstrapPolicy, StableKey,
+    BootstrapAdmission, MemoryManagerSlot, PolicyIdentity, RuntimeBootstrapPolicy, StableKey,
 };
 
 const AUTHORITY: &str = "wasm_core_size_probe";
@@ -20,8 +19,8 @@ impl RuntimeBootstrapPolicy for HostPolicy {
         Ok(())
     }
 
-    fn runtime_bootstrap_identity(&self) -> Result<PolicyIdentity, PolicyIdentityError> {
-        PolicyIdentity::new("probe.admission", 1)
+    fn runtime_bootstrap_identity(&self) -> PolicyIdentity {
+        PolicyIdentity::new(*b"probe.admission.................")
     }
     fn prepare_bootstrap(&self, admission: &mut BootstrapAdmission<'_>) -> Result<(), Self::Error> {
         let journals: Vec<_> = admission
@@ -55,10 +54,9 @@ pub extern "C" fn ic_memory_wasm_core_size_probe_bootstrap() -> u64 {
             let Ok(config) = ic_memory::MemoryManagerConfig::new(128) else {
                 return 0;
             };
-            let Ok(runtime) = host::Runtime::new_with_config(
-                ic_memory::ic_stable_structures::DefaultMemoryImpl::default(),
-                config,
-            ) else {
+            let Ok(runtime) =
+                host::Runtime::new_with_config(ic_memory::DefaultMemoryImpl::default(), config)
+            else {
                 return 0;
             };
             *slot = Some(runtime);
@@ -81,8 +79,7 @@ pub extern "C" fn ic_memory_wasm_core_size_probe_open() -> u32 {
         slot.as_ref()
             .and_then(|runtime| runtime.open_memory("wasm_core_size_probe.rows.v1").ok())
             .map_or(u32::MAX, |memory| {
-                u32::try_from(ic_memory::ic_stable_structures::Memory::size(&memory))
-                    .unwrap_or(u32::MAX)
+                u32::try_from(ic_memory::Memory::size(&memory)).unwrap_or(u32::MAX)
             })
     })
 }

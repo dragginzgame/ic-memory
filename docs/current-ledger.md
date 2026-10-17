@@ -11,12 +11,15 @@ commitment and advances on cold bootstrap. Matching warm bootstrap returns the
 established capability without another write or admission replay. There is no
 per-bootstrap event, timestamp, ownership-label history or upgrade log.
 
-`AllocationLedger::new(counter, records)` checks count, unique key/ID ownership
-and empty-genesis rules. Decoded ledgers and `LedgerCommitStore` are passive DTOs.
+Fixture-only `testing::AllocationLedger::new(counter, records)` checks count,
+unique key/ID ownership and empty-genesis rules under `test-support`. Decoded
+ledgers and `testing::LedgerCommitStore` are passive DTOs; recovered authority
+remains internal. Production callers use their runtime's recovery/diagnostics.
 The stable Cell contains the commit store directly. Its required `current` field
 holds the snapshot without an intermediate physical-store object.
-`decode_stable_cell_commit_store` and its memory reader admit bounded current
-bytes; protected recovery still establishes integrity and counter binding.
+The private commit-store readers admit bounded current bytes; protected recovery
+still establishes integrity and counter binding. Raw readers are exposed only
+under `testing` for explicit fixtures and do not grant open authority.
 
 Bootstrap owns one recovered ledger through validation and staging. It protects
 the staged commit, persists the owning Cell, then constructs committed allocation
@@ -43,8 +46,11 @@ remains a separate boundary. Diagnostics do not grant allocation authority.
 
 Components contribute `MemoryRequest::new(authority, key)` and use the host's
 committed runtime. Warm binding and adoption check keys, current owner grants,
-policy identity and the canonical allocation pool. They do not check application
-schemas or reinterpret stored collection bytes. The policy has one
+policy token and the canonical allocation pool. Hosts supply a 32-byte token
+identifying all policy semantics/configuration and prepare fallible policy setup
+before bootstrap. Labels, versions and token derivation stay with the host; Memory
+compares the complete bytes without allocating a policy name. This token is not
+persisted. These checks do not check application schemas or reinterpret stored collection bytes. The policy has one
 `validate_allocation(key, slot)` callback for each external declaration; recovered
 admission remains separate and is never replayed by doctor or warm bootstrap.
 

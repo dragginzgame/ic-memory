@@ -1,9 +1,7 @@
-use ic_memory::{
-    MemoryManagerSlot, PolicyIdentity, PolicyIdentityError, RuntimeBootstrapPolicy, StableKey,
-};
+use ic_memory::{MemoryManagerSlot, PolicyIdentity, RuntimeBootstrapPolicy, StableKey};
 
 const AUTHORITY: &str = "default_custom_policy";
-const POLICY_IDENTITY: &str = "default-custom-policy";
+const POLICY_IDENTITY: [u8; 32] = *b"default-custom-policy.v1........";
 
 fn snapshot() -> ic_memory::SealedDeclarationSnapshot {
     ic_memory::SealedDeclarationSnapshot::new(vec![
@@ -25,8 +23,8 @@ impl RuntimeBootstrapPolicy for CustomPolicy {
         Ok(())
     }
 
-    fn runtime_bootstrap_identity(&self) -> Result<PolicyIdentity, PolicyIdentityError> {
-        PolicyIdentity::new(POLICY_IDENTITY, 1)
+    fn runtime_bootstrap_identity(&self) -> PolicyIdentity {
+        PolicyIdentity::new(POLICY_IDENTITY)
     }
 }
 

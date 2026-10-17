@@ -34,6 +34,25 @@ authorization, or endpoint safety.
 - Schema admission, supported versions and data semantics belong to each storage
   owner. Allocation metadata does not carry a second schema-version authority.
 
+## Runtime and lease custody
+
+- One host-owned runtime manages each backing memory. Hosts must exclude other
+  runtimes, managers and raw access to aliased backing until that runtime and
+  all its handles have been dropped. Generic backing aliases are not detectable.
+- A committed application allocation has at most one live `RuntimeMemory` lease
+  within that runtime. Repeated opens refuse with a typed error before IO;
+  authority checks and warm bootstrap do not clear outstanding leases.
+- Handles are non-cloneable. Moving a handle into or out of a collection transfers
+  its lease; dropping it releases the slot, including on construction failure
+  or native unwinding. Forgetting a handle does not release it. A detached handle
+  retains manager/backing custody after its runtime is dropped.
+- Production collection integrations use the governed IC Storage facade. The
+  public backing interfaces do not grant permission to create competing managers
+  or wrap a lease in an alternate shared mutable route. This is a cooperative
+  host contract, not a sandbox against arbitrary linked code.
+- Lease state is volatile. No lease bits, new IDs or format fields are persisted.
+  Cold reopening after all prior owners are gone retains the current stored bytes.
+
 ## Runtime IO Bounds
 
 - Every runtime read, raw read and write must fit its current virtual extent,
@@ -167,6 +186,9 @@ allocation pool and `PolicyIdentity`. Matching warm bootstrap does not replay
 admission or write another generation; changed bindings reject. Doctor checks
 the same exact binding without publishing authority. These are in-memory
 lifecycle facts, not a durable ownership history or hash protocol.
+The policy identity is a host-issued 32-byte token covering its complete prepared
+semantics/configuration. Hosts own derivation, labels and fallible setup; every
+token byte participates in equality. It is not authentication or persisted data.
 
 ## Growth and Physical Accounting
 

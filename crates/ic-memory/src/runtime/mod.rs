@@ -88,6 +88,13 @@ struct RuntimeBootstrapBinding {
 /// `M` needs only [`Memory`]. The runtime does not require the backing memory
 /// to be `Send`, `Sync`, `Clone`, or `'static`.
 ///
+/// The host must supply exclusive backing custody: no other runtime, manager or
+/// raw IO may access the same backing while this runtime or any of its leases
+/// lives. Aliases hidden behind a generic [`Memory`] cannot be detected here.
+/// Drop every lease and the runtime before constructing a replacement on retained
+/// backing. Opens are exclusive within this runtime, including across warm
+/// bootstrap and authority verification.
+///
 
 pub struct MemoryRuntime<M: Memory> {
     memory_manager: MemoryManager<Rc<M>>,
@@ -167,6 +174,7 @@ impl<M: Memory> MemoryRuntime<M> {
             backing: Rc::clone(&backing),
             bucket_size_pages,
             allocated_buckets: std::cell::RefCell::new(allocated_buckets),
+            open_slots: [const { std::cell::Cell::new(0) }; 4],
         });
         Ok(Self {
             memory_manager: MemoryManager::init_with_bucket_size(
@@ -211,7 +219,7 @@ impl<M: Memory> MemoryRuntime<M> {
         pool: &crate::MemoryAllocationPool,
         policy: &P,
     ) -> Result<&CommittedAllocations, RuntimeBootstrapError<P::Error>> {
-        let policy_identity = policy.runtime_bootstrap_identity()?;
+        let policy_identity = policy.runtime_bootstrap_identity();
         match &self.lifecycle {
             RuntimeLifecycle::Unbootstrapped => {
                 self.bootstrap_unbootstrapped(declarations, pool, policy, policy_identity)?;
@@ -251,7 +259,9 @@ impl<M: Memory> MemoryRuntime<M> {
         policy: &P,
         policy_identity: PolicyIdentity,
     ) -> Result<(), RuntimeBootstrapError<P::Error>> {
-        let memory = self.memory(MEMORY_MANAGER_LEDGER_ID);
+        let mut memory = self
+            .memory(MEMORY_MANAGER_LEDGER_ID)
+            .expect("governance memory is not publicly leasable");
         let mut record = decode_stable_cell_commit_store_from_memory(&memory)?;
         let recovered = record.recover_or_genesis()?;
         let occupied = recovered.ledger().occupied_slots();
@@ -259,7 +269,7 @@ impl<M: Memory> MemoryRuntime<M> {
         if memory.size() == 0 {
             // Empty memory decodes to an uninitialized record. Preserve fresh
             // cell acquisition before admission without persisting genesis.
-            write_ledger_cell(memory.clone(), &LedgerCommitStore::default())?;
+            memory = write_ledger_cell(memory, &LedgerCommitStore::default())?;
         }
         let mut admission = BootstrapAdmission::new(recovered.ledger(), declarations, pool);
         let preparation = policy.prepare_bootstrap(&mut admission);
@@ -271,7 +281,7 @@ impl<M: Memory> MemoryRuntime<M> {
             record.commit_generation(&staged)?;
             (staged.current_generation(), resolved)
         };
-        write_ledger_cell(memory, &record)?;
+        drop(write_ledger_cell(memory, &record)?);
         let committed = CommittedAllocations::from_persisted(resolved, generation);
         self.lifecycle = RuntimeLifecycle::Bootstrapped {
             committed_allocations: committed,
@@ -295,9 +305,12 @@ impl<M: Memory> MemoryRuntime<M> {
         }
     }
 
-    /// Open by durable key using only this runtime's persisted current capability.
+    /// Lease by durable key using this runtime's persisted current capability.
+    ///
+    /// A second live open returns [`RuntimeOpenError::AlreadyOpen`] without IO.
+    /// Dropping the handle, or a collection that owns it, permits reopening.
     pub fn open_memory(&self, stable_key: &str) -> Result<RuntimeMemory<M>, RuntimeOpenError> {
-        Ok(self.memory(self.memory_id(stable_key)?))
+        self.memory(self.memory_id(stable_key)?)
     }
 
     /// Resolve an application key's committed ID without opening memory,
@@ -317,11 +330,19 @@ impl<M: Memory> MemoryRuntime<M> {
         Ok(declaration.slot().id())
     }
 
-    fn memory(&self, id: u8) -> RuntimeMemory<M> {
-        RuntimeMemory {
-            memory: self.memory_manager.get(MemoryId::new(id)),
-            growth: Rc::clone(&self.growth),
+    fn memory(&self, id: u8) -> Result<RuntimeMemory<M>, RuntimeOpenError> {
+        let word = &self.growth.open_slots[usize::from(id / 64)];
+        let mask = 1_u64 << (id % 64);
+        if word.get() & mask != 0 {
+            return Err(RuntimeOpenError::AlreadyOpen { id });
         }
+        let memory = self.memory_manager.get(MemoryId::new(id));
+        word.set(word.get() | mask);
+        Ok(RuntimeMemory {
+            memory,
+            growth: Rc::clone(&self.growth),
+            id,
+        })
     }
 
     // Size-only observations need no handle carrying runtime growth authority.
@@ -354,8 +375,8 @@ impl RuntimeBootstrapBinding {
         }
         if &self.policy_identity != policy_identity {
             return Err(RuntimeBootstrapError::PolicyIdentityMismatch {
-                established: self.policy_identity.clone(),
-                requested: policy_identity.clone(),
+                established: self.policy_identity,
+                requested: *policy_identity,
             });
         }
         Ok(())
@@ -365,7 +386,7 @@ impl RuntimeBootstrapBinding {
 fn write_ledger_cell<M: Memory, P>(
     memory: RuntimeMemory<M>,
     record: &LedgerCommitStore,
-) -> Result<(), RuntimeBootstrapError<P>> {
+) -> Result<RuntimeMemory<M>, RuntimeBootstrapError<P>> {
     let encoded = EncodedLedgerRecord::new(record).map_err(|value_size| {
         RuntimeBootstrapError::StableCellLedgerWriteTooLarge { value_size }
     })?;
@@ -377,8 +398,7 @@ fn write_ledger_cell<M: Memory, P>(
         let grow_by = (required_bytes - available_bytes).div_ceil(crate::WASM_PAGE_SIZE_BYTES);
         memory.grow(grow_by)?;
     }
-    drop(Cell::new(memory, encoded));
-    Ok(())
+    Ok(Cell::new(memory, encoded).into_memory())
 }
 
 const fn check_bucket_size(

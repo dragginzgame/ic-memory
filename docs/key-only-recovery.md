@@ -64,7 +64,7 @@ retired, duplicate, foreign-namespace and physically excluded claims. Ignoring
 an admission error does not make the attempt succeed.
 
 ```rust,no_run
-fn reconcile<M: ic_memory::ic_stable_structures::Memory + Clone>(
+fn reconcile<M: ic_memory::Memory>(
     runtime: &ic_memory::MemoryRuntime<M>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     // The host includes this key in its complete snapshot or admission hook
@@ -82,8 +82,9 @@ lifecycle decisions. Selecting a key is not permission to revive an
 application-retired database. See the [admission contract](recovered-admission.md).
 
 Warm bootstrap requires the same snapshot, exact canonical pool and custom
-policy identity. It does not replay preparation. Changed configuration is
-admitted only by a new runtime; existing handles are not dynamically revoked.
+policy token. It does not replay preparation or revoke existing handles. Changed
+configuration requires dropping the prior runtime and all its leases before
+constructing a replacement; the host must not overlap owners of the backing.
 
 ## Recovery and admission limits
 
