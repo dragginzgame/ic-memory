@@ -1,3 +1,4 @@
+#[cfg(any(test, feature = "test-support"))]
 use super::LedgerIntegrityError;
 use crate::{declaration::AllocationDeclaration, key::StableKey, slot::MemoryManagerSlot};
 use serde::{Deserialize, Serialize};
@@ -92,6 +93,7 @@ impl RecoveredLedger {
 
     /// Return the bound recovered counter, or zero for uncommitted logical genesis.
     #[must_use]
+    #[cfg(test)]
     pub const fn current_generation(&self) -> u64 {
         self.ledger.current_generation
     }
@@ -151,6 +153,7 @@ impl AllocationLedger {
 
     /// Build a ledger DTO after validating count, ownership and genesis rules.
     /// Recovery must still establish the persisted format and physical binding.
+    #[cfg(any(test, feature = "test-support"))]
     pub fn new(
         current_generation: u64,
         records: Vec<AllocationRecord>,

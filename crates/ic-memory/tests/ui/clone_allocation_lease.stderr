@@ -1,0 +1,5 @@
+error[E0599]: no method named `clone` found for struct `RuntimeMemory<M>` in the current scope
+ --> tests/ui/clone_allocation_lease.rs:4:25
+  |
+4 |     let _other = memory.clone();
+  |                         ^^^^^ method not found in `RuntimeMemory<Rc<RefCell<Vec<u8>>>>`

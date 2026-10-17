@@ -1,8 +1,7 @@
 use super::*;
-use crate::ic_stable_structures::VectorMemory;
 use crate::{
     GenericAllocationPolicy, MemoryAllocationPool, MemoryAuthority, MemoryRequest, MemoryRuntime,
-    SealedDeclarationSnapshot,
+    SealedDeclarationSnapshot, VectorMemory,
 };
 
 #[test]

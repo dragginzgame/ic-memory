@@ -61,9 +61,7 @@ impl<M: Memory> MemoryRuntime<M> {
                 *pages = self.memory_size_pages(record.slot().id());
             }
         }
-        let tested_policy_identity = policy
-            .runtime_bootstrap_identity()
-            .map_err(|err| DiagnosticFailure::new(DiagnosticCode::PolicyIdentity, err.to_string()));
+        let tested_policy_identity = policy.runtime_bootstrap_identity();
         let established_bootstrap_binding = self.established_bootstrap_binding();
         let bootstrap_binding = diagnostic_bootstrap_binding(
             &tested_policy_identity,
@@ -71,16 +69,13 @@ impl<M: Memory> MemoryRuntime<M> {
             pool,
             &self.lifecycle,
         );
-        let validation = match &tested_policy_identity {
-            Ok(_) => diagnostic_validation(
-                self,
-                declarations,
-                pool,
-                policy,
-                recovery.as_ref().map(|(recovered, _)| recovered),
-            ),
-            Err(failure) => DiagnosticCheck::not_run(failure.code, failure.message.clone()),
-        };
+        let validation = diagnostic_validation(
+            self,
+            declarations,
+            pool,
+            policy,
+            recovery.as_ref().map(|(recovered, _)| recovered),
+        );
         let commit_recovery = recovery.as_ref().map(|(_, diagnostic)| *diagnostic);
         let ledger = recovery.and_then(|(recovered, _)| {
             recovered.ok().map(|recovered| {
@@ -120,7 +115,7 @@ impl<M: Memory> MemoryRuntime<M> {
         match &self.lifecycle {
             RuntimeLifecycle::Unbootstrapped => None,
             RuntimeLifecycle::Bootstrapped { binding, .. } => Some(DiagnosticRuntimeBinding::new(
-                binding.policy_identity.clone(),
+                binding.policy_identity,
                 binding.pool.clone(),
             )),
         }
@@ -195,17 +190,11 @@ where
 }
 
 fn diagnostic_bootstrap_binding(
-    tested_policy_identity: &Result<PolicyIdentity, DiagnosticFailure>,
+    tested_policy_identity: &PolicyIdentity,
     declarations: &SealedDeclarationSnapshot,
     pool: &crate::MemoryAllocationPool,
     lifecycle: &RuntimeLifecycle,
 ) -> DiagnosticCheck {
-    let tested_policy_identity = match tested_policy_identity {
-        Ok(identity) => identity,
-        Err(failure) => {
-            return DiagnosticCheck::not_run(failure.code, failure.message.clone());
-        }
-    };
     let RuntimeLifecycle::Bootstrapped { binding, .. } = lifecycle else {
         return DiagnosticCheck::not_run(
             DiagnosticCode::RuntimeBinding,

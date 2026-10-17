@@ -124,6 +124,14 @@ and `runtime.committed_allocations()` inspect that instance; the latter returns
 `NotBootstrapped` until bootstrap succeeds. Pass opened handles to components
 instead of constructing independent managers over the same backing memory.
 
+`open_memory` grants one non-cloneable lease per committed allocation. A second
+live open returns `RuntimeOpenError::AlreadyOpen { id }` without backing IO.
+Drop the collection or handle before reopening; transferring its memory keeps
+the lease alive. Authority verification and warm bootstrap do not release it.
+Hosts must retain exclusive backing custody until the runtime and all its
+handles are dropped, including handles that outlive the runtime. Hidden generic
+backing aliases cannot be detected. See [the custody contract](../SAFETY.md#runtime-and-lease-custody).
+
 An existing but unbootstrapped explicit runtime can report physical allocation
 with unknown application bindings. For pre-bootstrap inspection with a known
 configuration, construct `MemoryRuntime::new_with_config(memory, config)` and

@@ -168,23 +168,14 @@ Add the crate:
 
 ```toml
 [dependencies]
-ic-memory = "0.45.0"
+ic-memory = "0.46.0"
 ```
 
-`ic-memory` re-exports its exact `ic-stable-structures` dependency through
-`ic_memory::ic_stable_structures`. Import collections, backing memories, and
-traits through that namespace so their types match the runtime:
-
-```rust
-use ic_memory::{
-    RuntimeMemory,
-    ic_stable_structures::{Cell, DefaultMemoryImpl},
-};
-
-type CounterStore = Cell<u64, RuntimeMemory<DefaultMemoryImpl>>;
-```
-
-A separate `ic-stable-structures` dependency is unnecessary for those imports.
+`ic-memory` exports `Memory`, `DefaultMemoryImpl` and `VectorMemory` for host
+backing setup. It does not re-export raw collections or memory managers.
+Production collection integrations belong in IC Storage's governed facade,
+using the `RuntimeMemory` leases obtained from the host's runtime. Memory's
+internal manager, ledger and qualification fixtures retain their substrate use.
 
 ### Declare keys; let the host allocate
 
@@ -206,7 +197,7 @@ fn initialize_stable_storage() -> Result<(), Box<dyn std::error::Error>> {
     )?;
     let declarations = ic_memory::SealedDeclarationSnapshot::new(component_requests()?)?;
     let mut runtime = ic_memory::MemoryRuntime::new(
-        ic_memory::ic_stable_structures::DefaultMemoryImpl::default(),
+        ic_memory::DefaultMemoryImpl::default(),
     )?;
     runtime.bootstrap(&declarations, &pool, &ic_memory::GenericAllocationPolicy)?;
     let users = runtime.open_memory(USERS_KEY)?;
@@ -220,6 +211,21 @@ initialization and post-upgrade, and injects opened handles into components.
 Use `MemoryRuntime::new_with_config` for custom bucket geometry and pass the
 host policy to `bootstrap`. The library owns no singleton or thread-local
 runtime. Request factories only construct metadata; they never open stores.
+
+Each allocation has at most one live lease per runtime. A second `open_memory`
+returns `RuntimeOpenError::AlreadyOpen { id }`; `RuntimeMemory` does not implement
+`Clone`. Transfer the handle into its collection and drop that owner before
+reopening. A collection's memory-transfer operation keeps the same lease alive;
+failed construction and ordinary unwinding release it when the handle is dropped.
+For a log, obtain two different allocations for index and data memory.
+
+The host must retain exclusive custody of the backing: do not create another
+runtime/manager or perform raw IO against aliases while the runtime or any of
+its handles lives. A handle can outlive its runtime, so dropping the runtime
+alone does not permit a replacement. Generic backing aliases cannot be detected
+by this crate. These are ownership rules for cooperating integrations, not an
+isolation boundary against arbitrary linked code. Never leak a handle to force
+reopening; a forgotten lease remains occupied.
 
 Known keys retain their committed IDs. New requests are sorted by key and take
 the lowest unclaimed ID in the common pool. Current, omitted, reserved and
@@ -242,7 +248,7 @@ requirements were included without rerunning bootstrap or replacing the host's
 policy:
 
 ```rust
-fn adopt_host<M: ic_memory::ic_stable_structures::Memory + Clone>(
+fn adopt_host<M: ic_memory::Memory>(
     runtime: &ic_memory::MemoryRuntime<M>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let requests = vec![ic_memory::MemoryRequest::new(
@@ -325,8 +331,22 @@ common pool has space, and the complete layout passes admission and validation.
 
 ## Operations and advanced integration
 
+Custom policies return `PolicyIdentity` directly from `runtime_bootstrap_identity`.
+Construct it with `PolicyIdentity::new(host_token)`, where `host_token` is one
+`[u8; 32]` identifying the complete prepared policy configuration and semantics.
+Prepare any fallible host configuration first. Hosts own descriptive labels,
+versions and token derivation; change the token when that policy changes. Memory
+compares all token bytes for warm binding and does not persist or hash them.
+Diagnostic JSON returns token arrays, including the doctor's direct tested token.
+
+Production recovery and inspection use the host runtime's `diagnostic_export`,
+`commit_recovery_diagnostic` and `doctor_report`. Raw ledger DTOs, bounded raw
+commit-store readers and passive export construction are fixture-only under
+`test-support`; recovered authority is internal. Bounded Cell payload inspection
+remains available without granting allocation authority.
+
 The current durable ledger uses checked numeric slots and a single `ICMSNAP1`
-checksummed snapshot containing direct ledger CBOR. The 0.44.0 format cut retires
+checksummed snapshot containing direct ledger CBOR. The 0.45.0 format cut retires
 earlier images: use fresh/reset memory. Incompatible bytes reject without
 initializing genesis or clearing memory. See the
 [current ledger contract](../../docs/current-ledger.md).

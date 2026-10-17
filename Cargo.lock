@@ -185,9 +185,9 @@ checksum = "ed5909b6e89a2db4456e54cd5f673791d7eca6732202bbf2a9cc504fe2f9b84a"
 
 [[package]]
 name = "ic-build"
-version = "0.11.1"
+version = "0.12.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cf635215df5f8c6aea4b6c04c8bf4db24c5278a11ce6c7e475e9d901937460ac"
+checksum = "fcf813dcc83ef430f60130b1293db9cfcba147d9537de3acb097bb3e3d256d98"
 dependencies = [
  "cargo_metadata",
  "ic-host-artifacts",
@@ -203,9 +203,9 @@ dependencies = [
 
 [[package]]
 name = "ic-host-artifacts"
-version = "0.23.1"
+version = "0.24.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9d4f11586e48daf91d5490243eba65fa19f62bdf2589f5738c868a366bec9020"
+checksum = "8cac48dd258d0712b3a439c30259a9d4bfb0a4ceb71bc7255db43854d31de1d8"
 dependencies = [
  "leb128",
  "sha2",
@@ -214,9 +214,9 @@ dependencies = [
 
 [[package]]
 name = "ic-host-fs"
-version = "0.23.1"
+version = "0.24.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "62862b96ea31b6f2e916c23b8303cbe622dea2e8690ef6d18af09fb9d8385bca"
+checksum = "3df788c52d8a96086691b8c4903327766d9f0bc8bea9e783a809f9cf214b6ea2"
 dependencies = [
  "ic-host-artifacts",
  "rustix",
@@ -224,9 +224,9 @@ dependencies = [
 
 [[package]]
 name = "ic-host-process"
-version = "0.23.1"
+version = "0.24.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b59b1a37d2fb44842c08c0879473e4e6fa9623aa5fb8da7d5642efd139ad4d47"
+checksum = "6b67907948e9b6c74f42b5e35783a9dbf3a3100f143eff82a12a22e4ea032ea6"
 dependencies = [
  "command-fds",
  "ic-host-artifacts",
@@ -237,7 +237,7 @@ dependencies = [
 
 [[package]]
 name = "ic-memory"
-version = "0.45.0"
+version = "0.46.0"
 dependencies = [
  "ciborium",
  "ic-build",
@@ -291,9 +291,9 @@ checksum = "c83bff1d572d6b9aeef67ddfc8448e4a3737909cb28e81f97c791b9018703e52"
 
 [[package]]
 name = "libc"
-version = "0.2.190"
+version = "0.2.191"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ce5d3ddc6d3fa000eb1536d85e147bfe31aacaba692ed6a876f95cb7c855be78"
+checksum = "65cd87c9a6d60536580b316ad985726104730a5151c99845f2490428ef91240a"
 
 [[package]]
 name = "linux-raw-sys"

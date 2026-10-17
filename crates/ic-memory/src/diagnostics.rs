@@ -69,7 +69,7 @@ pub struct MemoryRuntimeDoctorReport {
     /// Whether this runtime has completed bootstrap validation.
     pub bootstrapped: bool,
     /// Policy identity supplied for this diagnostic evaluation.
-    pub tested_policy_identity: Result<PolicyIdentity, DiagnosticFailure>,
+    pub tested_policy_identity: PolicyIdentity,
     /// Binding published by this runtime's successful bootstrap, when present.
     pub established_bootstrap_binding: Option<DiagnosticRuntimeBinding>,
     /// Whether the tested identity and declarations match the established
@@ -109,9 +109,6 @@ pub enum DiagnosticCode {
     /// Current declarations failed allocation validation.
     #[serde(rename = "allocation_validation")]
     AllocationValidation,
-    /// Runtime bootstrap policy identity was invalid.
-    #[serde(rename = "policy_identity")]
-    PolicyIdentity,
     /// Tested bootstrap identity or declarations differ from runtime state.
     #[serde(rename = "runtime_binding")]
     RuntimeBinding,
@@ -249,6 +246,7 @@ impl DiagnosticExport {
     /// its backing-memory observations; this DTO constructor neither recovers
     /// nor measures memory. Physical recovery status belongs to the doctor report.
     #[must_use]
+    #[cfg(any(test, feature = "test-support"))]
     pub fn from_ledger(ledger: &AllocationLedger) -> Self {
         Self::from_records(ledger.current_generation, ledger.records.iter().cloned())
     }
@@ -404,7 +402,6 @@ mod tests {
                 DiagnosticCode::AllocationValidation,
                 "allocation_validation",
             ),
-            (DiagnosticCode::PolicyIdentity, "policy_identity"),
             (DiagnosticCode::RuntimeBinding, "runtime_binding"),
         ];
 

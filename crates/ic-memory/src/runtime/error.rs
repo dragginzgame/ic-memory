@@ -1,6 +1,5 @@
 use crate::{
-    LedgerCommitError, PolicyIdentity, PolicyIdentityError, StableCellLedgerError,
-    requests::MemoryDeclarationError,
+    LedgerCommitError, PolicyIdentity, StableCellLedgerError, requests::MemoryDeclarationError,
 };
 
 ///
@@ -92,9 +91,6 @@ pub enum RuntimeBootstrapError<P> {
     AdmissionPolicy(P),
     #[error(transparent)]
     Resolution(#[from] MemoryResolutionError),
-    /// The policy did not provide a valid bounded semantic identity.
-    #[error(transparent)]
-    PolicyIdentity(#[from] PolicyIdentityError),
     /// A bootstrapped runtime was called with a different declaration snapshot.
     #[error("runtime bootstrap declaration snapshot differs from the established binding")]
     DeclarationSnapshotMismatch,
@@ -141,6 +137,9 @@ pub enum RuntimeBootstrapError<P> {
 #[non_exhaustive]
 #[derive(Clone, Debug, Eq, thiserror::Error, PartialEq)]
 pub enum RuntimeOpenError {
+    /// This runtime already issued a live lease for the allocation.
+    #[error("MemoryManager ID {id} already has a live allocation lease")]
+    AlreadyOpen { id: u8 },
     /// This runtime has not published committed allocations.
     #[error("ic-memory runtime has not completed bootstrap validation")]
     NotBootstrapped,

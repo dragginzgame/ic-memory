@@ -2,11 +2,11 @@
 use crate::{
     AllocationLedger, GenericAllocationPolicy, LedgerCommitError, LedgerCommitStore,
     MemoryManagerConfig, MemoryRuntime, SealedDeclarationSnapshot,
-    ic_stable_structures::{
-        Memory, Storable, VectorMemory,
-        memory_manager::{MemoryId, MemoryManager},
-    },
     stable_cell::EncodedLedgerRecord,
+};
+use ic_stable_structures::{
+    Memory, Storable, VectorMemory,
+    memory_manager::{MemoryId, MemoryManager},
 };
 use std::{
     alloc::{GlobalAlloc, Layout, System},

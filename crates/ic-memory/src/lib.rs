@@ -70,9 +70,9 @@
 //! runtime. Public diagnostics describe their state without granting a manual
 //! commit or persistence-confirmation route.
 //!
-//! [`ic_stable_structures`] re-exports the exact substrate version used by this
-//! crate. Use its collections and traits with [`RuntimeMemory`] handles;
-//! `ic-memory` owns allocation governance without wrapping typed collections.
+//! Hosts use [`DefaultMemoryImpl`], [`VectorMemory`] and [`Memory`] for backing
+//! setup. [`RuntimeMemory`] is an exclusive allocation lease; production typed
+//! collections consume these leases through IC Storage’s governed wrappers.
 
 mod allocation_pool;
 mod bounded_writer;
@@ -136,11 +136,10 @@ mod test_cbor {
     }
 }
 
-/// Stable collections and traits from this crate's exact substrate dependency.
-///
-/// Use the upstream collections with [`RuntimeMemory`] handles obtained through
-/// the owned runtime. This re-export preserves upstream type identity.
-pub use ic_stable_structures;
+/// Backing setup and IO interfaces from the exact substrate dependency.
+/// Hosts own backing custody; production collections belong behind IC Storage's
+/// governed wrappers and consume [`RuntimeMemory`] leases.
+pub use ic_stable_structures::{DefaultMemoryImpl, Memory, VectorMemory};
 
 pub use allocation_pool::{MemoryAllocationPool, MemoryAllocationPoolError, MemoryAuthority};
 pub use capability::CommittedAllocations;
@@ -154,13 +153,13 @@ pub use diagnostics::{
     MemoryRuntimeDoctorReport,
 };
 pub use key::{StableKey, StableKeyError};
-pub use ledger::LedgerCommitStore;
+use ledger::{AllocationLedger, LedgerCommitStore, RecoveredLedger};
 pub use ledger::{
-    AllocationLedger, AllocationRecord, AllocationStageError, AllocationState, LedgerCommitError,
-    LedgerIntegrityError, RecoveredLedger,
+    AllocationRecord, AllocationStageError, AllocationState, LedgerCommitError,
+    LedgerIntegrityError,
 };
 pub use physical::{CommitRecoveryError, CommitSnapshotDiagnostic};
-pub use policy::{PolicyIdentity, PolicyIdentityError, RuntimeBootstrapPolicy};
+pub use policy::{PolicyIdentity, RuntimeBootstrapPolicy};
 pub use requests::{MemoryDeclarationError, MemoryRequest, SealedDeclarationSnapshot};
 pub use runtime::{
     AllocationBinding, BootstrapAdmission, BootstrapAdmissionError, GenericAllocationPolicy,
@@ -178,9 +177,10 @@ pub use slot::{
 pub use stable_cell::{
     STABLE_CELL_HEADER_SIZE, STABLE_CELL_LAYOUT_VERSION, STABLE_CELL_MAGIC,
     STABLE_CELL_VALUE_OFFSET, StableCellLedgerError, StableCellPayloadError,
-    decode_stable_cell_commit_store, decode_stable_cell_commit_store_from_memory,
     decode_stable_cell_payload,
 };
+#[cfg(test)]
+use stable_cell::{decode_stable_cell_commit_store, decode_stable_cell_commit_store_from_memory};
 pub use validation::AllocationValidationError;
 
 #[cfg(test)]

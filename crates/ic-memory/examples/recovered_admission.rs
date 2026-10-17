@@ -1,10 +1,10 @@
 //! Retain an explicitly selected known allocation across a cold bootstrap.
 //! Applications own key meaning and any checks on the retained contents.
-use ic_memory::ic_stable_structures::{Memory, VectorMemory};
 use ic_memory::{
     BootstrapAdmission, MemoryManagerSlot, MemoryRequest, MemoryRuntime, PolicyIdentity,
-    PolicyIdentityError, RuntimeBootstrapPolicy, SealedDeclarationSnapshot, StableKey,
+    RuntimeBootstrapPolicy, SealedDeclarationSnapshot, StableKey,
 };
+use ic_memory::{Memory, VectorMemory};
 
 const CURRENT: &str = "component.current.v1";
 const RETAINED: &str = "component.retained.v1";
@@ -19,8 +19,8 @@ impl RuntimeBootstrapPolicy for HostPolicy {
     ) -> Result<(), Self::Error> {
         Ok(())
     }
-    fn runtime_bootstrap_identity(&self) -> Result<PolicyIdentity, PolicyIdentityError> {
-        PolicyIdentity::new("example.known-allocation-retention", 1)
+    fn runtime_bootstrap_identity(&self) -> PolicyIdentity {
+        PolicyIdentity::new(*b"example.known-retention.v1......")
     }
     fn prepare_bootstrap(&self, admission: &mut BootstrapAdmission<'_>) -> Result<(), Self::Error> {
         let key = StableKey::parse(RETAINED).unwrap();

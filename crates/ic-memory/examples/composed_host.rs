@@ -1,11 +1,11 @@
 //! Run with `cargo run --example composed_host`.
 //! Its public-API regressions also run in the ordinary `cargo test` suite.
-use ic_memory::ic_stable_structures::{Memory, VectorMemory};
 use ic_memory::{
     BootstrapAdmission, MemoryManagerConfig, MemoryManagerSlot, MemoryRequest, MemoryRuntime,
-    PolicyIdentity, PolicyIdentityError, RuntimeBootstrapError, RuntimeBootstrapPolicy,
-    RuntimeOpenError, SealedDeclarationSnapshot, StableKey,
+    PolicyIdentity, RuntimeBootstrapError, RuntimeBootstrapPolicy, RuntimeOpenError,
+    SealedDeclarationSnapshot, StableKey,
 };
+use ic_memory::{Memory, VectorMemory};
 use std::cell::Cell;
 
 const HOST: &str = "host.control.v1";
@@ -48,8 +48,8 @@ impl RuntimeBootstrapPolicy for HostPolicy {
         Ok(())
     }
 
-    fn runtime_bootstrap_identity(&self) -> Result<PolicyIdentity, PolicyIdentityError> {
-        PolicyIdentity::new("example.composed-host", 1)
+    fn runtime_bootstrap_identity(&self) -> PolicyIdentity {
+        PolicyIdentity::new(*b"example.composed-host...........")
     }
 
     fn prepare_bootstrap(&self, admission: &mut BootstrapAdmission<'_>) -> Result<(), Self::Error> {

@@ -1,9 +1,9 @@
 //! Run with `cargo run --example key_only`.
-use ic_memory::ic_stable_structures::{Memory, VectorMemory};
 use ic_memory::{
     GenericAllocationPolicy, MemoryAllocationPool, MemoryAuthority, MemoryRequest, MemoryRuntime,
     SealedDeclarationSnapshot,
 };
+use ic_memory::{Memory, VectorMemory};
 fn request(owner: &str, key: &str) -> MemoryRequest {
     MemoryRequest::new(owner, key).unwrap()
 }

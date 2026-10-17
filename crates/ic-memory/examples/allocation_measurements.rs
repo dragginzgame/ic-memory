@@ -97,7 +97,7 @@ fn main() {
             0
         );
         let handle = runtime.open_memory("fixture.store128.v1").unwrap();
-        let growing = StableVec::<[u8; 1024], RuntimeMemory<Metered>>::init(handle.clone());
+        let growing = StableVec::<[u8; 1024], RuntimeMemory<Metered>>::init(handle);
         memory.reset();
         let start = Instant::now();
         for index in 0..8192_u64 {
@@ -129,6 +129,7 @@ fn main() {
             elapsed,
             &runtime.memory_allocations().unwrap(),
         );
+        let handle = growing.into_memory();
         memory.reset();
         let start = Instant::now();
         for _ in 0..20_000 {
@@ -144,7 +145,6 @@ fn main() {
             elapsed,
             &runtime.memory_allocations().unwrap(),
         );
-        drop(growing);
         drop(handle);
         let before = runtime.memory_allocations().unwrap();
         drop(runtime);

@@ -1,7 +1,7 @@
 //! Fixture-only runtime bootstrap shared by cells and collection qualification.
 use crate::{
-    GenericAllocationPolicy, MemoryAllocationPool, MemoryAuthority, MemoryManagerConfig,
-    MemoryRequest, MemoryRuntime, SealedDeclarationSnapshot, ic_stable_structures::Memory,
+    GenericAllocationPolicy, Memory, MemoryAllocationPool, MemoryAuthority, MemoryManagerConfig,
+    MemoryRequest, MemoryRuntime, SealedDeclarationSnapshot,
 };
 
 /// Failure to construct and admit an explicitly configured fixture runtime.

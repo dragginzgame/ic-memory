@@ -62,7 +62,7 @@ fn runtime(bucket_pages: u16) -> MemoryRuntime<ObservedMemory> {
 // Exercise the private transport independently of declaration registration.
 // Public open authority and reserved IDs are covered by the runtime tests.
 fn handle<M: Memory>(runtime: &MemoryRuntime<M>, id: u8) -> RuntimeMemory<M> {
-    runtime.memory(id)
+    runtime.memory(id).unwrap()
 }
 
 fn read_uninitialized<const N: usize>(memory: &impl Memory, offset: u64) -> [u8; N] {
@@ -154,7 +154,7 @@ fn uninitialized_reads_translate_discontiguous_buckets_and_partial_failures() {
 }
 
 #[test]
-fn default_read_unsafe_and_clones_support_borrowed_nonclone_backing() {
+fn default_read_unsafe_and_lease_support_borrowed_nonclone_backing() {
     struct DefaultOnly<'a>(&'a VectorMemory);
     impl Memory for DefaultOnly<'_> {
         fn size(&self) -> u64 {
@@ -175,23 +175,20 @@ fn default_read_unsafe_and_clones_support_borrowed_nonclone_backing() {
         MemoryRuntime::new_with_config(DefaultOnly(&backing), MemoryManagerConfig::new(1).unwrap())
             .unwrap();
     let memory = handle(&runtime, 1);
-    let cold_clone = memory.clone();
     memory.grow(1).unwrap();
     memory.write(PAGE - 3, &[1, 2, 3]);
     assert_eq!(read_uninitialized::<3>(&memory, PAGE - 3), [1, 2, 3]);
-    let warm_clone = memory.clone();
-    drop(memory);
     drop(runtime);
-    assert_eq!(read_uninitialized::<3>(&cold_clone, PAGE - 3), [1, 2, 3]);
-    assert_eq!(read_uninitialized::<3>(&warm_clone, PAGE - 3), [1, 2, 3]);
+    assert_eq!(read_uninitialized::<3>(&memory, PAGE - 3), [1, 2, 3]);
 }
 
 #[test]
 fn io_bounds_are_independent_of_bucket_cache_and_reject_before_backing_access() {
     let runtime = runtime(8);
-    let memory = handle(&runtime, 1);
     for pages in [0, 1] {
+        let memory = handle(&runtime, 1);
         memory.grow(pages).unwrap();
+        drop(memory);
         let extent = pages * PAGE;
         let mut spans = vec![(0, 0, true), (extent, 0, true)];
         if extent != 0 {
@@ -322,9 +319,10 @@ fn byte_io_crosses_four_gib_with_discontiguous_buckets() {
     memory.grow(1).unwrap();
     let offset = (1_u64 << 32) - 1;
     memory.write(offset, &[1, 2, 3]);
-    let cold = handle(&runtime, 1);
-    assert_eq!(read_uninitialized::<3>(&cold, offset), [1, 2, 3]);
-    assert_eq!(read_uninitialized::<3>(&cold, offset), [1, 2, 3]);
+    drop(memory);
+    let memory = handle(&runtime, 1);
+    assert_eq!(read_uninitialized::<3>(&memory, offset), [1, 2, 3]);
+    assert_eq!(read_uninitialized::<3>(&memory, offset), [1, 2, 3]);
     let mut dst = [0; 3];
     memory.read(offset, &mut dst);
     assert_eq!(dst, [1, 2, 3]);

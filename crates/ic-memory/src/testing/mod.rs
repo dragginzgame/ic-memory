@@ -3,15 +3,20 @@
 mod runtime;
 pub use runtime::{FixtureRuntimeError, fixture_runtime};
 
-use crate::{
-    MemoryManagerConfig, RuntimeMemory,
-    ic_stable_structures::{Cell, Memory},
+use crate::{Memory, MemoryManagerConfig, RuntimeMemory};
+use ic_stable_structures::Cell;
+
+/// Passive fixture DTOs and bounded raw snapshot readers. These do not recover
+/// allocation authority or grant memory access; production callers use the runtime.
+pub use crate::ledger::{AllocationLedger, LedgerCommitStore};
+pub use crate::stable_cell::{
+    decode_stable_cell_commit_store, decode_stable_cell_commit_store_from_memory,
 };
 
 /// Construct a passive fixture record from checked declaration fields and a chosen state.
 ///
 /// This performs no transition, generation advance, persistence or capability
-/// publication. Compose records with [`crate::AllocationLedger::new`] to check
+/// publication. Compose records with [`AllocationLedger::new`] to check
 /// ledger-wide uniqueness and genesis rules before encoding fixture bytes.
 #[must_use]
 pub fn allocation_record(
