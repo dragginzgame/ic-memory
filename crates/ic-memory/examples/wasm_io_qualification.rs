@@ -102,10 +102,9 @@ mod canister {
 
     #[unsafe(export_name = "canister_query snapshot")]
     extern "C" fn snapshot() {
-        let mut bytes =
-            with_runtime(|runtime| runtime.committed_allocations().unwrap().generation())
-                .to_le_bytes()
-                .to_vec();
+        let mut bytes = with_runtime(|runtime| runtime.committed_generation().unwrap())
+            .to_le_bytes()
+            .to_vec();
         // Check assigned identities independently of payload retention.
         assert_eq!(memory_id(NEIGHBOR).unwrap(), 10);
         assert_eq!(memory_id(ROWS).unwrap(), 11);

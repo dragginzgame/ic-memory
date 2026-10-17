@@ -63,7 +63,13 @@ persisted bucket geometry. Use `DiagnosticMemorySize::bytes()` and the summary's
 byte-total methods for derived values. Per-ID and binding-group byte methods
 take `summary.bucket_size_pages`. Fixed layout/read-budget facts are associated
 constants on `MemoryAllocationSummary`. JSON contains primary facts only;
-application APIs such as Canic own any expanded presentation DTOs.
+application APIs such as Canic own any expanded presentation DTOs. Per-ID rows
+contain only the ID, virtual extent and bucket count. Hosts join the borrowed
+`committed_allocations()` slice to their rows by slot ID and use the runtime
+`allocation_pool()` and `MemoryAllocationPool::authority_for_key` for current
+owner labels and eligibility. Ledger labels come from the reserved constants.
+Unknown IDs stay unknown: neither a namespace grant nor pool membership proves
+historical ownership. Numeric summary provenance groups remain available.
 
 Payload occupancy belongs to the storage owner's diagnostics. This report does
 not inspect collection formats or include a payload-occupancy field.
@@ -120,8 +126,10 @@ study that introduced configurable buckets.
 ## Bootstrap state and early observations
 
 The host constructs and retains one explicit runtime. `runtime.is_bootstrapped()`
-and `runtime.committed_allocations()` inspect that instance; the latter returns
-`NotBootstrapped` until bootstrap succeeds. Pass opened handles to components
+and its borrowed `runtime.committed_allocations()` slice inspect that instance.
+`bootstrap` returns the committed generation; `committed_generation()` queries
+it without ledger IO. Bindings and pool queries return `NotBootstrapped` until
+bootstrap succeeds; there is no detached allocation-open capability. Pass opened handles to components
 instead of constructing independent managers over the same backing memory.
 
 `open_memory` grants one non-cloneable lease per committed allocation. A second

@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.47.0]
+
+- **Breaking allocation API:** bootstrap returns the committed generation; borrow
+  current bindings directly from the runtime. Numeric declaration builders and
+  decoding require `test-support`.
+- **Breaking diagnostic JSON/API:** per-ID rows contain numeric measurements only;
+  hosts own label and pool-eligibility projection. Numeric provenance totals remain.
+- Share explicit fixture-runtime bootstrap with fixture cells; no collections
+  are initialized by setup ([PR #120](https://github.com/dragginzgame/ic-memory/pull/120)).
+- Preserve README bytes and skip unchanged metadata writes during release
+  preparation, retiring automated example rewriting ([#119](https://github.com/dragginzgame/ic-memory/issues/119)).
+- Stored formats and IDs are unchanged; no reset or conversion is needed.
+
+[Detailed notes](docs/changelog/0.47.md)
+
 ## [0.46.0] - 2026-10-17
 
 - **Breaking ownership API:** allocation handles are non-cloneable leases.

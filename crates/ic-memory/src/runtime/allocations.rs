@@ -1,28 +1,7 @@
-use super::{
-    MemoryManagerLayoutError, MemoryRuntime, RuntimeDiagnosticError, RuntimeLifecycle, layout,
-};
+use super::{MemoryManagerLayoutError, MemoryRuntime, RuntimeDiagnosticError, layout};
 use crate::{DiagnosticMemorySize, MEMORY_MANAGER_LEDGER_ID, WASM_PAGE_SIZE_BYTES};
 use ic_stable_structures::Memory;
 use serde::Serialize;
-
-///
-/// AllocationBinding
-///
-/// Source of a stable-key binding. Unknown includes retired or absent current
-/// declarations: this report never recovers historical ownership. The ledger
-/// variant identifies the substrate-reserved slot, not validation of its payload.
-///
-
-#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
-pub enum AllocationBinding {
-    /// A declaration bound by this runtime's successful bootstrap.
-    Current { stable_key: String, owner: String },
-    /// The reserved ledger allocation, identified by
-    /// [`crate::IC_MEMORY_LEDGER_STABLE_KEY`] and [`crate::IC_MEMORY_AUTHORITY_OWNER`].
-    Ledger,
-    /// No current stable-key binding is known; this does not mean unused.
-    Unknown,
-}
 
 ///
 /// MemoryAllocation
@@ -36,10 +15,6 @@ pub enum AllocationBinding {
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 pub struct MemoryAllocation {
     pub memory_manager_id: u8,
-    pub binding: AllocationBinding,
-    /// Current host pool eligibility, not evidence that this ID is free.
-    /// Unavailable before bootstrap except for the permanent governance exclusion.
-    pub pool_eligible: Option<bool>,
     pub virtual_extent: DiagnosticMemorySize,
     pub allocated_buckets: u16,
 }
@@ -208,11 +183,8 @@ impl<M: Memory> MemoryRuntime<M> {
     ///
     /// Reads at most 34,848 backing bytes. Never initializes stores, decodes the ledger, writes,
     /// grows memory, or advances a generation. Available before bootstrap;
-    /// current declaration/pool bindings are then unavailable.
-    ///
-    /// # Panics
-    ///
-    /// Panics only if the private committed-key/host-grant invariant is broken.
+    /// current provenance totals are then unavailable. Host labels and pool
+    /// eligibility are projected separately from borrowed runtime bindings.
     pub fn memory_allocations(&self) -> Result<MemoryAllocations, RuntimeDiagnosticError> {
         let (measured, summary) = self.measure_allocations()?;
         let mut memories = Vec::with_capacity(layout::IDS);
@@ -221,35 +193,10 @@ impl<M: Memory> MemoryRuntime<M> {
             let virtual_extent = DiagnosticMemorySize::from_wasm_pages(measured.pages[index]);
             memories.push(MemoryAllocation {
                 memory_manager_id: id,
-                binding: AllocationBinding::Unknown,
-                pool_eligible: (id <= crate::MEMORY_MANAGER_GOVERNANCE_MAX_ID).then_some(false),
                 virtual_extent,
                 allocated_buckets: measured.buckets[index],
             });
         }
-        // Resolution guarantees usable unique IDs.
-        // Populate the ordered rows directly instead of searching for each ID.
-        if let RuntimeLifecycle::Bootstrapped {
-            binding,
-            committed_allocations,
-        } = &self.lifecycle
-        {
-            for declaration in committed_allocations.declarations() {
-                let id = declaration.slot().id();
-                memories[usize::from(id)].binding = AllocationBinding::Current {
-                    stable_key: declaration.stable_key().as_str().to_string(),
-                    owner: binding
-                        .pool
-                        .authority_for_key(declaration.stable_key())
-                        .expect("committed key has an admitted owner")
-                        .to_string(),
-                };
-            }
-            for memory in &mut memories {
-                memory.pool_eligible = Some(binding.pool.contains(memory.memory_manager_id));
-            }
-        }
-        memories[usize::from(MEMORY_MANAGER_LEDGER_ID)].binding = AllocationBinding::Ledger;
         Ok(MemoryAllocations { summary, memories })
     }
 
@@ -262,21 +209,10 @@ impl<M: Memory> MemoryRuntime<M> {
         self.measure_allocations().map(|(_, summary)| summary)
     }
 
-    fn allocation_declarations(&self) -> Option<&[crate::AllocationDeclaration]> {
-        // Resolved declarations already have checked unique slots.
-        match &self.lifecycle {
-            RuntimeLifecycle::Unbootstrapped => None,
-            RuntimeLifecycle::Bootstrapped {
-                committed_allocations,
-                ..
-            } => Some(committed_allocations.declarations()),
-        }
-    }
-
     fn measure_allocations(
         &self,
     ) -> Result<(layout::Layout, MemoryAllocationSummary), RuntimeDiagnosticError> {
-        let declarations = self.allocation_declarations();
+        let declarations = self.committed_allocations().ok();
         let measured = layout::read(self.growth.backing.as_ref())?;
         let live_buckets = self
             .growth
@@ -322,10 +258,7 @@ impl<M: Memory> MemoryRuntime<M> {
         let physical_extent = DiagnosticMemorySize::from_wasm_pages(measured.physical_pages);
         let virtual_extent = DiagnosticMemorySize::from_wasm_pages(total_pages);
         let summary = MemoryAllocationSummary {
-            current_generation: self
-                .committed_allocations()
-                .ok()
-                .map(crate::CommittedAllocations::generation),
+            current_generation: self.committed_generation().ok(),
             bucket_size_pages: measured.bucket_pages,
             allocated_buckets: measured.allocated_buckets,
             physical_extent,

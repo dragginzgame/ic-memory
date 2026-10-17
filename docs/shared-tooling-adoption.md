@@ -40,6 +40,15 @@ format or dependency selection and does not establish consumer qualification.
 
 ## Recorded snapshot adoption
 
+The current selection has 81 explicit roots and 112 payloads at the same reviewed
+Shared 0.15.0 revision. Memory no longer rewrites README dependency examples
+during release preparation. Canonical refresh retired the unused renderer root
+and payload for [#119](https://github.com/dragginzgame/ic-memory/issues/119), with
+no policy, tool-pin or executable identity change for retained payloads. Saved
+README bytes remain bound to release metadata, receipts and recovery checks.
+No setup or tool reinstall is required for this narrowed selection.
+
+
 The current Shared 0.15.0 export retains the earlier payload closure and adds four
 required companions over 0.12.4: Cargo publication, Rust toolchain and CI
 change-selection guides, plus canonical release version/date admission. The runner and increment
@@ -53,8 +62,8 @@ also describes open PR work; only bytes in the exact committed export are adopte
 
 Memory's native release adapter directly invokes the canonical version/date
 admission helper. The launcher also selects the workspace-version reader directly,
-bringing the selection to 82 explicit roots with the same 113 payloads and source
-revision. It shares manifest admission/rendering and stable-version admission;
+bringing the initial selection to 82 explicit roots with 113 payloads at that
+source revision before the README renderer retirement. It shares manifest admission/rendering and stable-version admission;
 Memory retains lock-package selection, scratch custody and network scope.
 The adapter parses the helper's typed projection while
 retaining independent release input, receipt and recovery binding. No executable
@@ -74,9 +83,9 @@ reminders; Memory retains independent release identity and receipt admission.
 Producer full-suite failures remain separate from focused renderer and consumer
 qualification, tracked by [Shared #179 — Correct dashboard width fixtures](https://github.com/dragginzgame/shared-tooling/issues/179).
 
-The single 113-file snapshot uses reviewed committed Shared Tooling at that
+The single 112-file snapshot uses reviewed committed Shared Tooling at that
 revision, whose committed source `VERSION` is 0.15.0. The manifest records that
-display version separately from its authoritative commit identity. The 82 explicit
+display version separately from its authoritative commit identity. The 81 explicit
 roots select the reviewed governance catalog and Memory's maintained Make, hook, CI,
 archive and fixture entrypoints. Their generated companion closure preserves
 the directly invoked canonical local-package lock rewriter and the baseline-linked

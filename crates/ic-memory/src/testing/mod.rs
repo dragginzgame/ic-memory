@@ -1,10 +1,52 @@
 //! Explicit fixture-only ledger and cell setup; callers own codecs, bounds and lifecycle calls.
 
-use crate::{
-    GenericAllocationPolicy, Memory, MemoryAllocationPool, MemoryAuthority, MemoryManagerConfig,
-    MemoryRequest, MemoryRuntime, RuntimeMemory, SealedDeclarationSnapshot,
-};
+mod runtime;
+pub use runtime::{FixtureRuntimeError, fixture_runtime};
+
+use crate::{Memory, MemoryManagerConfig, RuntimeMemory};
 use ic_stable_structures::Cell;
+
+use crate::{
+    AllocationDeclaration, MemoryManagerSlot, MemoryManagerSlotError, StableKey, StableKeyError,
+};
+
+///
+/// DeclarationSnapshotError
+///
+/// Checked allocation identity construction failure.
+///
+
+#[non_exhaustive]
+#[derive(Clone, Debug, Eq, thiserror::Error, PartialEq)]
+pub enum DeclarationSnapshotError {
+    /// Stable-key grammar failure.
+    #[error(transparent)]
+    Key(StableKeyError),
+    /// `MemoryManager` slot validation failure.
+    #[error(transparent)]
+    MemoryManagerSlot(MemoryManagerSlotError),
+}
+
+impl AllocationDeclaration {
+    /// Build a declaration from raw parts after validating allocation identity.
+    pub fn new(
+        stable_key: impl AsRef<str>,
+        slot: MemoryManagerSlot,
+    ) -> Result<Self, DeclarationSnapshotError> {
+        let stable_key = StableKey::parse(stable_key).map_err(DeclarationSnapshotError::Key)?;
+        Ok(Self { stable_key, slot })
+    }
+
+    /// Build a checked `MemoryManager` declaration with a usable slot.
+    pub fn memory_manager(
+        stable_key: impl AsRef<str>,
+        id: u8,
+    ) -> Result<Self, DeclarationSnapshotError> {
+        let slot =
+            MemoryManagerSlot::new(id).map_err(DeclarationSnapshotError::MemoryManagerSlot)?;
+        Self::new(stable_key, slot)
+    }
+}
 
 /// Passive fixture DTOs and bounded raw snapshot readers. These do not recover
 /// allocation authority or grant memory access; production callers use the runtime.
@@ -179,14 +221,7 @@ impl<M: Memory> FixtureCell<M> {
         stable_key: &str,
         config: MemoryManagerConfig,
     ) -> Result<RuntimeMemory<M>, FixtureCellError> {
-        let request = MemoryRequest::new(owner, stable_key)?;
-        let pool =
-            MemoryAllocationPool::new(vec![MemoryAuthority::new(owner, namespace)?], vec![])?;
-        let declarations = SealedDeclarationSnapshot::new(vec![request])?;
-        let mut runtime = MemoryRuntime::new_with_config(memory, config)?;
-        runtime
-            .bootstrap(&declarations, &pool, &GenericAllocationPolicy)
-            .map_err(|error| FixtureCellError::Bootstrap(Box::new(error)))?;
+        let runtime = fixture_runtime(memory, owner, namespace, &[stable_key], config)?;
         Ok(runtime.open_memory(stable_key)?)
     }
 

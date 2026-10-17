@@ -46,7 +46,8 @@ impl<M: Memory> MemoryRuntime<M> {
     ) -> Result<(), RuntimeAdoptionError> {
         let RuntimeLifecycle::Bootstrapped {
             binding,
-            committed_allocations,
+            allocations,
+            ..
         } = &self.lifecycle
         else {
             return Err(RuntimeOpenError::NotBootstrapped.into());
@@ -55,12 +56,7 @@ impl<M: Memory> MemoryRuntime<M> {
         for request in requirements.requests() {
             if request.authority() == authority {
                 found = true;
-                verify_requirement(
-                    committed_allocations,
-                    &binding.pool,
-                    authority,
-                    request.stable_key(),
-                )?;
+                verify_requirement(allocations, &binding.pool, authority, request.stable_key())?;
             }
         }
         if !found {
@@ -73,12 +69,12 @@ impl<M: Memory> MemoryRuntime<M> {
 }
 
 fn verify_requirement(
-    committed: &crate::CommittedAllocations,
+    committed: &[crate::AllocationDeclaration],
     pool: &crate::MemoryAllocationPool,
     authority: &str,
     key: &StableKey,
 ) -> Result<(), RuntimeAdoptionError> {
-    crate::capability::declaration_for_key(committed.declarations(), key.as_str())
+    crate::declaration::declaration_for_key(committed, key.as_str())
         .ok_or_else(|| RuntimeOpenError::StableKeyNotCommitted(key.to_string()))?;
     let admitted_authority = pool
         .authority_for_key(key)

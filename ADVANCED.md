@@ -40,7 +40,7 @@ MemoryManager ID 0
   -> RecoveredLedger
   -> one owned validation/staging attempt
   -> persisted stable Cell
-  -> CommittedAllocations
+  -> runtime-owned committed bindings and generation
 ```
 
 The logical payload uses the built-in `ic-memory` CBOR ledger format. Callers do
@@ -61,7 +61,7 @@ to one runtime. A cold bootstrap then:
    authorized historical keys from bounded allocation metadata.
 3. Resolves logical requests while preserving existing assignments.
 4. Validates the completed declarations against retained ownership and current policy.
-5. Stages and persists one generation before publishing `CommittedAllocations`.
+5. Stages and persists one generation before publishing runtime-owned committed bindings.
 6. Opens application stable-memory handles through that runtime.
 
 The important rule: validate layout before touching stable data.
@@ -77,7 +77,7 @@ the staged generation is persisted only after validation succeeds.
 
 `MemoryRuntime<M>` is the canonical owner for one backing memory instance. It
 owns the `MemoryManager<Rc<M>>`, allocation-ledger persistence, bootstrap lifecycle,
-committed allocation capability, memory opens, recovery diagnostics, and live
+committed bindings, memory opens, recovery diagnostics, and live
 memory-size inspection. The runtime and its opened handles share the backing
 memory and growth accounting; the manager owns bucket metadata.
 
@@ -88,7 +88,7 @@ cached after success or failure. Diagnostics read persisted memory directly.
 The host composes component requests into one immutable
 `SealedDeclarationSnapshot` and supplies it explicitly to each runtime. No global
 registry collects declarations. Each runtime performs its own recovery, policy
-evaluation, persistence and capability publication on its backing memory.
+evaluation, persistence and binding publication on its backing memory.
 
 Exactly one host owns and bootstraps a `MemoryRuntime` for a given backing
 memory. That host retains the instance and passes runtime references or opened
@@ -166,9 +166,9 @@ ID. All selected component requirements must be present before opening storage.
 
 `snapshot.requests()` exposes canonical source requests. Resolution feeds the
 checked declaration snapshot to commitment; current placement projections
-borrow the resulting capability. There is no second resolved-row map or
+borrow the runtime's resulting bindings. There is no second resolved-row map or
 alternative component input. Governance is validated internally before
-application capability publication.
+application binding publication.
 
 ## Runtime Diagnostics
 
@@ -184,14 +184,15 @@ identity with the successful bootstrap binding. They do not use a fingerprint.
 Typed diagnostic outcomes include
 stable codes and messages. Invalid persisted records fail recovery and are not
 exported as valid ledgers. Physical allocation reports do not decode ownership;
-`pool_eligible` describes policy membership, not free space or historical custody.
+hosts project pool eligibility from the bound `allocation_pool()`. This describes
+current policy membership, not free space or historical custody.
 
 ## Explicit `MemoryRuntime<M>`
 
 ```rust,no_run
 use ic_memory::{MemoryAllocationPool, MemoryAuthority, MemoryRequest,
     MemoryRuntime, SealedDeclarationSnapshot, GenericAllocationPolicy,
-    ic_stable_structures::VectorMemory};
+    VectorMemory};
 let source = SealedDeclarationSnapshot::new(vec![
     MemoryRequest::new("app", "app.users.v1")?,
 ])?;
@@ -209,9 +210,12 @@ reserves the metadata page before writing a header; growth refusal returns a
 typed error and leaves backing retryable. Geometry mismatches reject before
 admission or persistence. The host handles construction errors explicitly.
 
-The runtime owns its manager and committed capability. Opens consult only that
-runtime's capability; they cannot accept another runtime's authority. Capability
-publication follows successful persistence. One bootstrap owner is required for
+The runtime owns its manager, committed bindings and generation. Opens consult
+only that runtime's bindings; they cannot accept detached authority. Binding
+publication follows successful persistence. `bootstrap` returns the generation,
+and `committed_allocations()` borrows a passive slice. Numeric declaration
+construction and decoding require `test-support`; production inputs remain
+key-only requests. One bootstrap owner is required for
 each concrete backing memory.
 
 ## Recovery and Persistence
@@ -251,10 +255,9 @@ empty-genesis rules. It returns a passive DTO, not a persistence owner. Inspect
 `AllocationLedger::records()` and each record's key, slot and state for current ownership.
 See the [current ledger contract](docs/current-ledger.md) for retained-data rules.
 
-Internal pre-commit validation state cannot open storage. `CommittedAllocations`
-is the non-serializable open capability published by the runtime only after its
-stable-cell write succeeds. Diagnostic exports and durable records are not open
-capabilities.
+Internal pre-commit validation state cannot open storage. Only the runtime can
+publish its committed bindings, after its stable-cell write succeeds. Diagnostic
+exports, copied declarations and durable records are not open authority.
 
 ## Stable Key Rules
 
@@ -333,12 +336,11 @@ For the checked `MemoryManagerSlot` allocation identity:
 
 `ic-memory` does not replace `ic-stable-structures`.
 
-It owns allocation governance and re-exports its exact substrate dependency as
-`ic_memory::ic_stable_structures`. Downstream code can import collections such
-as `StableBTreeMap`, backing memories, `Memory`, and `Storable` through that
-namespace without a separate dependency. These are the upstream types, used
-with `RuntimeMemory<M>` handles from the owned runtime. Re-exporting the
-collections does not wrap their behavior or change manager ownership.
+It owns allocation governance. Root `Memory`, `DefaultMemoryImpl` and
+`VectorMemory` cover host backing setup. Production collection integrations
+belong behind IC Storage's governed wrappers, which consume exclusive
+`RuntimeMemory` leases. Memory does not re-export raw collections or a manager
+factory.
 
 It also does not handle:
 
@@ -360,8 +362,8 @@ intended to stabilize around persistent allocation ownership, but framework
 authors should still treat this line as young infrastructure while the
 standalone boundary settles.
 
-The two commit slots are serialized together inside the stable cell and rely on
-ICP message execution for atomic commit and rollback. If the enclosing record
-remains decodable, their non-cryptographic checksums detect accidental slot
-corruption. Any present invalid slot fails closed instead of falling back to an
-older generation. The checksums do not provide adversarial tamper resistance.
+The single current snapshot is serialized inside the stable cell and relies on
+ICP message execution for atomic commit and rollback. Its non-cryptographic
+checksum detects accidental corruption. An invalid snapshot fails closed;
+there is no fallback generation. The checksum does not provide adversarial
+tamper resistance.

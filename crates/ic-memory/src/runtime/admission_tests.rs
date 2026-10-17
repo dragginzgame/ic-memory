@@ -95,8 +95,8 @@ fn full_pool_resolution_combines_current_and_selected_history_without_reassignme
     let committed = runtime
         .bootstrap(&snapshot(&current, "app"), &pool(), &policy)
         .unwrap();
-    assert_eq!(committed.generation(), 2);
-    assert_eq!(committed.declarations().len(), 245);
+    assert_eq!(committed, 2);
+    assert_eq!(runtime.committed_allocations().unwrap().len(), 245);
     for (index, key) in keys.iter().enumerate() {
         assert_eq!(
             runtime.memory_id(key),
@@ -189,33 +189,13 @@ fn discovers_omitted_journal_before_one_commit_and_skips_warm_admission() {
         runtime.open_memory(JOURNAL),
         Err(RuntimeOpenError::NotBootstrapped)
     ));
-    assert_eq!(
-        runtime
-            .bootstrap(&current, &pool(), &policy)
-            .unwrap()
-            .generation(),
-        2
-    );
+    assert_eq!(runtime.bootstrap(&current, &pool(), &policy).unwrap(), 2);
     let mut marker = [0; 12];
     runtime.open_memory(JOURNAL).unwrap().read(0, &mut marker);
     assert_eq!(&marker, b"pending/debt");
-    assert_eq!(
-        runtime
-            .committed_allocations()
-            .unwrap()
-            .slot_for(&StableKey::parse(JOURNAL).unwrap())
-            .unwrap()
-            .id(),
-        11
-    );
+    assert_eq!(runtime.memory_id(JOURNAL).unwrap(), 11);
     let before = backing.borrow().clone();
-    assert_eq!(
-        runtime
-            .bootstrap(&current, &pool(), &policy)
-            .unwrap()
-            .generation(),
-        2
-    );
+    assert_eq!(runtime.bootstrap(&current, &pool(), &policy).unwrap(), 2);
     let _ = runtime.doctor_report(&current, &pool(), &policy);
     assert_eq!(policy.calls.get(), 1);
     assert_eq!(runtime.memory_manager_config().bucket_size_pages(), 1);
@@ -256,10 +236,7 @@ fn historical_request_validation_precedes_selection_and_poisons_the_attempt() {
                     "reserved authority",
                     DeclarationError::ReservedAuthority { .. }
                 )
-                | (
-                    "key",
-                    DeclarationError::Declaration(crate::DeclarationSnapshotError::Key(_))
-                )
+                | ("key", DeclarationError::Key(_))
                 | ("reserved key", DeclarationError::ReservedStableKey { .. })
         ));
         assert_eq!(
@@ -331,8 +308,7 @@ fn bad_selections_and_consumer_rejections_leave_mapping_unchanged() {
                 &pool(),
                 &policy
             )
-            .unwrap()
-            .generation(),
+            .unwrap(),
         2
     );
     assert_eq!(policy.calls.get(), 3);
@@ -480,13 +456,7 @@ fn failed_persistence_retries_admission_without_partial_publication() {
     assert!(failed.is_err());
     assert!(!runtime.is_bootstrapped());
     assert_eq!(*backing.borrow(), before);
-    assert_eq!(
-        runtime
-            .bootstrap(&current, &pool(), &policy)
-            .unwrap()
-            .generation(),
-        2
-    );
+    assert_eq!(runtime.bootstrap(&current, &pool(), &policy).unwrap(), 2);
     assert_eq!(policy.calls.get(), 2);
     let mut marker = [0; 12];
     runtime.open_memory(JOURNAL).unwrap().read(0, &mut marker);
@@ -525,13 +495,7 @@ fn fresh_rejection_can_acquire_root_but_cannot_commit_genesis() {
     assert_eq!(*backing.borrow(), before);
     assert!(!runtime.is_bootstrapped());
     let policy = AdmissionPolicy::default();
-    assert_eq!(
-        runtime
-            .bootstrap(&current, &pool(), &policy)
-            .unwrap()
-            .generation(),
-        1
-    );
+    assert_eq!(runtime.bootstrap(&current, &pool(), &policy).unwrap(), 1);
 }
 
 #[test]
@@ -574,24 +538,20 @@ fn completion_bound_and_reservation_activation_preserve_evidence() {
     let committed = runtime
         .bootstrap(&snapshot(&[CONTROL], "app"), &pool(), &policy)
         .unwrap();
-    assert_eq!(committed.generation(), 3);
-    let declaration = committed
-        .declarations()
+    assert_eq!(committed, 3);
+    let declaration = runtime
+        .committed_allocations()
+        .unwrap()
         .iter()
         .find(|d| d.stable_key().as_str() == "app.reserved.journal.v1")
         .unwrap();
     assert_eq!(declaration.slot().id(), 12);
     assert!(
-        committed
-            .declarations()
+        runtime
+            .committed_allocations()
+            .unwrap()
             .windows(2)
             .all(|pair| { pair[0].stable_key() < pair[1].stable_key() })
     );
-    assert_eq!(
-        committed
-            .slot_for(&StableKey::parse(JOURNAL).unwrap())
-            .unwrap()
-            .id(),
-        11
-    );
+    assert_eq!(runtime.memory_id(JOURNAL).unwrap(), 11);
 }

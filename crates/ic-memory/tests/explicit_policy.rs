@@ -42,8 +42,7 @@ fn custom_policy_bootstrap_is_identity_bound_and_idempotent() {
     );
     let first = runtime
         .bootstrap(&snapshot(), &pool(), &CustomPolicy)
-        .unwrap()
-        .clone();
+        .unwrap();
     let before = runtime.memory_allocations().unwrap();
     assert_eq!(before.summary.bucket_size_pages, 16);
     assert!(matches!(
@@ -55,7 +54,7 @@ fn custom_policy_bootstrap_is_identity_bound_and_idempotent() {
         runtime
             .bootstrap(&snapshot(), &pool(), &CustomPolicy)
             .unwrap(),
-        &first
+        first
     );
     let doctor = runtime.doctor_report(&snapshot(), &pool(), &CustomPolicy);
     assert!(matches!(

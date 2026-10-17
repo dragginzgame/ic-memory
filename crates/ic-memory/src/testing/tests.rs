@@ -1,5 +1,8 @@
 use super::*;
-use crate::VectorMemory;
+use crate::{
+    GenericAllocationPolicy, MemoryAllocationPool, MemoryAuthority, MemoryRequest, MemoryRuntime,
+    SealedDeclarationSnapshot, VectorMemory,
+};
 
 #[test]
 fn cell_keeps_existing_runtime_bytes_and_bucket_configuration() {
@@ -341,5 +344,82 @@ fn bounded_open_does_not_initialize_a_missing_cell_in_an_existing_manager() {
             size: 1,
             maximum: 0
         })
+    ));
+}
+
+#[test]
+fn fixture_runtime_keeps_named_allocations_and_returns_the_authority() {
+    let backing = VectorMemory::default();
+    let config = MemoryManagerConfig::new(16).unwrap();
+    let keys = ["fixture.map.v1", "fixture.cell.v1"];
+    let runtime = fixture_runtime(backing.clone(), "fixture", "fixture.", &keys, config).unwrap();
+    assert!(matches!(
+        runtime.open_memory("fixture.unknown.v1"),
+        Err(crate::RuntimeOpenError::StableKeyNotCommitted(_))
+    ));
+    let map = runtime.open_memory(keys[0]).unwrap();
+    let cell = runtime.open_memory(keys[1]).unwrap();
+    assert_eq!(map.size(), 0, "setup must not initialize a collection");
+    assert_eq!(cell.size(), 0);
+    assert_eq!(map.grow(1).unwrap(), 0);
+    map.write(0, b"map bytes");
+    assert_eq!(cell.size(), 0, "allocations must remain distinct");
+    drop((runtime, map, cell));
+    let runtime = fixture_runtime(backing.clone(), "fixture", "fixture.", &keys, config).unwrap();
+    let map = runtime.open_memory(keys[0]).unwrap();
+    let mut bytes = [0; 9];
+    map.read(0, &mut bytes);
+    assert_eq!(&bytes, b"map bytes");
+    drop((runtime, map));
+    let before = backing.borrow().clone();
+    assert!(matches!(
+        fixture_runtime(
+            backing.clone(),
+            "fixture",
+            "fixture.",
+            &keys,
+            MemoryManagerConfig::new(32).unwrap()
+        ),
+        Err(FixtureRuntimeError::Construction(_))
+    ));
+    assert_eq!(*backing.borrow(), before);
+}
+
+#[test]
+fn fixture_runtime_preserves_setup_error_categories() {
+    let config = MemoryManagerConfig::new(16).unwrap();
+    let backing = VectorMemory::default();
+    assert!(matches!(
+        fixture_runtime(backing.clone(), "", "fixture.", &["fixture.map.v1"], config),
+        Err(FixtureRuntimeError::Declaration(_))
+    ));
+    assert!(matches!(
+        fixture_runtime(
+            backing.clone(),
+            "fixture",
+            "fixture.",
+            &["fixture.map.v1", "fixture.map.v1"],
+            config
+        ),
+        Err(FixtureRuntimeError::Declaration(_))
+    ));
+    assert!(matches!(
+        fixture_runtime(
+            backing.clone(),
+            "fixture",
+            "invalid",
+            &["fixture.map.v1"],
+            config
+        ),
+        Err(FixtureRuntimeError::AllocationPool(_))
+    ));
+    assert_eq!(
+        backing.size(),
+        0,
+        "invalid declarations/grants must not initialize backing"
+    );
+    assert!(matches!(
+        fixture_runtime(backing, "fixture", "other.", &["fixture.map.v1"], config),
+        Err(FixtureRuntimeError::Bootstrap(_))
     ));
 }

@@ -31,8 +31,7 @@ pub use admission::{BootstrapAdmission, BootstrapAdmissionError};
 pub use adoption::RuntimeAdoptionError;
 
 pub use allocations::{
-    AllocationBinding, MemoryAllocation, MemoryAllocationSummary, MemoryAllocations,
-    MemoryBindingSummary,
+    MemoryAllocation, MemoryAllocationSummary, MemoryAllocations, MemoryBindingSummary,
 };
 pub use backing::RuntimeMemory;
 pub use config::MemoryManagerConfig;
@@ -44,8 +43,8 @@ pub use layout::MemoryManagerLayoutError;
 pub use policy::GenericAllocationPolicy;
 
 use crate::{
-    CommittedAllocations, LedgerCommitStore, PolicyIdentity, RuntimeBootstrapPolicy,
-    STABLE_CELL_VALUE_OFFSET, StableCellLedgerError,
+    LedgerCommitStore, PolicyIdentity, RuntimeBootstrapPolicy, STABLE_CELL_VALUE_OFFSET,
+    StableCellLedgerError,
     requests::SealedDeclarationSnapshot,
     slot::MEMORY_MANAGER_LEDGER_ID,
     stable_cell::{EncodedLedgerRecord, decode_stable_cell_commit_store_from_memory},
@@ -60,7 +59,8 @@ use std::rc::Rc;
 enum RuntimeLifecycle {
     Unbootstrapped,
     Bootstrapped {
-        committed_allocations: CommittedAllocations,
+        allocations: Vec<crate::AllocationDeclaration>,
+        generation: u64,
         binding: RuntimeBootstrapBinding,
     },
 }
@@ -202,7 +202,7 @@ impl<M: Memory> MemoryRuntime<M> {
     /// Bootstrap this backing memory from one immutable declaration snapshot.
     ///
     /// Recovery, metadata admission, logical resolution, policy evaluation,
-    /// staging, persistence and capability publication are local to this runtime.
+    /// staging, persistence and binding publication are local to this runtime.
     /// A repeated call is idempotent only when the sealed declaration snapshot,
     /// canonical host pool and [`RuntimeBootstrapPolicy::runtime_bootstrap_identity`] match the
     /// successful bootstrap. A mismatch returns a typed error without
@@ -218,7 +218,7 @@ impl<M: Memory> MemoryRuntime<M> {
         declarations: &SealedDeclarationSnapshot,
         pool: &crate::MemoryAllocationPool,
         policy: &P,
-    ) -> Result<&CommittedAllocations, RuntimeBootstrapError<P::Error>> {
+    ) -> Result<u64, RuntimeBootstrapError<P::Error>> {
         let policy_identity = policy.runtime_bootstrap_identity();
         match &self.lifecycle {
             RuntimeLifecycle::Unbootstrapped => {
@@ -229,10 +229,7 @@ impl<M: Memory> MemoryRuntime<M> {
             }
         }
         match &self.lifecycle {
-            RuntimeLifecycle::Bootstrapped {
-                committed_allocations,
-                ..
-            } => Ok(committed_allocations),
+            RuntimeLifecycle::Bootstrapped { generation, .. } => Ok(*generation),
             RuntimeLifecycle::Unbootstrapped => {
                 unreachable!("successful bootstrap publishes committed allocations")
             }
@@ -282,9 +279,14 @@ impl<M: Memory> MemoryRuntime<M> {
             (staged.current_generation(), resolved)
         };
         drop(write_ledger_cell(memory, &record)?);
-        let committed = CommittedAllocations::from_persisted(resolved, generation);
+        // Publish application bindings only after the durable Cell write succeeds.
+        let mut allocations = resolved;
+        allocations.retain(|declaration| {
+            !crate::is_ic_memory_stable_key(declaration.stable_key().as_str())
+        });
         self.lifecycle = RuntimeLifecycle::Bootstrapped {
-            committed_allocations: committed,
+            allocations,
+            generation,
             binding: RuntimeBootstrapBinding {
                 source: declarations.clone(),
                 policy_identity,
@@ -294,18 +296,35 @@ impl<M: Memory> MemoryRuntime<M> {
         Ok(())
     }
 
-    /// Borrow this runtime's committed allocation-open capability.
-    pub const fn committed_allocations(&self) -> Result<&CommittedAllocations, RuntimeOpenError> {
+    /// Borrow this runtime's persisted application bindings without IO.
+    /// These passive views cannot open memory independently of the runtime.
+    pub fn committed_allocations(
+        &self,
+    ) -> Result<&[crate::AllocationDeclaration], RuntimeOpenError> {
         match &self.lifecycle {
             RuntimeLifecycle::Unbootstrapped => Err(RuntimeOpenError::NotBootstrapped),
-            RuntimeLifecycle::Bootstrapped {
-                committed_allocations,
-                ..
-            } => Ok(committed_allocations),
+            RuntimeLifecycle::Bootstrapped { allocations, .. } => Ok(allocations),
         }
     }
 
-    /// Lease by durable key using this runtime's persisted current capability.
+    /// Return the in-memory persisted generation without decoding the ledger.
+    pub const fn committed_generation(&self) -> Result<u64, RuntimeOpenError> {
+        match &self.lifecycle {
+            RuntimeLifecycle::Unbootstrapped => Err(RuntimeOpenError::NotBootstrapped),
+            RuntimeLifecycle::Bootstrapped { generation, .. } => Ok(*generation),
+        }
+    }
+
+    /// Borrow the host pool bound by successful bootstrap for host projections.
+    /// This is current policy, never evidence of historical ownership or free IDs.
+    pub const fn allocation_pool(&self) -> Result<&crate::MemoryAllocationPool, RuntimeOpenError> {
+        match &self.lifecycle {
+            RuntimeLifecycle::Unbootstrapped => Err(RuntimeOpenError::NotBootstrapped),
+            RuntimeLifecycle::Bootstrapped { binding, .. } => Ok(&binding.pool),
+        }
+    }
+
+    /// Lease by durable key using this runtime's persisted current bindings.
     ///
     /// A second live open returns [`RuntimeOpenError::AlreadyOpen`] without IO.
     /// Dropping the handle, or a collection that owns it, permits reopening.
@@ -322,11 +341,9 @@ impl<M: Memory> MemoryRuntime<M> {
                 stable_key: stable_key.to_string(),
             });
         }
-        let declaration = crate::capability::declaration_for_key(
-            self.committed_allocations()?.declarations(),
-            stable_key,
-        )
-        .ok_or_else(|| RuntimeOpenError::StableKeyNotCommitted(stable_key.to_string()))?;
+        let declaration =
+            crate::declaration::declaration_for_key(self.committed_allocations()?, stable_key)
+                .ok_or_else(|| RuntimeOpenError::StableKeyNotCommitted(stable_key.to_string()))?;
         Ok(declaration.slot().id())
     }
 

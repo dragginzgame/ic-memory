@@ -129,11 +129,8 @@ fn cold_reopens() {
         }
 
         let mut host = MemoryRuntime::new_with_config(backing.clone(), config).unwrap();
-        let committed = host
-            .bootstrap(&declarations, &pool(), &policy)
-            .unwrap()
-            .clone();
-        assert_eq!(committed.generation(), reopen + 1);
+        let committed = host.bootstrap(&declarations, &pool(), &policy).unwrap();
+        assert_eq!(committed, reopen + 1);
         let before_adoption = backing.borrow().clone();
         for _ in 0..2 {
             host.verify_authority(&declarations, "host").unwrap();
@@ -153,7 +150,7 @@ fn cold_reopens() {
         }
         assert_eq!(
             host.bootstrap(&declarations, &pool(), &policy).unwrap(),
-            &committed
+            committed
         );
         assert_eq!(host.memory_manager_config(), config);
         assert_eq!(*backing.borrow(), before_adoption);

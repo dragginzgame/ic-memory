@@ -159,9 +159,10 @@ impl MemoryAllocationPool {
         Ok(())
     }
 
-    // Committed keys were admitted by resolution. Diagnostic and adoption
-    // projections borrow the same host owner instead of retaining another map.
-    pub(crate) fn authority_for_key(&self, key: &StableKey) -> Option<&str> {
+    /// Borrow the current namespace grant for a checked key. This does not
+    /// establish commitment, historical ownership or caller authentication.
+    #[must_use]
+    pub fn authority_for_key(&self, key: &StableKey) -> Option<&str> {
         self.authorities
             .iter()
             .find(|grant| key.as_str().starts_with(&grant.key_prefix))

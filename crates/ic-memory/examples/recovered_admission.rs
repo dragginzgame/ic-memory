@@ -58,10 +58,7 @@ fn main() {
     let mut runtime = MemoryRuntime::new(backing).unwrap();
     let current = declarations(&[CURRENT, "component.added.v1"]);
     assert_eq!(
-        runtime
-            .bootstrap(&current, &pool(), &HostPolicy)
-            .unwrap()
-            .generation(),
+        runtime.bootstrap(&current, &pool(), &HostPolicy).unwrap(),
         2
     );
     assert_eq!(runtime.memory_id(RETAINED).unwrap(), id);
@@ -69,10 +66,7 @@ fn main() {
     runtime.open_memory(RETAINED).unwrap().read(0, &mut marker);
     assert_eq!(&marker, b"kept");
     assert_eq!(
-        runtime
-            .bootstrap(&current, &pool(), &HostPolicy)
-            .unwrap()
-            .generation(),
+        runtime.bootstrap(&current, &pool(), &HostPolicy).unwrap(),
         2
     );
 }

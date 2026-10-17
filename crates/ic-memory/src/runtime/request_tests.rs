@@ -93,8 +93,7 @@ fn deterministic_requests_preserve_history_and_explicit_inspection() {
     reversed.reverse();
     let generation = host
         .bootstrap(&composed(&reversed), &pool, &GenericAllocationPolicy)
-        .unwrap()
-        .generation();
+        .unwrap();
     assert_eq!(generation, 1);
     host.verify_authority(&composed(&[("jobs", "jobs.rows.v1")]), "jobs")
         .unwrap();

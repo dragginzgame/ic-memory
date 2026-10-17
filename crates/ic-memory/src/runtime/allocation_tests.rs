@@ -1,6 +1,6 @@
 use super::{
-    AllocationBinding, MemoryManagerLayoutError, MemoryRuntime, RuntimeConstructionError,
-    RuntimeDiagnosticError, RuntimeOpenError, layout, policy::GenericAllocationPolicy,
+    MemoryManagerLayoutError, MemoryRuntime, RuntimeConstructionError, RuntimeDiagnosticError,
+    RuntimeOpenError, layout, policy::GenericAllocationPolicy,
 };
 use crate::{IC_MEMORY_LEDGER_STABLE_KEY, MEMORY_MANAGER_LEDGER_ID};
 use ic_stable_structures::{
@@ -66,10 +66,16 @@ fn summary_matches_report(runtime: &MemoryRuntime<Metered>, memory: &Metered) {
     assert_eq!(summary, report.summary);
     let mut groups = [super::MemoryBindingSummary::default(); 3];
     for row in &report.memories {
-        let index = match row.binding {
-            AllocationBinding::Current { .. } => 0,
-            AllocationBinding::Ledger => 1,
-            AllocationBinding::Unknown => 2,
+        let index = if row.memory_manager_id == MEMORY_MANAGER_LEDGER_ID {
+            1
+        } else if runtime.committed_allocations().is_ok_and(|bindings| {
+            bindings
+                .iter()
+                .any(|binding| binding.slot().id() == row.memory_manager_id)
+        }) {
+            0
+        } else {
+            2
         };
         groups[index].allocated_buckets += row.allocated_buckets;
         groups[index].virtual_extent.wasm_pages += row.virtual_extent.wasm_pages;
@@ -90,6 +96,14 @@ fn numeric_summary_matches_detailed_accounting_before_and_after_bootstrap_and_re
     let mut runtime =
         MemoryRuntime::new_with_config(memory.clone(), super::MemoryManagerConfig::new(8).unwrap())
             .unwrap();
+    assert_eq!(
+        runtime.committed_generation(),
+        Err(RuntimeOpenError::NotBootstrapped)
+    );
+    assert_eq!(
+        runtime.allocation_pool().unwrap_err(),
+        RuntimeOpenError::NotBootstrapped
+    );
     summary_matches_report(&runtime, &memory);
     let declarations = super::request_tests::snapshot(&["app.rows.v1"], "app");
     runtime
@@ -99,6 +113,35 @@ fn numeric_summary_matches_detailed_accounting_before_and_after_bootstrap_and_re
             &GenericAllocationPolicy,
         )
         .unwrap();
+    memory.reset();
+    let allocation_ptr = runtime.committed_allocations().unwrap().as_ptr();
+    assert_eq!(runtime.committed_generation(), Ok(1));
+    assert_eq!(
+        runtime.allocation_pool().unwrap(),
+        &super::request_tests::pool()
+    );
+    assert_eq!(runtime.committed_allocations().unwrap().len(), 1);
+    assert_eq!(runtime.memory_id("app.rows.v1"), Ok(10));
+    assert_eq!(memory.counts().reads, 0);
+    assert_eq!(memory.counts().writes, 0);
+    assert_eq!(memory.counts().grows, 0);
+    assert_eq!(
+        runtime
+            .bootstrap(
+                &declarations,
+                &super::request_tests::pool(),
+                &GenericAllocationPolicy
+            )
+            .unwrap(),
+        1
+    );
+    assert_eq!(
+        allocation_ptr,
+        runtime.committed_allocations().unwrap().as_ptr()
+    );
+    assert_eq!(memory.counts().reads, 0);
+    assert_eq!(memory.counts().writes, 0);
+    assert_eq!(memory.counts().grows, 0);
     runtime.open_memory("app.rows.v1").unwrap().grow(9).unwrap();
     runtime.memory(121).unwrap().grow(1).unwrap();
     memory.grow(3);
@@ -162,16 +205,16 @@ fn full_external_id_domain_preserves_bounded_read_only_attribution() {
     memory.reset();
     let report = runtime.memory_allocations().unwrap();
     conservation(&report);
+    assert_eq!(runtime.committed_allocations().unwrap().len(), ids.len());
     for id in ids {
-        let row = &report.memories[usize::from(id)];
+        let key = format!("app.slot{id:03}.v1");
+        assert_eq!(runtime.memory_id(&key).unwrap(), id);
+        let key = crate::StableKey::parse(key).unwrap();
         assert_eq!(
-            row.binding,
-            AllocationBinding::Current {
-                stable_key: format!("app.slot{id:03}.v1"),
-                owner: "app".to_string(),
-            }
+            runtime.allocation_pool().unwrap().authority_for_key(&key),
+            Some("app")
         );
-        assert_eq!(row.pool_eligible, Some(true));
+        assert!(runtime.allocation_pool().unwrap().contains(id));
     }
     assert_eq!(memory.counts().read_bytes, 34_848);
     assert_eq!(memory.counts().reads, 2);
@@ -196,30 +239,31 @@ fn bounded_conservation_bindings_and_no_effects() {
     let rows = runtime.open_memory("runtime_tests.rows.v1").unwrap();
     let zero = runtime.memory_allocations().unwrap();
     assert_eq!(zero.memories[120].allocated_buckets, 0);
-    assert!(matches!(
-        zero.memories[120].binding,
-        AllocationBinding::Current { .. }
-    ));
+    assert_eq!(runtime.memory_id("runtime_tests.rows.v1"), Ok(120));
     assert_eq!(rows.grow(129), Ok(0));
     // Test-only unmanaged backing tail and an ID with no current declaration.
     assert_eq!(runtime.memory(121).unwrap().grow(1), Ok(0));
     memory.grow(3);
     let before = memory.bytes.borrow().clone();
-    let generation = runtime.committed_allocations().unwrap().generation();
+    let generation = runtime.committed_generation().unwrap();
     memory.reset();
     let report = runtime.memory_allocations().unwrap();
     conservation(&report);
     assert_eq!(report.memories[120].allocated_buckets, 2);
-    assert_eq!(report.memories[121].binding, AllocationBinding::Unknown);
     assert_eq!(report.summary.unknown_binding_bytes(), 128 * 65_536);
     assert_eq!(report.summary.unmanaged_bytes(), 3 * 65_536);
-    assert!(matches!(
-        report.memories[usize::from(MEMORY_MANAGER_LEDGER_ID)].binding,
-        AllocationBinding::Ledger
-    ));
+    let row = &report.memories[usize::from(MEMORY_MANAGER_LEDGER_ID)];
     assert_eq!(
-        serde_json::to_value(&report).unwrap()["memories"][usize::from(MEMORY_MANAGER_LEDGER_ID)]["binding"],
-        "Ledger"
+        row.allocated_buckets,
+        report.summary.ledger_binding.allocated_buckets
+    );
+    assert_eq!(
+        serde_json::to_value(row).unwrap(),
+        serde_json::json!({
+            "memory_manager_id": MEMORY_MANAGER_LEDGER_ID,
+            "allocated_buckets": row.allocated_buckets,
+            "virtual_extent": serde_json::to_value(row.virtual_extent).unwrap(),
+        })
     );
     assert_eq!(memory.counts().read_bytes, 34_848);
     assert_eq!(memory.counts().reads, 2);
@@ -281,7 +325,7 @@ fn bucket_boundaries_and_same_release_reopen() {
         assert_eq!(report.summary.bucket_size_pages, bucket);
         assert_eq!(report.memories[120].allocated_buckets, 2);
         assert_eq!(report.summary.current_generation, None);
-        assert_eq!(report.memories[120].binding, AllocationBinding::Unknown);
+        assert_eq!(report.summary.current_binding.allocated_buckets, 0);
         let mut bytes = [0; 3];
         runtime
             .memory(120)
@@ -378,7 +422,7 @@ fn explicit_configuration_validates_before_effects_and_replays() {
     handle.grow(9).unwrap();
     handle.write(8 * 65_536 - 1, &[4, 5, 6]);
     drop(handle);
-    let generation = runtime.committed_allocations().unwrap().generation();
+    let generation = runtime.committed_generation().unwrap();
     memory.reset();
     runtime
         .bootstrap(
@@ -387,10 +431,7 @@ fn explicit_configuration_validates_before_effects_and_replays() {
             &GenericAllocationPolicy,
         )
         .unwrap();
-    assert_eq!(
-        runtime.committed_allocations().unwrap().generation(),
-        generation
-    );
+    assert_eq!(runtime.committed_generation().unwrap(), generation);
     assert_eq!(memory.counts().writes, 0);
     assert_eq!(memory.counts().grows, 0);
     let before = runtime.memory_allocations().unwrap();
@@ -410,7 +451,7 @@ fn explicit_configuration_validates_before_effects_and_replays() {
         unbound.summary.physical_extent,
         before.summary.physical_extent
     );
-    assert_eq!(unbound.memories[120].binding, AllocationBinding::Unknown);
+    assert_eq!(unbound.summary.current_binding.allocated_buckets, 0);
     runtime
         .bootstrap(
             &declarations,

@@ -19,16 +19,16 @@ thread_local! {
 #[test]
 fn host_injects_component_memory_that_outlives_its_runtime() {
     let mut host = ic_memory::MemoryRuntime::new(DefaultMemoryImpl::default()).unwrap();
-    let validated = host
+    let generation = host
         .bootstrap(&snapshot(), &pool(), &ic_memory::GenericAllocationPolicy)
-        .expect("bootstrap")
-        .clone();
+        .expect("bootstrap");
+    assert_eq!(generation, 1);
     host.diagnostic_export()
         .expect("bootstrapped runtime should expose its local ledger");
 
     assert!(
-        validated
-            .declarations()
+        host.committed_allocations()
+            .unwrap()
             .iter()
             .any(|declaration| declaration.stable_key().as_str() == "macro.integration.users.v1")
     );
@@ -36,13 +36,7 @@ fn host_injects_component_memory_that_outlives_its_runtime() {
         .open_memory("macro.logical.rows.v1")
         .expect("key-only host adoption");
     assert_eq!(ic_stable_structures::Memory::size(&logical), 0);
-    assert_eq!(
-        validated
-            .slot_for(&ic_memory::StableKey::parse("macro.logical.rows.v1").unwrap())
-            .unwrap()
-            .id(),
-        11
-    );
+    assert_eq!(host.memory_id("macro.logical.rows.v1").unwrap(), 11);
     let component_memory = host.open_memory("macro.integration.users.v1").unwrap();
     MACRO_MEMORY.with(|memory| *memory.borrow_mut() = Some(component_memory));
     drop(host);

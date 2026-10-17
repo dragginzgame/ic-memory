@@ -29,7 +29,7 @@ pub extern "C" fn ic_memory_wasm_core_size_probe_bootstrap() -> u64 {
         };
         runtime
             .bootstrap(&declarations, &pool(), &ic_memory::GenericAllocationPolicy)
-            .map_or(0, ic_memory::CommittedAllocations::generation)
+            .unwrap_or(0)
     })
 }
 

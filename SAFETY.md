@@ -144,14 +144,14 @@ Validation and staging operate on one owned recovered ledger. A checked claim
 is local to that attempt, not a transferable proof for another ledger. Failure
 discards the attempt before protected commitment and persistence.
 
-`CommittedAllocations` is the in-memory open capability. It must not be
-deserializable, default-constructible, or publicly constructible. A
-`MemoryRuntime<M>` may store it only after that runtime's stable-cell write
-succeeds. Callers cannot manually confirm persistence or publish a capability.
+The runtime stores application bindings and their generation only after its
+stable-cell write succeeds. Callers cannot manually confirm persistence or
+publish allocation-open authority. Borrowed declarations are passive views;
+production inputs remain key-only requests and cannot select numeric IDs.
 
-Integrations may open storage only from `CommittedAllocations` produced after
-current-format recovery, committed-ledger integrity, declaration validation,
-generation staging, commit, and durable persistence. Diagnostics, durable DTOs
+Integrations open storage only through that runtime after current-format
+recovery, committed-ledger integrity, declaration validation, generation staging,
+commit and durable persistence. Diagnostics, durable DTOs, copied declarations
 and staged state are not open authority.
 
 ## Runtime Ownership Invariant
@@ -160,7 +160,7 @@ Every fact derived from a backing memory belongs to one `MemoryRuntime<M>`:
 
 - `MemoryManager<Rc<M>>` and ledger persistence;
 - bootstrap lifecycle and recovery result;
-- committed allocation capability;
+- committed application bindings and generation;
 - memory-open authority;
 - diagnostic ledger and commit-recovery view; and
 - live virtual-memory sizes.
@@ -169,7 +169,7 @@ Each bootstrap attempt decodes its ledger record from persisted memory. A failed
 attempt must not retain a cached record that could bypass decoding on retry.
 Capability publication follows successful persistence.
 
-One runtime must never use another runtime's lifecycle or committed capability.
+One runtime must never use another runtime's lifecycle or committed bindings.
 The host explicitly supplies an immutable checked snapshot of component key
 requests and metadata. There is no process-global declaration registry.
 Bootstrap is once per concrete runtime, not once per process.

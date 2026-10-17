@@ -1,21 +1,19 @@
-use crate::{
-    key::{StableKey, StableKeyError},
-    slot::{MemoryManagerSlot, MemoryManagerSlotError},
-};
-use serde::{Deserialize, Serialize};
+use crate::{key::StableKey, slot::MemoryManagerSlot};
+use serde::Serialize;
 
 ///
 /// AllocationDeclaration
 ///
-/// Checked runtime claim that a stable key should own an allocation slot.
+/// Resolved key-to-slot binding borrowed from a committed runtime.
 ///
-/// Declarations are supplied by the current binary before opening storage.
-/// Construction and decoding check the stable key and slot. A declaration
-/// becomes authoritative only after validation against the recovered ledger
-/// and commitment in a generation.
+/// Production inputs are key-only [`crate::MemoryRequest`] values. The runtime
+/// resolves slots, validates recovered ownership and persists its generation
+/// before exposing these bindings. Numeric construction and decoding are
+/// available only with `test-support` for explicit fixtures.
 ///
 
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[cfg_attr(any(test, feature = "test-support"), derive(serde::Deserialize))]
 #[serde(deny_unknown_fields)]
 pub struct AllocationDeclaration {
     /// Durable stable key.
@@ -25,25 +23,6 @@ pub struct AllocationDeclaration {
 }
 
 impl AllocationDeclaration {
-    /// Build a declaration from raw parts after validating allocation identity.
-    pub fn new(
-        stable_key: impl AsRef<str>,
-        slot: MemoryManagerSlot,
-    ) -> Result<Self, DeclarationSnapshotError> {
-        let stable_key = StableKey::parse(stable_key).map_err(DeclarationSnapshotError::Key)?;
-        Ok(Self { stable_key, slot })
-    }
-
-    /// Build a checked `MemoryManager` declaration with a usable slot.
-    pub fn memory_manager(
-        stable_key: impl AsRef<str>,
-        id: u8,
-    ) -> Result<Self, DeclarationSnapshotError> {
-        let slot =
-            MemoryManagerSlot::new(id).map_err(DeclarationSnapshotError::MemoryManagerSlot)?;
-        Self::new(stable_key, slot)
-    }
-
     /// Return the durable stable key claimed by this declaration.
     #[must_use]
     pub const fn stable_key(&self) -> &StableKey {
@@ -57,27 +36,21 @@ impl AllocationDeclaration {
     }
 }
 
-///
-/// DeclarationSnapshotError
-///
-/// Checked allocation identity construction failure.
-///
-
-#[non_exhaustive]
-#[derive(Clone, Debug, Eq, thiserror::Error, PartialEq)]
-pub enum DeclarationSnapshotError {
-    /// Stable-key grammar failure.
-    #[error(transparent)]
-    Key(StableKeyError),
-    /// `MemoryManager` slot validation failure.
-    #[error(transparent)]
-    MemoryManagerSlot(MemoryManagerSlotError),
+// Borrowed runtime queries share
+// one lookup. Comparing text needs no temporary owned StableKey or second index.
+pub fn declaration_for_key<'a>(
+    declarations: &'a [AllocationDeclaration],
+    key: &str,
+) -> Option<&'a AllocationDeclaration> {
+    declarations
+        .iter()
+        .find(|declaration| declaration.stable_key.as_str() == key)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::slot::MemoryManagerSlot;
+    use crate::{slot::MemoryManagerSlot, testing::DeclarationSnapshotError};
 
     fn declaration(key: &str, id: u8) -> AllocationDeclaration {
         AllocationDeclaration::new(key, MemoryManagerSlot::new(id).expect("usable slot"))

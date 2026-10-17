@@ -1,29 +1,31 @@
 use ic_memory::{
-    AllocationDeclaration, MemoryAllocationPool, MemoryAllocationPoolError, MemoryAuthority,
-    MemoryDeclarationError, MemoryRequest,
+    MemoryAllocationPool, MemoryAllocationPoolError, MemoryAuthority, MemoryDeclarationError,
+    MemoryRequest,
 };
 
 #[test]
-fn declarations_round_trip_checked_key_and_slot() {
-    let declaration = AllocationDeclaration::memory_manager("app.rows.v1", 100).unwrap();
-    let json = serde_json::json!({
-        "stable_key": "app.rows.v1",
-        "slot": 100,
-    });
-    assert_eq!(serde_json::to_value(&declaration).unwrap(), json);
+fn committed_bindings_serialize_checked_key_and_slot() {
+    let mut runtime = ic_memory::MemoryRuntime::new(ic_memory::VectorMemory::default()).unwrap();
+    let snapshot = ic_memory::SealedDeclarationSnapshot::new(vec![
+        MemoryRequest::new("app", "app.rows.v1").unwrap(),
+    ])
+    .unwrap();
+    let pool =
+        MemoryAllocationPool::new(vec![MemoryAuthority::new("app", "app.").unwrap()], vec![])
+            .unwrap();
+    runtime
+        .bootstrap(&snapshot, &pool, &ic_memory::GenericAllocationPolicy)
+        .unwrap();
+    let declaration = &runtime.committed_allocations().unwrap()[0];
     assert_eq!(
-        serde_json::from_value::<AllocationDeclaration>(json).unwrap(),
-        declaration
+        serde_json::to_value(declaration).unwrap(),
+        serde_json::json!({
+            "stable_key": "app.rows.v1", "slot": 10,
+        })
     );
-    // Pin the current DTO bytes independently of decode.
-    let expected = b"\xa2\x6astable_key\x6bapp.rows.v1\x64slot\x18\x64";
     let mut bytes = Vec::new();
-    ciborium::into_writer(&declaration, &mut bytes).unwrap();
-    assert_eq!(bytes, expected);
-    assert_eq!(
-        ciborium::from_reader::<AllocationDeclaration, _>(bytes.as_slice()).unwrap(),
-        declaration
-    );
+    ciborium::into_writer(declaration, &mut bytes).unwrap();
+    assert_eq!(bytes, b"\xa2\x6astable_key\x6bapp.rows.v1\x64slot\x0a");
 }
 
 #[test]

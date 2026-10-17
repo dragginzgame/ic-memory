@@ -38,8 +38,7 @@ fn public_explicit_runtime_bootstraps_opens_and_diagnoses_its_memory() {
 
     let generation = runtime
         .bootstrap(&declarations, &pool(), &AllowAll)
-        .expect("runtime bootstrap")
-        .generation();
+        .expect("runtime bootstrap");
     let rows = runtime
         .open_memory("explicit_runtime.rows.v1")
         .expect("committed rows memory");
@@ -107,8 +106,7 @@ fn live_lease_survives_warm_bootstrap_and_collection_transfer() {
     let mut runtime = MemoryRuntime::new(backing.clone()).unwrap();
     let committed = runtime
         .bootstrap(&declarations, &pool(), &AllowAll)
-        .unwrap()
-        .clone();
+        .unwrap();
     let rows = runtime.open_memory("explicit_runtime.rows.v1").unwrap();
     let mut cell = Cell::new(rows, 7_u64);
     let before = backing.borrow().clone();
@@ -124,7 +122,7 @@ fn live_lease_survives_warm_bootstrap_and_collection_transfer() {
         runtime
             .bootstrap(&declarations, &pool(), &AllowAll)
             .unwrap(),
-        &committed
+        committed
     );
     assert_leased(&runtime);
     assert_eq!(*backing.borrow(), before);

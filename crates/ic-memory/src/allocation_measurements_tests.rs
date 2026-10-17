@@ -285,8 +285,7 @@ fn declaration_resolution_allocations() {
             assert_eq!(
                 runtime
                     .bootstrap(&declarations, &pool, &GenericAllocationPolicy)
-                    .unwrap()
-                    .generation(),
+                    .unwrap(),
                 1
             );
         });

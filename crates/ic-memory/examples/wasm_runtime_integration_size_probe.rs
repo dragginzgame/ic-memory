@@ -30,7 +30,7 @@ pub extern "C" fn ic_memory_wasm_runtime_integration_size_probe_bootstrap() -> u
         };
         runtime
             .bootstrap(&declarations, &pool(), &ic_memory::GenericAllocationPolicy)
-            .map_or(0, ic_memory::CommittedAllocations::generation)
+            .unwrap_or(0)
     })
 }
 

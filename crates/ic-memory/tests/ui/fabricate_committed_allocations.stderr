@@ -1,5 +1,0 @@
-error[E0616]: field `generation` of struct `CommittedAllocations` is private
- --> tests/ui/fabricate_committed_allocations.rs:4:15
-  |
-4 |     committed.generation = generation;
-  |               ^^^^^^^^^^ private field

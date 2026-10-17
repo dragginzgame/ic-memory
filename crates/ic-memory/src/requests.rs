@@ -81,9 +81,9 @@ pub enum MemoryDeclarationError {
     TooManyDeclarations,
     #[error("duplicate requested stable key {stable_key}")]
     DuplicateRequest { stable_key: crate::StableKey },
-    /// Declaration validation failed.
+    /// Stable-key grammar validation failed.
     #[error(transparent)]
-    Declaration(#[from] crate::DeclarationSnapshotError),
+    Key(#[from] crate::StableKeyError),
     /// A request supplied an invalid authority identifier.
     #[error("authority {reason}")]
     InvalidAuthority {
@@ -237,8 +237,7 @@ pub fn checked_request_key(
     stable_key: &str,
 ) -> Result<crate::StableKey, MemoryDeclarationError> {
     validate_external_authority(authority)?;
-    let stable_key =
-        crate::StableKey::parse(stable_key).map_err(crate::DeclarationSnapshotError::Key)?;
+    let stable_key = crate::StableKey::parse(stable_key)?;
     validate_external_key(&stable_key)?;
     Ok(stable_key)
 }
@@ -269,8 +268,12 @@ fn reject_internal_authority(value: &str) -> Result<(), MemoryDeclarationError> 
 }
 
 fn internal_ledger_declaration() -> AllocationDeclaration {
-    AllocationDeclaration::memory_manager(IC_MEMORY_LEDGER_STABLE_KEY, MEMORY_MANAGER_LEDGER_ID)
-        .unwrap_or_else(|_| unreachable!("built-in ledger declaration constants are valid"))
+    AllocationDeclaration {
+        stable_key: crate::StableKey::parse(IC_MEMORY_LEDGER_STABLE_KEY)
+            .expect("built-in ledger key is valid"),
+        slot: crate::MemoryManagerSlot::new(MEMORY_MANAGER_LEDGER_ID)
+            .expect("built-in ledger ID is usable"),
+    }
 }
 
 #[cfg(test)]

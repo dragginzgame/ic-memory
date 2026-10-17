@@ -52,7 +52,7 @@
 //!
 //! [`MemoryRuntime`] is the canonical owner for one backing memory instance. It
 //! owns that memory's manager, ledger persistence, bootstrap lifecycle, committed
-//! capability, opens, and diagnostics. Each bootstrap attempt fallibly decodes
+//! bindings, opens, and diagnostics. Each bootstrap attempt fallibly decodes
 //! its ledger record and uses a temporary cell for capacity-checked writes.
 //! Linked code contributes declarations to
 //! one immutable [`SealedDeclarationSnapshot`], which is supplied to each
@@ -76,7 +76,6 @@
 
 mod allocation_pool;
 mod bounded_writer;
-mod capability;
 mod cbor;
 mod constants;
 mod declaration;
@@ -138,15 +137,17 @@ mod test_cbor {
 
 /// Backing setup and IO interfaces from the exact substrate dependency.
 /// Hosts own backing custody; production collections belong behind IC Storage's
-/// governed wrappers and consume [`RuntimeMemory`] leases.
+/// governed wrappers and consume [`RuntimeMemory`] leases. Import visibility is
+/// not admission: implementing `Memory` does not construct a checked handle.
+/// Collection codec traits belong to Storage; metric records and restoration
+/// belong to IC Metrics Stable.
 pub use ic_stable_structures::{DefaultMemoryImpl, Memory, VectorMemory};
 
 pub use allocation_pool::{MemoryAllocationPool, MemoryAllocationPoolError, MemoryAuthority};
-pub use capability::CommittedAllocations;
 pub use constants::{
     MAX_LEDGER_BYTES, MAX_LEDGER_NESTING, MAX_LEDGER_RECORD_BYTES, WASM_PAGE_SIZE_BYTES,
 };
-pub use declaration::{AllocationDeclaration, DeclarationSnapshotError};
+pub use declaration::AllocationDeclaration;
 pub use diagnostics::{
     DiagnosticCheck, DiagnosticCode, DiagnosticExport, DiagnosticFailure, DiagnosticMemorySize,
     DiagnosticRecord, DiagnosticRuntimeBinding, DiagnosticStableCell, DiagnosticStableCellStatus,
@@ -162,11 +163,11 @@ pub use physical::{CommitRecoveryError, CommitSnapshotDiagnostic};
 pub use policy::{PolicyIdentity, RuntimeBootstrapPolicy};
 pub use requests::{MemoryDeclarationError, MemoryRequest, SealedDeclarationSnapshot};
 pub use runtime::{
-    AllocationBinding, BootstrapAdmission, BootstrapAdmissionError, GenericAllocationPolicy,
-    MemoryAllocation, MemoryAllocationSummary, MemoryAllocations, MemoryBindingSummary,
-    MemoryManagerConfig, MemoryManagerLayoutError, MemoryResolutionError, MemoryRuntime,
-    RuntimeAdoptionError, RuntimeBootstrapError, RuntimeConstructionError, RuntimeDiagnosticError,
-    RuntimeGrowError, RuntimeMemory, RuntimeOpenError,
+    BootstrapAdmission, BootstrapAdmissionError, GenericAllocationPolicy, MemoryAllocation,
+    MemoryAllocationSummary, MemoryAllocations, MemoryBindingSummary, MemoryManagerConfig,
+    MemoryManagerLayoutError, MemoryResolutionError, MemoryRuntime, RuntimeAdoptionError,
+    RuntimeBootstrapError, RuntimeConstructionError, RuntimeDiagnosticError, RuntimeGrowError,
+    RuntimeMemory, RuntimeOpenError,
 };
 pub use slot::{
     IC_MEMORY_AUTHORITY_OWNER, IC_MEMORY_LEDGER_STABLE_KEY, IC_MEMORY_STABLE_KEY_PREFIX,

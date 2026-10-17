@@ -85,7 +85,7 @@ fn adoption_checks_logical_requirements_without_replaying_host() {
         ))
     );
     host.bootstrap(&source(), &pool(), &policy).unwrap();
-    let capability = host.committed_allocations().unwrap().clone();
+    let capability = host.committed_allocations().unwrap().to_vec();
     let before = backing.borrow().clone();
     let report = host.memory_allocations().unwrap();
     for _ in 0..2 {
@@ -101,7 +101,7 @@ fn adoption_checks_logical_requirements_without_replaying_host() {
     )
     .unwrap();
     assert_eq!(policy.0.get(), 1);
-    assert_eq!(host.committed_allocations().unwrap(), &capability);
+    assert_eq!(host.committed_allocations().unwrap(), capability);
     assert_eq!(host.memory_allocations().unwrap(), report);
     assert_eq!(*backing.borrow(), before);
     assert!(matches!(

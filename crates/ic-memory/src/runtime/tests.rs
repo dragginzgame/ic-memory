@@ -277,8 +277,7 @@ fn concurrent_independent_runtimes_do_not_share_bootstrap_state() {
             let mut runtime = empty_runtime();
             let generation = runtime
                 .bootstrap(&first_declarations, &pool(), &GenericAllocationPolicy)
-                .expect("first bootstrap")
-                .generation();
+                .expect("first bootstrap");
             let diagnostic_generation = runtime
                 .diagnostic_export()
                 .expect("first diagnostics")
@@ -289,8 +288,7 @@ fn concurrent_independent_runtimes_do_not_share_bootstrap_state() {
             let mut runtime = empty_runtime();
             let generation = runtime
                 .bootstrap(&second_declarations, &pool(), &GenericAllocationPolicy)
-                .expect("second bootstrap")
-                .generation();
+                .expect("second bootstrap");
             let diagnostic_generation = runtime
                 .diagnostic_export()
                 .expect("second diagnostics")
@@ -315,12 +313,10 @@ fn repeated_bootstrap_is_idempotent_and_existing_memory_recovers() {
         let mut runtime = MemoryRuntime::new(backing.clone()).expect("empty backing memory");
         let first = runtime
             .bootstrap(&declarations, &pool(), &GenericAllocationPolicy)
-            .expect("first bootstrap")
-            .generation();
+            .expect("first bootstrap");
         let second = runtime
             .bootstrap(&declarations, &pool(), &GenericAllocationPolicy)
-            .expect("idempotent bootstrap")
-            .generation();
+            .expect("idempotent bootstrap");
         assert_eq!(first, second);
         let memory = runtime
             .open_memory("runtime_tests.rows.v1")
@@ -334,8 +330,7 @@ fn repeated_bootstrap_is_idempotent_and_existing_memory_recovers() {
         MemoryRuntime::new(backing).expect("existing MemoryManager backing memory");
     let recovered_generation = recovered_runtime
         .bootstrap(&declarations, &pool(), &GenericAllocationPolicy)
-        .expect("recover existing backing memory")
-        .generation();
+        .expect("recover existing backing memory");
     assert!(recovered_generation >= generation);
     assert_eq!(
         recovered_runtime
@@ -364,8 +359,7 @@ fn repeated_bootstrap_accepts_independently_sealed_equivalent_declarations() {
     let mut runtime = empty_runtime();
     let generation = runtime
         .bootstrap(&declarations, &pool(), &policy)
-        .expect("bootstrap")
-        .generation();
+        .expect("bootstrap");
     assert!(matches!(
         runtime
             .doctor_report(&equivalent, &pool(), &policy)
@@ -378,8 +372,7 @@ fn repeated_bootstrap_accepts_independently_sealed_equivalent_declarations() {
     assert_eq!(
         runtime
             .bootstrap(&equivalent, &pool(), &policy)
-            .expect("equivalent bootstrap")
-            .generation(),
+            .expect("equivalent bootstrap"),
         generation
     );
     assert_eq!(policy.0.get(), policy_calls);
@@ -396,12 +389,10 @@ fn repeated_bootstrap_is_bound_to_declarations_and_policy_identity() {
 
     let generation = runtime
         .bootstrap(&declarations, &pool(), &IdentityPolicy::new([1; 32]))
-        .expect("first bootstrap")
-        .generation();
+        .expect("first bootstrap");
     let repeated_generation = runtime
         .bootstrap(&declarations, &pool(), &IdentityPolicy::new([1; 32]))
-        .expect("same semantic policy identity")
-        .generation();
+        .expect("same semantic policy identity");
     assert_eq!(repeated_generation, generation);
 
     let policy_error = runtime
@@ -443,8 +434,7 @@ fn policy_token_changes_are_runtime_bound() {
     let mut runtime = empty_runtime();
     let committed = runtime
         .bootstrap(&declarations, &pool(), &IdentityPolicy::new([0; 32]))
-        .unwrap()
-        .clone();
+        .unwrap();
     let before = runtime.ledger_record_from_memory().unwrap();
     for index in 0..32 {
         let mut changed = [0; 32];
@@ -468,7 +458,7 @@ fn policy_token_changes_are_runtime_bound() {
         runtime
             .bootstrap(&declarations, &pool(), &IdentityPolicy::new([0; 32]))
             .unwrap(),
-        &committed
+        committed
     );
 }
 
