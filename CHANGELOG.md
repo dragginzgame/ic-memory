@@ -1,6 +1,6 @@
 # Changelog
 
-## [0.46.0]
+## [0.46.0] - 2026-10-17
 
 - **Breaking ownership API:** allocation handles are non-cloneable leases.
   A second live open returns a typed refusal; drop the owning collection before
