@@ -1,6 +1,6 @@
 # Changelog
 
-## [0.48.0]
+## [0.48.0] - 2026-10-17
 
 - **Breaking fixture API:** require bounded Cell creation/reopening and fallible
   writes; preserve setup error categories under one nested source.
