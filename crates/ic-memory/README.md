@@ -365,6 +365,12 @@ work budgets and restored-state/lifecycle validation; fresh empty bytes must
 never substitute for a required retained journal. Bootstrap may update ledger
 metadata before a later Cell refusal, and backing IO can still panic.
 
+For frozen sparse backing fixtures, `testing::memory_from_sparse_hex` expands
+ordered `(offset, hex)` runs into fresh zero-filled VectorMemory with an explicit
+page ceiling. It checks bounds and hex before backing allocation and reports
+typed failures. Callers retain provenance, schema and payload validation. This
+helper does not open a runtime, recover authority or convert retained formats.
+
 - [Operations and diagnostics](https://github.com/dragginzgame/ic-memory/blob/main/docs/operations.md)
   explains memory attribution, bucket configuration, and runtime reports.
 - [Troubleshooting](https://github.com/dragginzgame/ic-memory/blob/main/docs/troubleshooting.md)

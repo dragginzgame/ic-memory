@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.46.1]
+
+- Add bounded sparse hexadecimal image loading under `test-support` for fresh
+  fixture backing. Runtime authority, stored formats and production APIs are unchanged.
+
+[Detailed notes](docs/changelog/0.46.md)
+
 ## [0.46.0] - 2026-10-17
 
 - **Breaking ownership API:** allocation handles are non-cloneable leases.
