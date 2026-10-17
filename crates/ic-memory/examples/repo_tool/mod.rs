@@ -68,7 +68,6 @@ const PACKAGE_MANIFEST: &str = "crates/ic-memory/Cargo.toml";
 const PACKAGE_README: &str = "crates/ic-memory/README.md";
 const CHANGELOG_FINALIZER: &str = "scripts/ci/finalize-release-changelog.awk";
 const LOCK_REWRITER: &str = "scripts/ci/rewrite-local-lock-versions.pl";
-const README_VERSION_RENDERER: &str = "scripts/ci/render-cargo-readme-version.pl";
 const WORKSPACE_VERSION_RENDERER: &str = "scripts/ci/render-cargo-workspace-version.pl";
 const RELEASE_INPUT_ADMISSION: &str = "scripts/ci/validate-release-inputs.pl";
 const TAG_CHECKER: &str = "scripts/ci/check-release-tag.sh";
@@ -486,15 +485,6 @@ impl<E: Execute> Repository<E> {
         Ok(updated)
     }
 
-    fn release_readme(&self, text: &str, version: &str) -> Result<String> {
-        self.transform_text(
-            "perl",
-            &[README_VERSION_RENDERER],
-            text,
-            &["ic-memory", version],
-        )
-    }
-
     fn replace_lock_version(&self, text: &str, previous: &str, version: &str) -> Result<String> {
         let updated = self.transform_text(
             "perl",
@@ -766,7 +756,6 @@ impl<E: Execute> Repository<E> {
         let previous = &selection.previous;
         let version = &selection.version;
         let readme = self.text(PACKAGE_README, Some(source))?;
-        let readme = self.release_readme(&readme, version)?;
         let [major, minor, _] = self.version_parts(version)?;
         let detail = format!("docs/changelog/{major}.{minor}.md");
         let finalizer = self.root.join(CHANGELOG_FINALIZER);
@@ -939,10 +928,6 @@ impl<E: Execute> Repository<E> {
     fn preflight(&self, selection: &ReleaseSelection) -> Result<()> {
         self.configuration()?;
         self.check_selection(selection)?;
-        self.release_readme(
-            &self.text(PACKAGE_README, Some(&selection.source))?,
-            &selection.version,
-        )?;
         require(
             self.git(&["rev-parse", "HEAD"])? == selection.source,
             "source HEAD differs from the saved release",

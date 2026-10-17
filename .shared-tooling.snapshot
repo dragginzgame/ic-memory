@@ -82,7 +82,6 @@ revision	3bef3f2daec7f64f875397ed4d53d5b9e2e68a08
 # entrypoint	scripts/ci/fixture-lifecycle.sh
 # entrypoint	scripts/ci/render-cargo-workspace-version.pl
 # entrypoint	scripts/ci/fixture-retention-probes.sh
-# entrypoint	scripts/ci/render-cargo-readme-version.pl
 # entrypoint	scripts/ci/validate-release-inputs.pl
 # entrypoint	scripts/ci/read-cargo-workspace-version.sh
 file	b7af05c3ee820b1032136db1a6414a99cfb70dddec841d97ae6f07bedabf3bc2	-	DRAGGINZGAME.md
@@ -164,7 +163,6 @@ file	d7b179f9ceaec6e11c690c975b61f91bedc80526415f71571615064db14f0c9c	x	scripts/
 file	7c726e4eb21710526204de6263a4c217d7f85ca73e22af453699999f1cc338a2	-	scripts/ci/fixture-lifecycle.sh
 file	a1a9739e4749bfa9c594c8714a89aac3c2394b87cdfbc7c27c3936c8071ece4b	x	scripts/ci/render-cargo-workspace-version.pl
 file	3c6a8c83940049b37e44464753a5ce9f7352ceb702758ead55794246a2e77eae	-	scripts/ci/fixture-retention-probes.sh
-file	c05199b50c2875849d49ee08ada6ff805eebd34c6ef10fbf71b8a22c6ff0c05e	x	scripts/ci/render-cargo-readme-version.pl
 file	567f3e1618305539cf99365454040638788d035fe59742e574bcd4c30b9ba546	x	scripts/ci/validate-release-inputs.pl
 file	40f31a19d6115411ebffe7c26e3ed30b8af7eead10dd4830de8d5a9312291222	x	scripts/ci/read-cargo-workspace-version.sh
 file	4c981184847462ab3c01cac087e28309f8e054253fd95c7bbe56f643877aa708	x	scripts/ci/verify-file-checksum.sh

@@ -40,6 +40,13 @@ format or dependency selection and does not establish consumer qualification.
 
 ## Recorded snapshot adoption
 
+The README renderer entrypoint is retired at the same recorded Shared revision.
+The canonical exporter removes only its unchanged payload, leaving 81 explicit
+roots and 112 files. The adapter projects the saved README bytes unchanged while
+retaining its release/receipt file set. Other helpers, baseline and tool pins are
+unchanged; no setup refresh or broader snapshot upgrade is selected. See
+[#119 — Retire README version rendering](https://github.com/dragginzgame/ic-memory/issues/119).
+
 The current Shared 0.15.0 export retains the earlier payload closure and adds four
 required companions over 0.12.4: Cargo publication, Rust toolchain and CI
 change-selection guides, plus canonical release version/date admission. The runner and increment
@@ -52,9 +59,10 @@ helpers, including status and evidence preservation. The upstream 0.15.0 changel
 also describes open PR work; only bytes in the exact committed export are adopted.
 
 Memory's native release adapter directly invokes the canonical version/date
-admission helper. The launcher also selects the workspace-version reader directly,
-bringing the selection to 82 explicit roots with the same 113 payloads and source
-revision. It shares manifest admission/rendering and stable-version admission;
+admission helper. The launcher also selects the workspace-version reader directly.
+That selection brought the snapshot to 82 explicit roots and 113 payloads before
+the README renderer retirement above, at the same source revision.
+It shares manifest admission/rendering and stable-version admission;
 Memory retains lock-package selection, scratch custody and network scope.
 The adapter parses the helper's typed projection while
 retaining independent release input, receipt and recovery binding. No executable
@@ -68,15 +76,15 @@ The canonical evidence action delegates tool selection/archive orchestration to
 the derived collector. The finalizer requires numbered candidates at the top;
 Memory keeps its saved-source renderer and receipt/rollback boundaries. Tool
 pins, compiler/MSRV, native Host selection and the independent runtime graph are
-unchanged. The 0.12.4 selection adds the advisory README dependency renderer
-as a directly used root. It preserves unsupported or ambiguous examples and
-reminders; Memory retains independent release identity and receipt admission.
+unchanged. The 0.12.4 selection added the advisory README dependency renderer
+as a directly used root. It preserved unsupported or ambiguous examples and
+reminders; Memory retained independent release identity and receipt admission.
 Producer full-suite failures remain separate from focused renderer and consumer
 qualification, tracked by [Shared #179 — Correct dashboard width fixtures](https://github.com/dragginzgame/shared-tooling/issues/179).
 
-The single 113-file snapshot uses reviewed committed Shared Tooling at that
+The single 112-file snapshot uses reviewed committed Shared Tooling at that
 revision, whose committed source `VERSION` is 0.15.0. The manifest records that
-display version separately from its authoritative commit identity. The 82 explicit
+display version separately from its authoritative commit identity. The 81 explicit
 roots select the reviewed governance catalog and Memory's maintained Make, hook, CI,
 archive and fixture entrypoints. Their generated companion closure preserves
 the directly invoked canonical local-package lock rewriter and the baseline-linked

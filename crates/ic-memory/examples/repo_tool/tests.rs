@@ -289,7 +289,6 @@ impl Fixture {
             ),
         ]);
         for helper in [
-            README_VERSION_RENDERER,
             WORKSPACE_VERSION_RENDERER,
             LOCK_REWRITER,
             CHANGELOG_FINALIZER,
@@ -1344,18 +1343,11 @@ fn release_tool_setup_and_offline_admission_precede_gates_and_version_mutation()
 }
 
 #[test]
-fn release_normalizes_dependency_examples_without_requiring_the_previous_version() {
-    for (original, expected) in [
-        ("ic-memory = \"0.34\"\n", "ic-memory = \"0.13.0\"\n"),
-        (
-            "# café\r\n  ic-memory='0.1' # retain \"comment\"\r\n",
-            "# café\r\n  ic-memory=\"0.13.0\" # retain \"comment\"\r\n",
-        ),
-        (
-            "ic-memory = { features = [\"example\"], version = '0.13', default-features = false }\n",
-            "ic-memory = { features = [\"example\"], version = \"0.13.0\", default-features = false }\n",
-        ),
-        ("ic-memory = \"0.13.0\"", "ic-memory = \"0.13.0\""),
+fn release_preserves_readme_bytes_through_preparation_and_publication() {
+    for original in [
+        "ic-memory = \"0.34\"\n",
+        "# café\r\n  ic-memory='0.1' # retain \"comment\"\r\n",
+        "# Guide without a dependency example",
     ] {
         let fixture = Fixture::new();
         fixture
@@ -1370,33 +1362,7 @@ fn release_normalizes_dependency_examples_without_requiring_the_previous_version
         fixture.repo.publish(true).unwrap();
         assert_eq!(
             fs::read_to_string(fixture.repo.root.join(PACKAGE_README)).unwrap(),
-            expected
-        );
-    }
-}
-
-#[test]
-fn missing_ambiguous_or_unsupported_dependency_examples_do_not_block_release() {
-    for readme in [
-        "# Guide without a dependency example\n",
-        "ic-memory = \"0.12\"\nic-memory = \"0.13\"\n",
-        "ic-memory = \"unterminated\n",
-        "ic-memory = { path = \"../ic-memory\" }\n",
-    ] {
-        let fixture = Fixture::new();
-        fixture
-            .repo
-            .exec
-            .state
-            .borrow_mut()
-            .source
-            .insert(PACKAGE_README.to_owned(), readme.to_owned());
-        fs::write(fixture.repo.root.join(PACKAGE_README), readme).unwrap();
-        fixture.release();
-        fixture.repo.publish(true).unwrap();
-        assert_eq!(
-            fs::read_to_string(fixture.repo.root.join(PACKAGE_README)).unwrap(),
-            readme
+            original
         );
     }
 }

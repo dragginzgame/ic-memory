@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.46.1]
+
+- Preserve saved-source README bytes during release preparation and retire the
+  automatic dependency-example renderer and its snapshot entrypoint
+  ([#119 — Retire README version rendering](https://github.com/dragginzgame/ic-memory/issues/119)).
+  The release file set, receipts and recovery checks are retained.
+
+[Detailed notes](docs/changelog/0.46.md)
+
 ## [0.46.0] - 2026-10-17
 
 - **Breaking ownership API:** allocation handles are non-cloneable leases.

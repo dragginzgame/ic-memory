@@ -33,11 +33,10 @@ helper creates only the selected heading; it does not invent note content.
 Memory also rejects a selected identity already present in its bare historical
 headings. Helper failures stop before any candidate output is installed.
 
-Release preparation updates a unique package README dependency example to the
-selected candidate, accepting any old requirement, TOML spacing and string or
-inline-table syntax. Missing, ambiguous or unsupported examples produce a
-nonblocking reminder and remain unchanged. Review examples during ordinary
-documentation maintenance; their spelling is not a release identity gate.
+Release preparation preserves the package README bytes from the saved source.
+Maintain dependency examples during ordinary documentation work; the adapter
+does not parse or rewrite them. The README remains in the exact release file set
+and receipt checks, so an independent edit still requires reconciliation.
 
 Implementation and pending notes must be committed through an authorized
 contribution workflow before releasing. The selected source must be clean, on
@@ -173,7 +172,7 @@ its evidence.
 
 The Rust consumer adapters consume the runner's eight `RELEASE_*` selections.
 They validate source/input identities, finalize the root and detail notes with
-the saved UTC date, update Cargo/README metadata and qualify the packages. The
+the saved UTC date, update Cargo metadata and qualify the packages. The
 explicit staged file set is `Cargo.toml`, `Cargo.lock`, `crates/ic-memory/README.md`, `CHANGELOG.md`
 and the candidate minor-line detail file. The root lock edit changes only the
 `ic-memory` package version; the independent qualification lock is not a release
