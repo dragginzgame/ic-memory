@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.45.1]
+
+- Add a fixture-runtime constructor with explicit allocation keys and geometry,
+  returning the runtime without initializing any collection. Reuse it in
+  fixture-cell setup while preserving existing error variants and recovery.
+
 ## [0.45.0] - 2026-10-16
 
 - **Breaking API/JSON:** replace pool exclusion ranges with checked numeric IDs

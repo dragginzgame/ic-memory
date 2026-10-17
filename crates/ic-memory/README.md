@@ -331,6 +331,13 @@ earlier images: use fresh/reset memory. Incompatible bytes reject without
 initializing genesis or clearing memory. See the
 [current ledger contract](../../docs/current-ledger.md).
 
+For fixture runtimes, opt in to `test-support` and call `testing::fixture_runtime`
+with explicit backing memory, owner, namespace, stable-key list and bucket
+configuration. It returns `MemoryRuntime` for opening multiple allocations or
+exercising refused opens, without initializing collections. Setup uses the
+ordinary generic allocation policy and has typed `FixtureRuntimeError` failures;
+no global manager or production admission policy is installed.
+
 For fixture-only byte cells, opt in to `test-support` and construct
 `testing::FixtureCell` with explicit backing memory, owner, namespace, key and
 `MemoryManagerConfig`. The Cell handle retains its backing; the temporary

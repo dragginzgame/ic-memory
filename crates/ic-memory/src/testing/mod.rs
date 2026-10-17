@@ -1,8 +1,10 @@
 //! Explicit fixture-only ledger and cell setup; callers own codecs, bounds and lifecycle calls.
 
+mod runtime;
+pub use runtime::{FixtureRuntimeError, fixture_runtime};
+
 use crate::{
-    GenericAllocationPolicy, MemoryAllocationPool, MemoryAuthority, MemoryManagerConfig,
-    MemoryRequest, MemoryRuntime, RuntimeMemory, SealedDeclarationSnapshot,
+    MemoryManagerConfig, RuntimeMemory,
     ic_stable_structures::{Cell, Memory},
 };
 
@@ -172,14 +174,7 @@ impl<M: Memory> FixtureCell<M> {
         stable_key: &str,
         config: MemoryManagerConfig,
     ) -> Result<RuntimeMemory<M>, FixtureCellError> {
-        let request = MemoryRequest::new(owner, stable_key)?;
-        let pool =
-            MemoryAllocationPool::new(vec![MemoryAuthority::new(owner, namespace)?], vec![])?;
-        let declarations = SealedDeclarationSnapshot::new(vec![request])?;
-        let mut runtime = MemoryRuntime::new_with_config(memory, config)?;
-        runtime
-            .bootstrap(&declarations, &pool, &GenericAllocationPolicy)
-            .map_err(|error| FixtureCellError::Bootstrap(Box::new(error)))?;
+        let runtime = fixture_runtime(memory, owner, namespace, &[stable_key], config)?;
         Ok(runtime.open_memory(stable_key)?)
     }
 
