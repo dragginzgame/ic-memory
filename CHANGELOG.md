@@ -1,6 +1,6 @@
 # Changelog
 
-## [0.47.0]
+## [0.47.0] - 2026-10-17
 
 - **Breaking allocation API:** bootstrap returns the committed generation; borrow
   current bindings directly from the runtime. Numeric declaration builders and
