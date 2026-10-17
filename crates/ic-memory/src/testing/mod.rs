@@ -1,5 +1,8 @@
 //! Explicit fixture-only ledger and cell setup; callers own codecs, bounds and lifecycle calls.
 
+mod sparse_image;
+pub use sparse_image::{SparseMemoryImageError, memory_from_sparse_hex};
+
 use crate::{
     GenericAllocationPolicy, Memory, MemoryAllocationPool, MemoryAuthority, MemoryManagerConfig,
     MemoryRequest, MemoryRuntime, RuntimeMemory, SealedDeclarationSnapshot,
