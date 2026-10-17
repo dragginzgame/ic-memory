@@ -28,10 +28,10 @@ validates the completed snapshot, stages and persists one generation, then
 publishes committed authority. The host owns this runtime instance.
 
 New requests are sorted by key and take the lowest unoccupied pool ID. Known
-keys preserve their committed IDs. All historical states occupy slots, including
-omitted, reserved and retired records. Custom policy rejection fails the whole
-attempt; placement does not search alternate IDs to evade it. Matching
-reservations activate through normal validation. Retirement is permanent.
+keys preserve their committed IDs. Every retained key occupies its slot, including
+omitted keys. Custom policy rejection fails the whole
+attempt; placement does not search alternate IDs to evade it. Reintroduced keys pass normal current
+validation; application retirement belongs to the host/storage owner.
 
 Namespace grants authorize current owner labels. Previous owner labels are not
 stored in the ledger or enforced. The host can replace a label while preserving
@@ -44,7 +44,7 @@ or inspect persisted ownership.
 Verification checks required keys and current owners without
 certifying application schema semantics or replaying admission.
 
-Exhaustion, invalid grants, excluded historical IDs, retirement and corruption
+Exhaustion, invalid grants, excluded historical IDs and corruption
 fail closed. Growth refusal returns typed errors; failed persistence publishes
 no capability. A fresh admitted attempt can leave an empty initialized ledger
 cell; previous committed mappings remain unchanged. IC message traps roll back
@@ -60,7 +60,7 @@ Include independently known prior keys in the source request snapshot, or select
 known historical keys during `prepare_bootstrap` through
 `BootstrapAdmission::include_historical`. Both routes finish before resolution
 and the single persistence boundary. Historical selection rejects unknown,
-retired, duplicate, foreign-namespace and physically excluded claims. Ignoring
+duplicate, foreign-namespace and physically excluded claims. Ignoring
 an admission error does not make the attempt succeed.
 
 ```rust,no_run
@@ -113,9 +113,11 @@ DTOs are not capabilities. Typed physical, codec and integrity failures reject
 without replacing existing storage with genesis.
 
 The outer ceiling permits one maximum payload and record metadata. The current
-`ICMSNAP1` physical format marker identify the current ownership layout; earlier
-ledger layouts are unsupported. Before deploying this hard cut to retained
-installations, follow [the explicit data disposition requirements](current-ledger.md).
+`ICMKEY01` physical format marker identifies the records-only payload layout.
+The protected header owns generation; recovery derives the logical counter from
+it. Earlier ledger layouts, including ICMSNAP1 and pending ICMREC01, are retired
+for 0.48 and require
+fresh/reset backing. Follow [the explicit data disposition requirements](current-ledger.md).
 No automatic clearing, fallback reader or migration engine is provided.
 
 The bounded writer performs one canonical CBOR pass. Admitted definite collection
@@ -128,7 +130,7 @@ Matching warm bootstrap is idempotent. Cold bootstrap or a committed production 
 advances the commit counter, including unchanged declarations. The counter can
 change CBOR integer width by at most eight bytes; no event is appended. Application schema changes remain with the storage owner. Recovery and serialization work depend
 on retained record count, not upgrade count. Counter overflow is explicit and
-never wraps. Ownership and tombstones are never dropped to make room.
+never wraps. Permanent bindings are never dropped to make room.
 
 Assumptions: backing `Memory` obeys its read/grow/write contract, the runtime is
 the sole manager owner, and IC messages roll back stable-memory writes on traps.

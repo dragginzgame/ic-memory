@@ -5,7 +5,7 @@ pub(super) fn encode_ledger(
 ) -> Result<Vec<u8>, super::LedgerIntegrityError> {
     let mut writer =
         crate::bounded_writer::BoundedWriter::new(Vec::new(), crate::constants::MAX_LEDGER_BYTES);
-    match ciborium::into_writer(ledger, &mut writer) {
+    match ciborium::into_writer(ledger.records(), &mut writer) {
         Ok(()) => Ok(writer.bytes),
         Err(ciborium::ser::Error::Io(err)) if err.kind() == std::io::ErrorKind::WriteZero => {
             Err(super::LedgerIntegrityError::LimitExceeded {
@@ -19,8 +19,27 @@ pub(super) fn encode_ledger(
     }
 }
 
-pub(super) fn decode_ledger(bytes: &[u8]) -> Result<super::AllocationLedger, String> {
-    crate::cbor::from_slice_exact(bytes).map_err(|err| err.to_string())
+pub(super) fn decode_ledger(
+    bytes: &[u8],
+    generation: u64,
+) -> Result<super::AllocationLedger, String> {
+    // The protected header owns generation; the payload is only a bounded array.
+    #[derive(serde::Deserialize)]
+    #[serde(transparent)]
+    struct Records(
+        #[serde(deserialize_with = "crate::cbor::deserialize_records")]
+        Vec<super::AllocationRecord>,
+    );
+
+    // Ciborium can present byte strings as sequences; only arrays are this wire shape.
+    if bytes.first().is_none_or(|byte| byte >> 5 != 4) {
+        return Err("ledger payload must be a CBOR record array".to_string());
+    }
+    let Records(records) = crate::cbor::from_slice_exact(bytes).map_err(|err| err.to_string())?;
+    Ok(super::AllocationLedger {
+        current_generation: generation,
+        records,
+    })
 }
 
 #[cfg(test)]
@@ -74,7 +93,7 @@ mod tests {
                 records: Vec::new(),
             };
             let mut payload = Vec::new();
-            ciborium::into_writer(&ledger, &mut payload).unwrap();
+            ciborium::into_writer(ledger.records(), &mut payload).unwrap();
             let expected = payload;
             assert_eq!(encode_ledger(&ledger).unwrap(), expected);
         }

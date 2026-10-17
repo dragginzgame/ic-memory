@@ -1,11 +1,12 @@
 # Local developer setup
+<!-- Shared companions: scripts/ci/report-tool-versions.sh -->
 
 From the checkout root, prepare the common executables explicitly:
 
 ```bash
 make install-tools
 make tools-check
-export PATH="$PWD/.tools/host/bin:$PWD/.tools/ic/bin:$PWD/.tools/rust/common/bin:$PATH"
+export PATH="$PWD/.tools/host/bin:$PWD/.tools/rust/common/bin:$PATH"
 ```
 
 Prepare the declared Rust/Cargo toolchain and native build prerequisites first,
@@ -16,20 +17,20 @@ tool checks are offline and never install missing executables. Preparing missing
 workspace dependency sources during authorized development/validation follows
 the [locked Cargo fetch policy](../rules/cargo-dependencies.md#cargo-network-policy).
 Before tool downloads,
-`install-tools` uses the existing IC and Rust installers to admit the complete-set
-platform/pins and probe the consumer's selected `rustc` and `cargo`. These
-read-only `--preflight` calls create no tool/build directories and disable
+`install-tools` uses the Rust installer to admit its selected
+platform/pins and probe the consumer's selected `rustc` and `cargo`. This
+read-only `--preflight` call creates no tool/build directories and disables
 Rustup auto-installation; missing or unavailable toolchains require explicit
 bootstrap. This is not a compiler/linker qualification or a toolchain upgrade.
-Setup then runs host, IC and Rust installation in that order, followed by declared product tools;
+Setup then runs host and Rust installation in that order, followed by declared product tools;
 `tools-check` checks the same sets in order. Each stops at the first failure.
 Sets activate independently: a later failure preserves earlier completed sets.
 
 ## Required tool inventory
 
 This is the common setup list for every repository adopting the
-[engineering baseline](../DRAGGINZGAME.md). The host, IC and Cargo-tool sets are required
-regardless of whether a repository currently uses every executable. Consumers
+[engineering baseline](../DRAGGINZGAME.md). The host and Cargo-tool sets are required.
+The IC bundle is selected only by repositories whose workflows use it. Consumers
 add their product prerequisites to local setup documentation; omissions or
 different support scopes require an explicitly approved exception.
 
@@ -37,7 +38,7 @@ different support scopes require an explicitly approved exception.
 | --- | --- | --- |
 | System bootstrap | Bash, Git, GNU Make, curl, CA certificates, tar, gzip, xz, Perl, a SHA-256 implementation and standard Unix utilities | Host package manager; see [bootstrap prerequisites](#bootstrap-prerequisites) |
 | Common host tools | `jq`, Mike Farah `yq`, `rg` with PCRE2, `cloc` | `make install-host-tools`; offline `make host-tools-check`; `.tools/host/bin` |
-| Common IC tools | `quill`, `icp`, `didc`, `ic-wasm`, `wasm-opt` | `make install-ic-tools`; offline `make ic-tools-check`; `.tools/ic/bin` |
+| Optional product IC tools | `quill`, `icp`, `didc`, `ic-wasm`, `wasm-opt` | `make install-ic-tools`; offline `make ic-tools-check`; `.tools/ic/bin` |
 | Common Cargo tools | `cargo-sort`, `cargo-sort-derives`, `candid-extractor` | `make install-rust-tools`; offline `make rust-tools-check`; `.tools/rust/common/bin`. All repositories prepare a declared Rust/Cargo toolchain and native build prerequisites first. |
 | Rust development | rustfmt and product compilation targets | Consumer toolchain setup and the [formatter prerequisite check](verification-helpers.md#formatter-prerequisites) |
 | Workflow-specific tools | ShellCheck, actionlint, Gitleaks, authenticated `gh`, Node/SDKs and other tools used by that repository | Explicit consumer setup; declare the tools required by each workflow |
@@ -48,16 +49,23 @@ before removing corruption-workaround markers. The selected 0.14.1 formatter
 requires Rust 1.88 or newer to build; consumer library MSRVs stay independently owned.
 Tool availability and version checks do not establish semantic preservation.
 
-`make install-tools` and `make tools-check` cover all 12 common executables,
-regardless of the repository's implementation language or current use. They do
-not install a Rust toolchain or authenticate GitHub. Product and workflow-specific
+`make install-tools` and `make tools-check` cover the seven common host/Cargo executables,
+regardless of the repository's implementation language. The five IC executables
+are optional product tools; their standalone setup/check targets remain available.
+Setup does not install a Rust toolchain or authenticate GitHub. Product and workflow-specific
 tools extend the aggregate through existing consumer-owned targets:
 
 ```make
-LOCAL_TOOL_INSTALL_TARGETS += install-testkit
-LOCAL_TOOL_CHECK_TARGETS += testkit-check
+# Select only when this repository uses IC executables.
+LOCAL_TOOL_INSTALL_TARGETS += install-ic-tools
+LOCAL_TOOL_CHECK_TARGETS += ic-tools-check
 include make/consumer.mk
+export PATH := $(CURDIR)/.tools/ic/bin:$(PATH)
 ```
+
+IC consumers also publish `.tools/ic/bin` to their CI PATH after successful
+setup/check, and include it in their interactive-shell PATH. The common action
+publishes only host/Cargo paths; it never activates an unselected IC bundle.
 
 These lists run sequentially after the common sets, including under parallel
 Make. Declare each required product setup/check pair; do not add prerequisites
@@ -91,8 +99,9 @@ Make's jobserver descriptors for parallel execution; this does not grant
 installation authority to an inspection command or change the setup order.
 
 The installed `cloc` executable and local workspace `make cloc` are common setup.
-Fleet reports such as `make cloc-tooling` normally run in Shared Tooling; consumers
-need not vendor those reporters or run their regression suites. See the
+Fleet reports such as `make cloc-tooling` run from Shared Tooling's own Makefile;
+the consumer include exports local workspace LOC. Consumers need not vendor fleet
+reporters or run their regression suites. See the
 [optional fleet selection](consuming-snapshots.md#local-ic-tool-adoption).
 
 ## Catalog selection
@@ -188,7 +197,7 @@ If the first command works but the second is missing or points elsewhere, select
 this checkout's tools in the current terminal:
 
 ```bash
-export PATH="$PWD/.tools/host/bin:$PWD/.tools/ic/bin:$PWD/.tools/rust/common/bin:$PATH"
+export PATH="$PWD/.tools/host/bin:$PWD/.tools/rust/common/bin:$PATH"
 ```
 
 Select the paths again when switching repositories; do not permanently select a
@@ -238,7 +247,10 @@ an attempt already in flight can finish after the retry window. Permanent HTTP
 errors and checksum/admission failures are not retried. Exhaustion returns curl's
 final failure status and preserves the failed candidate and previous selection.
 Cleanup remains explicit. The `--versions` option
-selects a reviewed shell file, which is executable code like a Makefile.
+selects reviewed literal assignment data. Host/Rust installers, freshness checks
+and cache identities use the same parser. Shell commands, substitutions, duplicate
+keys and nonliteral values refuse before installation or cache output. Replace
+computed catalogs with complete literal selections before adopting this cut.
 
 Setup and offline checks admit the literal `.tools/host` link target. Malformed
 managed names, including trailing newlines, are refused before tool execution
@@ -291,8 +303,10 @@ non-Rust repositories. The narrow commands remain useful for explicit retries
 or diagnostics; they do not establish that the complete toolset is ready.
 Shared Make commands include `.tools/rust/common/bin` on PATH; interactive shells use
 the export at the top of this guide. The standard formatting hook and its
-adoption check preserve the original checkout's host, IC and Rust tool paths
-while formatting isolated index inputs. The helper never prepares or upgrades a
+adoption check preserve the original checkout's common host and Rust tool paths
+while formatting isolated index inputs. IC formatters select their prepared tool
+PATH explicitly; the hook exposes `SHARED_TOOLING_FORMAT_TOOLS_FROM` for product
+Make recipes that need the original checkout's tool root. The helper never prepares or upgrades a
 toolchain implicitly. Installation may fetch registry dependencies and compile;
 failed candidates, completed build output and install logs remain in shared
 `rust-<identity>/set.*` generations, referenced from the originating checkout.
@@ -568,7 +582,7 @@ and select its paths before invoking scripts directly:
 ```bash
 make install-tools
 make tools-check
-export PATH="$PWD/.tools/host/bin:$PWD/.tools/ic/bin:$PWD/.tools/rust/common/bin:$PATH"
+export PATH="$PWD/.tools/host/bin:$PWD/.tools/rust/common/bin:$PATH"
 ```
 
 Before starting portable fixtures, `test-portable-tools.sh` checks the required
@@ -587,3 +601,32 @@ ShellCheck, actionlint and Gitleaks use the existing explicit CI installers and
 pins; GitHub maintenance needs an installed, authenticated `gh`. Consumer-owned
 Node/Rust toolchains, SDKs and product dependencies remain part of that repo's
 declared setup. See the [complete script dependency table](supported-hosts.md#tool-specific-dependencies).
+
+## Observed common tool versions
+
+After explicit preparation, run `bash scripts/ci/report-tool-versions.sh "$PWD"`
+from an adopted snapshot. The reporter checks host and Rust sets through their
+installers' read-only `--check` interfaces, then records
+catalog-selected command paths, SHA-256 identities and live version output.
+An optional `VERSIONS` argument selects the host/Rust catalog. Supplying a
+third `IC_PINS` argument explicitly includes IC admission and observations. It never
+installs tools; use the same `SHARED_TOOLING_STORE` setting as setup and checks.
+Redirect stdout and stderr together when retaining evidence. Failure keeps prior
+observations and the failing command's status. Compiler and product-specific CLI
+selection/evidence remain consumer-owned.
+
+### Optional IC bundle adoption
+
+This is a breaking setup contract. Consumers needing the IC bundle must register
+both ordered targets shown above and publish its PATH explicitly before adopting
+the new snapshot. IC-free libraries keep the default common setup. Existing tool
+bundles are retained; adoption never deletes installations or changes product pins.
+Version reporting defaults to host/Cargo selections. To include an explicitly
+selected IC bundle, pass both catalogs:
+
+```bash
+bash scripts/ci/report-tool-versions.sh "$PWD" ci/tool-versions.env ci/ic-tools.tsv
+```
+
+The IC install/check commands continue to verify all five executable selections
+and their reviewed native-host digests. Product ownership does not weaken admission.

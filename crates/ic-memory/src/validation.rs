@@ -1,8 +1,9 @@
+#[cfg(any(test, feature = "test-support"))]
+use crate::{RecoveredLedger, requests::DeclarationSnapshot};
 use crate::{
     key::StableKey,
-    ledger::{AllocationLedger, ClaimConflict, RecoveredLedger, validate_declaration_claim},
+    ledger::{AllocationLedger, ClaimConflict, validate_declaration_claim},
     policy::RuntimeBootstrapPolicy,
-    requests::DeclarationSnapshot,
     slot::MemoryManagerSlot,
 };
 
@@ -40,18 +41,11 @@ pub enum AllocationValidationError<P> {
         /// Stable key claimed by the current declaration.
         declared_key: StableKey,
     },
-    /// Current declaration attempted to revive a retired allocation.
-    #[error("stable key '{stable_key}' was explicitly retired and cannot be redeclared")]
-    RetiredAllocation {
-        /// Retired stable key.
-        stable_key: StableKey,
-        /// Retired allocation slot.
-        slot: MemoryManagerSlot,
-    },
 }
 
 // Doctor needs the same checks as bootstrap, but does not consume declarations
 // or mint a capability. Keep check ordering and error ownership in one place.
+#[cfg(any(test, feature = "test-support"))]
 pub fn check_allocations<P: RuntimeBootstrapPolicy>(
     recovered: &RecoveredLedger,
     snapshot: &DeclarationSnapshot,
@@ -97,10 +91,6 @@ fn map_validation_claim_conflict<P>(
             historical_key: record.stable_key.clone(),
             declared_key: declaration.stable_key.clone(),
         },
-        ClaimConflict::Tombstoned { record } => AllocationValidationError::RetiredAllocation {
-            stable_key: declaration.stable_key.clone(),
-            slot: record.slot.clone(),
-        },
     }
 }
 
@@ -108,9 +98,7 @@ fn map_validation_claim_conflict<P>(
 mod tests {
     use super::*;
     use crate::{
-        declaration::AllocationDeclaration,
-        ledger::{AllocationRecord, AllocationState},
-        slot::MemoryManagerSlot,
+        declaration::AllocationDeclaration, ledger::AllocationRecord, slot::MemoryManagerSlot,
     };
 
     #[derive(Debug, Eq, PartialEq)]
@@ -148,8 +136,8 @@ mod tests {
             .expect("declaration")
     }
 
-    fn active_record(key: &str, id: u8) -> AllocationRecord {
-        AllocationRecord::active(&declaration(key, id))
+    fn allocation_record(key: &str, id: u8) -> AllocationRecord {
+        AllocationRecord::from_declaration(&declaration(key, id))
     }
 
     fn recovered(records: Vec<AllocationRecord>) -> RecoveredLedger {
@@ -161,7 +149,7 @@ mod tests {
         let snapshot = DeclarationSnapshot::for_test(vec![declaration("app.users.v1", 100)]);
 
         check_allocations(
-            &recovered(vec![active_record("app.users.v1", 100)]),
+            &recovered(vec![allocation_record("app.users.v1", 100)]),
             &snapshot,
             &TestPolicy,
         )
@@ -174,13 +162,13 @@ mod tests {
 
         check_allocations(
             &recovered(vec![
-                active_record("app.users.v1", 100),
-                active_record("app.orders.v1", 101),
+                allocation_record("app.users.v1", 100),
+                allocation_record("app.orders.v1", 101),
             ]),
             &snapshot,
             &TestPolicy,
         )
-        .expect("omitted records are preserved, not retired");
+        .expect("omitted records retain their bindings");
     }
 
     #[test]
@@ -188,7 +176,7 @@ mod tests {
         let snapshot = DeclarationSnapshot::for_test(vec![declaration("app.users.v1", 101)]);
 
         let err = check_allocations(
-            &recovered(vec![active_record("app.users.v1", 100)]),
+            &recovered(vec![allocation_record("app.users.v1", 100)]),
             &snapshot,
             &TestPolicy,
         )
@@ -205,7 +193,7 @@ mod tests {
         let snapshot = DeclarationSnapshot::for_test(vec![declaration("app.orders.v1", 100)]);
 
         let err = check_allocations(
-            &recovered(vec![active_record("app.users.v1", 100)]),
+            &recovered(vec![allocation_record("app.users.v1", 100)]),
             &snapshot,
             &TestPolicy,
         )
@@ -214,21 +202,6 @@ mod tests {
         assert!(matches!(
             err,
             AllocationValidationError::SlotStableKeyConflict { .. }
-        ));
-    }
-
-    #[test]
-    fn rejects_retired_redeclaration() {
-        let mut record = active_record("app.users.v1", 100);
-        record.state = AllocationState::Retired;
-        let snapshot = DeclarationSnapshot::for_test(vec![declaration("app.users.v1", 100)]);
-
-        let err = check_allocations(&recovered(vec![record]), &snapshot, &TestPolicy)
-            .expect_err("retired");
-
-        assert!(matches!(
-            err,
-            AllocationValidationError::RetiredAllocation { .. }
         ));
     }
 

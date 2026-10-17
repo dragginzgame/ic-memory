@@ -56,11 +56,15 @@ fn custom_policy_bootstrap_is_identity_bound_and_idempotent() {
             .unwrap(),
         first
     );
-    let doctor = runtime.doctor_report(&snapshot(), &pool(), &CustomPolicy);
-    assert!(matches!(
-        doctor.bootstrap_binding,
-        ic_memory::DiagnosticCheck::Passed
-    ));
+    #[cfg(feature = "test-support")]
+    {
+        let doctor =
+            ic_memory::testing::doctor_report(&runtime, &snapshot(), &pool(), &CustomPolicy);
+        assert!(matches!(
+            doctor.bootstrap_binding,
+            ic_memory::testing::DiagnosticCheck::Passed
+        ));
+    }
     runtime
         .open_memory("default_custom_policy.rows.v1")
         .unwrap();

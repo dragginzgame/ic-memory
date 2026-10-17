@@ -5,12 +5,14 @@ mod integrity;
 mod record;
 mod stage;
 
-use crate::physical::{CommitSnapshotDiagnostic, CommittedGenerationBytes};
+#[cfg(any(test, feature = "test-support"))]
+use crate::physical::CommitSnapshotDiagnostic;
+use crate::physical::CommittedGenerationBytes;
 use serde::{Deserialize, Serialize};
 
 pub use claim::{ClaimConflict, ClaimOutcome, validate_declaration_claim};
 pub use error::{AllocationStageError, LedgerCommitError, LedgerIntegrityError};
-pub use record::{AllocationLedger, AllocationRecord, AllocationState, RecoveredLedger};
+pub use record::{AllocationLedger, AllocationRecord, RecoveredLedger};
 pub use stage::stage_generation;
 
 use codec::decode_ledger;
@@ -44,6 +46,7 @@ impl LedgerCommitStore {
         Self::recover_committed(committed)
     }
 
+    #[cfg(any(test, feature = "test-support"))]
     pub(crate) fn recover_with_diagnostic(
         &self,
     ) -> (
@@ -60,13 +63,8 @@ impl LedgerCommitStore {
     fn recover_committed(
         committed: &CommittedGenerationBytes,
     ) -> Result<RecoveredLedger, LedgerCommitError> {
-        let ledger = decode_ledger(committed.payload()).map_err(LedgerCommitError::Codec)?;
-        if committed.generation() != ledger.current_generation {
-            return Err(LedgerCommitError::PhysicalLogicalGenerationMismatch {
-                physical_generation: committed.generation(),
-                logical_generation: ledger.current_generation,
-            });
-        }
+        let ledger = decode_ledger(committed.payload(), committed.generation())
+            .map_err(LedgerCommitError::Codec)?;
         ledger
             .validate_integrity()
             .map_err(LedgerCommitError::Integrity)?;
@@ -168,10 +166,7 @@ mod tests {
                 let key = format!("app.store{id:03}.{}.v1", "x".repeat(112));
                 assert_eq!(key.len(), 128);
                 let declaration = declaration(&key, id);
-                let mut record = AllocationRecord::active(&declaration);
-                // Reserved is the longest encoded lifecycle variant.
-                record.state = AllocationState::Reserved;
-                record
+                AllocationRecord::from_declaration(&declaration)
             })
             .collect();
         let ledger = AllocationLedger::new(u64::MAX - 1, records).unwrap();
@@ -253,8 +248,8 @@ mod tests {
         }
     }
 
-    fn active_record(key: &str, id: u8) -> AllocationRecord {
-        AllocationRecord::active(&declaration(key, id))
+    fn allocation_record(key: &str, id: u8) -> AllocationRecord {
+        AllocationRecord::from_declaration(&declaration(key, id))
     }
 
     fn snapshot_from(declarations: Vec<AllocationDeclaration>) -> DeclarationSnapshot {
@@ -285,9 +280,9 @@ mod tests {
         codec::encode_ledger(ledger).expect("fixture ledger")
     }
 
-    fn ledger_from_payload_fixture(contents: &str) -> AllocationLedger {
+    fn ledger_from_payload_fixture(contents: &str, generation: u64) -> AllocationLedger {
         let bytes = hex_fixture(contents);
-        let ledger = decode_ledger(&bytes).expect("fixture ledger");
+        let ledger = decode_ledger(&bytes, generation).expect("fixture ledger");
         ledger
             .validate_integrity()
             .expect("fixture ledger integrity");
@@ -305,52 +300,15 @@ mod tests {
         store
     }
 
-    fn active_committed_ledger() -> AllocationLedger {
+    fn committed_fixture_ledger() -> AllocationLedger {
         AllocationLedger {
             current_generation: 1,
-            records: vec![active_record("app.users.v1", 100)],
+            records: vec![allocation_record("app.users.v1", 100)],
         }
     }
 
-    fn active_ledger_value() -> crate::test_cbor::Value {
-        crate::test_cbor::to_value(active_committed_ledger()).expect("ledger value")
-    }
-
-    #[test]
-    fn recovery_rejects_unknown_fields_inside_retirement_state() {
-        use crate::LedgerCommitStore;
-
-        let retired = AllocationLedger::new(
-            2,
-            vec![crate::testing::allocation_record(
-                &declaration("app.users.v1", 100),
-                AllocationState::Retired,
-            )],
-        )
-        .unwrap();
-        let mut store = LedgerCommitStore::default();
-        let committed = store.commit(&retired).unwrap();
-        assert_eq!(committed, store.recover().unwrap());
-
-        let mut value = crate::test_cbor::to_value(&retired).unwrap();
-        let records = value_array_mut(map_field_mut(value_map_mut(&mut value), "records"));
-        let state = map_field_mut(value_map_mut(&mut records[0]), "state");
-        *state = serde_json::from_value::<crate::test_cbor::Value>(
-            serde_json::json!({"Retired": {"unexpected": true}}),
-        )
-        .unwrap();
-        let bytes = crate::test_cbor::to_vec(&value).unwrap();
-        let payload = bytes;
-        let mut physical = LedgerCommitStore::default();
-        physical.commit_payload_at_generation(2, payload).unwrap();
-        let record = physical;
-        let encoded = crate::test_cbor::to_vec(&record).unwrap();
-        let decoded = crate::decode_stable_cell_commit_store(&encoded).unwrap();
-        let before = decoded.clone();
-        let error = decoded.recover().unwrap_err();
-        assert!(matches!(error, LedgerCommitError::Codec(_)));
-
-        assert_eq!(decoded, before);
+    fn ledger_value() -> crate::test_cbor::Value {
+        crate::test_cbor::to_value(committed_fixture_ledger().records()).expect("ledger value")
     }
 
     fn value_map_mut(
@@ -362,16 +320,6 @@ mod tests {
         map
     }
 
-    fn map_field_mut<'map>(
-        map: &'map mut [(crate::test_cbor::Value, crate::test_cbor::Value)],
-        field: &str,
-    ) -> &'map mut crate::test_cbor::Value {
-        map.iter_mut()
-            .find(|(key, _)| key == &crate::test_cbor::Value::Text(field.to_string()))
-            .map(|(_, value)| value)
-            .expect("CBOR map field")
-    }
-
     fn value_array_mut(value: &mut crate::test_cbor::Value) -> &mut Vec<crate::test_cbor::Value> {
         let crate::test_cbor::Value::Array(values) = value else {
             panic!("expected CBOR array");
@@ -381,62 +329,58 @@ mod tests {
 
     fn decode_mutated_ledger(value: crate::test_cbor::Value) -> String {
         let bytes = crate::test_cbor::to_vec(&value).expect("mutated ledger bytes");
-        decode_ledger(&bytes).expect_err("mutated ledger must fail closed")
+        decode_ledger(&bytes, 1).expect_err("mutated ledger must fail closed")
     }
 
     #[test]
     fn allocation_record_accessors_expose_read_only_views() {
-        let ledger = AllocationLedger::new(1, vec![active_record("app.users.v1", 100)]).unwrap();
+        let ledger =
+            AllocationLedger::new(1, vec![allocation_record("app.users.v1", 100)]).unwrap();
         assert_eq!(ledger.records().len(), 1);
         let record = &ledger.records()[0];
         assert_eq!(record.stable_key().as_str(), "app.users.v1");
         assert_eq!(record.slot().id(), 100);
-        assert_eq!(record.state(), AllocationState::Active);
     }
 
     #[test]
     fn ledger_cbor_round_trips_allocation_ledger() {
         let ledger = committed_ledger(2);
 
-        let encoded = crate::test_cbor::to_vec(&ledger).expect("encode ledger");
-        let decoded = decode_ledger(&encoded).expect("decode ledger");
+        let encoded = codec::encode_ledger(&ledger).expect("encode ledger");
+        let decoded = decode_ledger(&encoded, 2).expect("decode ledger");
 
         assert_eq!(decoded, ledger);
     }
 
     #[test]
     fn ledger_cbor_rejects_trailing_bytes() {
-        let mut encoded = crate::test_cbor::to_vec(&committed_ledger(2)).expect("encode ledger");
+        let mut encoded = codec::encode_ledger(&committed_ledger(2)).expect("encode ledger");
         encoded.push(0);
 
-        let err = decode_ledger(&encoded).expect_err("trailing bytes must fail closed");
+        let err = decode_ledger(&encoded, 2).expect_err("trailing bytes must fail closed");
 
         assert!(err.contains("trailing bytes"));
     }
 
     #[test]
-    fn cbor_ledger_codec_rejects_unknown_top_level_fields() {
+    fn cbor_ledger_codec_requires_record_sequence() {
         use crate::test_cbor::Value;
-
-        let map = vec![
-            (
-                Value::Text("current_generation".to_string()),
-                Value::Integer(0.into()),
-            ),
-            (Value::Text("records".to_string()), Value::Array(vec![])),
-            (Value::Text("future_field".to_string()), Value::Bool(true)),
-        ];
-        let bytes = crate::test_cbor::to_vec(&Value::Map(map)).expect("unknown-field ledger");
-
-        let err = decode_ledger(&bytes).expect_err("unknown ledger field must fail closed");
-
-        assert!(err.contains("future_field"));
+        for value in [
+            Value::Null,
+            Value::Integer(1.into()),
+            Value::Map(vec![]),
+            Value::Text(String::new()),
+            Value::Bytes(vec![]),
+        ] {
+            let bytes = crate::test_cbor::to_vec(&value).unwrap();
+            assert!(decode_ledger(&bytes, 1).is_err());
+        }
     }
 
     #[test]
     fn cbor_ledger_codec_rejects_unknown_nested_record_fields() {
-        let mut value = active_ledger_value();
-        let records = map_field_mut(value_map_mut(&mut value), "records");
+        let mut value = ledger_value();
+        let records = &mut value;
         let record = value_array_mut(records)
             .first_mut()
             .expect("allocation record");
@@ -468,47 +412,25 @@ mod tests {
 
     #[test]
     fn current_empty_genesis_payload_fixture_recovers() {
-        let ledger = ledger_from_payload_fixture(include_str!(
-            "../../fixtures/current/empty_genesis_ledger.cbor.hex"
-        ));
+        let ledger = ledger_from_payload_fixture(
+            include_str!("../../fixtures/current/empty_genesis_ledger.cbor.hex"),
+            0,
+        );
 
         assert_eq!(ledger.current_generation, 0);
         assert_eq!(ledger.records(), []);
     }
 
     #[test]
-    fn current_single_active_payload_fixture_recovers() {
-        let ledger = ledger_from_payload_fixture(include_str!(
-            "../../fixtures/current/single_active_allocation_ledger.cbor.hex"
-        ));
+    fn current_single_payload_fixture_recovers() {
+        let ledger = ledger_from_payload_fixture(
+            include_str!("../../fixtures/current/single_allocation_ledger.cbor.hex"),
+            1,
+        );
         let record = record(&ledger, "app.users.v1");
 
         assert_eq!(ledger.current_generation, 1);
-        assert_eq!(record.state(), AllocationState::Active);
         assert_eq!(record.slot().id(), 100);
-    }
-
-    #[test]
-    fn current_reserved_payload_fixture_recovers() {
-        let ledger = ledger_from_payload_fixture(include_str!(
-            "../../fixtures/current/reserved_allocation_ledger.cbor.hex"
-        ));
-        let record = record(&ledger, "app.future_store.v1");
-
-        assert_eq!(ledger.current_generation, 1);
-        assert_eq!(record.state(), AllocationState::Reserved);
-        assert_eq!(record.slot().id(), 101);
-    }
-
-    #[test]
-    fn current_retired_payload_fixture_recovers() {
-        let ledger = ledger_from_payload_fixture(include_str!(
-            "../../fixtures/current/retired_allocation_ledger.cbor.hex"
-        ));
-        let record = record(&ledger, "app.users.v1");
-
-        assert_eq!(ledger.current_generation, 2);
-        assert_eq!(record.state(), AllocationState::Retired);
     }
 
     #[test]
@@ -526,9 +448,9 @@ mod tests {
     }
 
     #[test]
-    fn current_ledger_commit_store_single_active_fixture_recovers() {
+    fn current_ledger_commit_store_single_fixture_recovers() {
         let store = store_from_fixture(include_str!(
-            "../../fixtures/current/ledger_commit_store_single_active.cbor.hex"
+            "../../fixtures/current/ledger_commit_store_single.cbor.hex"
         ));
 
         let recovered = store.recover().expect("fixture store recovers");
@@ -594,7 +516,7 @@ mod tests {
     #[test]
     fn stage_generation_rejects_same_key_different_slot() {
         let mut ledger = committed_ledger(3);
-        ledger.records = vec![active_record("app.users.v1", 100)];
+        ledger.records = vec![allocation_record("app.users.v1", 100)];
         ledger.validate_integrity().unwrap();
         let snapshot = snapshot_from(vec![declaration("app.users.v1", 101)]);
 
@@ -611,7 +533,7 @@ mod tests {
     #[test]
     fn stage_generation_rejects_same_slot_different_key() {
         let mut ledger = ledger();
-        ledger.records = vec![active_record("app.users.v1", 100)];
+        ledger.records = vec![allocation_record("app.users.v1", 100)];
         let snapshot = snapshot_from(vec![declaration("app.orders.v1", 100)]);
 
         let err = stage(ledger, &snapshot).expect_err("slot cannot be reused by another key");
@@ -620,24 +542,6 @@ mod tests {
             err,
             crate::RuntimeBootstrapError::Validation(
                 crate::AllocationValidationError::SlotStableKeyConflict { .. }
-            )
-        ));
-    }
-
-    #[test]
-    fn stage_generation_rejects_retired_redeclaration() {
-        let mut ledger = ledger();
-        let mut record = active_record("app.users.v1", 100);
-        record.state = AllocationState::Retired;
-        ledger.records = vec![record];
-        let snapshot = snapshot_from(vec![declaration("app.users.v1", 100)]);
-
-        let err = stage(ledger, &snapshot).expect_err("retired allocation cannot be redeclared");
-
-        assert!(matches!(
-            err,
-            crate::RuntimeBootstrapError::Validation(
-                crate::AllocationValidationError::RetiredAllocation { .. }
             )
         ));
     }
@@ -660,17 +564,17 @@ mod tests {
             .iter()
             .find(|record| record.stable_key.as_str() == "app.orders.v1")
             .expect("omitted record");
-        assert_eq!(omitted.state, AllocationState::Active);
+        assert_eq!(omitted.slot().id(), 101);
     }
 
     #[test]
-    fn stage_generation_activates_reserved_record() {
+    fn stage_generation_reuses_existing_record() {
         let staged = AllocationLedger::new(
             4,
-            vec![crate::testing::allocation_record(
-                &declaration("app.future_store.v1", 100),
-                AllocationState::Reserved,
-            )],
+            vec![crate::testing::allocation_record(&declaration(
+                "app.future_store.v1",
+                100,
+            ))],
         )
         .unwrap();
         let active = snapshot_from(vec![declaration("app.future_store.v1", 100)]);
@@ -678,7 +582,7 @@ mod tests {
         let staged = stage(staged, &active).expect("active generation");
         let record = &staged.records()[0];
 
-        assert_eq!(record.state, AllocationState::Active);
+        assert_eq!(record.slot().id(), 100);
     }
 
     #[test]
@@ -701,15 +605,8 @@ mod tests {
             }
         }
         visit(AllocationLedger::empty_genesis(), 4);
-        for state in [
-            AllocationState::Reserved,
-            AllocationState::Active,
-            AllocationState::Retired,
-        ] {
-            let record =
-                crate::testing::allocation_record(&declaration("app.users.v1", 100), state);
-            visit(AllocationLedger::new(1, vec![record]).unwrap(), 4);
-        }
+        let record = crate::testing::allocation_record(&declaration("app.users.v1", 100));
+        visit(AllocationLedger::new(1, vec![record]).unwrap(), 4);
     }
 
     #[test]
@@ -717,8 +614,8 @@ mod tests {
         let mut ledger = ledger();
         for second_id in [101, 100] {
             ledger.records = vec![
-                active_record("app.users.v1", 100),
-                active_record("app.users.v1", second_id),
+                allocation_record("app.users.v1", 100),
+                allocation_record("app.users.v1", second_id),
             ];
 
             let err = ledger
@@ -738,8 +635,8 @@ mod tests {
     fn validate_integrity_rejects_duplicate_slots() {
         let mut ledger = ledger();
         ledger.records = vec![
-            active_record("app.users.v1", 100),
-            active_record("app.orders.v1", 100),
+            allocation_record("app.users.v1", 100),
+            allocation_record("app.orders.v1", 100),
         ];
 
         let err = ledger.validate_integrity().expect_err("duplicate slot");
@@ -755,14 +652,14 @@ mod tests {
     #[test]
     fn recovery_rejects_invalid_stable_key_during_ledger_decode() {
         let mut ledger = committed_ledger(1);
-        ledger.records.push(active_record("app.users.v1", 100));
-        let mut bytes = crate::test_cbor::to_vec(&ledger).expect("encode ledger");
+        ledger.records.push(allocation_record("app.users.v1", 100));
+        let mut bytes = codec::encode_ledger(&ledger).expect("encode ledger");
         let key_start = bytes
             .windows(b"app.users.v1".len())
             .position(|window| window == b"app.users.v1")
             .expect("encoded stable key");
         bytes[key_start] = b'A';
-        assert!(crate::test_cbor::from_slice::<AllocationLedger>(&bytes).is_err());
+        assert!(decode_ledger(&bytes, 1).is_err());
         let payload = bytes;
         let mut physical = LedgerCommitStore::default();
         physical.commit_payload_at_generation(1, payload).unwrap();
@@ -775,18 +672,18 @@ mod tests {
     #[test]
     fn ledger_decode_rejects_unusable_memory_manager_slot() {
         let mut ledger = committed_ledger(1);
-        ledger.records.push(active_record("app.users.v1", 100));
-        let mut value = serde_json::to_value(ledger).unwrap();
-        value["records"][0]["slot"] = serde_json::json!(255);
+        ledger.records.push(allocation_record("app.users.v1", 100));
+        let mut value = serde_json::to_value(ledger.records()).unwrap();
+        value[0]["slot"] = serde_json::json!(255);
         let bytes = crate::test_cbor::to_vec(&value).unwrap();
-        assert!(decode_ledger(&bytes).is_err());
+        assert!(decode_ledger(&bytes, 1).is_err());
     }
 
     #[test]
     fn integrity_rejects_nonempty_genesis_before_commit() {
         let invalid = AllocationLedger {
             current_generation: 0,
-            records: vec![active_record("app.users.v1", 100)],
+            records: vec![allocation_record("app.users.v1", 100)],
         };
         assert_eq!(
             invalid.validate_integrity(),
@@ -808,8 +705,8 @@ mod tests {
         let mut store = LedgerCommitStore::default();
         let mut invalid = ledger();
         invalid.records = vec![
-            active_record("app.users.v1", 100),
-            active_record("app.orders.v1", 100),
+            allocation_record("app.users.v1", 100),
+            allocation_record("app.orders.v1", 100),
         ];
 
         let err = store.commit(&invalid).expect_err("invalid ledger");
@@ -844,8 +741,8 @@ mod tests {
         let committed = store.authoritative().expect("authoritative");
         assert_eq!(
             committed.payload(),
-            crate::test_cbor::to_vec(&ledger).unwrap(),
-            "direct commit encoding matches logical CBOR"
+            crate::test_cbor::to_vec(&ledger.records()).unwrap(),
+            "commit payload matches canonical record-array CBOR"
         );
     }
 
@@ -879,12 +776,15 @@ mod tests {
                 Some(CommittedGenerationBytes::new(0, vec![255])),
             ),
             (
-                "generation mismatch",
+                "checked nonzero generation with empty records",
                 Some(CommittedGenerationBytes::new(1, genesis)),
             ),
             (
                 "invalid committed integrity",
-                Some(CommittedGenerationBytes::new(3, encoded_payload(&ledger()))),
+                Some(CommittedGenerationBytes::new(
+                    0,
+                    encoded_payload(&committed_fixture_ledger()),
+                )),
             ),
         ];
 
@@ -1007,22 +907,19 @@ mod tests {
     }
 
     #[test]
-    fn ledger_commit_store_rejects_physical_logical_generation_mismatch() {
-        let store = LedgerCommitStore {
-            current: Some(CommittedGenerationBytes::new(
-                7,
-                encoded_payload(&committed_ledger(6)),
-            )),
-        };
-        let err = store.recover().expect_err("mismatch");
-
-        assert_eq!(
-            err,
-            LedgerCommitError::PhysicalLogicalGenerationMismatch {
-                physical_generation: 7,
-                logical_generation: 6
-            }
-        );
+    fn ledger_commit_store_recovers_generation_from_protected_header() {
+        let payload = encoded_payload(&committed_fixture_ledger());
+        for generation in [1, 7, u64::MAX] {
+            let store = LedgerCommitStore {
+                current: Some(CommittedGenerationBytes::new(generation, payload.clone())),
+            };
+            let recovered = store.recover().unwrap();
+            assert_eq!(recovered.current_generation(), generation);
+            assert_eq!(
+                recovered.ledger().records(),
+                committed_fixture_ledger().records()
+            );
+        }
     }
 
     #[test]
@@ -1062,12 +959,12 @@ mod tests {
     fn record_count_boundary_and_malicious_count_reject_on_recovery() {
         let mut ledger = committed_ledger(1);
         ledger.records = (0..255_u8)
-            .map(|id| active_record(&format!("app.slot{id}.v1"), id))
+            .map(|id| allocation_record(&format!("app.slot{id}.v1"), id))
             .collect();
         let mut store = LedgerCommitStore::default();
         store.commit(&ledger).unwrap();
         assert_eq!(store.recover().unwrap().ledger().records().len(), 255);
-        ledger.records.push(active_record("app.extra.v1", 254));
+        ledger.records.push(allocation_record("app.extra.v1", 254));
         assert!(matches!(
             store.commit(&ledger),
             Err(LedgerCommitError::Integrity(
@@ -1099,8 +996,8 @@ mod tests {
     #[test]
     fn oversized_logical_text_remains_opaque_to_record_decode_and_fails_closed() {
         for len in [257, 8192] {
-            let mut malformed = serde_json::to_value(active_committed_ledger()).unwrap();
-            malformed["records"][0]["stable_key"] = "x".repeat(len).into();
+            let mut malformed = serde_json::to_value(committed_fixture_ledger().records()).unwrap();
+            malformed[0]["stable_key"] = "x".repeat(len).into();
             let payload = crate::test_cbor::to_vec(&malformed).unwrap();
             let mut store = LedgerCommitStore::default();
             store.commit_payload_at_generation(1, payload).unwrap();

@@ -1,10 +1,11 @@
 use super::{
     MemoryRuntime, RuntimeConstructionError, RuntimeDiagnosticError, RuntimeOpenError,
-    diagnostics::diagnostic_validation_ledger, policy::GenericAllocationPolicy,
+    fixture_diagnostics::diagnostic_validation_ledger, policy::GenericAllocationPolicy,
 };
 use crate::{
-    DiagnosticCheck, DiagnosticCode, DiagnosticMemorySize, LedgerCommitError, MemoryManagerSlot,
-    PolicyIdentity, RuntimeBootstrapPolicy, SealedDeclarationSnapshot, StableKey,
+    DiagnosticMemorySize, LedgerCommitError, MemoryManagerSlot, PolicyIdentity,
+    RuntimeBootstrapPolicy, SealedDeclarationSnapshot, StableKey,
+    testing::{DiagnosticCheck, DiagnosticCode},
 };
 use ic_stable_structures::{Cell, Memory, VectorMemory};
 use std::convert::Infallible;
@@ -63,7 +64,8 @@ fn doctor_keeps_memory_observations_before_policy_callbacks() {
     let memory = runtime.open_memory("runtime_tests.rows.v1").unwrap();
     memory.grow(1).unwrap();
     drop(memory);
-    let report = runtime.doctor_report(&declarations(), &pool(), &GrowingPolicy(&runtime));
+    let report =
+        crate::testing::doctor_report(&runtime, &declarations(), &pool(), &GrowingPolicy(&runtime));
     assert_eq!(
         runtime.open_memory("runtime_tests.rows.v1").unwrap().size(),
         3
@@ -361,9 +363,7 @@ fn repeated_bootstrap_accepts_independently_sealed_equivalent_declarations() {
         .bootstrap(&declarations, &pool(), &policy)
         .expect("bootstrap");
     assert!(matches!(
-        runtime
-            .doctor_report(&equivalent, &pool(), &policy)
-            .bootstrap_binding,
+        crate::testing::doctor_report(&runtime, &equivalent, &pool(), &policy).bootstrap_binding,
         DiagnosticCheck::Passed
     ));
     let policy_calls = policy.0.get();
@@ -443,7 +443,12 @@ fn policy_token_changes_are_runtime_bound() {
             runtime.bootstrap(&declarations, &pool(), &IdentityPolicy::new(changed)),
             Err(super::RuntimeBootstrapError::PolicyIdentityMismatch { .. })
         ));
-        let doctor = runtime.doctor_report(&declarations, &pool(), &IdentityPolicy::new(changed));
+        let doctor = crate::testing::doctor_report(
+            &runtime,
+            &declarations,
+            &pool(),
+            &IdentityPolicy::new(changed),
+        );
         assert_eq!(doctor.tested_policy_identity.as_bytes(), &changed);
         assert!(matches!(
             doctor.bootstrap_binding,
@@ -496,7 +501,8 @@ fn open_errors_and_failed_bootstrap_do_not_publish_authority() {
         ))
     ));
     assert!(!runtime.is_bootstrapped());
-    let rejected_doctor = runtime.doctor_report(&declarations, &pool(), &RejectPolicy);
+    let rejected_doctor =
+        crate::testing::doctor_report(&runtime, &declarations, &pool(), &RejectPolicy);
     assert!(!rejected_doctor.bootstrapped);
     assert!(matches!(
         rejected_doctor.validation,
@@ -532,8 +538,7 @@ fn doctor_and_diagnostics_report_the_same_runtime_lifecycle() {
     let mut runtime = empty_runtime();
 
     assert!(
-        !runtime
-            .doctor_report(&declarations, &pool(), &GenericAllocationPolicy)
+        !crate::testing::doctor_report(&runtime, &declarations, &pool(), &GenericAllocationPolicy)
             .bootstrapped
     );
     assert!(matches!(
@@ -546,7 +551,8 @@ fn doctor_and_diagnostics_report_the_same_runtime_lifecycle() {
         .expect("bootstrap");
     let memory = runtime.open_memory("runtime_tests.rows.v1").expect("open");
     memory.grow(2).unwrap();
-    let doctor = runtime.doctor_report(&declarations, &pool(), &GenericAllocationPolicy);
+    let doctor =
+        crate::testing::doctor_report(&runtime, &declarations, &pool(), &GenericAllocationPolicy);
     let export = runtime.diagnostic_export().expect("diagnostic export");
     assert!(doctor.bootstrapped);
     assert_eq!(doctor.ledger.as_ref().expect("doctor ledger"), &export);
@@ -596,7 +602,12 @@ fn doctor_and_diagnostics_report_the_same_runtime_lifecycle() {
         serde_json::to_value(&export).unwrap()
     );
 
-    let mismatched = runtime.doctor_report(&declarations, &pool(), &IdentityPolicy::new([2; 32]));
+    let mismatched = crate::testing::doctor_report(
+        &runtime,
+        &declarations,
+        &pool(),
+        &IdentityPolicy::new([2; 32]),
+    );
     assert!(matches!(
         mismatched.bootstrap_binding,
         DiagnosticCheck::Failed {
@@ -626,8 +637,8 @@ fn diagnostics_reject_invalid_persisted_slots_before_measuring_sizes() {
         .unwrap();
     let record = runtime.ledger_record_from_memory().unwrap();
     let ledger = record.recover().unwrap().into_ledger();
-    let mut value = serde_json::to_value(&ledger).unwrap();
-    value["records"][0]["slot"] = serde_json::json!(255);
+    let mut value = serde_json::to_value(ledger.records()).unwrap();
+    value[0]["slot"] = serde_json::json!(255);
     let payload = crate::test_cbor::to_vec(&value).unwrap();
     // Keep physical framing/checksums valid so recovery reaches slot validation.
     let mut physical = crate::LedgerCommitStore::default();
@@ -647,7 +658,8 @@ fn diagnostics_reject_invalid_persisted_slots_before_measuring_sizes() {
             LedgerCommitError::Codec(_)
         ))
     ));
-    let doctor = runtime.doctor_report(&declarations, &pool(), &GenericAllocationPolicy);
+    let doctor =
+        crate::testing::doctor_report(&runtime, &declarations, &pool(), &GenericAllocationPolicy);
     assert!(doctor.ledger.is_none());
     assert!(matches!(
         doctor.validation,
@@ -685,10 +697,16 @@ fn doctor_preserves_distinct_record_decode_causes_without_writes() {
         memory.write(crate::STABLE_CELL_VALUE_OFFSET, &bytes);
         let before = backing.borrow().clone();
 
-        let report = runtime.doctor_report(&declarations, &pool(), &GenericAllocationPolicy);
+        let report = crate::testing::doctor_report(
+            &runtime,
+            &declarations,
+            &pool(),
+            &GenericAllocationPolicy,
+        );
         assert!(report.commit_recovery.is_none());
         assert!(report.ledger.is_none());
-        let crate::DiagnosticStableCellStatus::Corrupt { failure } = report.stable_cell.status
+        let crate::testing::DiagnosticStableCellStatus::Corrupt { failure } =
+            report.stable_cell.status
         else {
             panic!("malformed record must be reported as corrupt");
         };
@@ -714,14 +732,19 @@ fn doctor_uses_genesis_only_for_empty_commit_storage() {
             );
         }
         let before = backing.borrow().clone();
-        let report = runtime.doctor_report(&declarations, &pool(), &GenericAllocationPolicy);
+        let report = crate::testing::doctor_report(
+            &runtime,
+            &declarations,
+            &pool(),
+            &GenericAllocationPolicy,
+        );
         assert!(!report.bootstrapped);
         assert_eq!(
             report.stable_cell.status,
             if initialized {
-                crate::DiagnosticStableCellStatus::Readable
+                crate::testing::DiagnosticStableCellStatus::Readable
             } else {
-                crate::DiagnosticStableCellStatus::Empty
+                crate::testing::DiagnosticStableCellStatus::Empty
             }
         );
         assert!(matches!(report.validation, DiagnosticCheck::Passed));
@@ -739,10 +762,11 @@ fn doctor_uses_genesis_only_for_empty_commit_storage() {
         crate::stable_cell::EncodedLedgerRecord::new(&record).unwrap(),
     );
     let before = backing.borrow().clone();
-    let report = runtime.doctor_report(&declarations, &pool(), &GenericAllocationPolicy);
+    let report =
+        crate::testing::doctor_report(&runtime, &declarations, &pool(), &GenericAllocationPolicy);
     assert!(matches!(
         report.stable_cell.status,
-        crate::DiagnosticStableCellStatus::Readable
+        crate::testing::DiagnosticStableCellStatus::Readable
     ));
     assert!(matches!(
         report.validation,
@@ -798,9 +822,7 @@ fn pool_admission_precedes_application_validation_and_preserves_retry() {
     let mut runtime = MemoryRuntime::new(backing.clone()).unwrap();
     for (requests, host_pool) in [(&foreign, pool()), (&source, excluded)] {
         assert!(matches!(
-            runtime
-                .doctor_report(requests, &host_pool, &policy)
-                .validation,
+            crate::testing::doctor_report(&runtime, requests, &host_pool, &policy).validation,
             DiagnosticCheck::Failed {
                 code: DiagnosticCode::AllocationValidation,
                 ..
@@ -837,7 +859,8 @@ fn doctor_binding_agrees_with_warm_bootstrap_for_exact_declarations() {
         let requests =
             SealedDeclarationSnapshot::new(vec![crate::MemoryRequest::new(owner, key).unwrap()])
                 .unwrap();
-        let report = runtime.doctor_report(&requests, &pool(), &GenericAllocationPolicy);
+        let report =
+            crate::testing::doctor_report(&runtime, &requests, &pool(), &GenericAllocationPolicy);
         let warm = runtime.bootstrap(&requests, &pool(), &GenericAllocationPolicy);
         if requests == source {
             assert!(matches!(report.bootstrap_binding, DiagnosticCheck::Passed));

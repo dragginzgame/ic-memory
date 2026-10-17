@@ -232,7 +232,7 @@ mod tests {
                 current_generation: 1,
                 records: declarations
                     .iter()
-                    .map(crate::AllocationRecord::active)
+                    .map(crate::AllocationRecord::from_declaration)
                     .collect(),
             };
             assert_eq!(

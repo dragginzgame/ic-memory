@@ -108,7 +108,7 @@ fn ledger_encoding_and_validation_allocations() {
         for generations in [1, 1024, u64::MAX] {
             let records = (0..count)
                 .map(|id| {
-                    crate::AllocationRecord::active(
+                    crate::AllocationRecord::from_declaration(
                         &crate::AllocationDeclaration::memory_manager(
                             format!("app.store{id}.v1"),
                             u8::try_from(id).unwrap(),
@@ -149,10 +149,13 @@ fn ledger_encoding_and_validation_allocations() {
 // recovery, not by decoding the enclosing physical DTO.
 fn key_text_store(text_bytes: usize) -> LedgerCommitStore {
     let declaration = crate::AllocationDeclaration::memory_manager("app.rows.v1", 100).unwrap();
-    let ledger =
-        AllocationLedger::new(1, vec![crate::AllocationRecord::active(&declaration)]).unwrap();
-    let mut dto = serde_json::to_value(&ledger).unwrap();
-    dto["records"][0]["stable_key"] =
+    let ledger = AllocationLedger::new(
+        1,
+        vec![crate::AllocationRecord::from_declaration(&declaration)],
+    )
+    .unwrap();
+    let mut dto = serde_json::to_value(ledger.records()).unwrap();
+    dto[0]["stable_key"] =
         serde_json::Value::String(format!("app.{}.v1", "x".repeat(text_bytes - 7)));
     let mut payload = Vec::new();
     ciborium::into_writer(&dto, &mut payload).unwrap();
@@ -186,7 +189,6 @@ fn text_measurement_fixture_changes_only_key_bound() {
     let record = &valid.ledger().records()[0];
     assert_eq!(record.stable_key().as_str().len(), 128);
     assert_eq!(record.slot().id(), 100);
-    assert_eq!(record.state(), crate::AllocationState::Active);
     assert!(matches!(
         key_text_store(129).recover(),
         Err(LedgerCommitError::Codec(_))
@@ -319,10 +321,14 @@ fn doctor_report_allocations() {
             .bootstrap(&declarations, &pool, &GenericAllocationPolicy)
             .unwrap();
         measure(&format!("doctor_{count}"), 1, 20, || {
-            let report =
-                black_box(runtime.doctor_report(&declarations, &pool, &GenericAllocationPolicy));
+            let report = black_box(crate::testing::doctor_report(
+                &runtime,
+                &declarations,
+                &pool,
+                &GenericAllocationPolicy,
+            ));
             assert_eq!(report.ledger.as_ref().unwrap().records.len(), count + 1);
-            assert_eq!(report.validation, crate::DiagnosticCheck::Passed);
+            assert_eq!(report.validation, crate::testing::DiagnosticCheck::Passed);
         });
     }
 }
@@ -345,7 +351,7 @@ fn steady_state_snapshot_allocations() {
                 } else {
                     format!("app.store{id:03}.v1")
                 };
-                crate::AllocationRecord::reserved(
+                crate::AllocationRecord::from_declaration(
                     &crate::AllocationDeclaration::memory_manager(key, u8::try_from(id).unwrap())
                         .unwrap(),
                 )

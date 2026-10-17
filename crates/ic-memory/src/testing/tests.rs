@@ -28,50 +28,67 @@ fn cell_keeps_existing_runtime_bytes_and_bucket_configuration() {
     drop(original);
     drop(runtime);
 
-    let mut cell = FixtureCell::new(
+    let maximum = 17 * 65_536;
+    let mut cell = FixtureCell::open_bounded(
         backing.clone(),
         "fixture",
         "fixture.",
         "fixture.journal.v1",
         config,
-    );
+        maximum,
+    )
+    .unwrap();
     assert_eq!(cell.bytes(), &[0, 255, 42]);
     // Force another bucket after the constructor's runtime has been dropped.
-    let bytes = vec![91; 17 * 65_536];
-    cell.set(bytes.clone());
+    let bytes = vec![91; maximum];
+    cell.try_set(bytes.clone()).unwrap();
     assert_eq!(cell.bytes(), bytes);
     drop(cell);
     let runtime = MemoryRuntime::new_with_config(backing.clone(), config).unwrap();
     assert_eq!(runtime.memory_manager_config(), config);
     drop(runtime);
-    let reopened = FixtureCell::new(backing, "fixture", "fixture.", "fixture.journal.v1", config);
+    let reopened = FixtureCell::open_bounded(
+        backing,
+        "fixture",
+        "fixture.",
+        "fixture.journal.v1",
+        config,
+        maximum,
+    )
+    .unwrap();
     assert_eq!(reopened.bytes(), bytes);
 }
 
 #[test]
 fn fresh_empty_cell_is_distinct_from_incompatible_retained_configuration() {
     let backing = VectorMemory::default();
-    let mut cell = FixtureCell::new(
+    let mut cell = FixtureCell::create_bounded(
         backing.clone(),
         "fixture",
         "fixture.",
         "fixture.journal.v1",
         MemoryManagerConfig::new(16).unwrap(),
-    );
+        64,
+    )
+    .unwrap();
     assert_eq!(cell.bytes(), &[0_u8; 0]);
-    cell.set(vec![37]);
+    cell.try_set(vec![37]).unwrap();
     drop(cell);
     let before = backing.borrow().clone();
-    let failure = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        FixtureCell::new(
-            backing.clone(),
-            "fixture",
-            "fixture.",
-            "fixture.journal.v1",
-            MemoryManagerConfig::new(128).unwrap(),
-        )
-    }));
-    assert!(failure.is_err());
+    let failure = FixtureCell::open_bounded(
+        backing.clone(),
+        "fixture",
+        "fixture.",
+        "fixture.journal.v1",
+        MemoryManagerConfig::new(128).unwrap(),
+        64,
+    );
+    assert!(matches!(
+        failure,
+        Err(FixtureCellError::Setup(FixtureRuntimeError::Construction(
+            _
+        )))
+    ));
     assert_eq!(*backing.borrow(), before);
 }
 
@@ -79,36 +96,44 @@ fn fresh_empty_cell_is_distinct_from_incompatible_retained_configuration() {
 fn fallible_setup_keeps_payload_and_transfers_the_admitted_memory() {
     let backing = VectorMemory::default();
     let config = MemoryManagerConfig::new(16).unwrap();
-    let mut cell = FixtureCell::try_new(
+    let mut cell = FixtureCell::create_bounded(
         backing.clone(),
         "fixture",
         "fixture.",
         "fixture.jobs.v1",
         config,
+        64,
     )
     .unwrap();
-    cell.set(b"committed journal".to_vec());
+    cell.try_set(b"committed journal".to_vec()).unwrap();
     let memory = cell.into_memory();
     assert_eq!(Cell::init(memory, Vec::new()).get(), b"committed journal");
-    let reopened = FixtureCell::try_new(
+    let reopened = FixtureCell::open_bounded(
         backing.clone(),
         "fixture",
         "fixture.",
         "fixture.jobs.v1",
         config,
+        64,
     )
     .unwrap();
     assert_eq!(reopened.bytes(), b"committed journal");
     drop(reopened);
     let before = backing.borrow().clone();
-    let refused = FixtureCell::try_new(
+    let refused = FixtureCell::open_bounded(
         backing.clone(),
         "fixture",
         "fixture.",
         "fixture.jobs.v1",
         MemoryManagerConfig::new(32).unwrap(),
+        64,
     );
-    assert!(matches!(refused, Err(FixtureCellError::Construction(_))));
+    assert!(matches!(
+        refused,
+        Err(FixtureCellError::Setup(FixtureRuntimeError::Construction(
+            _
+        )))
+    ));
     assert_eq!(*backing.borrow(), before);
 }
 
@@ -116,39 +141,67 @@ fn fallible_setup_keeps_payload_and_transfers_the_admitted_memory() {
 fn fallible_setup_preserves_typed_request_grant_and_bootstrap_errors() {
     let config = MemoryManagerConfig::new(16).unwrap();
     let backing = VectorMemory::default();
-    let refused = FixtureCell::try_new(backing.clone(), "", "fixture.", "fixture.jobs.v1", config);
-    assert!(matches!(refused, Err(FixtureCellError::Declaration(_))));
+    let refused = FixtureCell::create_bounded(
+        backing.clone(),
+        "",
+        "fixture.",
+        "fixture.jobs.v1",
+        config,
+        64,
+    );
+    assert!(matches!(
+        refused,
+        Err(FixtureCellError::Setup(FixtureRuntimeError::Declaration(_)))
+    ));
     assert_eq!(backing.size(), 0);
-    let refused = FixtureCell::try_new(
+    let refused = FixtureCell::create_bounded(
         backing.clone(),
         "fixture",
         "invalid",
         "fixture.jobs.v1",
         config,
+        64,
     );
-    assert!(matches!(refused, Err(FixtureCellError::AllocationPool(_))));
+    assert!(matches!(
+        refused,
+        Err(FixtureCellError::Setup(
+            FixtureRuntimeError::AllocationPool(_)
+        ))
+    ));
     assert_eq!(backing.size(), 0);
-    let refused = FixtureCell::try_new(backing, "fixture", "other.", "fixture.jobs.v1", config);
-    assert!(matches!(refused, Err(FixtureCellError::Bootstrap(_))));
+    let refused =
+        FixtureCell::create_bounded(backing, "fixture", "other.", "fixture.jobs.v1", config, 64);
+    assert!(matches!(
+        refused,
+        Err(FixtureCellError::Setup(FixtureRuntimeError::Bootstrap(_)))
+    ));
 }
 
 #[test]
 fn fallible_setup_refuses_non_cell_history_without_replacing_its_header() {
     let backing = VectorMemory::default();
     let config = MemoryManagerConfig::new(16).unwrap();
-    let cell = FixtureCell::try_new(
+    let cell = FixtureCell::create_bounded(
         backing.clone(),
         "fixture",
         "fixture.",
         "fixture.jobs.v1",
         config,
+        64,
     )
     .unwrap();
     let memory = cell.into_memory();
     memory.write(0, b"NOT\x01");
     let mut before = [0; crate::STABLE_CELL_HEADER_SIZE];
     memory.read(0, &mut before);
-    let refused = FixtureCell::try_new(backing, "fixture", "fixture.", "fixture.jobs.v1", config);
+    let refused = FixtureCell::open_bounded(
+        backing,
+        "fixture",
+        "fixture.",
+        "fixture.jobs.v1",
+        config,
+        64,
+    );
     assert!(matches!(
         refused,
         Err(FixtureCellError::Payload(

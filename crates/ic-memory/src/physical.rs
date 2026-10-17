@@ -1,8 +1,8 @@
 use crate::hash::{FNV_OFFSET, fnv64};
 use serde::{Deserialize, Serialize};
 
-// ICMSNAP1 identifies the flat current-snapshot direct-CBOR contract.
-const COMMIT_MARKER: u64 = 0x4943_4D53_4E41_5031;
+// ICMKEY01 identifies one protected generation with a records-only CBOR payload.
+const COMMIT_MARKER: u64 = 0x4943_4D4B_4559_3031;
 
 ///
 /// CommittedGenerationBytes
@@ -12,8 +12,8 @@ const COMMIT_MARKER: u64 = 0x4943_4D53_4E41_5031;
 /// This private DTO is the current physical snapshot representation. Its
 /// recovered bytes are untrusted until marker/checksum validation and ledger
 /// decoding/integrity validation have both succeeded.
-/// The payload encodes as a bounded CBOR byte string. Diagnostic JSON output
-/// is permitted, but JSON arrays are not a snapshot input format. Direct serde
+/// The records-only payload encodes as a bounded CBOR byte string. Diagnostic
+/// JSON output is permitted, but JSON arrays are not a snapshot input format. Direct serde
 /// decoding is a DTO operation; maintained durable readers additionally
 /// preflight CBOR before allocation.
 ///

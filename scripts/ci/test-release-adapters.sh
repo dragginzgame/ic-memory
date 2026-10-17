@@ -13,7 +13,7 @@ ROOT="${BASH_SOURCE[0]}"
 [[ "$ROOT" == /* ]] || ROOT="$PWD/$ROOT"
 ROOT="$(cd -P "${ROOT%/*}/../.." && printf '%s/.' "$PWD")"
 ROOT="${ROOT%/.}"
-bash "$ROOT/scripts/ci/check-release-commands.sh" "$ROOT" rust-toolchain.toml ci/tool-versions.env make/consumer.mk make/tools.mk make/release.mk make/rust-format.mk make/execution.mk scripts/ci/check-make-execution.sh
+bash "$ROOT/scripts/ci/check-release-commands.sh" "$ROOT" rust-toolchain.toml ci/tool-versions.env make/consumer.mk make/tools.mk make/release.mk make/rust-format.mk make/execution.mk scripts/ci/check-make-execution.sh scripts/ci/check-release-delivery.sh
 FIXTURE="$(mktemp -d "${TMPDIR:-/tmp}/ic-memory-release-adapters.XXXXXX")"
 FIXTURE="$(CDPATH="" cd -P -- "$FIXTURE" && printf '%s/.' "$PWD")"
 FIXTURE="${FIXTURE%/.}"
@@ -26,7 +26,7 @@ cp "$ROOT/Makefile" "$ROOT/rust-toolchain.toml" "$FIXTURE/"
 cp "$ROOT/ci/tool-versions.env" "$FIXTURE/ci/"
 cp "$ROOT/make/consumer.mk" "$ROOT/make/tools.mk" "$ROOT/make/release.mk" "$ROOT/make/rust-format.mk" "$ROOT/make/execution.mk" "$FIXTURE/make/"
 mkdir -p "$FIXTURE/scripts/ci"
-cp "$ROOT/scripts/ci/check-make-execution.sh" "$FIXTURE/scripts/ci/"
+cp "$ROOT/scripts/ci/check-make-execution.sh" "$ROOT/scripts/ci/check-release-delivery.sh" "$FIXTURE/scripts/ci/"
 cat > "$FIXTURE/scripts/ci/run-release.sh" <<'STUB'
 #!/usr/bin/env bash
 set -euo pipefail
@@ -118,6 +118,37 @@ status=0
 (cd -P "$FIXTURE"; [[ "$(cat host-admission-events)" == "--consumer $PWD --versions $PWD/ci/tool-versions.env --check" ]]) || exit 1
 grep -F 'fixture host admission failure' "$FIXTURE/tool-ordering.log"
 grep -E 'host-tools-check.*Error 23' "$FIXTURE/tool-ordering.log"
+# Memory explicitly selects IC tools after the common sets. Exercise the actual
+# aggregate with substitute leaves, including its product failure propagation.
+for kind in host rust ic; do
+    cat > "$FIXTURE/scripts/dev/install-$kind-tools.sh" <<'STUB'
+#!/usr/bin/env bash
+set -euo pipefail
+kind="${0##*/install-}"
+kind="${kind%-tools.sh}"
+[[ "$1" == --consumer && "$2" == "$(pwd -P)" ]] || exit 1
+case "$kind" in
+    host|rust) [[ "$3" == --versions && "$4" == "$PWD/ci/tool-versions.env" ]] || exit 1 ;;
+    ic) [[ "$3" == --pins && "$4" == "$PWD/ci/ic-tools.tsv" ]] || exit 1 ;;
+esac
+printf '%s %s\n' "$kind" "${5:-install}" >> aggregate-events
+[[ "$kind" != ic || "${IC_ADMISSION_FAIL:-0}" != 1 ]] || exit 23
+STUB
+done
+for target in install-tools tools-check; do
+    rm -f "$FIXTURE/aggregate-events"
+    (cd "$FIXTURE"; make -j2 --no-print-directory "$target") > "$FIXTURE/$target.log" 2>&1
+    if [[ "$target" == install-tools ]]; then
+        printf 'rust --preflight\nhost install\nrust install\nic install\n' > "$FIXTURE/aggregate-expected"
+    else
+        printf 'host --check\nrust --check\nic --check\n' > "$FIXTURE/aggregate-expected"
+    fi
+    cmp "$FIXTURE/aggregate-expected" "$FIXTURE/aggregate-events"
+    status=0
+    (cd "$FIXTURE"; IC_ADMISSION_FAIL=1 make -j2 --no-print-directory "$target") \
+        > "$FIXTURE/$target-ic-failure.log" 2>&1 || status=$?
+    [[ "$status" == 2 ]] || exit 1
+done
 # MSRV output is usable only when its helper succeeds. Substitute the preceding
 # recursive command while retaining the actual consumer's single validate recipe.
 mkdir "$FIXTURE/msrv-bin"
@@ -222,7 +253,7 @@ mkdir -p "$jobserver/bin" "$jobserver/make" "$jobserver/ci" "$jobserver/scripts/
 cp "$ROOT/Makefile" "$ROOT/rust-toolchain.toml" "$jobserver/"
 cp "$ROOT/make/consumer.mk" "$ROOT/make/tools.mk" "$ROOT/make/release.mk" "$ROOT/make/rust-format.mk" "$ROOT/make/execution.mk" "$jobserver/make/"
 cp "$ROOT/ci/tool-versions.env" "$jobserver/ci/"
-cp "$ROOT/scripts/ci/check-make-execution.sh" "$ROOT/scripts/ci/check-format-tools.sh" \
+cp "$ROOT/scripts/ci/check-make-execution.sh" "$ROOT/scripts/ci/check-release-delivery.sh" "$ROOT/scripts/ci/check-format-tools.sh" \
     "$ROOT/scripts/ci/run-formatting.sh" "$jobserver/scripts/ci/"
 export JOBSERVER_EVENTS="$jobserver/events"
 cat > "$jobserver/bin/cargo" <<'STUB'
@@ -325,10 +356,10 @@ cp "$ROOT/Makefile" "$ROOT/rust-toolchain.toml" "$FIXTURE/bootstrap/"
 cp "$ROOT/ci/tool-versions.env" "$FIXTURE/bootstrap/ci/"
 cp "$ROOT/make/consumer.mk" "$ROOT/make/tools.mk" "$ROOT/make/release.mk" "$ROOT/make/rust-format.mk" "$ROOT/make/execution.mk" "$FIXTURE/bootstrap/make/"
 mkdir -p "$FIXTURE/bootstrap/scripts/ci"
-cp "$ROOT/scripts/ci/check-make-execution.sh" "$FIXTURE/bootstrap/scripts/ci/"
+cp "$ROOT/scripts/ci/check-make-execution.sh" "$ROOT/scripts/ci/check-release-delivery.sh" "$FIXTURE/bootstrap/scripts/ci/"
 cp "$ROOT/scripts/ci/read-cargo-workspace-version.sh" \
     "$ROOT/scripts/ci/render-cargo-workspace-version.pl" \
-    "$ROOT/scripts/ci/validate-release-inputs.pl" "$FIXTURE/bootstrap/scripts/ci/"
+    "$ROOT/scripts/ci/validate-release-inputs.pl" "$ROOT/scripts/ci/StableVersion.pm" "$FIXTURE/bootstrap/scripts/ci/"
 cp "$ROOT/scripts/dev/run-repo-tool.sh" "$FIXTURE/bootstrap/scripts/dev/"
 cd "$FIXTURE/bootstrap"
 cat > Cargo.toml <<'MANIFEST'

@@ -6,6 +6,30 @@ policy. They require Perl core modules or Bash 3.2+, as noted below, and run on
 Linux and macOS. The portable regression suite includes offline fixtures;
 native CI qualifies each supported host separately.
 
+## Fixture diagnostic replay
+
+`fixture_replay_logs FILE...` in `scripts/ci/fixture-lifecycle.sh` writes existing
+regular-file inputs to stderr in caller order, without adding separators. Missing
+paths, directories and unmatched glob literals are skipped. Reader/output failures
+are best effort and the helper returns success; callers save their original status
+before invoking it and retain their existing failure/completion handling. Callers
+own explicit file/glob selection, whether replay runs, and cleanup/retention policy.
+No files are removed or collected into a separate artifact.
+
+## Cargo dependency-order fixtures
+
+```bash
+perl scripts/ci/prepare-cargo-formatting-fixture.pl Cargo.toml workspace.dependencies candid ic-build > unsorted.toml
+```
+
+The helper accepts a caller-owned valid Cargo manifest and swaps exactly two
+adjacent, single-line declarations selected by table and bare dependency keys.
+Only strings and inline-table values are supported; unsupported selections refuse
+before any output. Other bytes, comments and newline positions remain unchanged,
+and the source is never edited. This is fixture preparation, not TOML validation,
+release metadata rendering or a production dependency reorder. Consumers retain
+their selected pair and the formatting/hook assertions. Requires Perl core only.
+
 ## Complete release-change paths
 
 ```bash
@@ -25,22 +49,6 @@ inside the worktree. Empty output after success means no changed paths. Output o
 not a classification contract. Consumers own package/repository path policy,
 release authority and how they use the complete observation. This does not replace
 index/worktree admission or commit-to-commit CI selection.
-
-## Release-prose advisory
-
-```bash
-bash scripts/ci/warn-release-prose.sh 0.3.7 docs/status/current.md
-```
-
-This optional Bash 3.2/awk helper warns when the selected status file describes
-its target version as a candidate, or its `Next action` section contains release
-instructions likely to become stale. The caller supplies the version and file;
-the default file is `docs/status/current.md`, resolved from the caller's directory.
-It does not parse package identity or decide release readiness. Missing inputs
-and reader failures remain advisory, and the command always returns success.
-Run it before release metadata mutation; never turn interpreted prose into a
-post-mutation blocker. Consumers retain invocation timing and their own status
-layout. The owner fixture qualifies heuristics and failure behavior.
 
 ## Evidence archives
 
@@ -219,8 +227,13 @@ of working versus committed sources and their release/preparation transactions.
 ## CI binary installers
 
 Use `scripts/ci/install-ci-tool.sh TOOL` for actionlint, shellcheck, gitleaks,
-sccache and yq. Their existing version, SHA-256 and installation
-directory arguments are unchanged. The implementation shares host selection,
+sccache. Supply exact `--version`, `--sha256` and `--install-dir` arguments.
+Prepare YQ through `make install-host-tools` and admit it with
+`make host-tools-check`; standalone YQ installation is retired.
+Since 0.16.0, installation requires an explicit destination; add the flag before
+refreshing callers that used `TOOL_INSTALL_DIR` or the home-directory default.
+Missing or empty destinations refuse before host probes, downloads or filesystem
+setup. The implementation shares host selection,
 HTTPS download, checksum admission, extraction, exact version admission and
 publication. Asset names and version-output formats remain explicit per tool.
 Staging lives on the destination filesystem; failures retain the candidate and
@@ -247,8 +260,11 @@ The installer prints the selected executable path; callers own `GITHUB_PATH`,
 
 `scripts/ci/run-sccache.sh` owns stable, repository-scoped temporary files and
 socket selection for a cache server that outlives one validation invocation.
-It forwards the exact arguments, diagnostics and exit status to `SCCACHE_BIN`;
-it does not select Cargo's compiler wrapper or retry compiler failures.
+It forwards the exact arguments, diagnostics and exit status to `SCCACHE_BIN`.
+Set that variable to an absolute executable file. Unset, empty, bare-name,
+relative, directory and unavailable selections fail before runtime creation;
+there is no PATH fallback. The selected file may be a caller-owned adapter.
+The launcher does not select Cargo's compiler wrapper or retry compiler failures.
 It refuses a symlinked repository `.tmp`, selected runtime root or `tmp` child
 before creating runtime directories. An explicit `SCCACHE_RUNTIME_DIR` owns its
 chosen location; its ancestors follow normal filesystem resolution (including
@@ -634,9 +650,10 @@ make this checker pass. See [#33](https://github.com/dragginzgame/shared-tooling
 
 Review the consumer's Makefile and formatting commands before execution. This
 helper executes those commands; it is not a sandbox for arbitrary Make code.
-Prerequisites must already be installed. The selected consumer's `.tools/host/bin`,
-`.tools/ic/bin` and `.tools/rust/common/bin` precede inherited PATH for executable lookup;
-formatter inputs and configuration still come from the disposable checkout.
+Prerequisites must already be installed. The selected consumer's `.tools/host/bin`
+and `.tools/rust/common/bin` precede inherited PATH for executable lookup;
+products requiring IC formatters explicitly publish their prepared IC PATH.
+Formatter inputs and configuration still come from the disposable checkout.
 Cargo is forced offline, rustup auto
 installation is disabled, and inherited Git/Make/logger checkout selections are
 cleared. The baseline must pass its real `fmt-check` before perturbation.
@@ -719,3 +736,252 @@ return 2 rather than wrapping an invalid status to success. The helper performs
 no cleanup, reporting or process exit. Capture refusal in an explicit conditional
 under errexit. `fixture_finish` uses this admission before its existing cleanup
 policy; qualification runners can instead retain all success and failure evidence.
+
+## Consumer fixture retention probes
+
+Source `scripts/ci/fixture-retention-probes.sh` to reuse failure injection and
+retained-directory checks. Callers retain the fixture roster and mandatory
+product/host assertions. `FIXTURE_PROBE_ROOT_VARIABLE` and
+`FIXTURE_PROBE_DIRECTORY_VARIABLE` select explicit shell identifiers (defaults
+`ROOT` and `fixture`); use `FIXTURE_ROOT` explicitly for that directory layout.
+The helper renders only initialization through the first EXIT trap, replaces
+selected root assignments with the supplied source root, and never executes the
+actual fixture body. It qualifies nounset, failed commands, nonzero exits,
+premature success and completed success/failure using the invoking Bash.
+`fixture_probe_prefix SOURCE OUTPUT ROOT_VARIABLE DIRECTORY_VARIABLE INJECTION`
+also renders a boundary for caller-owned contradictory assertion checks. Its
+child requires `RETENTION_SOURCE_ROOT` and `RETENTION_EXIT_PATH` explicitly.
+Only trusted, reviewed fixture sources and caller-owned injection are inputs.
+
+## Tool evidence collection orchestration
+
+`collect-tool-evidence.sh ARCHIVE REPOSITORY DIAGNOSTICS full|compact HOST IC
+[ROOT PATH]...` composes the selector and neutral archiver. Callers keep their
+log roots, run identity, qualified catalogs, upload and retention policy.
+Status 0 means complete, 1 means safe partial evidence was archived, and 2 means
+collection/archive failed. A fresh `selection-status` receipt retains the exact
+selector status, `archive-status` records an attempted archive failure, and
+`selections.nul` retains the original selector output. Failed output
+is never used to admit physical payloads. Instead, local Rust evidence and
+host/IC references are retained without following redirected roots or links.
+Diagnostics remain in the partial archive; completeness is not inferred from
+successful archiving. Stdout contains the created archive path only.
+
+## Formatter evidence selection
+
+Source `scripts/ci/formatting-evidence.sh`, then call
+`select_formatting_evidence ABSOLUTE_LOG_ROOT`. It fills `formatting_evidence`
+with root/relative-path pairs for the formatter's retained `formatting.*` files
+and final symlinks, including dangling links. Directory/FIFO matches are omitted;
+links are archived without following their targets. Missing or relative roots
+return 2 and clear the selection. An empty existing root succeeds with no pairs.
+Callers pass the array to the evidence archiver and retain archive layout, source
+identity, Git custody and upload policy. This helper never removes logs.
+
+The exportable `test-release-source.sh` owns generic source-admission cases in
+a minimal disposable Git repository, including exact working-file and index
+preservation after literal metadata admission and rename-source refusal.
+It also qualifies refusal of plausible output from failed Git observations and
+invalid selections before Git dispatch, preserving files and removing scratch.
+Consumers retain tests of their actual allowlist, gate ordering and release
+adapter. Retention probes use
+`retained-completed` for fixtures that intentionally retain successful evidence;
+ordinary `completed` still requires successful scratch removal.
+
+## Native host admission
+
+Run `bash scripts/ci/check-native-host.sh Linux x86_64` or
+`bash scripts/ci/check-native-host.sh Darwin arm64 15` before native setup.
+The caller selects the exact architecture and, on macOS, the explicit major.
+The helper observes `uname` and `sw_vers`; it makes no PATH or tool changes.
+Status 0 means a match, 1 means mismatch/malformed version, and 2 means invalid
+selection. Failed observations preserve the observer's nonzero status, including
+when it prints plausible output. Linux does not call `sw_vers`. Consumers retain
+their matrices, workflow ordering, PATH changes and native-host qualification.
+The portable fixture substitutes observations; it does not qualify macOS.
+
+## Locked release preflight
+
+`scripts/ci/cargo-release-preflight.sh TOOL-ROOT PREPARE` accepts repeated
+`--pin PATH`, `--check TARGET` and `--prepare TARGET` pairs. Callers first admit
+source/recovery and consume their preparation authority. With PREPARE=0 it
+runs locked offline Cargo fetching followed by check targets; PREPARE=1 runs
+locked fetching followed by the caller's complete ordered preparation targets.
+Explicit Cargo offline policy remains authoritative. Cargo retains the caller's
+selected-source working directory; tool targets run with Make in TOOL-ROOT.
+`RELEASE_MAKE` selects one Make executable (including a path with spaces),
+defaulting to `make`; its failure status is preserved without fallback.
+Every selected catalog is hashed before preparation and rechecked after each
+tool target. Failures preserve fetch/Make status or refuse changed selections.
+The helper owns no version/source admission, index, release or publication effect.
+Focused coverage is `scripts/ci/test-cargo-release-preflight.sh`, including
+simulated cold/warm caches, offline policy, fetch failure, missing executables,
+setup/check failure and selected-pin drift. These use substituted Cargo/Make
+effects. A frozen one-dependency workspace additionally uses real Cargo with an
+empty cache to verify environment/configuration offline refusal before tool
+dispatch, preserving its manifest and lock. Consumers retain preparation
+authority, catalog overrides, runner ordering and Git-state custody.
+
+## Current Rust formatting inputs
+
+Pass `--rust-sources` after the formatting checker's fourth positional argument
+to use `scripts/ci/select-rust-formatting-sources.sh`. The canonical selector
+includes current maintained Rust/Cargo inputs and tracked deletions, publishing
+its complete NUL-separated result only after Git/path admission. Only disposable
+hook checkouts are updated. Consumers retain chosen perturbations and additional
+non-Rust tooling/lock/configuration overlays. Source and checker bytes match the
+delivered Shared contribution; focused coverage is
+`scripts/ci/test-rust-formatting-sources.sh`.
+
+## Workflow run extraction
+
+`scripts/ci/extract-workflow-step.sh STEPS_JSON STEP_ID` emits the selected run
+body from one JSON array of workflow steps. It requires exactly one matching
+object with a nonblank string `run` and no `uses`. Missing/duplicate selections,
+invalid shapes and malformed or multiple JSON documents refuse without emitting
+a script. It preserves jq failures and requires prepared jq on PATH. Callers
+own YAML-to-JSON selection, ordering/condition assertions and actual execution;
+extraction grants no authority to execute unreviewed workflow code. Focused
+coverage is `scripts/ci/test-workflow-step.sh`.
+
+## Producer and consumer fixture boundaries
+
+Shared's Cargo preflight fixture runs the real release runner against cold,
+offline, fetch-failed and tool-failed preparation, proving refusal before version
+preparation and retention of its isolated source/index. Consumers keep their
+preparation-authority routing, exact package/pin selections and recovery custody.
+The tool-version report fixture owns catalog/admission/probe mechanics, including
+partial stdout/stderr. Workflow fixtures can substitute that reporter boundary
+while checking their own log names, status and later-step refusal.
+The native archive fixture owns partial tar/hash failures and preservation of
+readable diagnostics plus their checksum. Consumers retain a real archive round
+trip for their selected payloads and workflow-level collector failure propagation.
+
+## Consumer flow qualification
+
+Source `scripts/ci/make-adapter-probes.sh` for
+`make_probe_target_admission MAKE MAKEFILE DIRECTORY EVENTS TARGET...` and
+`make_probe_parallel_dispatch` with the same arguments. Callers prepare reviewed
+Makefiles and substituted effects. The first checks each unsafe behavior once;
+the second requires observable dispatch under a real pipe jobserver. Exhaustive
+flag aliases and hidden assignments stay in `test-consumer-flow-probes.sh`.
+The producer-only `make_probe_execution_modes` is no longer exported; consumer
+admission checks use `make_probe_target_admission` instead.
+
+When adopting 0.16.0, update any calls to the removed helper before refreshing
+the reviewed snapshot. Keep the consumer's target roster, effect assertions and
+parallel jobserver checks. Existing snapshots stay bound to their recorded
+source; refresh through the exporter rather than editing vendored helpers.
+
+`fixture_probe_effect SCRIPT RUN PREFIX STATUS BASH MARKER` runs a fixture with
+caller-prepared PATH/environment, captures `result.log` and `status.txt`, and
+requires exact status, successful cleanup or one retained failure directory and
+the supplied marker. `RUN/tmp` must exist. The helper publishes
+`fixture_effect_retained` for consumer-owned payload/diagnostic assertions.
+
+`collect-native-diagnostics.sh CHECKOUT EVIDENCE OUTPUT FORMAT-ROOT TOOLS-OUTCOME
+HOST-PINS IC-PINS NAME...` archives only the supplied existing top-level files
+and writes its SHA-256 before collecting failed tools or formatter logs.
+Names cannot traverse directories; the scratch tree is never implicitly selected.
+The helper uses the existing tool/formatter owners and returns 0 on success,
+the tool collector's nonfatal status on partial collection, or 2 on fatal
+admission/archive errors. Consumers retain source/outcome records, the selected
+roster, upload policy and complete outer archives including Git recovery state.
+
+Focused coverage is `scripts/ci/test-consumer-flow-probes.sh` and
+`scripts/ci/test-native-diagnostics.sh`. The latter owns referenced host/IC/Rust
+bundle selection, rejected-store local retention and fatal candidate-archive
+failures after readable diagnostics are published. Consumers retain actual
+workflow dispatch/status and outer recovery-state checks. No helper is a sandbox
+for an unreviewed Makefile, script or selected payload.
+## Assertion retention probes
+
+Source `scripts/ci/fixture-retention-probes.sh` for
+`fixture_probe_assertion OWNER PROBE_ROOT SOURCE_ROOT NAME
+--selected ASSERTION_SOURCE LITERAL_PREFIX BINDINGS`.
+Since 0.16.0, assertion selection is mandatory. Replace inferred-assertion calls
+with the existing explicit form before refreshing the helper. Consumers retain
+the fixture roster, exact assertion selection and contradictory bindings.
+
+Exactly one source line must match the literal prefix after leading whitespace.
+The child runs only the owner's initialization through its EXIT trap, followed
+by caller bindings and the selected assertion. Bindings are trusted shell source
+maintained by the caller; never pass user input. Bodies that build, install or
+mutate Git are excluded from execution. Keep contradictory values and product
+assertion selection in the consumer.
+
+The probe requires the supported root anchor and EXIT boundary, evidence
+retention, status 1, and a receipt proving the intended assertion was reached.
+Ignored assertions and earlier setup failures are rejected. The focused owner
+suite is `scripts/ci/test-fixture-assertion-probe.sh`.
+
+## Manifest ordering in selected release sources
+
+`cargo-release-metadata.sh check PRIMARY_PACKAGE --manifest-order` additionally
+runs `cargo sort --workspace --check` in the same source selected for metadata
+admission. With `RELEASE_COMMIT`, Shared owns the one immutable export, exact
+commit admission, cleanup and failure retention. Consumers retain the opt-in
+policy and prepare the Cargo tool; this check performs no installation or
+manifest mutation. Other check callers remain unchanged. The flag is rejected
+for `prepare` and `check-graph`. Scripts from the selected export are never run.
+
+## Hosted qualification admission and evidence parents
+
+`qualify-hosted-failure.sh` owns stage/manual-dispatch admission, selected-checkout
+comparison and validation of caller catalog/log paths before creating an evidence
+parent. Consumers select the five arguments and delegate; they need not repeat
+admission or create the parent first. A nonempty missing parent is created only
+after admission, then physically anchored so relative paths, aliases and spaces
+retain the same scenario identity. Refused inputs create no evidence directories.
+The focused owner fixture is `scripts/ci/test-hosted-failure.sh`.
+
+The producer fixture `scripts/ci/test-checker-retention.sh` qualifies retained
+release/formatting inputs, logs and Git index after child or assertion failures.
+Consumers retain their own status/diagnostic checks without inspecting these
+shared checkers' internal directory layout.
+
+IC Metrics' [recovery packaging contribution](https://github.com/dragginzgame/ic-metrics/pull/88)
+owns full native recovery packaging under
+`scripts/ci/package-native-recovery-evidence.sh` in its repository, including
+hidden Git state, inventory replay and archive checksums. Its workflow publishes
+separately selected readable diagnostics through the shared sanitized exporter.
+The former shared `collect-native-evidence.sh` and its fixture are retired;
+remove their snapshot entrypoints when adopting this cut. Full recovery archives
+must retain their original contents and failure-preservation contract.
+
+## Controlled hosted-scenario verification
+
+`failure_evidence.py` also exports
+`verify_hosted_scenario(members, read, stage, *, scenario_parent, failure_log_root)`.
+Call it inside `regular_evidence_archive` with explicit canonical relative archive
+prefixes. It independently checks the maintained hosted driver's exact failure
+status, preserved input bytes/modes, scenario marker, rejected early download or
+late raw/combined logs. It neither extracts archives nor derives expected bytes
+from their receipts. Consumers retain source/job/run identity, collection policy,
+native tool pins and compact-tool qualification. Negative owner cases exercise
+both stages and malformed/missing/ambiguous evidence; consumer collector tests
+still qualify the complete upload/download boundary.
+
+## Read-only changelog preflight
+
+`check-release-changelog.sh VERSION PREVIOUS DATE CHANGELOG` admits a regular
+changelog with the canonical candidate selector before any setup or mutation.
+It writes no temporary/output file, preserves failed reader/selector status and
+keeps empty notes advisory. Coordinated metadata preparation remains the writer;
+consumer source, tag, impact and release authority stay local. Focused coverage
+is `scripts/ci/test-release-changelog.sh`.
+
+## Focused verifier qualification
+
+`bash scripts/ci/test-snapshot-verifier.sh` checks generic snapshot directory
+admission, ordinary aliases, resolved manifest parents and corruption of inert
+checksum helpers against a controlled three-file export. Distribution tests
+retain refresh/source/index obligations; consumers retain their actual exported
+manifest and representative payload corruption checks. This Bash 3.2 fixture
+requires no Git repository, tool installation or Cargo inputs.
+
+`python3 scripts/ci/test-failure-evidence.py` owns generic downloaded-archive,
+compact-tool receipt and hosted-scenario rejection cases. The standard-library
+suite runs in Linux CI; it adds no Python prerequisite to native shell consumers.
+Consumers retain actual collector integration, source/run identity, caller pin
+selection and representative rejection checks through their own verifier.

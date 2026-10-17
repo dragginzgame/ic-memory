@@ -173,7 +173,7 @@ required to run setup. Make targets and CI select this same local tool set.
 | Nonempty Cargo test helper | Cargo with normal libtest summaries, `awk`, and `tee` |
 | Exact release-tag checker | Git and the caller's selected exact commit/version |
 | Exact crates.io observation | Bash/curl for presence; metadata mode additionally requires jq and curl 8.4.0+ for bounded downloads |
-| `scripts/ci/run-sccache.sh` | An executable `sccache` binary |
+| `scripts/ci/run-sccache.sh` | An absolute executable file selected through `SCCACHE_BIN` |
 | Snapshot verification | A SHA-256 implementation |
 | Snapshot refresh | Git, a clean Shared Tooling checkout, and a SHA-256 implementation |
 | Dependency pin checker | Git, jq, Mike Farah yq v4.47.2+; Cargo when Cargo manifests exist |
@@ -283,6 +283,17 @@ the selected temporary root while preserving pipeline failure status.
 The local composite action `.github/actions/retain-failure-evidence/action.yml`
 owns that path selection and uploads one `evidence.tar.gz` created by the shared
 evidence archiver, including hidden inputs and excluding `.git` metadata.
+Consumers with a product-specific collector may instead pass absolute
+`prepared-archive` and `collection-log` paths. That branch never selects tools,
+repackages evidence or runs a collector; the caller owns original collection
+status, archive safety and content qualification. Both files are required inputs,
+but a missing or final-symlink file is excluded while the other is still uploaded;
+completeness then fails after upload. Relative/multiline, glob-pattern or identical paths are
+rejected. The prepared branch runs even after a previous step fails or is
+cancelled, preserving the caller's log independently of archive creation.
+`temp-root` and `repository-root` remain required by the collecting branch only.
+Uploads use zero ZIP compression because the selected archive is already compressed.
+
 The same action collects a
 disposable negative qualification on each native host: the real IC installer
 downloads Quill and rejects an intentionally incorrect pin, then offline checking

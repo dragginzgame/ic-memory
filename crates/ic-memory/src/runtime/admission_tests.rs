@@ -196,7 +196,7 @@ fn discovers_omitted_journal_before_one_commit_and_skips_warm_admission() {
     assert_eq!(runtime.memory_id(JOURNAL).unwrap(), 11);
     let before = backing.borrow().clone();
     assert_eq!(runtime.bootstrap(&current, &pool(), &policy).unwrap(), 2);
-    let _ = runtime.doctor_report(&current, &pool(), &policy);
+    let _ = crate::testing::doctor_report(&runtime, &current, &pool(), &policy);
     assert_eq!(policy.calls.get(), 1);
     assert_eq!(runtime.memory_manager_config().bucket_size_pages(), 1);
     assert_eq!(*backing.borrow(), before);
@@ -315,7 +315,7 @@ fn bad_selections_and_consumer_rejections_leave_mapping_unchanged() {
 }
 
 #[test]
-fn current_policy_revoked_grants_and_retirement_still_reject() {
+fn current_policy_revoked_grants_and_exclusions_still_reject() {
     let backing = seeded();
     let before = backing.borrow().clone();
     let mut runtime = MemoryRuntime::new(backing.clone()).unwrap();
@@ -345,27 +345,6 @@ fn current_policy_revoked_grants_and_retirement_still_reject() {
     assert!(matches!(
         runtime.bootstrap(&snapshot(&[CONTROL], "app"), &excluded, &policy),
         Err(RuntimeBootstrapError::Admission(AdmissionError::Pool(_)))
-    ));
-    assert_eq!(*backing.borrow(), before);
-    let mut record = runtime.ledger_record_from_memory().unwrap();
-    let recovered = record.recover().unwrap();
-    let mut rows = recovered.ledger().records().to_vec();
-    rows.iter_mut()
-        .find(|row| row.stable_key().as_str() == JOURNAL)
-        .unwrap()
-        .state = crate::AllocationState::Retired;
-    let retired = crate::AllocationLedger::new(recovered.current_generation() + 1, rows).unwrap();
-    record.commit_generation(&retired).unwrap();
-    let _cell = Cell::new(
-        runtime.memory(MEMORY_MANAGER_LEDGER_ID).unwrap(),
-        EncodedLedgerRecord::new(&record).unwrap(),
-    );
-    drop(runtime);
-    let before = backing.borrow().clone();
-    let mut runtime = MemoryRuntime::new(backing.clone()).unwrap();
-    assert!(matches!(
-        runtime.bootstrap(&snapshot(&[CONTROL], "app"), &pool(), &policy),
-        Err(RuntimeBootstrapError::Admission(AdmissionError::Retired(_)))
     ));
     assert_eq!(*backing.borrow(), before);
 }
@@ -499,7 +478,7 @@ fn fresh_rejection_can_acquire_root_but_cannot_commit_genesis() {
 }
 
 #[test]
-fn completion_bound_and_reservation_activation_preserve_evidence() {
+fn completion_bound_and_retained_selection_preserve_evidence() {
     let backing = seeded();
     let before = backing.borrow().clone();
     let mut runtime = MemoryRuntime::new(backing.clone()).unwrap();
@@ -520,11 +499,10 @@ fn completion_bound_and_reservation_activation_preserve_evidence() {
     let recovered = record.recover().unwrap();
     let mut rows = recovered.ledger().records().to_vec();
     rows.push(crate::testing::allocation_record(
-        &crate::AllocationDeclaration::memory_manager("app.reserved.journal.v1", 12).unwrap(),
-        crate::AllocationState::Reserved,
+        &crate::AllocationDeclaration::memory_manager("app.retained.journal.v1", 12).unwrap(),
     ));
-    let reserved = crate::AllocationLedger::new(recovered.current_generation() + 1, rows).unwrap();
-    record.commit_generation(&reserved).unwrap();
+    let retained = crate::AllocationLedger::new(recovered.current_generation() + 1, rows).unwrap();
+    record.commit_generation(&retained).unwrap();
     let _cell = Cell::new(
         runtime.memory(MEMORY_MANAGER_LEDGER_ID).unwrap(),
         EncodedLedgerRecord::new(&record).unwrap(),
@@ -532,7 +510,7 @@ fn completion_bound_and_reservation_activation_preserve_evidence() {
     drop(runtime);
     let mut runtime = MemoryRuntime::new(backing).unwrap();
     let policy = AdmissionPolicy {
-        selections: vec![("app", "app.reserved.journal.v1"), ("app", JOURNAL)],
+        selections: vec![("app", "app.retained.journal.v1"), ("app", JOURNAL)],
         ..Default::default()
     };
     let committed = runtime
@@ -543,7 +521,7 @@ fn completion_bound_and_reservation_activation_preserve_evidence() {
         .committed_allocations()
         .unwrap()
         .iter()
-        .find(|d| d.stable_key().as_str() == "app.reserved.journal.v1")
+        .find(|d| d.stable_key().as_str() == "app.retained.journal.v1")
         .unwrap();
     assert_eq!(declaration.slot().id(), 12);
     assert!(

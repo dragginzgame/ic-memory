@@ -293,6 +293,7 @@ impl Fixture {
             LOCK_REWRITER,
             CHANGELOG_FINALIZER,
             RELEASE_INPUT_ADMISSION,
+            "scripts/ci/StableVersion.pm",
         ] {
             source.insert(
                 helper.to_owned(),
@@ -2482,6 +2483,7 @@ fn release_admission_rejects_whitespace_only_paths() {
     for path in [
         "scripts/ci/next-release-version.sh",
         "scripts/ci/validate-release-inputs.pl",
+        "scripts/ci/StableVersion.pm",
     ] {
         fs::copy(
             Path::new(env!("CARGO_MANIFEST_DIR"))

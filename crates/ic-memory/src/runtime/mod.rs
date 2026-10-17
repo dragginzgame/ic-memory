@@ -9,6 +9,9 @@ mod backing;
 mod config;
 mod diagnostics;
 mod error;
+#[cfg(any(test, feature = "test-support"))]
+#[path = "../testing/diagnostics.rs"]
+pub mod fixture_diagnostics;
 mod layout;
 mod policy;
 

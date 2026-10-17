@@ -314,16 +314,15 @@ settings; the canonical correction is tracked in
 - `make test-release-adapters`: the shared checker exercises Make entry points,
   runner failures and conflicting selections with a substitute runner. Local
   fixtures cover selection forwarding, unique gate logs and locked bootstrap.
-- `make test-release-runner`: unchanged canonical runner with command substitutes;
-  ordering, all increments, Git effect scope, locks and interruption reconciliation.
 - `make shared-tooling-check`, `make test-hooks`, `make fmt-check` and
   `make lint-tooling`: snapshot, setup/formatting and portable tooling checks.
 
 These tests create no commits/tags/pushes and perform no publication or full gate.
 They do not prove a live release or native macOS behavior. The declared native CI
-matrix includes them in `make validate-toolchain`. Before completed code changes
-are delivered as ready, `make validate` runs under the shared baseline's standing
-delivery authority. Inspection alone does not run the full suite. Release,
-publication and installed runtime qualification retain their separate authority.
+matrix includes them in `make validate-toolchain`. Generic runner implementation
+cases qualify at Shared Tooling; Memory keeps its actual adapter and recovery
+contracts. Local development uses focused checks, and full validation requires
+explicit authority under the [shared cadence](DRAGGINZGAME.md#validation-and-evidence).
+Release, publication and installed runtime qualification retain their separate authority.
 Current focused evidence is recorded in
 [release workflow qualification](docs/release-workflow-qualification.md).

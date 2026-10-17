@@ -148,17 +148,10 @@ pub use constants::{
     MAX_LEDGER_BYTES, MAX_LEDGER_NESTING, MAX_LEDGER_RECORD_BYTES, WASM_PAGE_SIZE_BYTES,
 };
 pub use declaration::AllocationDeclaration;
-pub use diagnostics::{
-    DiagnosticCheck, DiagnosticCode, DiagnosticExport, DiagnosticFailure, DiagnosticMemorySize,
-    DiagnosticRecord, DiagnosticRuntimeBinding, DiagnosticStableCell, DiagnosticStableCellStatus,
-    MemoryRuntimeDoctorReport,
-};
+pub use diagnostics::{DiagnosticExport, DiagnosticMemorySize, DiagnosticRecord};
 pub use key::{StableKey, StableKeyError};
 use ledger::{AllocationLedger, LedgerCommitStore, RecoveredLedger};
-pub use ledger::{
-    AllocationRecord, AllocationStageError, AllocationState, LedgerCommitError,
-    LedgerIntegrityError,
-};
+pub use ledger::{AllocationRecord, AllocationStageError, LedgerCommitError, LedgerIntegrityError};
 pub use physical::{CommitRecoveryError, CommitSnapshotDiagnostic};
 pub use policy::{PolicyIdentity, RuntimeBootstrapPolicy};
 pub use requests::{MemoryDeclarationError, MemoryRequest, SealedDeclarationSnapshot};

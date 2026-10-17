@@ -1,5 +1,7 @@
 use crate::{StableKey, text::validate_diagnostic_text};
-use serde::{Deserialize, Deserializer, Serialize, de::Error as _};
+use serde::Serialize;
+#[cfg(any(test, feature = "test-support"))]
+use serde::{Deserialize, Deserializer, de::Error as _};
 
 ///
 /// MemoryAuthority
@@ -7,6 +9,9 @@ use serde::{Deserialize, Deserializer, Serialize, de::Error as _};
 /// Host-owned permission for one named owner to request keys in a namespace.
 /// The prefix ends in a dot, so `app.` never grants `application.`. This policy
 /// metadata grants neither caller authentication nor a sandbox for linked code.
+///
+/// Construct inputs with [`Self::new`]; serialization is for diagnostic output.
+/// Decoding is available only with `test-support` for explicit fixtures.
 ///
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
@@ -56,6 +61,7 @@ impl MemoryAuthority {
     }
 }
 
+#[cfg(any(test, feature = "test-support"))]
 impl<'de> Deserialize<'de> for MemoryAuthority {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         #[derive(Deserialize)]
@@ -77,8 +83,11 @@ impl<'de> Deserialize<'de> for MemoryAuthority {
 /// custody for unmanaged users; namespace grants never partition this pool.
 ///
 /// The pool is immutable bootstrap policy, not durable allocation state.
-/// Current, omitted, reserved and retired ledger records independently retain
-/// their IDs. It is not inferred from application bytes or slot contents.
+/// Every retained ledger record independently retains its ID, including omitted
+/// keys. It is not inferred from application bytes or slot contents.
+///
+/// Construct inputs with [`Self::new`]; serialization is for diagnostic output.
+/// Decoding is available only with `test-support` for explicit fixtures.
 ///
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
@@ -179,6 +188,7 @@ impl MemoryAllocationPool {
     }
 }
 
+#[cfg(any(test, feature = "test-support"))]
 impl<'de> Deserialize<'de> for MemoryAllocationPool {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         #[derive(Deserialize)]

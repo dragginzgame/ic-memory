@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Shared companions: scripts/ci/verify-file-checksum.sh scripts/dev/tool-store.sh ci/tool-versions.env
+# Shared companions: scripts/ci/verify-file-checksum.sh scripts/ci/tool-catalog-records.pl scripts/dev/tool-store.sh ci/tool-versions.env
 set -euo pipefail
 
 # Explicit local provisioning of the complete common host-tool set.
@@ -28,9 +28,13 @@ consumer="$(cd -P "$consumer" && printf '%s/.' "$PWD")"
 consumer="${consumer%/.}"
 case "$consumer" in *$'\n'*|*$'\r'*) echo 'resolved consumer path contains CR/LF' >&2; exit 1 ;; esac
 versions="${versions:-$ROOT/ci/tool-versions.env}"
-# This reviewed shell file is code, just like the consumer's Makefile.
-# shellcheck disable=SC1090
-source "$versions"
+records="$(perl "$ROOT/scripts/ci/tool-catalog-records.pl" host "$versions")"
+while IFS=$'\t' read -r tool version selected_host digest; do
+    printf -v "SHARED_TOOLING_${tool}_VERSION" '%s' "$version"
+    key="SHARED_TOOLING_${tool}_SHA256"
+    [[ "$selected_host" == all ]] || key="${key}_$selected_host"
+    printf -v "$key" '%s' "$digest"
+done <<< "$records"
 case "$(uname -s):$(uname -m)" in
     Linux:x86_64|Linux:amd64) host=LINUX_AMD64; yq_platform=linux_amd64; jq_platform=linux-amd64 ;;
     Linux:aarch64|Linux:arm64) host=LINUX_ARM64; yq_platform=linux_arm64; jq_platform=linux-arm64 ;;

@@ -6,7 +6,9 @@ use crate::{
     },
     text::validate_diagnostic_text,
 };
-use serde::{Deserialize, Serialize};
+#[cfg(any(test, feature = "test-support"))]
+use serde::Deserialize;
+use serde::Serialize;
 use std::sync::Arc;
 
 ///
@@ -15,6 +17,9 @@ use std::sync::Arc;
 /// Key-only request resolved after ledger recovery. All admitted owners share the
 /// host's free application pool; known keys retain their durable slot.
 ///
+/// Construct inputs with [`Self::new`]; serialization is for diagnostic output.
+/// Decoding is available only with `test-support` for explicit fixtures.
+///
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 pub struct MemoryRequest {
@@ -22,6 +27,7 @@ pub struct MemoryRequest {
     stable_key: crate::StableKey,
 }
 
+#[cfg(any(test, feature = "test-support"))]
 impl<'de> Deserialize<'de> for MemoryRequest {
     fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         use serde::de::Error as _;

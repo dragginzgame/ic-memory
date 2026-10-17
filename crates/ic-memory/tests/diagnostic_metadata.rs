@@ -39,16 +39,21 @@ fn diagnostic_metadata_accepts_printable_ascii_through_the_byte_limit() {
         let grant = MemoryAuthority::new(value.as_str(), "app.").unwrap();
         let json = serde_json::json!({"authority":value,"key_prefix":"app."});
         assert_eq!(serde_json::to_value(&grant).unwrap(), json);
-        assert_eq!(
-            serde_json::from_value::<MemoryAuthority>(json).unwrap(),
-            grant
-        );
         let mut bytes = Vec::new();
         ciborium::into_writer(&grant, &mut bytes).unwrap();
-        assert_eq!(
-            ciborium::from_reader::<MemoryAuthority, _>(bytes.as_slice()).unwrap(),
-            grant
-        );
+        let wire: serde_json::Value = ciborium::from_reader(bytes.as_slice()).unwrap();
+        assert_eq!(wire, json);
+        #[cfg(feature = "test-support")]
+        {
+            assert_eq!(
+                serde_json::from_value::<MemoryAuthority>(json).unwrap(),
+                grant
+            );
+            assert_eq!(
+                ciborium::from_reader::<MemoryAuthority, _>(bytes.as_slice()).unwrap(),
+                grant
+            );
+        }
     }
 }
 
@@ -84,6 +89,7 @@ fn diagnostic_metadata_preserves_field_errors_and_rejection_order() {
 }
 
 #[test]
+#[cfg(feature = "test-support")]
 fn authority_decode_rejects_invalid_metadata_before_pool_assembly() {
     for grant in [
         serde_json::json!({"authority":"","key_prefix":"app."}),
@@ -105,6 +111,7 @@ fn authority_decode_rejects_invalid_metadata_before_pool_assembly() {
     }
 }
 #[test]
+#[cfg(feature = "test-support")]
 fn authority_decode_preserves_current_shape_and_required_fields() {
     let grant = MemoryAuthority::new("app", "app.").unwrap();
     let json = serde_json::json!({"authority":"app","key_prefix":"app."});

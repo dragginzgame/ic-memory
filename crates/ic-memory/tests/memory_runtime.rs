@@ -48,10 +48,9 @@ fn public_explicit_runtime_bootstraps_opens_and_diagnoses_its_memory() {
 
     let export = runtime.diagnostic_export().expect("runtime diagnostics");
     assert_eq!(export.current_generation, generation);
+    #[cfg(feature = "test-support")]
     assert!(
-        runtime
-            .doctor_report(&declarations, &pool(), &AllowAll)
-            .bootstrapped
+        ic_memory::testing::doctor_report(&runtime, &declarations, &pool(), &AllowAll).bootstrapped
     );
 }
 
@@ -85,10 +84,9 @@ fn owned_report_and_detached_lease_support_borrowed_nonclone_backing() {
     let report = runtime.memory_allocations().unwrap();
     let before = memory.borrow().clone();
     assert_eq!(runtime.diagnostic_export().unwrap().current_generation, 1);
+    #[cfg(feature = "test-support")]
     assert!(
-        runtime
-            .doctor_report(&snapshot(), &pool(), &AllowAll)
-            .bootstrapped
+        ic_memory::testing::doctor_report(&runtime, &snapshot(), &pool(), &AllowAll).bootstrapped
     );
     assert_eq!(*memory.borrow(), before);
     drop(runtime);

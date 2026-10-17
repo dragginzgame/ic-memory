@@ -112,6 +112,17 @@ refuse install --check
 [[ ! -e "$consumer/.tools" && ! -e "$fixture/downloads" ]] || exit 1
 grep -F "tool=jq expected=1.8.2 path=$consumer/.tools/host/bin/jq reason=missing-bundle" "$fixture/install.log"
 grep -F 'make install-host-tools' "$fixture/install.log"
+# Catalogs are data even for installation. Reject duplicates and code before
+# downloads, executable probes or any installation directory is created.
+cp "$pins" "$fixture/literal-pins"
+# shellcheck disable=SC2016 # Keep the attempted catalog command literal.
+for invalid in 'SHARED_TOOLING_JQ_VERSION=1.8.2' 'touch "$HOST_TOOLS_FIXTURE/catalog-executed"'; do
+    cp "$fixture/literal-pins" "$pins"
+    printf '%s\n' "$invalid" >> "$pins"
+    refuse install
+    [[ ! -e "$fixture/catalog-executed" && ! -e "$fixture/downloads" && ! -e "$consumer/.tools" ]] || exit 1
+done
+cp "$fixture/literal-pins" "$pins"
 # The context gate reuses assets but runs only path-sensitive lifecycle probes.
 if [[ "$path_context" == true ]]; then
     export TEST_OS=Linux TEST_ARCH=x86_64
@@ -151,7 +162,7 @@ original="$(readlink "$consumer/.tools/host")"
 snapshot="$fixture/snapshot"
 mkdir -p "$snapshot/scripts/dev" "$snapshot/scripts/ci" "$snapshot/ci" "$consumer/ci"
 cp "$ROOT/scripts/dev/install-host-tools.sh" "$ROOT/scripts/dev/tool-store.sh" "$snapshot/scripts/dev/"
-cp "$ROOT/scripts/ci/verify-file-checksum.sh" "$snapshot/scripts/ci/"
+cp "$ROOT/scripts/ci/"{verify-file-checksum.sh,tool-catalog-records.pl} "$snapshot/scripts/ci/"
 cp "$pins" "$snapshot/ci/tool-versions.env"
 printf 'exit 99\n' > "$consumer/ci/tool-versions.env"
 bash "$snapshot/scripts/dev/install-host-tools.sh" --consumer "$consumer" --check
@@ -196,7 +207,7 @@ original="$(readlink "$consumer/.tools/host")"
 cp "$pins" "$fixture/saved.env"
 sed 's/jq-1.8.2/jq-1.8.20/' "$fixture/jq" > "$fixture/assets/jq-macos-arm64"
 digest="$(shasum -a 256 "$fixture/assets/jq-macos-arm64")"
-printf 'export SHARED_TOOLING_JQ_SHA256_DARWIN_ARM64=%s\n' "${digest%% *}" >> "$pins"
+sed "s/SHARED_TOOLING_JQ_SHA256_DARWIN_ARM64=.*/SHARED_TOOLING_JQ_SHA256_DARWIN_ARM64=${digest%% *}/" "$fixture/saved.env" > "$pins"
 refuse install
 [[ "$(readlink "$consumer/.tools/host")" == "$original" ]] || exit 1
 cp "$fixture/saved.env" "$pins"

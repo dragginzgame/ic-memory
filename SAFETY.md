@@ -23,14 +23,10 @@ authorization, or endpoint safety.
   different slot.
 - Once a slot has been assigned to a stable key, that slot must never be reused
   for a different key.
-- Retired allocations cannot revive.
-- Retirement is a tombstone, not a free-list operation.
-- Omitted historical declarations are preserved, not implicitly retired.
-- A reserved allocation can become active only after full declaration
-  validation.
-- A reservation is policy/diagnostic staging only until it is declared as an
-  active allocation. Refreshing a matching reservation is allowed; reserving an
-  already active or retired allocation is rejected.
+- Omitted declarations retain their key/ID records permanently. Reintroducing
+  the same key requires the current host's grants and policy and keeps its ID.
+- The ledger stores no application lifecycle state. Hosts and storage owners
+  enforce any rule forbidding a logically retired store from reopening.
 - Schema admission, supported versions and data semantics belong to each storage
   owner. Allocation metadata does not carry a second schema-version authority.
 
@@ -71,16 +67,17 @@ authorization, or endpoint safety.
 - Validation and staging share one owned recovered ledger; a checked claim must
   not be detached and applied to another ledger.
 - Durable generation counters must never silently saturate or wrap.
-- Physical commit generation must equal logical ledger generation.
+- The protected header is the sole durable generation owner; recovery derives the logical counter from it.
 - Counter zero is empty genesis. Nonzero counters need no audit record.
 - A ledger retains at most 255 ownership records. Omitting or retiring an identity never frees its slot.
 
 ## Physical / Logical Binding
 
-- The checksummed current snapshot and the logical allocation ledger must describe
-  the same generation.
-- A payload committed at physical generation `N` must decode to a ledger whose
-  current generation is also `N`.
+- The snapshot marker, generation, payload length and record bytes are checksum-bound.
+- The records-only payload has no second counter. Recovery constructs the logical
+  ledger with generation `N` only after validating the enclosing protected header.
+- A recognized format with a non-array payload, invalid record fields or exceeded
+  collection/byte/nesting limits fails closed before allocation authority.
 - A non-next logical generation must not be committed over the current ledger.
 - Public physical DTOs and committed byte payloads are untrusted until they pass
   the recovery and ledger-integrity validation paths.
@@ -131,7 +128,7 @@ that identity and the sealed declaration snapshot match the successful
 bootstrap, preventing a later policy argument from being silently ignored.
 Matching warm bootstrap and consumer authority verification must not replay
 admission, advance the generation or replace the host's policy or bucket size.
-Historical selections of unknown or retired keys, or without current grant and
+Historical selections of unknown keys, or without current grant and
 policy authorization, must reject before persistence. Naming a recovered key
 never grants an open capability.
 
@@ -210,16 +207,13 @@ bucket, virtual, slack and unmanaged-byte conservation. Virtual extent is not
 payload occupancy; reported pool eligibility is not historical ownership or access
 authority.
 
-## Retirement Invariants
+## Omitted binding invariants
 
-- A retired stable key cannot be declared again.
-- A retired slot cannot be claimed by a different stable key.
-- Retirement requires the stable key and slot to match the historical allocation
-  record.
-- Retirement retains the stable key and slot. No
-  per-retirement event or generation history is required.
-- Tombstones are preserved for rollback safety, diagnostics, and historical ABI
-  integrity.
+- A store's removal from declarations never frees or removes its key/ID binding.
+- No other key can claim that ID; the same key cannot move to another ID.
+- Reintroduction uses normal current grant, pool and application policy checks.
+- Application retirement does not change allocation ownership. The host/storage
+  owner must enforce application-specific permanent retirement where required.
 
 ## Integrity Boundary
 

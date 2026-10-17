@@ -14,10 +14,16 @@ source "$ROOT/scripts/ci/fixture-lifecycle.sh"
 source "$ROOT/scripts/ci/fixture-retention-probes.sh"
 fixture_complete=false
 trap 'fixture_finish "$?" "$fixture" "Consumer retention probes retained"' EXIT
-for name in release-adapters failure-evidence git-hooks release-runner; do
-    fixture_probe_exits "$ROOT/scripts/ci/test-$name.sh" "$fixture" "$ROOT" "$name" || exit 1
+for name in release-adapters failure-evidence git-hooks; do
+    root_variable=ROOT directory_variable=fixture
+    case "$name" in
+        release-adapters) directory_variable=FIXTURE ;;
+        git-hooks) root_variable=root ;;
+    esac
+    FIXTURE_PROBE_ROOT_VARIABLE="$root_variable" FIXTURE_PROBE_DIRECTORY_VARIABLE="$directory_variable" \
+        fixture_probe_exits "$ROOT/scripts/ci/test-$name.sh" "$fixture" "$ROOT" "$name" || exit 1
 done
-fixture_probe_exit "$ROOT/scripts/ci/test-git-hooks.sh" "$fixture" "$ROOT" git-hooks cleanup-failure || exit 1
+FIXTURE_PROBE_ROOT_VARIABLE=root fixture_probe_exit "$ROOT/scripts/ci/test-git-hooks.sh" "$fixture" "$ROOT" git-hooks cleanup-failure || exit 1
 # Run the actual checker against an owner returning the wrong failure status.
 # It must stop after the first observation, before testing any other case.
 assertion_root="$fixture/assertion-source"
@@ -25,7 +31,7 @@ mkdir -p "$assertion_root/scripts/ci"
 cp "$ROOT/scripts/ci/test-consumer-fixture-retention.sh" "$assertion_root/scripts/ci/"
 cp "$ROOT/scripts/ci/fixture-lifecycle.sh" "$assertion_root/scripts/ci/"
 cp "$ROOT/scripts/ci/fixture-retention-probes.sh" "$assertion_root/scripts/ci/"
-for name in release-adapters failure-evidence git-hooks release-runner; do
+for name in release-adapters failure-evidence git-hooks; do
     cat > "$assertion_root/scripts/ci/test-$name.sh" <<'PROBE'
 #!/usr/bin/env bash
 set -euo pipefail

@@ -52,7 +52,10 @@ temp_root="$fixture/temp"
 repository_root="$fixture/repository"
 export SHARED_TOOLING_STORE="$fixture/shared-store"
 
-# A real retained host-tool fixture, with all downloads/installations substituted.
+# Retain this producer fixture for one named consumer proof: the real host
+# installer refusal must survive Memory's collector/archive round trip. Forced
+# version failure stops it before the general producer matrix; all effects are
+# substituted. Native installed-tool admission remains in tools-check and CI.
 if TMPDIR="$temp_root/ic-memory-fixtures" TEST_VERSION_STATUS=9 \
     bash "$ROOT/scripts/ci/test-host-tools.sh" > "$temp_root/tools-setup.log" 2>&1; then
     echo 'expected the controlled host-tool failure' >&2; exit 1

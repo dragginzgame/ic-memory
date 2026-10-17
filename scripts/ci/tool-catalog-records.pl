@@ -4,11 +4,10 @@ use strict;
 use warnings;
 use FindBin qw($RealBin);
 
-# Parse data, never source a catalog. The cache mode preserves its historical
-# byte fallback for catalogs whose literal selections cannot be established.
+# One literal data contract for installation, inspection and cache identity.
 my ($kind, $path) = @ARGV;
-@ARGV == 2 && $kind =~ /\A(?:host|rust|ic|cargo-cache)\z/
-    or die "usage: tool-catalog-records.pl host|rust|ic|cargo-cache CATALOG\n";
+@ARGV == 2 && $kind =~ /\A(?:host|rust|ic|values)\z/
+    or die "usage: tool-catalog-records.pl host|rust|ic|values CATALOG\n";
 if ($kind eq 'ic') {
     open my $rows, '-|', 'awk', '-v', 'records=1', '-f', "$RealBin/ic-tool-pins.awk", '--', $path
         or die "cannot run IC pin parser: $!\n";
@@ -29,13 +28,12 @@ for my $line (split /\n/, $bytes) {
 }
 my @rust = qw(CARGO_SORT CARGO_SORT_DERIVES CANDID_EXTRACTOR);
 my $stable = qr/(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)/;
-if ($kind eq 'cargo-cache') {
-    if (!$invalid && !grep { !defined($pins{"SHARED_TOOLING_${_}_VERSION"}) || $pins{"SHARED_TOOLING_${_}_VERSION"} !~ /\A$stable\z/ } @rust) {
-        print "literal-cargo-pins\n", map { "$_=$pins{\"SHARED_TOOLING_${_}_VERSION\"}\n" } sort @rust;
-    } else { print "catalog-bytes\n", $bytes; }
+die "unresolved nonliteral/duplicate catalog: $path\n" if $invalid;
+if ($kind eq 'values') {
+    keys %pins or die "empty tool catalog: $path\n";
+    print map { "$_\t$pins{$_}\n" } sort keys %pins;
     exit 0;
 }
-die "unresolved nonliteral/duplicate catalog: $path\n" if $invalid;
 my @records;
 for my $tool ($kind eq 'rust' ? @rust : qw(JQ YQ RIPGREP CLOC)) {
     my $version = $pins{"SHARED_TOOLING_${tool}_VERSION"};

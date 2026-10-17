@@ -1,8 +1,6 @@
 use crate::{
     constants::WASM_PAGE_SIZE_BYTES,
     ledger::{AllocationLedger, AllocationRecord},
-    physical::CommitSnapshotDiagnostic,
-    policy::PolicyIdentity,
 };
 use serde::Serialize;
 
@@ -23,228 +21,13 @@ pub struct DiagnosticExport {
     pub records: Vec<DiagnosticRecord>,
 }
 
-///
-/// DiagnosticRuntimeBinding
-///
-/// Operator-facing view of the policy identity and declaration snapshot bound
-/// to one successful memory-runtime bootstrap.
-///
-
-#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
-pub struct DiagnosticRuntimeBinding {
-    /// Bounded semantic identity of the bootstrap policy.
-    pub policy_identity: PolicyIdentity,
-    /// Exact host namespace grants and physical exclusions bound at bootstrap.
-    pub allocation_pool: crate::MemoryAllocationPool,
-}
-
-impl DiagnosticRuntimeBinding {
-    /// Build one runtime binding diagnostic.
-    #[must_use]
-    pub const fn new(
-        policy_identity: PolicyIdentity,
-        allocation_pool: crate::MemoryAllocationPool,
-    ) -> Self {
-        Self {
-            policy_identity,
-            allocation_pool,
-        }
-    }
-}
-
-///
-/// MemoryRuntimeDoctorReport
-///
-/// Preflight and runtime diagnostic report for one concrete
-/// [`crate::MemoryRuntime`].
-///
-/// This report is intended for operator-facing diagnostics. Recoverable
-/// runtime problems, such as corrupt stable-cell bytes or commit recovery
-/// failure, are represented as fields instead of aborting report construction.
-/// Reports support serialization only; applications own diagnostic input protocols.
-///
-
-#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
-pub struct MemoryRuntimeDoctorReport {
-    /// Whether this runtime has completed bootstrap validation.
-    pub bootstrapped: bool,
-    /// Policy identity supplied for this diagnostic evaluation.
-    pub tested_policy_identity: PolicyIdentity,
-    /// Binding published by this runtime's successful bootstrap, when present.
-    pub established_bootstrap_binding: Option<DiagnosticRuntimeBinding>,
-    /// Whether the tested identity and declarations match the established
-    /// bootstrap binding.
-    pub bootstrap_binding: DiagnosticCheck,
-    /// Stable-cell ledger storage status.
-    pub stable_cell: DiagnosticStableCell,
-    /// Protected commit recovery status when a ledger record was readable.
-    pub commit_recovery: Option<CommitSnapshotDiagnostic>,
-    /// Recovered allocation ledger export when protected recovery succeeded.
-    pub ledger: Option<DiagnosticExport>,
-    /// Key-only requirements contributed by linked components.
-    pub requests: Vec<crate::MemoryRequest>,
-    /// Tested host namespace grants and physical exclusions.
-    pub allocation_pool: crate::MemoryAllocationPool,
-    /// Declaration validation result under the tested caller-supplied policy.
-    pub validation: DiagnosticCheck,
-}
-
-///
-/// DiagnosticCode
-///
-/// Stable machine-readable category for an operator diagnostic failure.
-///
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
-pub enum DiagnosticCode {
-    /// Stable-cell storage could not be decoded.
-    #[serde(rename = "stable_cell")]
-    StableCell,
-    /// Persisted bytes use a recognized but unsupported durable format.
-    #[serde(rename = "unsupported_format")]
-    UnsupportedFormat,
-    /// Protected ledger recovery failed.
-    #[serde(rename = "ledger_recovery")]
-    LedgerRecovery,
-    /// Current declarations failed allocation validation.
-    #[serde(rename = "allocation_validation")]
-    AllocationValidation,
-    /// Tested bootstrap identity or declarations differ from runtime state.
-    #[serde(rename = "runtime_binding")]
-    RuntimeBinding,
-}
-
-///
-/// DiagnosticFailure
-///
-/// Machine-readable diagnostic code paired with an operator-facing message.
-///
-
-#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
-pub struct DiagnosticFailure {
-    /// Stable diagnostic category.
-    pub code: DiagnosticCode,
-    /// Human-readable failure detail.
-    pub message: String,
-}
-
-impl DiagnosticFailure {
-    /// Build a coded diagnostic failure.
-    #[must_use]
-    pub fn new(code: DiagnosticCode, message: impl Into<String>) -> Self {
-        Self {
-            code,
-            message: message.into(),
-        }
-    }
-}
-
-///
-/// DiagnosticStableCell
-///
-/// Read-only diagnostic view of the stable-cell ledger storage envelope.
-///
-
-#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
-pub struct DiagnosticStableCell {
-    /// Stable-cell status.
-    pub status: DiagnosticStableCellStatus,
-    /// Backing memory size for the ledger cell.
-    pub memory_size: DiagnosticMemorySize,
-}
-
-impl DiagnosticStableCell {
-    /// Build a stable-cell diagnostic.
-    #[must_use]
-    pub const fn new(
-        status: DiagnosticStableCellStatus,
-        memory_size: DiagnosticMemorySize,
-    ) -> Self {
-        Self {
-            status,
-            memory_size,
-        }
-    }
-}
-
-///
-/// DiagnosticStableCellStatus
-///
-/// Stable-cell ledger storage status.
-///
-
-#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
-pub enum DiagnosticStableCellStatus {
-    /// The ledger memory is empty and can be initialized.
-    Empty,
-    /// The stable-cell envelope and ledger record decoded successfully.
-    Readable,
-    /// The ledger memory is present but could not be decoded as the expected
-    /// stable-cell ledger record.
-    Corrupt {
-        /// Stable-cell envelope or ledger-record decode failure.
-        failure: DiagnosticFailure,
-    },
-}
-
-///
-/// DiagnosticCheck
-///
-/// Read-only diagnostic status for a preflight check.
-///
-
-#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
-pub enum DiagnosticCheck {
-    /// The check could not run because prerequisite state was unavailable.
-    NotRun {
-        /// Stable diagnostic category.
-        code: DiagnosticCode,
-        /// Reason the check could not run.
-        message: String,
-    },
-    /// The check completed successfully.
-    Passed,
-    /// The check ran and found a problem.
-    Failed {
-        /// Stable diagnostic category.
-        code: DiagnosticCode,
-        /// Validation failure.
-        message: String,
-    },
-}
-
-impl DiagnosticCheck {
-    /// Build a passed diagnostic check.
-    #[must_use]
-    pub const fn passed() -> Self {
-        Self::Passed
-    }
-
-    /// Build a failed diagnostic check.
-    #[must_use]
-    pub fn failed(code: DiagnosticCode, message: impl Into<String>) -> Self {
-        Self::Failed {
-            code,
-            message: message.into(),
-        }
-    }
-
-    /// Build a skipped diagnostic check.
-    #[must_use]
-    pub fn not_run(code: DiagnosticCode, message: impl Into<String>) -> Self {
-        Self::NotRun {
-            code,
-            message: message.into(),
-        }
-    }
-}
-
 impl DiagnosticExport {
     /// Build a read-only diagnostic export from an allocation ledger.
     ///
     /// Records start unmeasured. The exporter can fill their size fields from
     /// its backing-memory observations; this DTO constructor neither recovers
-    /// nor measures memory. Physical recovery status belongs to the doctor report.
+    /// nor measures memory. Physical recovery status is available separately
+    /// from the runtime.
     #[must_use]
     #[cfg(any(test, feature = "test-support"))]
     pub fn from_ledger(ledger: &AllocationLedger) -> Self {
@@ -329,7 +112,7 @@ mod tests {
         .expect("declaration");
         let ledger = AllocationLedger {
             current_generation: 3,
-            records: vec![AllocationRecord::active(&declaration)],
+            records: vec![AllocationRecord::from_declaration(&declaration)],
         };
 
         let export = DiagnosticExport::from_ledger(&ledger);
@@ -345,72 +128,9 @@ mod tests {
             wire,
             serde_json::json!({
                 "current_generation": 3,
-                "records": [{"allocation": {"stable_key": "app.users.v1", "slot": 100, "state": "Active"}}]
+                "records": [{"allocation": {"stable_key": "app.users.v1", "slot": 100}}]
             })
         );
-    }
-
-    #[test]
-    fn diagnostic_outcome_states_serialize() {
-        let stable_cell = DiagnosticStableCell::new(
-            DiagnosticStableCellStatus::Corrupt {
-                failure: DiagnosticFailure::new(
-                    DiagnosticCode::StableCell,
-                    "bad stable-cell record",
-                ),
-            },
-            DiagnosticMemorySize::from_wasm_pages(1),
-        );
-        let allocation_pool = crate::MemoryAllocationPool::new(Vec::new(), Vec::new()).unwrap();
-        let check = DiagnosticCheck::failed(
-            DiagnosticCode::AllocationValidation,
-            "duplicate declaration",
-        );
-
-        assert_eq!(
-            serde_json::to_value(DiagnosticCheck::passed()).unwrap(),
-            "Passed"
-        );
-        assert_eq!(
-            serde_json::to_value(check).unwrap(),
-            serde_json::json!({
-                "Failed": {"code": "allocation_validation", "message": "duplicate declaration"}
-            })
-        );
-        assert_eq!(
-            serde_json::to_value(stable_cell).unwrap(),
-            serde_json::json!({
-                "status": {"Corrupt": {"failure": {"code": "stable_cell", "message": "bad stable-cell record"}}},
-                "memory_size": {"wasm_pages": 1}
-            })
-        );
-        assert_eq!(
-            serde_json::to_value(allocation_pool).unwrap(),
-            serde_json::json!({
-                "authorities": [], "excluded_ids": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
-            })
-        );
-    }
-
-    #[test]
-    fn diagnostic_codes_have_stable_wire_names() {
-        let cases = [
-            (DiagnosticCode::StableCell, "stable_cell"),
-            (DiagnosticCode::UnsupportedFormat, "unsupported_format"),
-            (DiagnosticCode::LedgerRecovery, "ledger_recovery"),
-            (
-                DiagnosticCode::AllocationValidation,
-                "allocation_validation",
-            ),
-            (DiagnosticCode::RuntimeBinding, "runtime_binding"),
-        ];
-
-        for (code, expected) in cases {
-            assert_eq!(
-                crate::test_cbor::to_value(code).expect("diagnostic code value"),
-                crate::test_cbor::Value::Text(expected.to_string())
-            );
-        }
     }
 
     #[test]
@@ -422,7 +142,7 @@ mod tests {
         .expect("declaration");
         let ledger = AllocationLedger {
             current_generation: 3,
-            records: vec![AllocationRecord::active(&declaration)],
+            records: vec![AllocationRecord::from_declaration(&declaration)],
         };
 
         let mut export = DiagnosticExport::from_ledger(&ledger);

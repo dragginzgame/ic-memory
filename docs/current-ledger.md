@@ -1,12 +1,12 @@
 # Current ownership ledger
 
-The ledger retains each permanent stable key, claimed numeric ID and current
-reserved/active/retired state. It holds at most 255 records, including governance.
-Omitted and retired identities retain their records and slots. Store schema
+The ledger retains each permanent stable key and claimed numeric ID. It holds
+at most 255 records, including governance. Omitted identities retain their
+records and slots. Application lifecycle state is not stored. Store schema
 versions, migrations and schema admission belong to each storage owner, such as
 IcyDB's schema subsystem; Memory carries no parallel schema metadata.
 
-One checked `current_generation` counter binds logical ownership to physical
+One checked `generation` counter in the protected snapshot owns logical
 commitment and advances on cold bootstrap. Matching warm bootstrap returns the
 established capability without another write or admission replay. There is no
 per-bootstrap event, timestamp, ownership-label history or upgrade log.
@@ -26,14 +26,15 @@ the staged commit, persists the owning Cell, then constructs committed allocatio
 authority. There is no intermediate persistence-confirmation token or public
 manual commit path. Any failure before persistence publishes no new authority.
 
-Logical ownership is direct bounded CBOR, limited to 64 KiB. The enclosing
-protected record is limited to 64 KiB + 4 KiB. The one `current` snapshot uses
-`ICMSNAP1`; marker, counter, payload length and bytes are checksum-bound. Opaque
-payloads are byte strings, and JSON is diagnostic output rather than an alternate
-snapshot input. No additional logical envelope is stored.
+The records-only payload is a definite-length CBOR array, limited to 64 KiB.
+The enclosing protected record is limited to 64 KiB + 4 KiB. The one `current`
+snapshot uses `ICMKEY01`; marker, generation, payload length and bytes are
+checksum-bound. The opaque payload is a byte string. Logical recovery takes its
+`current_generation` from the checked header rather than decoding another
+counter. JSON is diagnostic output, not an alternate snapshot input.
 
-Recovery checks the marker/checksum, bounded logical CBOR, ownership integrity
-and physical/logical counter binding. Present invalid or incompatible state
+Recovery checks the marker/checksum, bounded record-array CBOR and ownership
+integrity. Present invalid or incompatible state
 cannot initialize genesis or fall back to another generation. Publication checks
 exact successors. IC message execution owns stable-write rollback; arbitrary
 native backing needs its own transaction boundary.
@@ -63,9 +64,10 @@ This pool policy is not durable ownership and changes no retained key/ID mapping
 
 ## Hard cut and retained installations
 
-The maintainer approved retirement of earlier ledger images for the schema-free
-0.45 cut: fresh/reset memory is acceptable. `ICMSNAP1` replaces `ICMDIRCT` for the
-incompatible record shape. Incompatible enclosing shapes fail during record
+The maintainer approved retirement of earlier ledger images, including ICMSNAP1
+and the pending ICMREC01 shape, for the state-free 0.48 cut: fresh/reset memory
+is acceptable. `ICMKEY01`
+identifies state-free key/ID records and the sole protected generation. Incompatible enclosing shapes fail during record
 decoding; otherwise an unsupported marker rejects with
 `CommitRecoveryError::UnsupportedFormat`. Numeric slots and the pinned upstream
 manager/Cell layout remain unchanged. There is one current reader and fixture
@@ -79,7 +81,7 @@ Each application owns its retained-data disposition and installation qualificati
 Before installing over earlier bytes, identify the installation and its explicit
 disposition. A whole-canister reinstall also discards application data and needs
 its owner's authorization. Preserving retained data requires a separately
-reviewed application transition carrying every key/ID/tombstone and lifecycle
+reviewed application transition carrying every key/ID binding and lifecycle
 obligation into the current contract. Never clear only ID 0 while leaving
 collection bytes behind. Keep earlier binaries and recovery evidence until the
 application's disposition is qualified.

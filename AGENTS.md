@@ -36,8 +36,8 @@ for the upstream contribution and the separate `ic-storage` integration boundary
 ## Development and qualification commands
 
 - Before editing or compiling, check for active Cargo, rustc and rustdoc builds.
-- Focused checks: `make shared-tooling-check`, `make check-pins`, `make test-pins`, `make test-tools`, `make test-tooling`,
-  `make test-release-adapters`, `make test-release-runner`, `make test-hooks`, `make test-fixture-cell`,
+- Focused checks: `make shared-tooling-check`, `make check-pins`, `make test-tools`, `make test-tooling`,
+  `make test-release-adapters`, `make test-hooks`, `make test-fixture-cell`,
   `make test-failure-evidence`, `make fmt-check`, `make lint-tooling`, or an appropriately
   selected Rust test. `make runtime-server-check` and `make test-runtime` are
   focused installed qualification with explicitly prepared tools and both caches.

@@ -1,9 +1,9 @@
 .DEFAULT_GOAL := help
-.PHONY: help test version ensure-clean fetch-dependencies check-pins test-pins \
+.PHONY: help test version ensure-clean fetch-dependencies check-pins \
         install-tools tools-check install-host-tools host-tools-check install-ic-tools ic-tools-check test-tools test-failure-evidence \
         lint-tooling test-hooks test-tooling test-fixture-cell validate validate-toolchain wasm-size \
         install-runtime-server runtime-server-check test-runtime \
-        test-release-runner test-release-adapters \
+        test-release-adapters \
         release-version release-preflight release-verify release-prepare-version \
         release-prepared-check release-files release-commit-check release-committed-check \
         release-tagged-check release-push-check qualify-release package publish publish-dry-run
@@ -29,7 +29,11 @@ FORMAT_CHECK_COMMAND = bash -ec 'cargo "+$$1" sort --workspace --check; \
     cargo "+$$1" sort --workspace --check testing/runtime-qualification; \
     cargo "+$$1" fmt --all -- --check; \
     cargo "+$$1" fmt --manifest-path testing/runtime-qualification/Cargo.toml --all -- --check' -- "$(VALIDATION_TOOLCHAIN)"
+# Memory uses IC executables for installed runtime qualification.
+LOCAL_TOOL_INSTALL_TARGETS += install-ic-tools
+LOCAL_TOOL_CHECK_TARGETS += ic-tools-check
 include make/consumer.mk
+export PATH := $(CURDIR)/.tools/ic/bin:$(PATH)
 fmt fmt-check format-tools-check: export RUSTUP_TOOLCHAIN := $(VALIDATION_TOOLCHAIN)
 
 # The published Testkit CLI owns PocketIC selection, admission and lifecycle.
@@ -40,7 +44,7 @@ TESTKIT_SERVER_DIRECTORY := $(CURDIR)/.tools/ic-testkit-server
 
 help:
 	@echo 'Setup: install-tools (host, IC, Cargo tools), fetch-dependencies, install-hooks; prepare the Rust toolchain first.'
-	@echo 'Focused checks: shared-tooling-check, tools-check, test-tools, test-failure-evidence, check-pins, test-pins, test-tooling, test-fixture-cell, test-release-adapters, test-release-runner, test-hooks, fmt-check, lint-tooling.'
+	@echo 'Focused checks: shared-tooling-check, tools-check, test-tools, test-failure-evidence, check-pins, test-tooling, test-fixture-cell, test-release-adapters, test-hooks, fmt-check, lint-tooling.'
 	@echo 'Formatting: fmt. Full release checks: validate, validate-toolchain.'
 	@echo 'Installed runtime: install-runtime-server (explicit Testkit setup), runtime-server-check (offline), test-runtime (prepared server and locked caches).'
 	@echo 'Report: cloc (root workspace; CLOC_MANIFEST selects an independent Cargo manifest). Fleet reports run in Shared Tooling.'
@@ -88,19 +92,12 @@ test-runtime: runtime-server-check ic-tools-check
 	  done && cat "$$evidence/inputs.sha256"
 
 test-failure-evidence:
-	bash scripts/ci/test-evidence-archive.sh
 	bash scripts/ci/test-failure-evidence.sh
 
+# Memory owns its archive bindings and fixture retention. Generic installer,
+# runner, Make/LOC and parser matrices qualify at Shared Tooling's owner.
 test-tools: test-failure-evidence
 	bash scripts/ci/test-consumer-fixture-retention.sh
-	bash scripts/ci/test-gh-ci.sh
-	bash scripts/ci/test-tool-commands.sh
-	bash scripts/ci/test-make-consumer.sh
-	bash scripts/ci/test-host-tools.sh
-	bash scripts/ci/test-ic-tools.sh
-	bash scripts/ci/test-rust-tools.sh
-	bash scripts/ci/test-evidence-checksums.sh
-	+RUSTUP_TOOLCHAIN=$(VALIDATION_TOOLCHAIN) RUSTUP_AUTO_INSTALL=0 CARGO_NET_OFFLINE=true bash scripts/ci/test-cloc.sh
 
 # Network preparation is separate from offline checks; preserve tracked locks.
 fetch-dependencies:
@@ -109,9 +106,6 @@ fetch-dependencies:
 check-pins:
 	+RUSTUP_TOOLCHAIN=$(VALIDATION_TOOLCHAIN) RUSTUP_AUTO_INSTALL=0 CARGO_NET_OFFLINE=true bash scripts/ci/check-dependency-pins.sh --cargo-inheritance
 
-test-pins:
-	+RUSTUP_TOOLCHAIN=$(VALIDATION_TOOLCHAIN) RUSTUP_AUTO_INSTALL=0 CARGO_NET_OFFLINE=true bash scripts/ci/test-dependency-pins.sh
-	+RUSTUP_TOOLCHAIN=$(VALIDATION_TOOLCHAIN) RUSTUP_AUTO_INSTALL=0 CARGO_NET_OFFLINE=true bash scripts/ci/test-cargo-metadata.sh
 
 # Install exact, checksum-verified tools separately; these checks are offline.
 lint-tooling:
@@ -121,14 +115,10 @@ lint-tooling:
 test-tooling:
 	+cargo +$(VALIDATION_TOOLCHAIN) test --locked --offline --example repo-tool
 
-test-release-runner:
-	bash scripts/ci/test-release-runner.sh
-
 test-release-adapters:
 	bash scripts/ci/test-release-adapters.sh
 
 test-hooks: format-tools-check
-	+CDPATH="$(CURDIR)" RUSTUP_AUTO_INSTALL=0 CARGO_NET_OFFLINE=true bash scripts/ci/test-format-tools.sh
 	+CDPATH="$(CURDIR)" RUSTUP_AUTO_INSTALL=0 CARGO_NET_OFFLINE=true bash scripts/ci/test-git-hooks.sh
 
 test:
@@ -153,7 +143,7 @@ validate:
 
 validate-toolchain:
 	$(MAKE) --no-print-directory shared-tooling-check tools-check format-tools-check
-	$(MAKE) --no-print-directory check-pins test-pins test-tools test-tooling test-release-adapters test-release-runner test-hooks fmt-check test-fixture-cell
+	$(MAKE) --no-print-directory check-pins test-tools test-tooling test-release-adapters test-hooks fmt-check test-fixture-cell
 	+cargo +$(VALIDATION_TOOLCHAIN) clippy --locked --offline --all-targets -- -D warnings
 	+cargo +$(VALIDATION_TOOLCHAIN) test --locked --offline -- --test-threads=1
 	+RUSTDOCFLAGS='-D warnings' cargo +$(VALIDATION_TOOLCHAIN) doc --locked --offline --no-deps

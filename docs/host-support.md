@@ -52,7 +52,7 @@ current-source Rust 1.91 native CI acceptance must be recorded separately.
   regenerate them to make a check pass.
 - The common jq/yq/ripgrep/cloc set under `.tools/host/bin` for host checks and
   reports; jq/yq support `make check-pins`
-  and `make test-pins`. The reviewed snapshot owns `ci/tool-versions.env`.
+  with the actual workspace and exception catalog. The reviewed snapshot owns `ci/tool-versions.env`.
   Interrupted manifest/lockfile recovery also uses yq to locate Cargo's selected
   target directory. Checks are offline and never install prerequisites.
 - Actionlint and ShellCheck for `make lint-tooling`. CI installs exact
@@ -87,18 +87,20 @@ pin and available rustfmt under the selected validation toolchain. Admission is
 offline and probes versions only; unavailable tools fail before formatting.
 Bare `make` prints available commands rather than preparing dependencies.
 
-Common setup covers host, IC and Cargo tools sequentially for the detected host:
+Common setup covers host and Cargo tools. Memory explicitly selects the IC
+bundle through the ordered local tool targets, retaining all three sets:
 
 ```sh
 make install-tools
 make tools-check
 export PATH="$PWD/.tools/host/bin:$PWD/.tools/ic/bin:$PWD/.tools/rust/common/bin:$PATH"
-make check-pins test-pins
+make check-pins
 ```
 
 Make selects those local paths automatically. Setup does not edit shell profiles.
-Before installing any common tools, aggregate setup checks the platform/catalog
-and probes Rust/Cargo in this checkout without automatic toolchain installation.
+Before installing common tools, aggregate setup checks the Rust catalog and
+probes Rust/Cargo without automatic toolchain installation. The selected IC
+bundle performs its own platform/catalog admission after common setup.
 Prepare a supported host and the declared toolchain before retrying a refusal.
 Offline host checks identify the failing tool, expected version, selected path
 and repair command; they still authenticate payloads before execution.
@@ -169,9 +171,8 @@ if an omitted optional fleet report is requested; it never invokes a sibling
 implicitly. Local workspace reports and their independent-manifest selection
 remain available.
 
-The retained local LOC fixture selects its own manifest and build output.
-Consumer `make test-tools` passes inherited target settings through to it;
-actual reports retain their selected workspace configuration. These fixes track
+The LOC selector and generic manifest/output fixture qualify at Shared Tooling.
+Actual reports retain their selected workspace configuration. These fixes track
 [Shared Tooling #47](https://github.com/dragginzgame/shared-tooling/issues/47) and
 [#48](https://github.com/dragginzgame/shared-tooling/issues/48) without patching
 reviewed exports. CI continues to retain scratch under `$RUNNER_TEMP`.
@@ -223,7 +224,7 @@ deduplication; actual setup/check and native CI supply installed-tool evidence.
 
 `make check-pins` also checks Cargo inheritance against each manifest's owning
 workspace catalog. The independent runtime-qualification root keeps its approved
-scope and lockfile; it is not merged into the library graph. `make test-pins`
+scope and lockfile; it is not merged into the library graph. `make check-pins`
 reuses the shared metadata fixture for ordinary/inline dependency tables,
 aliases, target/dev/build declarations, rejected child overrides and independent
 workspace discovery. Its workspace-version reader is a fixture dependency;
@@ -258,7 +259,7 @@ formatter failure isolation, inherited Make mode rejection, selection forwarding
 and preservation of unrelated edits in disposable
 repositories without creating commits or tags, including setup through a checkout
 path alias. It uses the actual consumer
-formatting targets and includes the shared prerequisite rejection fixture. It
+formatting targets and retains missing/wrong formatter rejection. It
 runs on every declared native CI host. See the
 [0.28.4 focused evidence](release-workflow-qualification.md#0284-portable-fixtures-and-formatter-admission).
 Linux hook evidence
@@ -267,20 +268,20 @@ historical runtime gates above.
 
 ## Native checks
 
-Focused tooling checks are `make shared-tooling-check tools-check test-tools check-pins test-pins test-tooling test-hooks fmt-check`,
-`make test-release-adapters test-release-runner` and `make lint-tooling`. Compilation must wait for any existing build to finish.
+Focused tooling checks are `make shared-tooling-check tools-check test-tools check-pins test-tooling test-hooks fmt-check`,
+`make test-release-adapters` and `make lint-tooling`. Compilation must wait for any existing build to finish.
 
 CI runs `make validate-toolchain` and the offline all-target MSRV check on each
 declared host. The full gate covers library/integration/compile-fail tests,
 doctests, strict Clippy, warning-denied documentation, Wasm compilation and raw
-size budgets, and package verification. Before completed code changes are
-delivered as ready, `make validate` runs under the shared baseline's standing
-delivery authority. Inspection alone does not run the full suite. Release,
-publication and installed runtime qualification retain their separate authority.
+size budgets, and package verification. Local development uses focused checks;
+full validation requires explicit authority under the
+[shared cadence](../DRAGGINZGAME.md#validation-and-evidence). Release, publication
+and installed runtime qualification retain their separate authority.
 
 Release-flow tests separately cover Rust adapter recovery/input binding, actual
-Make dispatch/log retention and canonical runner reconciliation through
-substituted command effects. See the [focused evidence](release-workflow-qualification.md).
+Make dispatch/log retention through substituted command effects. Generic runner
+reconciliation qualifies at Shared Tooling. See the [focused evidence](release-workflow-qualification.md).
 They do not prove a live push or publication. The native release prerequisites
 and evidence checks are shared by the maintainer workflow in
 [RELEASING.md](../RELEASING.md). Live publication and downstream deployment need

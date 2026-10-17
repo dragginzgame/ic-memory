@@ -91,7 +91,7 @@ from their bytes.
 
 The ledger keeps current ownership, with at most 255
 records. Repeated upgrades add no audit entries. One checksummed current snapshot
-remains for recovery. Recovery checks its physical and logical counters agree;
+remains for recovery. Recovery derives its logical counter from the checksum-protected header;
 the recovered counter also binds stale-proof checks. Logical metadata is
 bounded to 64 KiB; the enclosing record to 64 KiB + 4 KiB. Physical allocation
 also depends on the configured manager bucket size, so smaller encoded bytes do
@@ -143,12 +143,18 @@ backing aliases cannot be detected. See [the custody contract](../SAFETY.md#runt
 An existing but unbootstrapped explicit runtime can report physical allocation
 with unknown application bindings. For pre-bootstrap inspection with a known
 configuration, construct `MemoryRuntime::new_with_config(memory, config)` and
-then call its recovery or doctor methods.
+then call its recovery-status and physical-allocation queries.
 
 ## Doctor reports
 
-Use `runtime.doctor_report(&declarations, &pool, &policy)` for operator-facing
-validation under the host's policy.
+Production hosts own response assembly from `diagnostic_export`,
+`commit_recovery_diagnostic`, `memory_allocations` and
+`memory_allocation_summary`, retaining the returned typed errors.
+
+For explicit fixture preflight, enable `test-support` and call
+`ic_memory::testing::doctor_report(&runtime, &declarations, &pool, &policy)`.
+The combined report and its outcome types live under `ic_memory::testing`;
+production Memory does not provide a combined doctor operation.
 
 A doctor report includes:
 
@@ -160,7 +166,7 @@ A doctor report includes:
 - live slot sizes when recovery permits measurement; and
 - the tested and established runtime binding.
 
-Failures include a stable `DiagnosticCode` in addition to a human-readable
+Failures include a stable `testing::DiagnosticCode` in addition to a human-readable
 message. Automation should use the code rather than parsing the prose.
 
 Doctor validation does not run `RuntimeBootstrapPolicy::prepare_bootstrap`,
@@ -175,7 +181,7 @@ a checked physical generation; it does not certify logical ledger recovery.
 `runtime.diagnostic_export()` additionally requires a completed bootstrap.
 It returns the recovered generation and allocation records with observed sizes;
 physical or logical recovery failure returns an error instead of an export.
-The doctor report owns physical recovery status, including observations from a
+The fixture doctor report combines physical recovery status, including observations from a
 failed logical recovery. Use `MEMORY_MANAGER_LEDGER_ID` for the fixed ledger
 anchor; applications own its labels and response presentation.
 

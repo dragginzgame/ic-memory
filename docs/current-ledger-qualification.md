@@ -1,5 +1,10 @@
 # Current ownership ledger qualification
 
+The pending 0.48 state-free `ICMKEY01` cut and its source-bound evidence are
+recorded in [the current release notes](changelog/0.48.md). Sections below retain
+their original source/format qualification; older lifecycle-state and stored-format
+results do not qualify this cut or establish retained-image compatibility.
+
 The original 0.27.0 hard-cut evidence was captured after released
 `62e15131c6145fa66a77528d96b00dcbf64a892c` (0.26.2), while the manifest still
 declared 0.26.2. Later reviews and experiments identify their own source below.

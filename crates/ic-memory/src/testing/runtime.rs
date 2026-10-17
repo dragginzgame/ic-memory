@@ -63,15 +63,3 @@ pub fn fixture_runtime<M: Memory>(
         .map_err(|error| FixtureRuntimeError::Bootstrap(Box::new(error)))?;
     Ok(runtime)
 }
-
-// Preserve the existing cell API and its error variants while sharing setup.
-impl From<FixtureRuntimeError> for super::FixtureCellError {
-    fn from(error: FixtureRuntimeError) -> Self {
-        match error {
-            FixtureRuntimeError::Declaration(error) => Self::Declaration(error),
-            FixtureRuntimeError::AllocationPool(error) => Self::AllocationPool(error),
-            FixtureRuntimeError::Construction(error) => Self::Construction(error),
-            FixtureRuntimeError::Bootstrap(error) => Self::Bootstrap(error),
-        }
-    }
-}

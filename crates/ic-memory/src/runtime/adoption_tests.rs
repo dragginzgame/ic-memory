@@ -115,10 +115,9 @@ fn adoption_checks_logical_requirements_without_replaying_host() {
         Err(RuntimeBootstrapError::AllocationPoolMismatch)
     ));
     assert!(matches!(
-        host.doctor_report(&source(), &replaced, &policy)
-            .bootstrap_binding,
-        crate::DiagnosticCheck::Failed {
-            code: crate::DiagnosticCode::RuntimeBinding,
+        crate::testing::doctor_report(&host, &source(), &replaced, &policy).bootstrap_binding,
+        crate::testing::DiagnosticCheck::Failed {
+            code: crate::testing::DiagnosticCode::RuntimeBinding,
             ..
         }
     ));

@@ -1,5 +1,32 @@
 # Changelog
 
+## [0.48.0]
+
+- **Breaking fixture API:** require bounded Cell creation/reopening and fallible
+  writes; preserve setup error categories under one nested source.
+- Keep generic tooling regression matrices at Shared Tooling; retain Memory
+  integration and native admission checks while retiring redundant copied fixtures.
+
+- Adopt committed Shared Tooling 0.20.0; explicitly retain IC tool setup and
+  offline admission alongside the common host/Cargo tools. Tool pins are unchanged.
+
+- **Breaking input API:** request, namespace-grant and allocation-pool decoding
+  now requires `test-support`. Production callers use checked constructors;
+  diagnostic serialization is unchanged.
+- **Breaking storage:** store generation only in the protected `ICMKEY01` header;
+  records contain permanent key/ID bindings without allocation lifecycle states.
+  Earlier images are retired:
+  use fresh/reset backing. Incompatible bytes reject without automatic clearing.
+  Omitted bindings retain IDs; hosts/storage owners enforce application retirement.
+- **Breaking diagnostic API:** move the combined doctor helper and report types
+  under `testing` with `test-support`. Production hosts assemble responses from
+  bounded runtime queries and typed errors.
+- Add bounded sparse hexadecimal image loading under `test-support` for fresh
+  fixture backing; callers retain image provenance and payload admission
+  ([PR #121 — Share bounded sparse memory image fixture loading](https://github.com/dragginzgame/ic-memory/pull/121)).
+
+[Detailed notes](docs/changelog/0.48.md)
+
 ## [0.47.0] - 2026-10-17
 
 - **Breaking allocation API:** bootstrap returns the committed generation; borrow

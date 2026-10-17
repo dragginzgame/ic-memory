@@ -238,7 +238,7 @@ mod tests {
     #[test]
     fn current_stable_cell_record_fixture_recovers() {
         let bytes = hex_fixture(include_str!(
-            "../fixtures/current/ledger_commit_store_single_active.cbor.hex"
+            "../fixtures/current/ledger_commit_store_single.cbor.hex"
         ));
         let record = decode_stable_cell_commit_store(&bytes).expect("stable-cell fixture");
 
@@ -271,7 +271,7 @@ mod tests {
     #[test]
     fn malformed_payload_bytes_fail_closed_without_mutating_memory() {
         let original = hex_fixture(include_str!(
-            "../fixtures/current/ledger_commit_store_single_active.cbor.hex"
+            "../fixtures/current/ledger_commit_store_single.cbor.hex"
         ));
         let start = original
             .windows(8)

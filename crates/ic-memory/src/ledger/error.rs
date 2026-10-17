@@ -36,16 +36,6 @@ pub enum LedgerCommitError {
     /// Protected physical commit recovery failed.
     #[error(transparent)]
     Recovery(CommitRecoveryError),
-    /// Physical slot generation and decoded logical ledger generation disagree.
-    #[error(
-        "physical generation {physical_generation} does not match logical ledger generation {logical_generation}"
-    )]
-    PhysicalLogicalGenerationMismatch {
-        /// Generation encoded in the physical snapshot.
-        physical_generation: u64,
-        /// Generation decoded from the logical allocation ledger.
-        logical_generation: u64,
-    },
     /// Built-in ledger decoding failed.
     #[error("allocation ledger codec failed: {0}")]
     Codec(String),

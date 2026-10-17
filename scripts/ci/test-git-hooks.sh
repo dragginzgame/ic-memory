@@ -48,7 +48,7 @@ new_fixture() {
     # consumer locks so the formatter check still detects accidental creation.
     git rm --quiet --ignore-unmatch -- Cargo.lock testing/runtime-qualification/Cargo.lock
     mkdir -p ci make .githooks scripts/ci scripts/dev
-    for path in Makefile make/consumer.mk make/tools.mk make/release.mk make/rust-format.mk make/execution.mk ci/tool-versions.env rust-toolchain.toml .githooks/pre-commit scripts/dev/install-git-hooks.sh scripts/ci/check-format-tools.sh scripts/ci/run-formatting.sh scripts/ci/check-make-execution.sh; do
+    for path in Makefile make/consumer.mk make/tools.mk make/release.mk make/rust-format.mk make/execution.mk ci/tool-versions.env rust-toolchain.toml .githooks/pre-commit scripts/dev/install-git-hooks.sh scripts/ci/check-format-tools.sh scripts/ci/run-formatting.sh scripts/ci/check-make-execution.sh scripts/ci/check-release-delivery.sh; do
         cp -p "$root/$path" "$path"
     done
     for workspace in . testing/runtime-qualification; do
@@ -85,7 +85,7 @@ CARGO
             printf 'pub fn fixture() {}\n' > "$workspace/crates/$member/src/lib.rs"
         done
     done
-    git add -- Makefile make/consumer.mk make/tools.mk make/release.mk make/rust-format.mk make/execution.mk ci/tool-versions.env rust-toolchain.toml .githooks/pre-commit scripts/dev/install-git-hooks.sh scripts/ci/check-format-tools.sh scripts/ci/run-formatting.sh scripts/ci/check-make-execution.sh Cargo.toml crates/hook-fixture crates/alpha crates/zeta testing/runtime-qualification/Cargo.toml testing/runtime-qualification/crates/hook-fixture testing/runtime-qualification/crates/alpha testing/runtime-qualification/crates/zeta
+    git add -- Makefile make/consumer.mk make/tools.mk make/release.mk make/rust-format.mk make/execution.mk ci/tool-versions.env rust-toolchain.toml .githooks/pre-commit scripts/dev/install-git-hooks.sh scripts/ci/check-format-tools.sh scripts/ci/run-formatting.sh scripts/ci/check-make-execution.sh scripts/ci/check-release-delivery.sh Cargo.toml crates/hook-fixture crates/alpha crates/zeta testing/runtime-qualification/Cargo.toml testing/runtime-qualification/crates/hook-fixture testing/runtime-qualification/crates/alpha testing/runtime-qualification/crates/zeta
 }
 
 expect_failure() {
@@ -238,11 +238,11 @@ for admission in prepared missing wrong-version; do
 done
 
 new_fixture installation
-bash scripts/dev/install-git-hooks.sh > output
+bash scripts/dev/install-git-hooks.sh --consumer "$PWD" > output
 [[ "$(git config --local --get core.hooksPath)" == .githooks ]] || exit 1
-bash scripts/dev/install-git-hooks.sh > output
+bash scripts/dev/install-git-hooks.sh --consumer "$PWD" > output
 git config --local core.hooksPath private-hooks
-expect_failure bash scripts/dev/install-git-hooks.sh
+expect_failure bash scripts/dev/install-git-hooks.sh --consumer "$PWD"
 [[ "$(git config --local --get core.hooksPath)" == private-hooks ]] || exit 1
 
 # macOS temporary roots can have logical aliases (/var and /private/var).
@@ -257,8 +257,8 @@ ln -s "$PWD" "$fixture/installer-alias"
 
 # Qualify the actual two-workspace formatter in a literal newline-ending root.
 new_fixture $'installation-root\n'
-bash scripts/dev/install-git-hooks.sh > output
-bash scripts/dev/install-git-hooks.sh >> output
+bash scripts/dev/install-git-hooks.sh --consumer "$PWD" > output
+bash scripts/dev/install-git-hooks.sh --consumer "$PWD" >> output
 [[ "$(git config --local --get core.hooksPath)" == .githooks ]] || exit 1
 CARGO_NET_OFFLINE=true RUSTUP_AUTO_INSTALL=0 bash .githooks/pre-commit >> output
 [[ "$(git show :crates/hook-fixture/src/lib.rs)" == 'pub fn fixture() {}' ]] || exit 1

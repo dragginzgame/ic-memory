@@ -1,6 +1,5 @@
 use crate::{
-    AllocationDeclaration, AllocationLedger, AllocationRecord, AllocationState,
-    SealedDeclarationSnapshot, StableKey,
+    AllocationDeclaration, AllocationLedger, AllocationRecord, SealedDeclarationSnapshot, StableKey,
 };
 
 ///
@@ -14,8 +13,6 @@ use crate::{
 pub enum BootstrapAdmissionError {
     #[error("historical key {0} is unknown")]
     Unknown(StableKey),
-    #[error("historical key {0} is retired")]
-    Retired(StableKey),
     #[error("key {0} is already declared or selected")]
     Duplicate(StableKey),
     #[error("completed declarations exceed 254 external allocations")]
@@ -90,9 +87,9 @@ impl<'a> BootstrapAdmission<'a> {
                 .any(|declaration| declaration.stable_key() == key)
     }
 
-    /// Include a known, nonretired key under an explicit current host namespace grant.
+    /// Include a known key under an explicit current host namespace grant.
     /// Retains its slot. Final current policy and all
-    /// ordinary collision/retirement checks still run after preparation.
+    /// ordinary ownership and policy checks still run after preparation.
     pub fn include_historical(
         &mut self,
         authority: &str,
@@ -126,9 +123,6 @@ impl<'a> BootstrapAdmission<'a> {
         else {
             return Err(BootstrapAdmissionError::Unknown(key));
         };
-        if matches!(record.state(), AllocationState::Retired) {
-            return Err(BootstrapAdmissionError::Retired(key));
-        }
         self.pool.validate_authority(&key, authority)?;
         self.pool.validate_id(record.slot().id())?;
         self.selected.push(AllocationDeclaration {

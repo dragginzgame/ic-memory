@@ -8,7 +8,7 @@ Historical shared-version descriptions do not override that selected policy
 or establish new native qualification. Code paths are repository-relative.
 
 The existing tooling snapshot at revision
-`3bef3f2daec7f64f875397ed4d53d5b9e2e68a08` is recorded in
+`3f87ddc1a0c1616775b2114c42a4adee7376c9b1` (Shared 0.20.0) is recorded in
 [.shared-tooling.snapshot](../.shared-tooling.snapshot). It identifies the vendored
 files, hashes and executable modes, including the adopted policy.
 Keep its provenance accurate and never edit vendored files in place. Do not
@@ -23,15 +23,14 @@ These instructions are the repository's local overlay.
 The maintainer approved requiring checked `ic-memory` handles for production
 stable stores. The local [agent instructions](../AGENTS.md#stable-memory-governance)
 record that boundary alongside the [allocation safety contract](../SAFETY.md).
-The common rule is proposed in
-[PR #251 — Require IC Memory governance for production stable stores](https://github.com/dragginzgame/shared-tooling/pull/251),
-from Shared Tooling commit `851073f`, based on committed `main` revision
-`472f7ab7a749f8931ee9559d3026e266d4f12af2`. This is a local policy decision;
-Memory's recorded shared snapshot has not adopted that contribution.
+The common rule from
+[PR #251 — Require IC Memory governance for production stable stores](https://github.com/dragginzgame/shared-tooling/pull/251)
+is now adopted in the recorded Shared 0.20.0 baseline. Policy adoption does not
+establish consumer implementation or qualification.
 
 IC Storage 0.3 exposes governed collection wrappers consuming `RuntimeMemory`;
-its generic engine remains private. Memory's pending 0.46 cut adds exclusive
-live leases and removes the blanket substrate re-export. Published consumer
+its generic engine remains private. Memory's 0.46 cut added exclusive
+live leases and removed the blanket substrate re-export. Published consumer
 adoption and qualification remain under
 [Storage #1 — Adopt Memory 0.46 exclusive leases and root backing exports](https://github.com/dragginzgame/ic-storage/issues/1).
 The host still owns exclusive backing custody; generic aliases cannot be
@@ -40,16 +39,52 @@ format or dependency selection and does not establish consumer qualification.
 
 ## Recorded snapshot adoption
 
-The current selection has 81 explicit roots and 112 payloads at the same reviewed
-Shared 0.15.0 revision. Memory no longer rewrites README dependency examples
-during release preparation. Canonical refresh retired the unused renderer root
-and payload for [#119](https://github.com/dragginzgame/ic-memory/issues/119), with
-no policy, tool-pin or executable identity change for retained payloads. Saved
-README bytes remain bound to release metadata, receipts and recovery checks.
-No setup or tool reinstall is required for this narrowed selection.
+The current selection has 71 explicit roots and 105 payloads from committed
+Shared 0.20.0 at `3f87ddc1a0c1616775b2114c42a4adee7376c9b1`.
+Memory no longer dispatches or vendors the generic Shared runner, parser,
+installer, common Make, formatter-prerequisite, LOC and checksum regression
+matrices. Canonical selection retirement removes twelve fixture roots and two
+unused derived helpers; the directly used Cargo cache-key and CI inspection
+commands are now explicit roots. Payload bytes remain at the same revision.
 
+| Retained proof | Owner/caller |
+| --- | --- |
+| Snapshot hashes, modes and selected roots | Memory `shared-tooling-check` |
+| Selected catalogs and installed native tools | Memory `tools-check`, formatter admission and native CI reuse |
+| Actual pin policy/catalog | Memory `check-pins` against its two workspace inputs and exception catalog |
+| Release source, receipts, rollback and Make dispatch | Memory repo-tool and release-adapter tests, with substituted Git/Cargo effects |
+| Actual index formatting, setup and failure isolation | Memory hook fixture |
+| Archive selections, transport bindings and retained failures | Memory failure-evidence and retention fixtures |
+| Generic implementation matrices | Shared Tooling `scripts/ci/` and producer CI |
 
-The current Shared 0.15.0 export retains the earlier payload closure and adds four
+`test-host-tools.sh` remains selected solely because Memory's failure-evidence
+fixture forces an early real installer refusal and checks that its original
+status/logs survive the actual collector/archive round trip. It does not run the
+full host matrix. Consumer hook tests retain missing/wrong formatter admission.
+No product test, installed tool check, full release gate or native host roster is
+removed. No CI duration reduction is claimed without comparable timings.
+
+The preceding adoption initially selected 81 roots and 119 payloads.
+Canonical preview and refresh used an isolated clean checkout of that exact
+revision; the sibling's uncommitted 0.20.1 work is not adopted. Seven new required
+companions cover maintenance selection, version reporting, formatting evidence,
+Make fixtures/jobserver admission, stable versions and release-delivery checking.
+
+Shared's common setup and PATH now cover host/Cargo tools. Memory explicitly
+selects `install-ic-tools` and `ic-tools-check` in the ordered local target lists
+and exports its prepared IC path. CI already publishes that path after the same
+setup/check pair; formatting needs only common Cargo tools. Consumer fixtures
+copy the new delivery checker and stable-version module where their callers
+require them. Host/Cargo/IC pins, Rust toolchains, both dependency lockfiles and
+prepared tool build identities remain unchanged; no tool installation is needed.
+
+The unused README renderer remains retired under
+[#119](https://github.com/dragginzgame/ic-memory/issues/119). Memory does not
+select the retired release-prose heuristic, fleet evidence reporter or standalone
+YQ installation. Optional Cargo boundary and release-delivery data checks are
+not enabled by this adoption; the existing local direct-delivery guard remains.
+
+The earlier Shared 0.15.0 export retained the earlier payload closure and adds four
 required companions over 0.12.4: Cargo publication, Rust toolchain and CI
 change-selection guides, plus canonical release version/date admission. The runner and increment
 helper use that admission; Memory retains independent parsed metadata, receipt,

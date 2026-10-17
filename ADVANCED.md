@@ -97,8 +97,9 @@ canister/thread storage; the Memory library has no singleton, implicit
 construction, cached construction failure or TLS lifecycle.
 
 The public API is exported from `ic_memory::...` at the crate root. Use
-`MemoryRuntime::bootstrap`, `MemoryRuntime::doctor_report` and
-`MemoryRuntime::open_memory`. Implementation modules remain private.
+`MemoryRuntime::bootstrap`, `MemoryRuntime::diagnostic_export` and
+`MemoryRuntime::open_memory`. Fixture-only APIs live under `ic_memory::testing`
+and require `test-support`; implementation modules remain private.
 
 Separate allocation domains require distinct backing memories and runtime
 objects, with an explicit bootstrap owner for each domain.
@@ -172,20 +173,20 @@ application binding publication.
 
 ## Runtime Diagnostics
 
-`MemoryRuntime::doctor_report(&snapshot, &pool, &policy)` reports stable-cell
-status, protected recovery, recovered ledger, live sizes, source requests and
-the tested pool. Read-only validation checks custody, namespace ownership,
-placement and custom allocation policy. It never executes preparation, predicts
-its completed historical selections or certifies consumer admission.
+Production hosts assemble their own responses from `diagnostic_export`,
+`commit_recovery_diagnostic`, `memory_allocations` and
+`memory_allocation_summary`, preserving typed failures at their boundaries.
+Invalid persisted records fail recovery and are not exported as valid ledgers.
+Physical reports do not decode ownership; hosts project current pool eligibility
+from the runtime's bound `allocation_pool()`. Membership does not prove free
+space or historical custody.
 
-For prebootstrap inspection, construct an owned runtime with explicit backing
-and configuration. Reports compare exact canonical requests, pool and policy
-identity with the successful bootstrap binding. They do not use a fingerprint.
-Typed diagnostic outcomes include
-stable codes and messages. Invalid persisted records fail recovery and are not
-exported as valid ledgers. Physical allocation reports do not decode ownership;
-hosts project pool eligibility from the bound `allocation_pool()`. This describes
-current policy membership, not free space or historical custody.
+With `test-support`, `testing::doctor_report(&runtime, &snapshot, &pool, &policy)`
+combines stable-cell status, protected recovery, recovered ledger, live sizes,
+source requests and the tested pool for explicit fixture preflight. Its report
+and diagnostic outcome types live under `testing` as well. It checks custody,
+namespace ownership, placement, policy and exact warm binding, without executing
+preparation, predicting historical selections or certifying consumer admission.
 
 ## Explicit `MemoryRuntime<M>`
 
@@ -200,7 +201,7 @@ let pool = MemoryAllocationPool::new(vec![MemoryAuthority::new("app", "app.")?],
 let mut runtime = MemoryRuntime::new(VectorMemory::default())?;
 runtime.bootstrap(&source, &pool, &GenericAllocationPolicy)?;
 let users = runtime.open_memory("app.users.v1")?;
-let doctor = runtime.doctor_report(&source, &pool, &GenericAllocationPolicy);
+let ledger = runtime.diagnostic_export()?;
 # Ok::<(), Box<dyn std::error::Error>>(())
 ```
 
@@ -245,7 +246,7 @@ corrupt cell envelopes or record bytes produce typed failures. Capacity admissio
 counts encoded bytes without allocating another serialization buffer.
 
 The internal commit store checks present physical slots, checksums, current
-payload format, physical/logical generation binding and ledger integrity before
+record-array format, the protected generation and ledger integrity before
 returning `RecoveredLedger`. Decoded DTOs alone never grant open authority.
 Opaque generation payloads are bounded CBOR byte strings; oversized commits and
 unknown current-format fields are rejected rather than silently accepted.

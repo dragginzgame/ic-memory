@@ -8,11 +8,11 @@ SCRIPT_DIR="${BASH_SOURCE[0]}"
 SCRIPT_DIR="$(cd -P "${SCRIPT_DIR%/*}" && printf '%s/.' "$PWD")"
 SCRIPT_DIR="${SCRIPT_DIR%/.}"
 tool="${1:-}"
-case "$tool" in actionlint|gitleaks|shellcheck|sccache|yq) shift ;; *) echo 'unknown CI tool' >&2; exit 2 ;; esac
+case "$tool" in actionlint|gitleaks|shellcheck|sccache) shift ;; *) echo 'unknown CI tool' >&2; exit 2 ;; esac
 version=""
 checksum=""
-install_dir="${TOOL_INSTALL_DIR:-$HOME/.local/bin}"
-usage() { echo "usage: install-ci-tool.sh $tool --version <version> --sha256 <digest> [--install-dir <directory>]" >&2; }
+install_dir=""
+usage() { echo "usage: install-ci-tool.sh $tool --version <version> --sha256 <digest> --install-dir <directory>" >&2; }
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --version|--sha256|--install-dir)
@@ -27,10 +27,8 @@ while [[ $# -gt 0 ]]; do
         *) usage; exit 2 ;;
     esac
 done
+[[ -n "$install_dir" ]] || { usage; exit 2; }
 [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z][0-9A-Za-z.-]*)?$ ]] || { usage; exit 2; }
-if [[ "$tool" == yq ]]; then
-    [[ "$version" =~ ^4\.[0-9]+\.[0-9]+$ ]] || { usage; exit 2; }
-fi
 [[ "$checksum" =~ ^[0-9a-f]{64}$ ]] || { echo 'invalid SHA-256 digest' >&2; exit 2; }
 case "$(uname -s):$(uname -m)" in
     Linux:x86_64|Linux:amd64) os=linux; arch=amd64 ;;
@@ -40,10 +38,6 @@ case "$(uname -s):$(uname -m)" in
     *) echo "unsupported $tool host" >&2; exit 1 ;;
 esac
 case "$tool" in
-    yq)
-        repo=mikefarah/yq
-        archive="yq_${os}_${arch}"
-        member="$archive"; format=raw; version_argument=--version ;;
     actionlint)
         repo=rhysd/actionlint
         archive="actionlint_${version}_${os}_${arch}.tar.gz"
@@ -87,7 +81,6 @@ curl --proto '=https' --proto-redir '=https' --tlsv1.2 -fsSL \
     -o "$stage/$archive" "https://github.com/$repo/releases/download/v$version/$archive"
 bash "$SCRIPT_DIR/verify-file-checksum.sh" sha256 "$checksum" "$stage/$archive"
 case "$format" in
-    raw) ;;
     gzip) tar -xzf "$stage/$archive" -C "$stage" "$member" ;;
     xz) tar -xJf "$stage/$archive" -C "$stage" "$member" ;;
 esac
@@ -97,9 +90,6 @@ chmod +x "$candidate"
 version_output="$("$candidate" "$version_argument" 2>&1)" || { printf '%s\n' "$version_output" >&2; exit 1; }
 reported_version="$version_output"
 case "$tool" in
-    yq)
-        reported_version="${version_output#yq (https://github.com/mikefarah/yq/) version v}"
-        [[ "$version_output" == "yq (https://github.com/mikefarah/yq/) version v$reported_version" ]] || exit 1 ;;
     actionlint) reported_version="${version_output%%$'\n'*}" ;;
     sccache) reported_version="${version_output#sccache }"
         [[ "$version_output" == "sccache $reported_version" ]] || exit 1 ;;

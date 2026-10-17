@@ -21,7 +21,6 @@ barrier, not an instruction to reset storage.
 | Runtime not bootstrapped | No | Run the one correct bootstrap owner before opening stores |
 | Bucket-size mismatch | No | Use the persisted setting; do not attempt an in-place resize |
 | Corrupt or unsupported metadata | No | Preserve the bytes and collect read-only diagnostics |
-| Retired allocation requested | No | Do not revive or reuse the retired key or slot |
 
 ## “The allocation layout changed”
 
@@ -46,8 +45,7 @@ the corrected declarations against a copy or representative fixture first.
 ## “No eligible free slot” or `MemoryResolutionError::Exhausted`
 
 New keys use unoccupied IDs from the common host pool. Governance, physical
-exclusions and all retained records are unavailable. Omitted keys, reservations
-and retirement tombstones never release space. Check namespace admission and
+exclusions and all retained records are unavailable. Omitted key-to-ID bindings never release space. Check namespace admission and
 pool occupancy; only remove an exclusion after separately resolving its custody.
 Do not reuse a retained ID or assign per-component numeric partitions.
 
@@ -114,16 +112,15 @@ eligible physical IDs. Custom policy cannot replace the pool's admission checks.
 Exclude that ID explicitly after identifying its physical custodian. Memory
 cannot infer ownership or safely allocate over its bytes.
 
-## “A retired store cannot be opened again”
+## “An application-retired store cannot be opened again”
 
-Retirement is permanent allocation ownership, not a free-list operation. Neither
-the stable key nor its former slot can be revived or assigned to something
-else. This protects upgrades and rollbacks from interpreting unrelated bytes as
-the retired store.
+The allocation ledger stores permanent key/ID bindings, not application lifecycle
+state. Reintroducing a known key retains its ID and must pass current host grants,
+pool checks and application policy. A host or storage owner may separately reject
+reopening a retired store; inspect that owner's policy and retained state.
 
-If the application needs a genuinely new store, declare a new stable key and a
-never-used eligible slot. Recovery of the retired store's application data, if
-required, belongs to an external application-specific recovery plan.
+Never assign the old ID to a different key or clear the ledger to bypass a
+refusal. A new store identity needs its own key and an unused eligible ID.
 
 ## Growth and capacity failures
 

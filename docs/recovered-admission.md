@@ -20,9 +20,9 @@ The hook receives `BootstrapAdmission`: the original sealed declarations and
 an iterator over validated recovered key/slot/state metadata.
 The iterator exposes at most 255 current ownership records; the ledger stores
 no generation or schema audit trail. It offers no memory handles, raw manager, ledger DTO or mutation API.
-`include_historical(authority, key)` selects only a known nonretired allocation
+`include_historical(authority, key)` selects only a known allocation
 under an explicit current host grant. It retains the recovered slot.
-Unknown/retired selections reject instead of entering ordinary new placement.
+Unknown selections reject instead of entering ordinary new placement.
 Selections cannot add grants, remove original declarations or change host policy.
 Duplicate and oversized completion sets reject. Selection errors remain latched
 for this attempt so ignoring a returned error cannot publish a partial set.
@@ -85,15 +85,15 @@ opens by key. It cannot append selections after the host has committed. Missing
 keys require coordination with the host's next cold bootstrap, not another
 commit or replacement profile.
 
-`BootstrapAdmissionError` distinguishes unknown, retired, duplicate, oversized,
+`BootstrapAdmissionError` distinguishes unknown, duplicate, oversized,
 invalid-registration and current-grant failures. These are wrapped in
 `RuntimeBootstrapError::Admission`. Latched selection failures take precedence
 over a consumer's generic return error. Consumer-only rejections use
 `RuntimeBootstrapError::AdmissionPolicy`. After completion, the existing typed
 resolution, validation, staging and persistence errors still apply.
 
-Known reserved keys may activate through the existing reservation contract.
-Selected keys preserve their durable slot and ownership state.
+Selected keys preserve their permanent slot. Application retirement rejection
+belongs to the host/storage owner; the ledger stores no lifecycle state.
 Selection does not establish application schema support. Governance keys cannot
 be selected externally. Unselected records continue to own their slots and gains
 no new capability. Current grants authorize selections; metadata does not claim
@@ -147,10 +147,10 @@ for this additional regression are unmeasured; native timing is not a metric.
 
 Production `MemoryRuntime` tests preserve an omitted journal's debt/commit marker
 and commit exactly one new generation. They reject unknown, duplicate, foreign,
-revoked and retired selections, consumer key-set/owner replacement, excessive
+revoked selections, consumer key-set/owner replacement, excessive
 completion, corruption, exhausted placement and failed backing growth. Rejection
 leaves existing memory unchanged and publishes no capability. Retry succeeds
-against the unchanged evidence; reserved selection preserves the claimed key and slot.
+against the unchanged evidence; historical selection preserves the claimed key and slot.
 Explicit-runtime tests verify preparation and matching warm bootstrap without
 replaying admission; injected component handles remain usable after the host
 runtime object is dropped. A compile-fail test demonstrates

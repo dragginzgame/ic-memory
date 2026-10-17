@@ -34,22 +34,6 @@ pub extern "C" fn ic_memory_wasm_diagnostics_size_probe_bootstrap() -> u64 {
 }
 
 #[unsafe(no_mangle)]
-pub extern "C" fn ic_memory_wasm_diagnostics_size_probe_report() -> u32 {
-    RUNTIME
-        .with(|slot| {
-            let slot = slot.try_borrow().ok()?;
-            let runtime = slot.as_ref()?;
-            let declarations = probe_declarations().ok()?;
-            let report =
-                runtime.doctor_report(&declarations, &pool(), &ic_memory::GenericAllocationPolicy);
-            let mut bytes = Vec::new();
-            ciborium::into_writer(&report, &mut bytes).ok()?;
-            u32::try_from(bytes.len()).ok()
-        })
-        .unwrap_or(u32::MAX)
-}
-
-#[unsafe(no_mangle)]
 pub extern "C" fn ic_memory_wasm_diagnostics_size_probe_export() -> u32 {
     RUNTIME
         .with(|slot| {

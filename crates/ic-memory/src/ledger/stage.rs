@@ -1,15 +1,13 @@
 use super::{
-    AllocationLedger, AllocationRecord, AllocationStageError, AllocationState, ClaimOutcome,
-    RecoveredLedger,
+    AllocationLedger, AllocationRecord, AllocationStageError, ClaimOutcome, RecoveredLedger,
 };
 use crate::{
     RuntimeBootstrapError, RuntimeBootstrapPolicy, declaration::AllocationDeclaration,
     requests::DeclarationSnapshot,
 };
 
-// Own the exact recovered ledger throughout validation and staging. A claim's
-// checked index is consumed immediately; no proof can be rebound to another
-// same-generation history and no second ownership scan is needed.
+// Own the exact recovered ledger throughout validation and staging. Existing
+// bindings stay unchanged; only checked new claims append records.
 pub fn stage_generation<P: RuntimeBootstrapPolicy>(
     recovered: RecoveredLedger,
     snapshot: DeclarationSnapshot,
@@ -17,12 +15,12 @@ pub fn stage_generation<P: RuntimeBootstrapPolicy>(
 ) -> Result<(AllocationLedger, Vec<AllocationDeclaration>), RuntimeBootstrapError<P::Error>> {
     let mut next = recovered.into_ledger();
     for declaration in snapshot.declarations() {
-        match crate::validation::check_declaration(&next, declaration, policy)? {
-            ClaimOutcome::Existing { record_index } => {
-                let record = &mut next.records[record_index];
-                record.state = AllocationState::Active;
-            }
-            ClaimOutcome::New => next.records.push(AllocationRecord::active(declaration)),
+        if matches!(
+            crate::validation::check_declaration(&next, declaration, policy)?,
+            ClaimOutcome::New
+        ) {
+            next.records
+                .push(AllocationRecord::from_declaration(declaration));
         }
     }
     // Keep successor failures after all policy/history callbacks, as before.
@@ -89,23 +87,20 @@ mod tests {
         assert_eq!(recovered.ledger().records().len(), 1);
         assert_eq!(
             recovered.ledger().records()[0],
-            crate::AllocationRecord::active(&declaration())
+            crate::AllocationRecord::from_declaration(&declaration())
         );
         assert_eq!(declarations, vec![declaration()]);
     }
 
     #[test]
-    fn reservation_policy_alone_does_not_activate_reserved_allocation() {
+    fn existing_allocation_still_requires_current_policy() {
         let mut store = LedgerCommitStore::default();
-        let reserved = crate::AllocationLedger::new(
+        let retained = crate::AllocationLedger::new(
             1,
-            vec![crate::testing::allocation_record(
-                &declaration(),
-                crate::AllocationState::Reserved,
-            )],
+            vec![crate::testing::allocation_record(&declaration())],
         )
         .unwrap();
-        store.commit(&reserved).unwrap();
+        store.commit(&retained).unwrap();
         let recovered = store.recover().unwrap();
         let snapshot = DeclarationSnapshot::for_test(vec![declaration()]);
         let err = stage_generation(recovered, snapshot, &RejectActivePolicy)
@@ -116,10 +111,7 @@ mod tests {
                 "active slot rejected"
             ))
         ));
-        assert_eq!(
-            store.recover().unwrap().ledger().records()[0].state(),
-            crate::AllocationState::Reserved
-        );
+        assert_eq!(store.recover().unwrap().ledger(), &retained);
     }
 
     #[test]
@@ -127,7 +119,7 @@ mod tests {
         let store = LedgerCommitStore::default();
         let prior = store.recover_or_genesis().unwrap();
         // The governance key sorts before this application key, so staging
-        // mutates local state before the application policy rejects its slot.
+        // appends locally before the application policy rejects its slot.
         let snapshot = DeclarationSnapshot::for_test(vec![
             AllocationDeclaration::memory_manager(
                 crate::IC_MEMORY_LEDGER_STABLE_KEY,

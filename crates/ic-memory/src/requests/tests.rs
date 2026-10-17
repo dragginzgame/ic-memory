@@ -14,7 +14,7 @@ fn resolution_fills_free_slots_around_interleaved_retained_requests() {
         [("app.a.v1", 20), ("app.c.v1", 11), ("app.omitted.v1", 15)]
             .into_iter()
             .map(|(key, id)| {
-                crate::AllocationRecord::active(
+                crate::AllocationRecord::from_declaration(
                     &AllocationDeclaration::memory_manager(key, id).unwrap(),
                 )
             })

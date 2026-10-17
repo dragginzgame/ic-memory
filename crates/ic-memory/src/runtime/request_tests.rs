@@ -163,34 +163,19 @@ fn common_pool_supplies_available_space_across_all_owners() {
 }
 
 #[test]
-fn retained_fixed_claims_and_tombstones_are_never_remapped_or_reused() {
+fn retained_and_omitted_claims_are_never_remapped_or_reused() {
     let backing = VectorMemory::default();
     retained(
         &backing,
         &[
             AllocationDeclaration::memory_manager("app.retained.v1", 100).unwrap(),
-            AllocationDeclaration::memory_manager("app.retired.v1", 10).unwrap(),
+            AllocationDeclaration::memory_manager("app.omitted.v1", 10).unwrap(),
         ],
     );
     let manager = MemoryManager::init(backing.clone());
     let memory = manager.get(MemoryId::new(100));
     memory.grow(1);
     memory.write(0, b"retained");
-    let mut record =
-        super::super::decode_stable_cell_commit_store_from_memory(&manager.get(MemoryId::new(0)))
-            .unwrap();
-    let recovered = record.recover().unwrap();
-    let mut rows = recovered.ledger().records().to_vec();
-    rows.iter_mut()
-        .find(|row| row.stable_key().as_str() == "app.retired.v1")
-        .unwrap()
-        .state = crate::AllocationState::Retired;
-    let retired = crate::AllocationLedger::new(recovered.current_generation() + 1, rows).unwrap();
-    record.commit_generation(&retired).unwrap();
-    drop(Cell::new(
-        manager.get(MemoryId::new(0)),
-        crate::stable_cell::EncodedLedgerRecord::new(&record).unwrap(),
-    ));
     drop(manager);
     let mut host = MemoryRuntime::new(backing.clone()).unwrap();
     host.bootstrap(
@@ -207,19 +192,14 @@ fn retained_fixed_claims_and_tombstones_are_never_remapped_or_reused() {
         .read(0, &mut bytes);
     assert_eq!(&bytes, b"retained");
     drop(host);
-    let before = backing.borrow().clone();
-    let mut host = MemoryRuntime::new(backing.clone()).unwrap();
-    assert!(matches!(
-        host.bootstrap(
-            &snapshot(&["app.retired.v1"], "app"),
-            &pool(),
-            &GenericAllocationPolicy
-        ),
-        Err(RuntimeBootstrapError::Validation(
-            crate::AllocationValidationError::RetiredAllocation { .. }
-        ))
-    ));
-    assert_eq!(*backing.borrow(), before);
+    let mut host = MemoryRuntime::new(backing).unwrap();
+    host.bootstrap(
+        &snapshot(&["app.omitted.v1"], "app"),
+        &pool(),
+        &GenericAllocationPolicy,
+    )
+    .unwrap();
+    assert_eq!(host.memory_id("app.omitted.v1"), Ok(10));
 }
 
 #[test]
@@ -269,10 +249,10 @@ fn unmanaged_physical_custody_requires_explicit_host_exclusion() {
     let before = backing.borrow().clone();
     let mut host = MemoryRuntime::new(backing.clone()).unwrap();
     let requests = snapshot(&["app.rows.v1"], "app");
-    let report = host.doctor_report(&requests, &pool(), &GenericAllocationPolicy);
+    let report = crate::testing::doctor_report(&host, &requests, &pool(), &GenericAllocationPolicy);
     assert!(matches!(
         report.validation,
-        crate::DiagnosticCheck::Failed { .. }
+        crate::testing::DiagnosticCheck::Failed { .. }
     ));
     assert_eq!(*backing.borrow(), before);
     assert!(matches!(
@@ -304,8 +284,9 @@ fn doctor_resolves_logical_requests_without_writes() {
                 .unwrap();
         }
         let before = backing.borrow().clone();
-        let report = host.doctor_report(&source, &pool(), &GenericAllocationPolicy);
-        assert_eq!(report.validation, crate::DiagnosticCheck::Passed);
+        let report =
+            crate::testing::doctor_report(&host, &source, &pool(), &GenericAllocationPolicy);
+        assert_eq!(report.validation, crate::testing::DiagnosticCheck::Passed);
         assert_eq!(report.bootstrapped, bootstrapped);
         assert_eq!(*backing.borrow(), before);
     }

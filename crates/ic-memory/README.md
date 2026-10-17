@@ -120,7 +120,7 @@ result cannot grant access to a store. The runtime publishes permission only
 after the allocation ledger has been recovered, checked, and durably updated.
 
 The ledger stores one current ownership record per allocated identity. Store
-schema versions and schema admission belong to the application. Omitted and retired
+schema versions and schema admission belong to the application. Omitted
 identities retain their IDs to prevent accidental reuse. A commit counter and one
 checksummed current snapshot support stale-proof checks and corruption detection.
 
@@ -144,8 +144,9 @@ steps.
 </p>
 <p align="center"><em>Allocation safety complements backups, schema migration, authorization, and disaster recovery.</em></p>
 
-Retiring a store does not make its old location reusable. That tombstone is
-intentional: reusing the location could make a rollback open unrelated data.
+Removing a store does not make its old location reusable: its key-to-ID binding
+is permanent. Application retirement and any rule forbidding the same key from
+reopening belong to the host/storage owner.
 
 ## Terminology
 
@@ -155,7 +156,7 @@ intentional: reusing the location could make a rollback open unrelated data.
 - A **namespace grant** admits that authority's keys under a host-selected prefix.
 - The **allocation pool** contains eligible application IDs shared by all owners.
 - **Bootstrap** recovers, admits, resolves, validates and commits before opening.
-- The **allocation ledger** retains key-to-ID bindings and retirement tombstones.
+- The **allocation ledger** retains permanent key-to-ID bindings, including omitted stores.
 
 The application owns one pool and one bootstrap per backing memory. Libraries
 contribute key requests, verify that the host included them, and open their
@@ -228,8 +229,8 @@ isolation boundary against arbitrary linked code. Never leak a handle to force
 reopening; a forgotten lease remains occupied.
 
 Known keys retain their committed IDs. New requests are sorted by key and take
-the lowest unclaimed ID in the common pool. Current, omitted, reserved and
-retired records occupy their IDs permanently. Namespace grants do not divide
+the lowest unclaimed ID in the common pool. All retained records, including
+omitted keys, occupy their IDs permanently. Namespace grants do not divide
 space between components. Exhaustion rejects the entire attempt.
 
 See [`examples/key_only.rs`](examples/key_only.rs) and
@@ -311,8 +312,9 @@ layout or policy; do not erase the ledger to bypass the conflict.
 
 <p><img src="https://raw.githubusercontent.com/dragginzgame/shared-assets/main/ic-memory/ic-faq-question.svg" alt="" width="22"> <strong>Can a retired memory location be reused?</strong></p>
 
-No. Retirement is a permanent tombstone so a future version or rollback cannot
-mistake unrelated data for the retired store.
+No. Its permanent key-to-ID binding prevents another key from opening unrelated
+data at that location. The host/storage owner decides whether the same key may
+reopen a logically retired store.
 
 <p><img src="https://raw.githubusercontent.com/dragginzgame/shared-assets/main/ic-memory/ic-faq-question.svg" alt="" width="22"> <strong>Does every library bootstrap separately?</strong></p>
 
@@ -337,19 +339,26 @@ Construct it with `PolicyIdentity::new(host_token)`, where `host_token` is one
 Prepare any fallible host configuration first. Hosts own descriptive labels,
 versions and token derivation; change the token when that policy changes. Memory
 compares all token bytes for warm binding and does not persist or hash them.
-Diagnostic JSON returns token arrays, including the doctor's direct tested token.
+Diagnostic JSON returns token arrays; fixture doctor reports include the tested token.
 
 Production recovery and inspection use the host runtime's `diagnostic_export`,
-`commit_recovery_diagnostic` and `doctor_report`. Raw ledger DTOs, bounded raw
-commit-store readers and passive export construction are fixture-only under
-`test-support`; recovered authority is internal. Bounded Cell payload inspection
-remains available without granting allocation authority.
+`commit_recovery_diagnostic`, `memory_allocations` and `memory_allocation_summary`.
+Hosts own operator response assembly from these bounded queries and typed errors.
+The combined `testing::doctor_report(&runtime, &declarations, &pool, &policy)`
+preflight helper and its report types require `test-support`. It is read-only and
+never runs recovered-admission preparation or grants open authority. Raw ledger
+DTOs, bounded raw commit-store readers and passive export construction also
+require `test-support`; recovered authority remains internal. Bounded Cell payload
+inspection remains available without granting allocation authority.
 
-The current durable ledger uses checked numeric slots and a single `ICMSNAP1`
-checksummed snapshot containing direct ledger CBOR. The 0.45.0 format cut retires
-earlier images: use fresh/reset memory. Incompatible bytes reject without
-initializing genesis or clearing memory. See the
-[current ledger contract](../../docs/current-ledger.md).
+The current durable ledger uses checked numeric slots and the `ICMKEY01`
+checksummed snapshot. Its protected header owns the generation; the bounded
+CBOR byte-string payload contains only the allocation-record array. Recovery
+constructs the logical ledger with that checked generation. The 0.48.0 format
+cut retires earlier images, including ICMSNAP1 and pending ICMREC01: use
+fresh/reset memory. Invalid
+or incompatible bytes reject without initializing genesis or clearing memory.
+See the [current ledger contract](../../docs/current-ledger.md).
 
 For fixture runtimes, opt in to `test-support` and call `testing::fixture_runtime`
 with explicit backing memory, owner, namespace, stable-key list and bucket
@@ -362,15 +371,28 @@ For fixture-only byte cells, opt in to `test-support` and construct
 `testing::FixtureCell` with explicit backing memory, owner, namespace, key and
 `MemoryManagerConfig`. The Cell handle retains its backing; the temporary
 bootstrap runtime is dropped. No lifecycle handler or singleton is installed.
-Use `try_new` for typed setup refusal of trusted images, or `create_bounded` /
-`open_bounded` for explicit fresh/retained admission with an enforced byte limit.
+Use `create_bounded` or `open_bounded` for explicit fresh/retained admission
+with a caller-selected byte limit. Setup failures retain their typed category
+under `FixtureCellError::Setup(FixtureRuntimeError)`.
 Retained headers are checked before payload loading; malformed cells are refused
 without initialization. `try_set` refuses oversized writes before mutation;
 `into_memory` transfers the admitted handle for caller-owned raw inspection.
-Existing `new` and `set` retain their panic convention. Callers keep codecs,
+Callers keep codecs,
 work budgets and restored-state/lifecycle validation; fresh empty bytes must
 never substitute for a required retained journal. Bootstrap may update ledger
 metadata before a later Cell refusal, and backing IO can still panic.
+
+For frozen sparse backing fixtures, `testing::memory_from_sparse_hex` expands
+ordered `(offset, hex)` runs into fresh zero-filled VectorMemory with an explicit
+page ceiling. It checks bounds and hex before backing allocation and reports
+typed failures. Callers retain provenance, schema and payload validation. This
+helper does not open a runtime, recover authority or convert retained formats.
+
+Production requests, namespace grants and allocation pools use checked Rust
+constructors. Their serialization remains available for diagnostic output;
+`Deserialize` requires `test-support` for explicit fixtures. Applications that
+accept external configuration own their input DTOs and pass decoded fields to
+Memory's constructors. This does not change durable ledger decoding.
 
 Resolved numeric declarations are read-only runtime outputs. Production callers
 submit `MemoryRequest` values and borrow `runtime.committed_allocations()` after
